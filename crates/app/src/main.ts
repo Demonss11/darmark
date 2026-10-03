@@ -4,6 +4,7 @@
 import { open, save, confirm } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { renderMarkdown, readFile, writeFile } from "./tauri";
+import { enhanceTables, attachMenuAutoClose } from "./tables";
 import "./style.css";
 
 const MD_FILTER = { name: "Markdown", extensions: ["md", "markdown", "mdown", "mkd", "txt"] };
@@ -19,6 +20,7 @@ const chkPreview = document.getElementById("chk-preview") as HTMLInputElement;
 let currentPath: string | null = null;
 let dirty = false;
 let renderSeq = 0; // защита от «гонки» асинхронных рендеров
+let lastRenderedHtml = ""; // чтобы не перетирать DOM (и состояние таблиц) без изменений
 
 // ---------- предпросмотр (debounce, чтобы не спамить IPC на каждое нажатие) ----------
 
@@ -33,11 +35,21 @@ async function doRender() {
   try {
     const html = await renderMarkdown(editor.value);
     if (seq !== renderSeq) return; // более новый рендер уже в полёте
+    // Если HTML не изменился — не трогаем DOM: иначе сбрасывались бы
+    // сортировка, фильтры и фокус в предпросмотре на каждом дебаунсе.
+    if (html === lastRenderedHtml) return;
+    lastRenderedHtml = html;
     preview.innerHTML = html;
+    enhanceTables(preview); // Excel-подобные сортировка/фильтры для всех <table>
   } catch (e) {
-    if (seq === renderSeq) preview.textContent = `Ошибка рендера: ${String(e)}`;
+    if (seq === renderSeq) {
+      lastRenderedHtml = "";
+      preview.textContent = `Ошибка рендера: ${String(e)}`;
+    }
   }
 }
+
+attachMenuAutoClose(preview); // закрытие меню фильтров при прокрутке предпросмотра
 
 // ---------- статусная строка / заголовок ----------
 
@@ -183,10 +195,15 @@ editor.value = [
   "",
   "## Таблицы (GFM)",
   "",
-  "| Файл | Размер | Строк |",
-  "|------|-------:|------:|",
-  "| README.md | 2 КБ | 48 |",
-  "| Cargo.toml | 1 КБ | 21 |",
+  "Кликните по заголовку столбца — сортировка ↑/↓; воронка ▾ — фильтр по значениям,",
+  "поле над таблицей — поиск. Типы данных определяются автоматически.",
+  "",
+  "| Файл | Размер | Строк | Изменён |",
+  "|------|-------:|------:|-----------|",
+  "| README.md | 2 КБ | 48 | 01.10.2026 |",
+  "| Cargo.toml | 1 КБ | 21 | 28.09.2026 |",
+  "| main.rs | 3,5 КБ | 102 | 03.10.2026 |",
+  "| style.css | 4 КБ | 150 | 30.09.2026 |",
   "",
   "## Прочее",
   "- [x] открыть файл",
