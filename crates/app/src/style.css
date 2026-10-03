@@ -111,22 +111,170 @@ html, body { height: 100%; margin: 0; }
 .markdown-body hr { border: none; border-top: 2px solid var(--border); margin: 1.5em 0; }
 .markdown-body img { max-width: 100%; }
 
-/* ---------- ТАБЛИЦЫ (ключевая фича) ---------- */
+/* ---------- ТАБЛИЦЫ (ключевая фича) + Excel-подобное украшение (tables.ts) ---------- */
 .markdown-body table {
-  border-collapse: collapse;
-  margin: 1em 0;
+  border-collapse: separate;   /* нужно для sticky-заголовка */
+  border-spacing: 0;
+  margin: 0;
   width: auto;
   max-width: 100%;
-  display: block;              /* горизонтальный скролл вместо поломки вёрстки */
+}
+.table-enhanced {
+  margin: 1em 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+}
+.table-scroll {
   overflow-x: auto;
+  max-height: 60vh;            /* вертикальный скролл + «липкая» шапка */
 }
 .markdown-body table th,
 .markdown-body table td {
-  border: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  border-right: 1px solid var(--border);
   padding: 6px 13px;
 }
+.markdown-body table th:last-child,
+.markdown-body table td:last-child { border-right: none; }
+.markdown-body table tbody tr:last-child td { border-bottom: none; }
 .markdown-body table th { background: var(--toolbar-bg); font-weight: 600; }
 .markdown-body table tbody tr:nth-child(2n) { background: color-mix(in srgb, var(--toolbar-bg) 45%, transparent); }
+
+/* панель инструментов над таблицей: поиск / счётчик / сброс */
+.table-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--toolbar-bg);
+  border-radius: 6px 6px 0 0;
+}
+.table-search {
+  flex: 0 1 260px;
+  min-width: 120px;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+}
+.table-count { font-size: 12px; opacity: 0.7; white-space: nowrap; }
+.table-count.active { opacity: 1; color: var(--accent); }
+.table-reset {
+  margin-left: auto;
+  padding: 2px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--fg);
+  cursor: pointer;
+  font: inherit;
+}
+.table-reset:not(:disabled):hover { border-color: var(--accent); }
+.table-reset:disabled { opacity: 0.45; cursor: default; }
+
+/* кликабельные заголовки-сортировщики */
+.table-enhanced thead th {
+  position: sticky;            /* «липкая» шапка при прокрутке — как в Excel */
+  top: 0;
+  z-index: 1;
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+  white-space: nowrap;
+}
+.table-enhanced thead th:hover { color: var(--accent); }
+.table-enhanced thead th:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* стрелки сортировки и индикатор фильтра — псевдоэлементы, текст заголовка не трогаем */
+.table-enhanced thead th::after {
+  content: "";
+  margin-left: 6px;
+  font-size: 10px;
+  opacity: 0.5;
+}
+.table-enhanced thead th.sorted-asc::after  { content: "▲"; opacity: 1; color: var(--accent); }
+.table-enhanced thead th.sorted-desc::after { content: "▼"; opacity: 1; color: var(--accent); }
+.table-enhanced thead th.filtered { color: var(--accent); }
+
+/* кнопка-воронка внутри заголовка */
+.col-filter-btn {
+  margin-left: 6px;
+  padding: 0 3px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: 10px;
+  vertical-align: baseline;
+}
+.col-filter-btn:hover { background: color-mix(in srgb, var(--accent) 20%, transparent); }
+th.filtered .col-filter-btn { color: var(--accent); font-weight: 700; }
+
+/* выпадающий список значений колонки */
+.col-filter-menu {
+  z-index: 10;
+  width: 260px;
+  max-height: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font: 13px/1.4 "Segoe UI", system-ui, sans-serif;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
+}
+.col-filter-menu > input[type="search"] {
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+}
+.col-filter-list {
+  overflow-y: auto;
+  min-height: 40px;
+  max-height: 200px;
+  display: flex;
+  flex-direction: column;
+}
+.col-filter-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.col-filter-item:hover { background: var(--code-bg); }
+.col-filter-item span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.col-filter-item em { font-style: normal; font-size: 11px; opacity: 0.55; }
+.col-filter-empty { padding: 6px; opacity: 0.6; font-size: 12px; }
+.col-filter-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  border-top: 1px solid var(--border);
+  padding-top: 6px;
+}
+.col-filter-footer button {
+  padding: 2px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--fg);
+  cursor: pointer;
+  font: inherit;
+}
+.col-filter-footer button:hover { border-color: var(--accent); }
 
 /* task lists: чекбоксы pulldown-cmark disabled — просто индикатор состояния */
 .markdown-body li input[type="checkbox"] { margin-right: 6px; }
