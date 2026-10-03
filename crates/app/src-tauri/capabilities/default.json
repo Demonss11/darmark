@@ -1,0 +1,10 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "mdedit: окно main + нативные диалоги; свои команды read_file/write_file/render_markdown доступны по умолчанию (путь валидируется на Rust-стороне)",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "dialog:default"
+  ]
+}
