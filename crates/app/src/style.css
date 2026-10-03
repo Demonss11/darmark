@@ -1,0 +1,132 @@
+/* mdedit — минимум стилей, «notepad++-лайт»: системный шрифт UI + моноширинный редактор */
+
+:root {
+  --bg: #ffffff;
+  --fg: #1f2328;
+  --border: #d6dae0;
+  --toolbar-bg: #f3f5f7;
+  --accent: #0b57d0;
+  --code-bg: #f3f4f6;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #17191c;
+    --fg: #e6e9ef;
+    --border: #3a3f46;
+    --toolbar-bg: #212429;
+    --accent: #6ea8fe;
+    --code-bg: #262a30;
+  }
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--bg);
+  color: var(--fg);
+  font: 13px/1.4 "Segoe UI", system-ui, sans-serif;
+}
+
+/* ---------- тулбар ---------- */
+#toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: var(--toolbar-bg);
+  border-bottom: 1px solid var(--border);
+  -webkit-user-select: none;
+  user-select: none;
+}
+#toolbar button {
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--fg);
+  cursor: pointer;
+}
+#toolbar button:hover { border-color: var(--accent); }
+#file-label { margin-left: 8px; opacity: 0.8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#toggle-preview { margin-left: auto; display: flex; gap: 4px; align-items: center; cursor: pointer; }
+
+/* ---------- панели ---------- */
+#panes { flex: 1; display: flex; min-height: 0; }
+
+#editor {
+  flex: 1;
+  min-width: 0;
+  padding: 12px;
+  border: none;
+  border-right: 1px solid var(--border);
+  outline: none;
+  resize: none;
+  background: var(--bg);
+  color: var(--fg);
+  font: 14px/1.5 "Cascadia Mono", Consolas, "Courier New", monospace;
+  tab-size: 4;
+}
+
+#preview { flex: 1; min-width: 0; overflow-y: auto; padding: 12px 20px; }
+
+/* ---------- статусная строка ---------- */
+#statusbar {
+  display: flex;
+  gap: 16px;
+  padding: 3px 10px;
+  border-top: 1px solid var(--border);
+  background: var(--toolbar-bg);
+  font-size: 12px;
+  opacity: 0.9;
+}
+#stat-msg { margin-left: auto; color: var(--accent); }
+
+/* ---------- типографика предпросмотра ---------- */
+.markdown-body { max-width: 860px; word-wrap: break-word; }
+.markdown-body h1, .markdown-body h2 { border-bottom: 1px solid var(--border); padding-bottom: .2em; }
+.markdown-body a { color: var(--accent); }
+.markdown-body code {
+  background: var(--code-bg);
+  padding: 2px 5px;
+  border-radius: 4px;
+  font: 0.92em "Cascadia Mono", Consolas, monospace;
+}
+.markdown-body pre {
+  background: var(--code-bg);
+  padding: 10px 12px;
+  border-radius: 6px;
+  overflow-x: auto;
+}
+.markdown-body pre code { background: none; padding: 0; }
+.markdown-body blockquote {
+  margin: 0;
+  padding: 0 1em;
+  color: #6a737d;
+  border-left: 4px solid var(--border);
+}
+.markdown-body hr { border: none; border-top: 2px solid var(--border); margin: 1.5em 0; }
+.markdown-body img { max-width: 100%; }
+
+/* ---------- ТАБЛИЦЫ (ключевая фича) ---------- */
+.markdown-body table {
+  border-collapse: collapse;
+  margin: 1em 0;
+  width: auto;
+  max-width: 100%;
+  display: block;              /* горизонтальный скролл вместо поломки вёрстки */
+  overflow-x: auto;
+}
+.markdown-body table th,
+.markdown-body table td {
+  border: 1px solid var(--border);
+  padding: 6px 13px;
+}
+.markdown-body table th { background: var(--toolbar-bg); font-weight: 600; }
+.markdown-body table tbody tr:nth-child(2n) { background: color-mix(in srgb, var(--toolbar-bg) 45%, transparent); }
+
+/* task lists: чекбоксы pulldown-cmark disabled — просто индикатор состояния */
+.markdown-body li input[type="checkbox"] { margin-right: 6px; }
