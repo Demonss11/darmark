@@ -1,0 +1,19 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "shell": "pwsh",
+  "formatter": true,
+
+
+  // MCP-серверы проекта (формат OpenCode V2: mcp.servers)
+  "mcp": {
+    "servers": {
+      "rust-analyzer": {
+        "type": "local",
+        "command": ["rust-analyzer-mcp", "C:/Users/Demon/pytechnotes/dar/darmark"],
+        "environment": {
+          "RUST_BACKTRACE": "1"
+        }
+      },
+    }
+  }
+}

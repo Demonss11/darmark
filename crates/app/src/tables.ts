@@ -14,6 +14,7 @@ interface TableEntry {
   table: HTMLTableElement;
   state: TableState;
   baseOrder: HTMLTableRowElement[]; // исходный порядок строк из markdown — для возврата без сортировки
+  kinds: ("num" | "date" | "str")[]; // типы колонок: считаем один раз при enhance (P2.1)
 }
 
 const registry = new WeakMap<HTMLTableElement, TableEntry>();
@@ -132,12 +133,8 @@ function apply(entry: TableEntry) {
   const rows = bodyRows(table);
   const colCount = headers.length || (rows[0]?.cells.length ?? 0);
 
-  // типы колонок считаем по всем строкам тела — стабильно при пересортировке
-  const colValues: string[][] = Array.from({ length: colCount }, () => []);
-  for (const r of rows) {
-    for (let c = 0; c < colCount; c++) colValues[c].push(cellText(r.cells[c]));
-  }
-  const kinds = colValues.map(detectColumnKind);
+  // типы колонок посчитаны один раз в enhance() — на клик не пересчитываем (P2.1)
+  const kinds = entry.kinds;
 
   // 1. видимость строк (поиск + фильтры по колонкам)
   let visible = 0;
@@ -365,7 +362,19 @@ function enhance(table: HTMLTableElement) {
   scrollWrap.appendChild(table);
 
   const state: TableState = { sortCol: null, sortDir: 1, global: "", colFilters: new Map() };
-  const entry: TableEntry = { wrap, table, state, baseOrder: bodyRows(table) };
+  const body = bodyRows(table);
+  const colCount = headers.length || (body[0]?.cells.length ?? 0);
+  const colValues: string[][] = Array.from({ length: colCount }, () => []);
+  for (const r of body) {
+    for (let c = 0; c < colCount; c++) colValues[c].push(cellText(r.cells[c]));
+  }
+  const entry: TableEntry = {
+    wrap,
+    table,
+    state,
+    baseOrder: body,
+    kinds: colValues.map(detectColumnKind),
+  };
   entryRef.current = entry;
   registry.set(table, entry);
 

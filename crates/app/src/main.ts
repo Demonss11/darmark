@@ -1,13 +1,17 @@
 // mdedit — лёгкий редактор/вьюер Markdown в духе Notepad++.
 // Состояние документа + рендер предпросмотра через Rust (crate md-core).
 
-import { open, save, confirm } from "@tauri-apps/plugin-dialog";
+import { confirm } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { renderMarkdown, readFile, writeFile } from "./tauri";
+import {
+  renderMarkdown,
+  readFile,
+  writeFile,
+  pickOpenFile,
+  pickSaveFile,
+} from "./tauri";
 import { enhanceTables, attachMenuAutoClose } from "./tables";
 import "./style.css";
-
-const MD_FILTER = { name: "Markdown", extensions: ["md", "markdown", "mdown", "mkd", "txt"] };
 
 const editor = document.getElementById("editor") as HTMLTextAreaElement;
 const preview = document.getElementById("preview") as HTMLElement;
@@ -30,6 +34,14 @@ function scheduleRender() {
   debounceTimer = window.setTimeout(doRender, 120);
 }
 
+// Сброс состояния рендера при смене документа (P1.1): гасим отложенный рендер
+// и делаем неактуальными уже запущенные, чтобы старый ввод не «эхнул» в новый файл.
+function resetRenderState() {
+  clearTimeout(debounceTimer);
+  renderSeq++;
+  lastRenderedHtml = "";
+}
+
 async function doRender() {
   const seq = ++renderSeq;
   try {
@@ -40,7 +52,12 @@ async function doRender() {
     if (html === lastRenderedHtml) return;
     lastRenderedHtml = html;
     preview.innerHTML = html;
-    enhanceTables(preview); // Excel-подобные сортировка/фильтры для всех <table>
+    try {
+      enhanceTables(preview); // Excel-подобные сортировка/фильтры для всех <table>
+    } catch (e) {
+      // Украшение таблиц упало — оставляем читаемый HTML без улучшений (P1.2).
+      flash(`Таблицы: ${String(e)}`);
+    }
   } catch (e) {
     if (seq === renderSeq) {
       lastRenderedHtml = "";
@@ -51,6 +68,18 @@ async function doRender() {
 
 attachMenuAutoClose(preview); // закрытие меню фильтров при прокрутке предпросмотра
 
+// Внешние ссылки открываем системным браузером, а не навигацией внутри WebView (P0.2).
+// Без tauri-plugin-opener используется window.open — best-effort-вариант без новых зависимостей.
+preview.addEventListener("click", (e) => {
+  const anchor = (e.target as HTMLElement).closest("a");
+  if (!anchor) return;
+  const href = anchor.getAttribute("href") ?? "";
+  if (/^https?:/i.test(href)) {
+    e.preventDefault();
+    window.open(href, "_blank", "noopener,noreferrer");
+  }
+});
+
 // ---------- статусная строка / заголовок ----------
 
 function updateStatus() {
@@ -59,7 +88,7 @@ function updateStatus() {
   const line = before.split("\n").length;
   const col = pos - (before.lastIndexOf("\n") + 1) + 1;
   statPos.textContent = `Стр ${line}, Кол ${col}`;
-  statSize.textContent = `${editor.value.length} симв.`;
+  statSize.textContent = `${[...editor.value].length} симв.`;
 }
 
 function baseName(p: string): string {
@@ -89,6 +118,7 @@ async function newFile() {
   currentPath = null;
   dirty = false;
   editor.value = "";
+  resetRenderState();
   preview.innerHTML = "";
   updateTitle();
   updateStatus();
@@ -99,8 +129,9 @@ async function openFile() {
   if (dirty && !(await confirm("Несохранённые изменения будут потеряны. Продолжить?", { title: "mdedit", kind: "warning" }))) {
     return;
   }
-  const path = await open({ multiple: false, filters: [MD_FILTER] });
-  if (typeof path !== "string") return; // отмена
+  const path = await pickOpenFile();
+  if (!path) return; // отмена
+  resetRenderState();
   try {
     editor.value = await readFile(path);
     currentPath = path;
@@ -126,11 +157,8 @@ async function saveFile() {
 }
 
 async function saveAs() {
-  const path = await save({
-    defaultPath: currentPath ?? "untitled.md",
-    filters: [MD_FILTER],
-  });
-  if (typeof path !== "string") return;
+  const path = await pickSaveFile(currentPath ?? "untitled.md");
+  if (!path) return;
   try {
     await writeFile(path, editor.value);
     currentPath = path;
@@ -181,7 +209,10 @@ void getCurrentWindow().onCloseRequested(async (event) => {
     });
     if (ok) {
       dirty = false;
-      await getCurrentWindow().destroy();
+      // graceful-путь Tauri: повторный close() пройдёт без preventDefault (P1.3).
+      await getCurrentWindow().close();
+      // fallback, если окно не закрылось штатно
+      window.setTimeout(() => void getCurrentWindow().destroy(), 500);
     }
   }
 });
