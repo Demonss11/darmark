@@ -245,6 +245,25 @@ pub fn run() {
             pick_open_file,
             pick_save_file
         ])
+        // Резервный обработчик закрытия на Rust-стороне. Основную логику
+        // («сохранить?» при dirty) делает JS `onCloseRequested` в main.ts.
+        // Здесь — защита от «неубиваемого» процесса: если через несколько
+        // секунд после нажатия X окно всё ещё живо (JS-слушатель не
+        // зарегистрировался или завис), принудительно уничтожаем его —
+        // вместе с окном завершается и приложение.
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { .. } = event {
+                let win = window.clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_secs(5));
+                    // Окно всё ещё существует → graceful close не произошёл.
+                    // Уничтожаем: процесс завершится сам, без Диспетчера задач.
+                    if win.app_handle().get_webview_window("main").is_some() {
+                        let _ = win.destroy();
+                    }
+                });
+            }
+        })
         .run(tauri::generate_context!())
         .expect("error while running mdedit");
 }

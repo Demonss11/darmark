@@ -200,22 +200,31 @@ window.addEventListener("keydown", (e: KeyboardEvent) => {
 });
 
 // закрытие окна с несохранёнными изменениями — штатный вопрос Windows-диалога
-void getCurrentWindow().onCloseRequested(async (event) => {
-  if (dirty) {
-    event.preventDefault();
-    const ok = await confirm("Закрыть приложение с несохранёнными изменениями?", {
-      title: "mdedit",
-      kind: "warning",
-    });
-    if (ok) {
-      dirty = false;
-      // graceful-путь Tauri: повторный close() пройдёт без preventDefault (P1.3).
-      await getCurrentWindow().close();
-      // fallback, если окно не закрылось штатно
-      window.setTimeout(() => void getCurrentWindow().destroy(), 500);
+const appWindow = getCurrentWindow();
+
+appWindow
+  .onCloseRequested(async (event) => {
+    if (dirty) {
+      event.preventDefault();
+      const ok = await confirm("Закрыть приложение с несохранёнными изменениями?", {
+        title: "mdedit",
+        kind: "warning",
+      });
+      if (ok) {
+        dirty = false;
+        // graceful-путь Tauri: повторный close() пройдёт без preventDefault (P1.3).
+        await appWindow.close();
+        // fallback, если окно не закрылось штатно
+        window.setTimeout(() => void appWindow.destroy(), 500);
+      }
+    } else {
+      // Чистое окно: на всякий случай страхуемся — если по какой-то причине
+      // штатное закрытие не пройдёт, уничтожаем окно по таймауту, чтобы
+      // процесс не остался висеть (лечится только Диспетчером задач).
+      window.setTimeout(() => void appWindow.destroy().catch(() => {}), 2000);
     }
-  }
-});
+  })
+  .catch((e) => console.error("onCloseRequested:", e));
 
 // стартовый документ — сразу видно, что таблицы рендерятся
 editor.value = [
