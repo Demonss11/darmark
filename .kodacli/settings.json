@@ -9,5 +9,11 @@
   },
   "extensions": {
     "disabled": []
+  },
+  "skills": {
+    "disabled": [
+      "qa",
+      "review"
+    ]
   }
 }

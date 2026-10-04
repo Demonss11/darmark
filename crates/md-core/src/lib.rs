@@ -171,127 +171,162 @@ fn sanitize_tag(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) -> String 
         return String::new();
     }
 
-    // Удаляем on*-атрибуты и sanitize URLs
-    let cleaned = remove_event_handlers(&tag);
-    let cleaned = sanitize_urls_in_tag(&cleaned);
-    cleaned
+    // Удаляем on*-атрибуты и нейтрализуем опасные URL в href/src
+    rewrite_tag(&tag)
 }
 
-/// Удаляет on*-атрибуты из тега.
-fn remove_event_handlers(tag: &str) -> String {
-    let mut result = String::with_capacity(tag.len());
-    let tag_lower = tag.to_lowercase();
-    let mut i = 0;
+/// Символы, допустимые в имени атрибута/тега (до разделителя или конца).
+fn is_name_char(c: char) -> bool {
+    !(c.is_whitespace() || c == '=' || c == '>' || c == '/')
+}
 
-    while i < tag.len() {
-        // Ищем "on" за пробелом
-        if let Some(pos) = tag_lower[i..].find(" on") {
-            let abs = i + pos + 1; // +1 для пропуска пробела перед "on"
-            let after = &tag[abs + 2..]; // после "on"
-            let first_char = after.chars().next();
+/// Переписывает один тег: выкидывает on*-атрибуты и нейтрализует
+/// `javascript:`/`data:text/html` в `href`/`src`.
+///
+/// Работает по Vec<char>, а не по байтовым индексам: в предыдущей реализации
+/// `find`/`as_bytes` давали байтовые позиции, а вывод шёл через `chars().nth(i)`,
+/// из-за чего кириллица в атрибуте (`title="заголовок"`) уводила индекс
+/// в середину многобайтового символа и роняла процесс (panic «not a char boundary»).
+fn rewrite_tag(tag: &str) -> String {
+    let ch: Vec<char> = tag.chars().collect();
+    let n = ch.len();
 
-            if first_char.map_or(false, |c| c.is_ascii_alphabetic()) {
-                // Это on*-атрибут! Пропускаем его
-                result.push_str(&tag[i..abs]);
+    // Не тег (нет ведущего '<') — возвращаем как есть.
+    if n == 0 || ch[0] != '<' {
+        return tag.to_string();
+    }
 
-                // Пропускаем имя атрибута
-                let name_end = after
-                    .find(|c: char| c.is_whitespace() || c == '>' || c == '=')
-                    .unwrap_or(after.len());
-                let pos_after_name = abs + 2 + name_end;
+    let mut out = String::with_capacity(tag.len());
+    out.push('<');
+    let mut i = 1;
 
-                // Если есть =, пропускаем значение
-                if pos_after_name < tag.len() && tag.as_bytes()[pos_after_name] == b'=' {
-                    let eq_pos = pos_after_name;
-                    let val_start = eq_pos + 1;
-                    if val_start < tag.len() {
-                        let quote = tag.as_bytes()[val_start];
-                        if quote == b'"' || quote == b'\'' {
-                            // Пропускаем до закрывающей кавычки
-                            let rest = &tag[val_start + 1..];
-                            if let Some(close) = rest.find(quote as char) {
-                                i = val_start + 1 + close + 1;
-                            } else {
-                                i = tag.len();
-                            }
-                        } else {
-                            // Значение без кавычек — до пробела или >
-                            let rest = &tag[val_start..];
-                            let end = rest
-                                .find(|c: char| c.is_whitespace() || c == '>')
-                                .unwrap_or(rest.len());
-                            i = val_start + end;
-                        }
-                    } else {
-                        i = pos_after_name;
-                    }
-                } else {
-                    i = pos_after_name;
-                }
-                continue;
-            }
-        }
-        result.push(tag.chars().nth(i).unwrap());
+    // Закрывающий слэш: </tag>
+    if i < n && ch[i] == '/' {
+        out.push('/');
         i += 1;
     }
 
-    result
-}
+    // Имя тега.
+    while i < n && is_name_char(ch[i]) {
+        out.push(ch[i]);
+        i += 1;
+    }
 
-/// Санитайзит javascript: и data:text/html в href/src атрибутах тега.
-fn sanitize_urls_in_tag(tag: &str) -> String {
-    let mut result = String::with_capacity(tag.len());
-    let tag_lower = tag.to_lowercase();
-    let mut i = 0;
+    // Атрибуты.
+    while i < n {
+        let mut ws = String::new();
+        while i < n && ch[i].is_whitespace() {
+            ws.push(ch[i]);
+            i += 1;
+        }
+        if i >= n {
+            break;
+        }
+        if ch[i] == '>' {
+            out.push('>');
+            break;
+        }
+        // Самозакрывающийся конец: ... />
+        if ch[i] == '/' {
+            out.push_str(&ws);
+            out.push('/');
+            i += 1;
+            while i < n && ch[i].is_whitespace() {
+                i += 1;
+            }
+            if i < n && ch[i] == '>' {
+                out.push('>');
+            }
+            break;
+        }
 
-    while i < tag.len() {
-        // Ищем href или src
-        let target = if let Some(pos) = tag_lower[i..].find("href") {
-            Some(("href", i + pos))
-        } else if let Some(pos) = tag_lower[i..].find("src") {
-            // Проверяем, что это не часть href
-            Some(("src", i + pos))
+        // Имя атрибута.
+        let name_start = i;
+        while i < n && is_name_char(ch[i]) {
+            i += 1;
+        }
+        let name: String = ch[name_start..i].iter().collect();
+        let name_lower = name.to_lowercase();
+
+        // Необязательное =значение (пробелы вокруг '=' допустимы).
+        let save = i;
+        let mut ws_eq = String::new();
+        while i < n && ch[i].is_whitespace() {
+            ws_eq.push(ch[i]);
+            i += 1;
+        }
+        let has_eq = i < n && ch[i] == '=';
+        if has_eq {
+            i += 1;
+            while i < n && ch[i].is_whitespace() {
+                i += 1;
+            }
         } else {
-            None
+            i = save;
+            ws_eq.clear();
+        }
+
+        // Значение: в кавычках или без.
+        let mut quote: Option<char> = None;
+        let mut value = String::new();
+        if has_eq {
+            if i < n && (ch[i] == '"' || ch[i] == '\'') {
+                quote = Some(ch[i]);
+                i += 1;
+                while i < n && ch[i] != quote.unwrap() {
+                    value.push(ch[i]);
+                    i += 1;
+                }
+                if i < n {
+                    i += 1; // закрывающая кавычка
+                }
+            } else {
+                while i < n && !(ch[i].is_whitespace() || ch[i] == '>' || ch[i] == '/') {
+                    value.push(ch[i]);
+                    i += 1;
+                }
+            }
+        }
+
+        let is_event = name_lower.starts_with("on")
+            && name_lower
+                .chars()
+                .nth(2)
+                .is_some_and(|c| c.is_ascii_alphabetic());
+        if is_event {
+            // on*-обработчик — выбрасываем вместе с разделителем.
+            continue;
+        }
+
+        let is_url_attr = name_lower == "href" || name_lower == "src";
+        let dangerous = is_url_attr && {
+            let lv = value.trim_start().to_lowercase();
+            lv.starts_with("javascript:") || lv.starts_with("data:text/html")
         };
 
-        if let Some((attr_name, abs_pos)) = target {
-            // Проверяем, что это атрибут (перед ним пробел, после — =)
-            let after_attr = &tag_lower[abs_pos + attr_name.len()..];
-            if after_attr.starts_with('=') {
-                let eq_pos = abs_pos + attr_name.len();
-                let val_start = eq_pos + 1;
-
-                if val_start < tag.len() {
-                    let quote = tag.as_bytes()[val_start];
-                    if quote == b'"' || quote == b'\'' {
-                        let quote_char = quote as char;
-                        let rest = &tag[val_start + 1..];
-                        if let Some(val_end) = rest.find(quote_char) {
-                            let url = &rest[..val_end];
-                            let url_lower = url.to_lowercase();
-
-                            if url_lower.starts_with("javascript:")
-                                || url_lower.starts_with("data:text/html")
-                            {
-                                result.push_str(&tag[i..val_start]);
-                                result.push('\'');
-                                result.push('\'');
-                                // Пропускаем до закрывающей кавычки
-                                i = val_start + 1 + val_end + 1;
-                                continue;
-                            }
-                        }
-                    }
-                }
+        out.push_str(&ws);
+        out.push_str(&name);
+        if has_eq {
+            out.push_str(&ws_eq);
+            out.push('=');
+            if dangerous {
+                // Нейтрализовано: пустое значение вместо опасного URL.
+                out.push_str("\"\"");
+            } else if let Some(q) = quote {
+                out.push(q);
+                out.push_str(&value);
+                out.push(q);
+            } else {
+                out.push_str(&value);
             }
         }
-
-        result.push(tag.chars().nth(i).unwrap());
-        i += 1;
     }
 
-    result
+    // Незакрытый тег (не дошли до '>') — оставляем исходник как есть.
+    if !out.ends_with('>') {
+        return tag.to_string();
+    }
+    out
 }
 
 #[cfg(test)]
@@ -406,5 +441,49 @@ mod tests {
             html.contains("before") && html.contains("after"),
             "html: {html}"
         );
+    }
+
+    // ─── P0.2 (regression): не-ASCII в атрибутах не должен ронять санитайзер ───
+    //
+    // Старая реализация считала позиции в байтах (find/as_bytes), а выводила
+    // символы через chars().nth(i): кириллица в title/alt уводила индекс в середину
+    // многобайтового символа → panic «is not a char boundary» на валидном документе.
+
+    #[test]
+    fn cyrillic_link_title_survives() {
+        let html = to_html(r#"[текст](http://example.com "заголовок")"#);
+        assert!(html.contains("http://example.com"), "html: {html}");
+        assert!(html.contains("заголовок"), "title потерян: {html}");
+        assert!(html.contains("текст"), "html: {html}");
+    }
+
+    #[test]
+    fn cyrillic_img_alt_survives() {
+        let html = to_html(r#"![подпись](http://example.com/картинка.png "описание")"#);
+        assert!(html.contains("подпись"), "alt потерян: {html}");
+        assert!(html.contains("описание"), "title потерян: {html}");
+    }
+
+    #[test]
+    fn emoji_in_attribute_survives() {
+        let html = to_html(r#"[ссылка](http://example.com "🚀 ракета")"#);
+        assert!(html.contains("🚀"), "emoji потерян: {html}");
+        assert!(html.contains("http://example.com"), "html: {html}");
+    }
+
+    #[test]
+    fn event_handler_after_cyrillic_is_still_stripped() {
+        let html = to_html(r#"<img src="загрузчик.png" onerror="alert(1)">"#);
+        assert!(!html.contains("onerror"), "html: {html}");
+        assert!(!html.contains("alert"), "html: {html}");
+        assert!(html.contains("загрузчик.png"), "html: {html}");
+    }
+
+    #[test]
+    fn javascript_href_with_cyrillic_context_neutralized() {
+        let html = to_html(r#"<a href="javascript:alert('привет')" title="кириллица">клик</a>"#);
+        let low = html.to_lowercase();
+        assert!(!low.contains("javascript:"), "html: {html}");
+        assert!(html.contains("кириллица"), "html: {html}");
     }
 }

@@ -34,15 +34,16 @@ fn is_allowed_ext(path: &Path) -> bool {
 /// Если ни одного нет (например, Unix без XDG-каталогов) — fallback на домашний каталог.
 fn base_roots<R: tauri::Runtime>(resolver: &PathResolver<R>) -> Vec<PathBuf> {
     let mut roots = Vec::new();
-    for dir in [
+    for p in [
         resolver.document_dir(),
         resolver.desktop_dir(),
         resolver.download_dir(),
-    ] {
-        if let Ok(p) = dir {
-            if let Ok(canonical) = p.canonicalize() {
-                roots.push(canonical);
-            }
+    ]
+    .into_iter()
+    .flatten()
+    {
+        if let Ok(canonical) = p.canonicalize() {
+            roots.push(canonical);
         }
     }
     if roots.is_empty() {
@@ -93,15 +94,18 @@ fn validate_path(path: &Path, roots: &[PathBuf], for_write: bool) -> Result<Path
     if roots.iter().any(|root| canonical.starts_with(root)) {
         Ok(canonical)
     } else {
-        Err(format!("Путь вне разрешённых каталогов: {}", path.display()))
+        Err(format!(
+            "Путь вне разрешённых каталогов: {}",
+            path.display()
+        ))
     }
 }
 
 /// Чтение файла без обращения к Tauri (ядро проверки — для юнит-тестов).
 fn read_file_impl(path: &Path, roots: &[PathBuf]) -> Result<String, String> {
     let canonical = validate_path(path, roots, false)?;
-    let metadata = std::fs::metadata(&canonical)
-        .map_err(|e| format!("{}: {e}", canonical.display()))?;
+    let metadata =
+        std::fs::metadata(&canonical).map_err(|e| format!("{}: {e}", canonical.display()))?;
     if metadata.len() > MAX_FILE_SIZE {
         return Err(format!(
             "Файл больше {} МБ — открытие отменено",
