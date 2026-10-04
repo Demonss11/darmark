@@ -1,0 +1,19 @@
+# .kodaignore — дополнительные правила игнорирования для AI-агента.
+# Дополняет .gitignore (который Koda и так учитывает: target/, node_modules/,
+# dist/, gen/schemas/, build/, *.log, .gigaide/, .idea/ уже исключены там).
+# Здесь — то, что отслеживается git, но является шумом при чтении проекта агентом.
+
+# Локи зависимостей: огромные, не несут архитектурной информации.
+crates/app/package-lock.json
+Cargo.lock
+
+# Служебные данные самого CLI/IDE-компаньона.
+.kodacli/
+.idea/
+
+# Случайные артефакты ОС/редактора.
+Thumbs.db
+Desktop.ini
+.DS_Store
+*.swp
+*.tmp

@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "rust-analyzer": {
+      "command": "C:\\Users\\Demon\\.cargo\\bin\\rust-analyzer-mcp.exe",
+      "args": [
+        "C:/Users/Demon/pytechnotes/dar/darmark"
+      ]
+    }
+  },
+  "extensions": {
+    "disabled": []
+  }
+}
