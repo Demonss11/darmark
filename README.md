@@ -37,10 +37,24 @@ crates/
 
 ### Windows (целевая платформа)
 1. Установить [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) (обычно уже есть в Win 10/11) и Visual Studio Build Tools (C++).
-2. `npm install -g @tauri-apps/cli` (или использовать локальный dev-зависимость).
-3. Dev: `cd crates/app && npm install && npx tauri dev`
-4. Релиз: `npx tauri build` → NSIS-установщик в `src-tauri/target/release/bundle/nsis/`.
+2. `cd crates/app && npm install` — ставит и фронтенд-зависимости, и `@tauri-apps/cli` локально.
+3. Dev: `npm run tauri:dev` (или `npx tauri dev`).
+4. **Релиз одной командой**: `npm run tauri:build` (или `npx tauri build`).
+   Tauri CLI сам последовательно выполнит всё за вас:
+   - `beforeBuildCommand` → `npm run build` (tsc + vite build → папка `dist/`);
+   - `cargo build --release` для шелла (`crates/app/src-tauri`) — **фронтенд встраивается в exe** из `frontendDist`;
+   - упаковка NSIS-установщика.
+   Никакого отдельного `cargo build` делать не нужно — это часть шага выше.
+
+   Результат:
+   - **портативный exe** (без установщика): `src-tauri/target/release/mdedit.exe`
+     — единый файл, внутри и Rust-логика, и HTML/CSS/JS фронта; ничего рядом лежать не должно;
+   - **установщик**: `src-tauri/target/release/bundle/nsis/mdedit_0.1.0_x64-setup.exe`.
    Профиль release в корневом `Cargo.toml`: `opt-level="s"`, LTO, strip, panic=abort — ради минимального размера.
+
+> Важно: обычный `cargo build` / `cargo run` НЕ собирает единый exe с фронтом —
+> cargo компилирует только Rust-часть. Встраивание `dist/` в бинарник делает именно
+> `tauri build` (он вызывает и Vite, и Cargo). Поэтому использовать надо его.
 
 ### Linux (для разработки/тестов)
 ```
