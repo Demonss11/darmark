@@ -245,6 +245,17 @@ pub fn run() {
             pick_open_file,
             pick_save_file
         ])
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { .. } = event {
+                let win = window.clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_secs(5));
+                    if win.app_handle().get_webview_window("main").is_some() {
+                        let _ = win.destroy();
+                    }
+                });
+            }
+        })
         .run(tauri::generate_context!())
         .expect("error while running mdedit");
 }
