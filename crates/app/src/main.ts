@@ -1,17 +1,17 @@
 // mdedit — лёгкий редактор/вьюер Markdown в духе Notepad++.
 // Состояние документа + рендер предпросмотра через Rust (crate md-core).
 
-import { confirm } from "@tauri-apps/plugin-dialog";
+import { confirm, open, save } from "@tauri-apps/plugin-dialog";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import {
-  renderMarkdown,
-  readFile,
-  writeFile,
-  pickOpenFile,
-  pickSaveFile,
-} from "./tauri";
+import { renderMarkdown, readFile, writeFile } from "./tauri";
 import { enhanceTables, attachMenuAutoClose } from "./tables";
 import "./style.css";
+
+const MD_FILTER = {
+  name: "Markdown",
+  extensions: ["md", "markdown", "mdown", "mkd", "txt"],
+};
 
 const editor = document.getElementById("editor") as HTMLTextAreaElement;
 const preview = document.getElementById("preview") as HTMLElement;
@@ -68,15 +68,16 @@ async function doRender() {
 
 attachMenuAutoClose(preview); // закрытие меню фильтров при прокрутке предпросмотра
 
-// Внешние ссылки открываем системным браузером, а не навигацией внутри WebView (P0.2).
-// Без tauri-plugin-opener используется window.open — best-effort-вариант без новых зависимостей.
+// Внешние ссылки открываем системным браузером через плагин opener (P0.2).
+// window.open в WebView не гарантирует внешнее открытие и обходит CSP,
+// поэтому используем отдельный нативный плагин.
 preview.addEventListener("click", (e) => {
   const anchor = (e.target as HTMLElement).closest("a");
   if (!anchor) return;
   const href = anchor.getAttribute("href") ?? "";
   if (/^https?:/i.test(href)) {
     e.preventDefault();
-    window.open(href, "_blank", "noopener,noreferrer");
+    void openUrl(href).catch((err) => flash(`Ссылка: ${String(err)}`));
   }
 });
 
@@ -129,12 +130,16 @@ async function openFile() {
   if (dirty && !(await confirm("Несохранённые изменения будут потеряны. Продолжить?", { title: "mdedit", kind: "warning" }))) {
     return;
   }
-  const path = await pickOpenFile();
-  if (!path) return; // отмена
+  const selected = await open({
+    multiple: false,
+    filters: [MD_FILTER],
+    defaultPath: currentPath ?? undefined,
+  });
+  if (typeof selected !== "string") return; // отмена
   resetRenderState();
   try {
-    editor.value = await readFile(path);
-    currentPath = path;
+    editor.value = await readFile(selected);
+    currentPath = selected;
     dirty = false;
     updateTitle();
     void doRender();
@@ -157,11 +162,14 @@ async function saveFile() {
 }
 
 async function saveAs() {
-  const path = await pickSaveFile(currentPath ?? "untitled.md");
-  if (!path) return;
+  const selected = await save({
+    defaultPath: currentPath ?? "untitled.md",
+    filters: [MD_FILTER],
+  });
+  if (typeof selected !== "string") return;
   try {
-    await writeFile(path, editor.value);
-    currentPath = path;
+    await writeFile(selected, editor.value);
+    currentPath = selected;
     dirty = false;
     updateTitle();
     flash("Сохранено");
@@ -200,25 +208,23 @@ window.addEventListener("keydown", (e: KeyboardEvent) => {
 });
 
 // закрытие окна с несохранёнными изменениями — штатный вопрос Windows-диалога
+// Закрытие окна. При несохранённых изменениях спрашиваем подтверждение;
+// если пользователь согласен — закрываем окошко через destroy().
+// Сам onCloseRequested из @tauri-apps/api/window автоматически вызывает
+// destroy(), пока обработчик не выставил preventDefault.
 const appWindow = getCurrentWindow();
 
 appWindow
   .onCloseRequested(async (event) => {
-    if (dirty) {
-      event.preventDefault();
-      const ok = await confirm("Закрыть приложение с несохранёнными изменениями?", {
-        title: "mdedit",
-        kind: "warning",
-      });
-      if (ok) {
-        dirty = false;
-        // graceful-путь Tauri: повторный close() пройдёт без preventDefault (P1.3).
-        await appWindow.close();
-        // fallback, если окно не закрылось штатно
-        window.setTimeout(() => void appWindow.destroy(), 500);
-      }
-    } else {
-      window.setTimeout(() => void appWindow.destroy().catch(() => {}), 2000);
+    if (!dirty) return; // подтверждать нечего — окно закроется само
+    event.preventDefault();
+    const ok = await confirm("Закрыть приложение с несохранёнными изменениями?", {
+      title: "mdedit",
+      kind: "warning",
+    });
+    if (ok) {
+      dirty = false;
+      await appWindow.destroy();
     }
   })
   .catch((e) => console.error("onCloseRequested:", e));

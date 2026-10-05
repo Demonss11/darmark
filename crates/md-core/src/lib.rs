@@ -34,82 +34,344 @@ pub fn to_html_with(markdown: &str, options: Options) -> String {
     sanitize_html(&out)
 }
 
-// ─── Санитайзер HTML-вывода pulldown-cmark ────────────────────────────
+// ─── Санитайзер HTML-вывода pulldown-cmark (v2: белые списки) ──────────
 //
-// pulldown-cmark не санитайзит вывод — он только парсит Markdown и генерирует HTML.
-// Сырой HTML из CommonMark (например `<div>` внутри текста) и вредоносные атрибуты
-// (onerror, javascript: в ссылках) остаются. Здесь мы их чистим.
+// pulldown-cmark не санитайзит вывод: сырой HTML из документа проходит как есть.
+// Идеи взяты из ammonia (без зависимости от html5ever):
+//   * белый список тегов вместо чёрного — неизвестный тег «разворачиваем»;
+//   * содержимое опасных контейнеров (script/style/iframe/...) выкидываем целиком;
+//   * белый список атрибутов (глобальные + по тегу) вместо «удалить on*» —
+//     это автоматически убирает on*, srcdoc, formaction и т.п.;
+//   * схемы URL проверяем по белому списку, а не по префиксу;
+//   * значения атрибутов декодируем от сущностей и заново экранируем, чтобы
+//     `&#34;` не мог «разорвать» кавычки и создать новый атрибут.
 
-/// Простой санитайзер: удаляет <script>, on*-атрибуты, javascript:/data:text/html URI.
+/// Разрешённые теги (аналог `ammonia::Builder::tags`).
+const ALLOWED_TAGS: &[&str] = &[
+    "a",
+    "abbr",
+    "b",
+    "blockquote",
+    "br",
+    "caption",
+    "cite",
+    "code",
+    "dd",
+    "del",
+    "details",
+    "div",
+    "dl",
+    "dt",
+    "em",
+    "figcaption",
+    "figure",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "hr",
+    "i",
+    "img",
+    "input",
+    "kbd",
+    "li",
+    "mark",
+    "ol",
+    "p",
+    "pre",
+    "q",
+    "s",
+    "samp",
+    "section",
+    "small",
+    "span",
+    "strong",
+    "sub",
+    "summary",
+    "sup",
+    "table",
+    "tbody",
+    "td",
+    "tfoot",
+    "th",
+    "thead",
+    "tr",
+    "u",
+    "ul",
+    "var",
+];
+
+/// Теги, которые вместе с содержимым удаляются целиком (аналог
+/// `clean_content_tags`). Только элементы с закрывающим тегом — иначе
+/// незакрытый тег «съел» бы весь остаток документа.
+const DROP_CONTENT_TAGS: &[&str] = &[
+    "script", "style", "iframe", "object", "form", "template", "svg", "math", "noscript",
+    "textarea", "select", "button", "xmp", "title",
+];
+
+/// Атрибуты, разрешённые на любом теге (аналог `generic_attributes`).
+const GLOBAL_ATTRS: &[&str] = &["class", "id", "title", "lang", "dir", "role"];
+
+/// Разрешённые схемы URL (аналог `url_schemes`).
+const ALLOWED_SCHEMES: &[&str] = &["http", "https", "mailto", "tel"];
+
+/// Атрибуты, значение которых — URL (аналог `is_url_attr`).
+const URL_ATTRS: &[&str] = &[
+    "href",
+    "src",
+    "action",
+    "formaction",
+    "data",
+    "poster",
+    "ping",
+    "xlink:href",
+];
+
+fn is_allowed_tag(name: &str) -> bool {
+    ALLOWED_TAGS.contains(&name)
+}
+
+fn is_drop_content_tag(name: &str) -> bool {
+    DROP_CONTENT_TAGS.contains(&name)
+}
+
+/// Атрибуты, разрешённые конкретному тегу (сверх глобальных).
+fn tag_attrs(tag: &str) -> &'static [&'static str] {
+    match tag {
+        "a" => &["href", "target", "rel", "hreflang", "type"],
+        "img" => &["src", "alt", "width", "height", "loading"],
+        "input" => &["type", "checked", "disabled", "value"],
+        "ol" => &["start", "reversed", "type"],
+        "li" => &["value"],
+        "td" | "th" => &[
+            "colspan", "rowspan", "align", "valign", "scope", "headers", "style",
+        ],
+        "table" => &["summary", "width"],
+        "col" | "colgroup" => &["span", "width"],
+        "blockquote" | "q" => &["cite"],
+        "del" | "ins" => &["cite", "datetime"],
+        "time" => &["datetime"],
+        "details" => &["open"],
+        _ => &[],
+    }
+}
+
+fn is_allowed_attr(tag: &str, attr: &str) -> bool {
+    GLOBAL_ATTRS.contains(&attr) || tag_attrs(tag).contains(&attr)
+}
+
+fn is_url_attr(attr: &str) -> bool {
+    URL_ATTRS.contains(&attr)
+}
+
+/// Декодирует числовые (`&#106;`, `&#x61;`) и несколько «опасных» именованных
+/// сущностей. Неизвестные `&name;` оставляем как есть — их заэкранирует вывод.
+fn decode_entities(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s;
+    while let Some(pos) = rest.find('&') {
+        out.push_str(&rest[..pos]);
+        let after = &rest[pos + 1..];
+        if let Some(semi) = after.find(';').filter(|&p| p <= 10) {
+            if let Some(ch) = decode_entity_name(&after[..semi]) {
+                out.push(ch);
+                rest = &after[semi + 1..];
+                continue;
+            }
+        }
+        out.push('&');
+        rest = &rest[pos + 1..];
+    }
+    out.push_str(rest);
+    out
+}
+
+fn decode_entity_name(name: &str) -> Option<char> {
+    if let Some(digits) = name.strip_prefix('#') {
+        let code = if let Some(hex) = digits
+            .strip_prefix('x')
+            .or_else(|| digits.strip_prefix('X'))
+        {
+            u32::from_str_radix(hex, 16).ok()?
+        } else {
+            digits.parse::<u32>().ok()?
+        };
+        return char::from_u32(code);
+    }
+    match name {
+        "amp" => Some('&'),
+        "lt" => Some('<'),
+        "gt" => Some('>'),
+        "quot" => Some('"'),
+        "apos" => Some('\''),
+        "colon" => Some(':'),
+        "sol" => Some('/'),
+        "num" => Some('#'),
+        "Tab" | "tab" => Some('\t'),
+        "NewLine" | "newline" => Some('\n'),
+        "nbsp" => Some('\u{00A0}'),
+        _ => None,
+    }
+}
+
+/// Экранирует значение атрибута для вывода в двойных кавычках.
+fn escape_html_attr(out: &mut String, value: &str) {
+    for c in value.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '"' => out.push_str("&quot;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            _ => out.push(c),
+        }
+    }
+}
+
+/// Проверяет URL-значение по белому списку схем. Схема извлекается из
+/// декодированного значения; управляющие символы и пробелы убираются, чтобы
+/// `java\tscript:` не проскочил. Относительные пути разрешены.
+fn url_is_safe(attr: &str, value: &str) -> bool {
+    let cleaned: String = value
+        .chars()
+        .filter(|c| !c.is_control() && !c.is_whitespace())
+        .collect::<String>()
+        .to_ascii_lowercase();
+    match cleaned.find(':') {
+        Some(colon) => {
+            let scheme = &cleaned[..colon];
+            // ':' внутри относительного пути — не схема.
+            if scheme.contains('/') || scheme.contains('?') || scheme.contains('#') {
+                return true;
+            }
+            if !is_scheme(scheme) {
+                return false;
+            }
+            if attr == "src" && scheme == "data" {
+                return cleaned.starts_with("data:image/");
+            }
+            ALLOWED_SCHEMES.contains(&scheme)
+        }
+        None => true,
+    }
+}
+
+/// `scheme = ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )` по RFC 3986.
+fn is_scheme(s: &str) -> bool {
+    let mut chars = s.chars();
+    match chars.next() {
+        Some(c) if c.is_ascii_alphabetic() => {}
+        _ => return false,
+    }
+    chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
+}
+
+/// Оставляем `style` только для выравнивания ячеек (то, что генерирует pulldown).
+fn style_is_safe(value: &str) -> bool {
+    match value.trim().to_ascii_lowercase().split_once(':') {
+        Some(("text-align", rest)) => {
+            matches!(rest.trim(), "left" | "right" | "center" | "justify")
+        }
+        _ => false,
+    }
+}
+
+/// Проходит по HTML и применяет политику белых списков.
 fn sanitize_html(html: &str) -> String {
     let mut out = String::with_capacity(html.len());
     let mut chars = html.chars().peekable();
 
     while let Some(c) = chars.next() {
-        if c == '<' {
-            // Начало тега или комментария
-            let saved: String = chars.clone().take(40).collect();
-            let saved_lower = saved.to_ascii_lowercase();
+        if c != '<' {
+            out.push(c);
+            continue;
+        }
 
-            if saved_lower.starts_with("script") || saved_lower.starts_with("/script") {
-                // Пропускаем весь <script>...</script>
-                let _ = skip_script_block(&mut chars);
+        // Комментарий <!-- ... --> вырезаем целиком.
+        let saved: String = chars.clone().take(40).collect();
+        if saved.to_ascii_lowercase().starts_with("!--") {
+            for _ in 0..3 {
+                chars.next();
+            }
+            skip_comment(&mut chars);
+            continue;
+        }
+
+        // Опасный контейнер — выкидываем вместе с содержимым.
+        if let Some((name, closing)) = peek_tag_name(&chars) {
+            if !closing && is_drop_content_tag(&name) {
+                skip_element_block(&mut chars, &name);
                 continue;
             }
-
-            if saved_lower.starts_with("!--") {
-                // Пропускаем открывающие "!--", затем ищем закрывающие "-->".
-                for _ in 0..3 {
-                    chars.next();
-                }
-                if skip_comment(&mut chars) {
-                    continue;
-                }
-                // Если закрывающих не нашли — дошли до конца, выводить нечего.
-            }
-
-            // Обычный тег — ищем вредоносные атрибуты
-            out.push_str(&sanitize_tag(&mut chars));
-        } else {
-            out.push(c);
         }
+
+        out.push_str(&rewrite_tag(&collect_tag(&mut chars)));
     }
     out
 }
 
-/// Пропускает содержимое до закрывающего </script> (case-insensitive).
-/// Возвращает true, если тег был закрыт.
-fn skip_script_block(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) -> bool {
-    // Пропускаем содержимое скрипта
-    let mut depth = 1;
-    loop {
-        let c = match chars.next() {
-            Some(c) => c,
-            None => return false,
-        };
-        if c == '<' {
-            let rest: String = chars.clone().take(8).collect();
-            if rest.eq_ignore_ascii_case("/script") {
-                depth -= 1;
-                if depth <= 0 {
-                    // Пропускаем закрывающий тег
-                    let _ = chars.next(); // >
-                    return true;
-                }
-            }
+/// Читает имя тега, не потребляя поток. Возвращает (имя в нижнем регистре,
+/// является ли тег закрывающим).
+fn peek_tag_name(chars: &std::iter::Peekable<std::str::Chars<'_>>) -> Option<(String, bool)> {
+    let mut it = chars.clone().peekable();
+    let closing = it.peek() == Some(&'/');
+    if closing {
+        it.next();
+    }
+    let mut name = String::new();
+    while let Some(&c) = it.peek() {
+        if c.is_ascii_alphanumeric() || c == '-' || c == ':' {
+            name.push(c.to_ascii_lowercase());
+            it.next();
+        } else {
+            break;
         }
+    }
+    if name.is_empty() {
+        None
+    } else {
+        Some((name, closing))
     }
 }
 
-/// Пропускает HTML-комментарий <!-- ... --> целиком. Возвращает true, если найден.
+/// Пропускает содержимое контейнера до закрывающего `</name>` (включительно).
+// Используем `while let … chars.next()` (а не `for c in chars.by_ref()`), потому
+// что внутри тела нужны `chars.clone()` и `chars.by_ref()` — `for` занял бы поток.
+#[allow(clippy::while_let_on_iterator)]
+fn skip_element_block(chars: &mut std::iter::Peekable<std::str::Chars<'_>>, name: &str) -> bool {
+    let close = format!("/{name}");
+    while let Some(c) = chars.next() {
+        if c != '<' {
+            continue;
+        }
+        let saved: String = chars.clone().take(close.len() + 1).collect();
+        let low = saved.to_ascii_lowercase();
+        if low.starts_with(&close) {
+            let boundary = match low[close.len()..].chars().next() {
+                None => true,
+                Some(c) => c == '>' || c.is_whitespace() || c == '/',
+            };
+            if boundary {
+                for ch in chars.by_ref() {
+                    if ch == '>' {
+                        break;
+                    }
+                }
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Пропускает HTML-комментарий после уже съеденного `<!--`.
 fn skip_comment(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) -> bool {
-    // Уже съели <!--, ищем закрывающие --> и съедаем их полностью,
-    // чтобы в выводе не осталось «хвоста» из '>'.
     while let Some(c) = chars.next() {
         if c == '-' && chars.peek() == Some(&'-') {
-            chars.next(); // второй '-'
+            chars.next();
             if chars.peek() == Some(&'>') {
-                chars.next(); // '>'
+                chars.next();
             }
             return true;
         }
@@ -117,46 +379,14 @@ fn skip_comment(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) -> bool {
     false
 }
 
-/// Санитайзит один HTML-тег (от < до >), возвращая чистый тег.
-/// Работает с chars, которые уже съели '<'.
-fn sanitize_tag(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) -> String {
-    let mut tag = String::new();
-    tag.push('<');
-
-    // Собираем весь тег
+/// Собирает сырой тег от текущей позиции (уже после `<`) до `>` вне кавычек.
+fn collect_tag(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) -> String {
+    let mut raw = String::from("<");
     let mut in_quote: Option<char> = None;
-    let mut in_script = false;
-
-    // Определяем, это ли <script> тег
-    let tag_name: String = chars
-        .clone()
-        .take_while(|&c| c.is_whitespace() || c.is_alphabetic())
-        .collect();
-    if tag_name.eq_ignore_ascii_case("script") {
-        in_script = true;
-    }
-
-    // Определяем, это ли </script>
-    let is_closing_script = tag_name.eq_ignore_ascii_case("/script");
-
-    // Собираем до закрывающего >
-    let mut all_chars = Vec::new();
-    loop {
-        let c = match chars.next() {
-            Some(c) => c,
-            None => {
-                // Тег не закрыт — выводим как есть
-                for ch in &all_chars {
-                    tag.push(*ch);
-                }
-                return tag;
-            }
-        };
-        tag.push(c);
-        all_chars.push(c);
-
-        if in_quote.is_some() {
-            if c == in_quote.unwrap() {
+    for c in chars.by_ref() {
+        raw.push(c);
+        if let Some(q) = in_quote {
+            if c == q {
                 in_quote = None;
             }
         } else if c == '"' || c == '\'' {
@@ -165,14 +395,7 @@ fn sanitize_tag(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) -> String 
             break;
         }
     }
-
-    // Если это <script> или </script> — не выводим ничего
-    if in_script || is_closing_script {
-        return String::new();
-    }
-
-    // Удаляем on*-атрибуты и нейтрализуем опасные URL в href/src
-    rewrite_tag(&tag)
+    raw
 }
 
 /// Символы, допустимые в имени атрибута/тега (до разделителя или конца).
@@ -180,153 +403,129 @@ fn is_name_char(c: char) -> bool {
     !(c.is_whitespace() || c == '=' || c == '>' || c == '/')
 }
 
-/// Переписывает один тег: выкидывает on*-атрибуты и нейтрализует
-/// `javascript:`/`data:text/html` в `href`/`src`.
+/// Переписывает один тег по политике белых списков.
 ///
-/// Работает по Vec<char>, а не по байтовым индексам: в предыдущей реализации
-/// `find`/`as_bytes` давали байтовые позиции, а вывод шёл через `chars().nth(i)`,
-/// из-за чего кириллица в атрибуте (`title="заголовок"`) уводила индекс
-/// в середину многобайтового символа и роняла процесс (panic «not a char boundary»).
+/// Работает по `Vec<char>`, а не по байтовым индексам: кириллица в атрибуте
+/// (`title="заголовок"`) не должна уводить индекс в середину символа.
 fn rewrite_tag(tag: &str) -> String {
     let ch: Vec<char> = tag.chars().collect();
     let n = ch.len();
-
-    // Не тег (нет ведущего '<') — возвращаем как есть.
-    if n == 0 || ch[0] != '<' {
+    if n < 3 || ch[0] != '<' || ch[n - 1] != '>' {
         return tag.to_string();
     }
+
+    let mut i = 1;
+    let closing = ch[i] == '/';
+    if closing {
+        i += 1;
+    }
+    let name_start = i;
+    while i < n - 1 && is_name_char(ch[i]) {
+        i += 1;
+    }
+    let name: String = ch[name_start..i]
+        .iter()
+        .collect::<String>()
+        .to_ascii_lowercase();
+    if name.is_empty() {
+        return tag.to_string();
+    }
+
+    if closing {
+        return if is_allowed_tag(&name) {
+            format!("</{name}>")
+        } else {
+            String::new()
+        };
+    }
+
+    if !is_allowed_tag(&name) {
+        // Неизвестный тег «разворачиваем»: сам тег убираем, содержимое остаётся.
+        return String::new();
+    }
+
+    let self_closing = ch[n - 2] == '/';
+    let body_end = if self_closing { n - 2 } else { n - 1 };
 
     let mut out = String::with_capacity(tag.len());
     out.push('<');
-    let mut i = 1;
+    out.push_str(&name);
 
-    // Закрывающий слэш: </tag>
-    if i < n && ch[i] == '/' {
-        out.push('/');
-        i += 1;
-    }
-
-    // Имя тега.
-    while i < n && is_name_char(ch[i]) {
-        out.push(ch[i]);
-        i += 1;
-    }
-
-    // Атрибуты.
-    while i < n {
-        let mut ws = String::new();
-        while i < n && ch[i].is_whitespace() {
-            ws.push(ch[i]);
+    let mut i = skip_ws(&ch, i, body_end);
+    while i < body_end {
+        let name_at = i;
+        while i < body_end && is_name_char(ch[i]) {
             i += 1;
         }
-        if i >= n {
-            break;
+        if i == name_at {
+            i += 1; // неожиданный символ — пропускаем
+            continue;
         }
-        if ch[i] == '>' {
-            out.push('>');
-            break;
-        }
-        // Самозакрывающийся конец: ... />
-        if ch[i] == '/' {
-            out.push_str(&ws);
-            out.push('/');
-            i += 1;
-            while i < n && ch[i].is_whitespace() {
-                i += 1;
-            }
-            if i < n && ch[i] == '>' {
-                out.push('>');
-            }
-            break;
-        }
+        let attr: String = ch[name_at..i]
+            .iter()
+            .collect::<String>()
+            .to_ascii_lowercase();
 
-        // Имя атрибута.
-        let name_start = i;
-        while i < n && is_name_char(ch[i]) {
-            i += 1;
-        }
-        let name: String = ch[name_start..i].iter().collect();
-        let name_lower = name.to_lowercase();
-
-        // Необязательное =значение (пробелы вокруг '=' допустимы).
-        let save = i;
-        let mut ws_eq = String::new();
-        while i < n && ch[i].is_whitespace() {
-            ws_eq.push(ch[i]);
-            i += 1;
-        }
-        let has_eq = i < n && ch[i] == '=';
-        if has_eq {
-            i += 1;
-            while i < n && ch[i].is_whitespace() {
-                i += 1;
-            }
-        } else {
-            i = save;
-            ws_eq.clear();
-        }
-
-        // Значение: в кавычках или без.
-        let mut quote: Option<char> = None;
+        let mut j = skip_ws(&ch, i, body_end);
+        let mut has_eq = false;
         let mut value = String::new();
-        if has_eq {
-            if i < n && (ch[i] == '"' || ch[i] == '\'') {
-                quote = Some(ch[i]);
-                i += 1;
-                while i < n && ch[i] != quote.unwrap() {
-                    value.push(ch[i]);
-                    i += 1;
+        if j < body_end && ch[j] == '=' {
+            has_eq = true;
+            j = skip_ws(&ch, j + 1, body_end);
+            if j < body_end && (ch[j] == '"' || ch[j] == '\'') {
+                let q = ch[j];
+                j += 1;
+                while j < body_end && ch[j] != q {
+                    value.push(ch[j]);
+                    j += 1;
                 }
-                if i < n {
-                    i += 1; // закрывающая кавычка
+                if j < body_end {
+                    j += 1;
                 }
             } else {
-                while i < n && !(ch[i].is_whitespace() || ch[i] == '>' || ch[i] == '/') {
-                    value.push(ch[i]);
-                    i += 1;
+                while j < body_end && !ch[j].is_whitespace() {
+                    value.push(ch[j]);
+                    j += 1;
                 }
             }
+            i = j;
         }
 
-        let is_event = name_lower.starts_with("on")
-            && name_lower
-                .chars()
-                .nth(2)
-                .is_some_and(|c| c.is_ascii_alphabetic());
-        if is_event {
-            // on*-обработчик — выбрасываем вместе с разделителем.
+        if !is_allowed_attr(&name, &attr) {
+            continue;
+        }
+        let decoded = decode_entities(&value);
+        if is_url_attr(&attr) && !url_is_safe(&attr, &decoded) {
+            continue;
+        }
+        if attr == "style" && !style_is_safe(&decoded) {
             continue;
         }
 
-        let is_url_attr = name_lower == "href" || name_lower == "src";
-        let dangerous = is_url_attr && {
-            let lv = value.trim_start().to_lowercase();
-            lv.starts_with("javascript:") || lv.starts_with("data:text/html")
-        };
-
-        out.push_str(&ws);
-        out.push_str(&name);
+        out.push(' ');
+        out.push_str(&attr);
         if has_eq {
-            out.push_str(&ws_eq);
             out.push('=');
-            if dangerous {
-                // Нейтрализовано: пустое значение вместо опасного URL.
-                out.push_str("\"\"");
-            } else if let Some(q) = quote {
-                out.push(q);
-                out.push_str(&value);
-                out.push(q);
-            } else {
-                out.push_str(&value);
-            }
+            out.push('"');
+            escape_html_attr(&mut out, &decoded);
+            out.push('"');
         }
     }
 
-    // Незакрытый тег (не дошли до '>') — оставляем исходник как есть.
-    if !out.ends_with('>') {
-        return tag.to_string();
+    if name == "a" {
+        out.push_str(" rel=\"noopener noreferrer\"");
     }
+
+    out.push_str(if self_closing { " />" } else { ">" });
     out
+}
+
+/// Пропускает пробелы в диапазоне `[i, end)`.
+fn skip_ws(ch: &[char], mut i: usize, end: usize) -> usize {
+    while i < end && ch[i].is_whitespace() {
+        i += 1;
+    }
+    i
 }
 
 #[cfg(test)]
@@ -379,7 +578,7 @@ mod tests {
         assert_eq!(to_html(""), "");
     }
 
-    // ─── P0.2: XSS-санитайзер ──────────────────────────────────────────
+    // ─── P0.2: XSS-санитайзер (v2, белые списки) ───────────────────────
 
     #[test]
     fn strips_img_onerror() {
@@ -391,6 +590,34 @@ mod tests {
     fn strips_script_tags() {
         let html = to_html("<script>alert('xss')</script>");
         assert!(!html.contains("<script"), "html: {html}");
+        assert!(!html.contains("alert"), "html: {html}");
+    }
+
+    #[test]
+    fn strips_style_element_and_content() {
+        let html = to_html("<style>body{color:red}</style>text");
+        assert!(!html.contains("<style"), "html: {html}");
+        assert!(!html.contains("color:red"), "html: {html}");
+        assert!(html.contains("text"), "html: {html}");
+    }
+
+    #[test]
+    fn strips_iframe_form_object() {
+        for vector in [
+            r#"<iframe src="https://evil.example"></iframe>"#,
+            r#"<form action="https://evil.example"><input name="x"></form>"#,
+            r#"<object data="https://evil.example"></object>"#,
+        ] {
+            let html = to_html(vector);
+            assert!(!html.contains("evil.example"), "html: {html}");
+        }
+    }
+
+    #[test]
+    fn unknown_tag_unwrapped_but_text_kept() {
+        let html = to_html("<video>movie</video>");
+        assert!(!html.to_lowercase().contains("<video"), "html: {html}");
+        assert!(html.contains("movie"), "html: {html}");
     }
 
     #[test]
@@ -408,6 +635,36 @@ mod tests {
             !html.to_lowercase().contains("data:text/html"),
             "html: {html}"
         );
+    }
+
+    #[test]
+    fn neutralizes_entity_obfuscated_javascript() {
+        let html = to_html(r#"<a href="javascript&#58;alert(1)">x</a>"#);
+        assert!(!html.to_lowercase().contains("javascript"), "html: {html}");
+    }
+
+    #[test]
+    fn prevents_entity_attribute_breakout() {
+        // `&#34;` декодируется в кавычку и должна быть заэкранирована,
+        // иначе атрибут «порвётся» и создаст onerror.
+        let html = to_html(r#"<img alt='&#34; onerror=alert(1)'>"#);
+        assert!(
+            html.contains("alt=\"&quot; onerror=alert(1)\""),
+            "html: {html}"
+        );
+    }
+
+    #[test]
+    fn adds_rel_noopener_to_links() {
+        let html = to_html("[x](https://example.com)");
+        assert!(html.contains("rel=\"noopener noreferrer\""), "html: {html}");
+    }
+
+    #[test]
+    fn drops_style_attribute_outside_cells() {
+        let html = to_html(r#"<div style="background:url(https://evil.example)">x</div>"#);
+        assert!(!html.contains("evil.example"), "html: {html}");
+        assert!(!html.contains("style="), "html: {html}");
     }
 
     #[test]
@@ -485,5 +742,133 @@ mod tests {
         let low = html.to_lowercase();
         assert!(!low.contains("javascript:"), "html: {html}");
         assert!(html.contains("кириллица"), "html: {html}");
+    }
+
+    // ─── P0.2: табличный harness (техдолг #7) ──────────────────────────
+    //
+    // Точечные тесты выше проверяют отдельные случаи; здесь единый инвариант
+    // «ни один XSS-вектор не выживает» прогоняется по таблице контекстов.
+    // Расширять нужно именно эти таблицы, чтобы новое правило не «протекало».
+
+    /// Проверяет, что ни один из запрещённых маркеров (без учёта регистра)
+    /// не встречается в HTML, отрендеренном из входа.
+    fn assert_clean(input: &str, forbidden: &[&str]) {
+        let html = to_html(input);
+        let low = html.to_lowercase();
+        for marker in forbidden {
+            assert!(
+                !low.contains(&marker.to_lowercase()),
+                "маркер {marker:?} просочился\n  вход: {input}\n  HTML: {html}"
+            );
+        }
+    }
+
+    /// Контексты с событийными атрибутами: не должно остаться ни `on*`, ни тела.
+    const EVENT_HANDLER_VECTORS: &[&str] = &[
+        r#"<img src="x" onerror="alert(1)">"#,
+        r#"<img src="x" ONERROR="alert(1)">"#,
+        r#"<img src=x onerror=alert(1)>"#,
+        r#"<div onclick="alert(1)">text</div>"#,
+        r#"<body onload="alert(1)">"#,
+        r#"<svg onload="alert(1)"></svg>"#,
+        r##"<a href="#" onmouseover="alert(1)">x</a>"##,
+        r#"<video src="x" onplay="alert(1)"></video>"#,
+        r#"<p onfocus='alert(1)'>x</p>"#,
+    ];
+
+    /// Контексты с опасными URI в `href`/`src`.
+    const DANGEROUS_URL_VECTORS: &[&str] = &[
+        r#"<a href="javascript:alert(1)">x</a>"#,
+        r#"<a href='JavaScript:alert(1)'>x</a>"#,
+        r#"<a href="  javascript:alert(1)">x</a>"#,
+        r#"<a href="javascript&#58;alert(1)">x</a>"#,
+        r#"<a href="jav&#x61;script:alert(1)">x</a>"#,
+        r#"<iframe src="javascript:alert(1)"></iframe>"#,
+        r#"<img src="data:text/html,<b>hi</b>">"#,
+        r#"[x](javascript:alert(1))"#,
+    ];
+
+    #[test]
+    fn table_no_event_handler_survives_any_context() {
+        for vector in EVENT_HANDLER_VECTORS {
+            assert_clean(
+                vector,
+                &[
+                    "onerror",
+                    "onload",
+                    "onclick",
+                    "onmouseover",
+                    "onplay",
+                    "onfocus",
+                    "alert(1)",
+                    "<script",
+                ],
+            );
+        }
+    }
+
+    #[test]
+    fn table_no_dangerous_uri_survives_any_context() {
+        for vector in DANGEROUS_URL_VECTORS {
+            assert_clean(
+                vector,
+                &["javascript:", "data:text/html", "<script", "alert(1)"],
+            );
+        }
+    }
+
+    /// Обратный инвариант: безобидное содержимое harness обязан сохранять.
+    #[test]
+    fn table_benign_content_survives() {
+        let cases: &[(&str, &[&str])] = &[
+            ("[Tauri](https://tauri.app)", &["https://tauri.app"]),
+            (
+                "![alt](https://example.com/img.png)",
+                &["https://example.com/img.png"],
+            ),
+            (r#"[x](http://e.com "Title")"#, &["http://e.com", "Title"]),
+            (
+                r#"<img src="photo.png" alt="картинка">"#,
+                &["photo.png", "картинка"],
+            ),
+        ];
+        for (input, expected) in cases {
+            let html = to_html(input);
+            for want in *expected {
+                assert!(
+                    html.contains(want),
+                    "ожидался {want:?}\n  вход: {input}\n  HTML: {html}"
+                );
+            }
+        }
+    }
+
+    // ─── Точечные тесты внутренних функций v2 ──────────────────────────
+
+    #[test]
+    fn decode_entities_handles_numeric_and_named() {
+        assert_eq!(decode_entities("&#106;&#x61;va"), "java");
+        assert_eq!(decode_entities("&colon;"), ":");
+        assert_eq!(decode_entities("a&amp;b"), "a&b");
+        assert_eq!(decode_entities("&unknown;"), "&unknown;");
+    }
+
+    #[test]
+    fn url_scheme_check_rejects_obfuscation() {
+        assert!(!url_is_safe("href", "javascript:alert(1)"));
+        assert!(!url_is_safe("href", "java\tscript:alert(1)"));
+        assert!(!url_is_safe("href", "data:text/html,x"));
+        assert!(url_is_safe("href", "https://x/?a=1&b=2"));
+        assert!(url_is_safe("href", "/relative/path"));
+        assert!(url_is_safe("src", "data:image/png;base64,AAAA"));
+        assert!(!url_is_safe("src", "data:text/html,x"));
+    }
+
+    #[test]
+    fn style_allows_only_text_align() {
+        assert!(style_is_safe("text-align: right"));
+        assert!(style_is_safe("text-align:center"));
+        assert!(!style_is_safe("background:red"));
+        assert!(!style_is_safe("position:fixed"));
     }
 }

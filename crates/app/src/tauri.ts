@@ -13,13 +13,3 @@ export function readFile(path: string): Promise<string> {
 export function writeFile(path: string, contents: string): Promise<void> {
   return invoke<void>("write_file", { path, contents });
 }
-
-// Нативные диалоги живут на Rust-стороне: только так выбранный каталог
-// может быть «запомнен» как разрешённый, не доверяя фронтенду.
-export function pickOpenFile(): Promise<string | null> {
-  return invoke<string | null>("pick_open_file");
-}
-
-export function pickSaveFile(defaultPath: string | null): Promise<string | null> {
-  return invoke<string | null>("pick_save_file", { defaultPath });
-}

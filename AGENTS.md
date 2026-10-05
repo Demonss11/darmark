@@ -13,7 +13,8 @@ Tauri 2 + vanilla TypeScript/Vite на фронте + чистое Rust-ядро
 - `crates/app/src/` — фронтенд на чистом TS (без фреймворков): `main.ts` (тулбар, файловые команды,
   рендер с debounce 120 мс), `tauri.ts` (IPC-обёртки), `tables.ts` (Excel-подобные таблицы), `style.css`.
 - `crates/app/src-tauri/` — тонкий Tauri-шелл. Крейт/пакет — `mdedit`, lib — `mdedit_lib`.
-  Здесь команды `read_file`/`write_file`/`render_markdown` и проверка расширений `ALLOWED_EXTS`.
+  Команды `read_file`/`write_file`/`render_markdown`. Файловый доступ — модель Notepad++
+  (путь выбирает пользователь в нативном диалоге на фронте), единственная проверка — лимит 10 МБ.
 - Задачи только по фронтенду не должны трогать `md-core` и `src-tauri` (см. область в `tasks/TZ-excel-tables.md`).
 
 ## Команды
@@ -27,6 +28,9 @@ Tauri 2 + vanilla TypeScript/Vite на фронте + чистое Rust-ядро
 - `npm run dev` — Vite dev-сервер на фиксированном `:5173` (`strictPort`, чтобы Tauri dev не «уплывал»).
 - `npx tauri dev` — полноценный GUI; требует WebView2 + VS Build Tools (C++). Не запускать без запроса.
 - `npx tauri build` — релизный NSIS-установщик в `src-tauri/target/release/bundle/nsis/`.
+- `cd crates/app; npm run test:e2e` — GUI E2E (Cucumber + WebdriverIO поверх release-бинарника).
+  Требует `cargo install tauri-driver --locked` и собранный `target/release/mdedit.exe`
+  (`npx tauri build --no-bundle`). Фичи/шаги — `crates/app/e2e/`.
 
 Требования: Rust ≥ 1.80, Node ≥ 20.
 
@@ -39,8 +43,9 @@ Tauri 2 + vanilla TypeScript/Vite на фронте + чистое Rust-ядро
 - **Рендер идёт на Rust-стороне.** Фронт только присваивает `preview.innerHTML` и не парсит Markdown.
   Состояние таблиц — `WeakMap` по DOM-узлу (`tables.ts`), теряется при перерисовке; `main.ts` защищает
   это сравнением `lastRenderedHtml`, но стабильного ключа на таблицу пока нет.
-- **Тестовой инфраструктуры для фронта и CI нет** (`.github/` отсутствует). В `package.json` только
-  `dev`/`build`/`preview`; `vitest` не установлен. Проверка фронта = `npm run build`.
+- **Юнит-тестов фронтенда и CI нет** (`.github/` отсутствует, `vitest` не установлен); проверка
+  фронта = `npm run build`. Есть GUI E2E на Cucumber + WebdriverIO (`crates/app/e2e/`, `npm run test:e2e`)
+  поверх release-бинарника; нативные диалоги/ОС им не покрываются — помечай `@manual`.
 - Релизный профиль (корневой `Cargo.toml`): `opt-level="s"`, LTO, `strip`, `panic=abort` ради размера.
   Не добавляй тяжёлые зависимости без прямого согласования.
 
