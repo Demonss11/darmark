@@ -8,7 +8,7 @@
 //! - Footnotes (`[^1]`)
 //! - Heading IDs (`# Title {#custom-id}`)
 
-use pulldown_cmark::{html, Event, Options, Parser};
+use pulldown_cmark::{html, Event, Options, Parser, Tag, TagEnd};
 
 /// Все расширения, включённые по умолчанию в приложении.
 pub const DEFAULT_OPTIONS: Options = Options::empty()
@@ -46,19 +46,42 @@ pub fn to_html_with(markdown: &str, options: Options) -> String {
 ///
 /// Инварианты:
 /// * детерминированность — одинаковый вход даёт одинаковый выход;
-/// * содержимое блоков без обёрток побайтово совпадает с [`to_html`]
-///   (тот же `DEFAULT_OPTIONS` + тот же санитайзер);
+/// * содержимое блоков **без всех `data-md`-атрибутов** (и без обёрток) побайтово
+///   совпадает с [`to_html`] (тот же `DEFAULT_OPTIONS` + тот же санитайзер);
 /// * `data-md` содержит только цифры и запятую — безопасен для HTML;
 /// * границы блоков — UTF-8 char-boundary (гарантия `OffsetIter`);
 /// * пустые блоки не создаются (проверка по итоговому HTML, а не по срезу).
+///
+/// Для блоков-таблиц дополнительно размечается вложенная структура: `<tr>`,
+/// `<th>`, `<td>` получают собственный `data-md="{start},{end}"`. Строка заголовка
+/// (`<thead>`) размечается только на уровне ячеек `<th>` — отдельного `tr` у неё
+/// нет (это снимает неоднозначность «есть ли `TableRow` внутри `TableHead`» между
+/// версиями pulldown). Диапазоны берутся из парсера, поэтому экранированный `\|`
+/// не сбивает маппинг. Диапазон ячейки обрезается до содержимого (без
+/// обрамляющих пробелов; пустая ячейка сохраняет диапазон парсера), диапазон
+/// строки — без завершающего `\n`/`\r`. Инъекция выполняется **после**
+/// санитайзера, иначе `data-*` был бы срезан.
 pub fn to_html_mapped(markdown: &str) -> String {
-    // Группы событий по топ-блокам: (start, end, события блока).
-    let mut blocks: Vec<(usize, usize, Vec<Event<'_>>)> = Vec::new();
+    // Группы событий по топ-блокам: (start, end, события блока, структурные
+    // диапазоны таблиц). Структурные диапазоны собираем на этапе обхода, пока
+    // доступны байтовые смещения `OffsetIter` — в `Event` их уже нет.
+    let mut blocks: Vec<(usize, usize, Vec<Event<'_>>, Vec<StructRange>)> = Vec::new();
     let mut group: Vec<Event<'_>> = Vec::new();
+    let mut group_struct: Vec<StructRange> = Vec::new();
     let mut group_start: Option<usize> = None;
     let mut depth: usize = 0;
+    let mut in_head = false;
 
     for (event, range) in Parser::new_ext(markdown, DEFAULT_OPTIONS).into_offset_iter() {
+        collect_struct_range(
+            markdown,
+            &event,
+            range.start,
+            range.end,
+            &mut in_head,
+            &mut group_struct,
+        );
+
         match &event {
             Event::Start(_) => {
                 if depth == 0 {
@@ -72,7 +95,12 @@ pub fn to_html_mapped(markdown: &str) -> String {
                 group.push(event);
                 if depth == 0 {
                     let start = group_start.take().unwrap_or(range.start);
-                    blocks.push((start, range.end, std::mem::take(&mut group)));
+                    blocks.push((
+                        start,
+                        range.end,
+                        std::mem::take(&mut group),
+                        std::mem::take(&mut group_struct),
+                    ));
                 }
             }
             _ => {
@@ -80,7 +108,7 @@ pub fn to_html_mapped(markdown: &str) -> String {
                     // Одиночные события верхнего уровня, не образующие контейнер:
                     // `Rule` (`<hr>`), HTML-блоки, «висячий» текст. Каждое —
                     // самостоятельный блок (иначе `<hr>` выпал бы из подсветки).
-                    blocks.push((range.start, range.end, vec![event]));
+                    blocks.push((range.start, range.end, vec![event], Vec::new()));
                 } else {
                     group.push(event);
                 }
@@ -109,7 +137,7 @@ pub fn to_html_mapped(markdown: &str) -> String {
     }
 
     let mut result = String::with_capacity(markdown.len() + 64);
-    for (start, end, events) in blocks {
+    for (start, end, events, struct_ranges) in blocks {
         // Хвостовые пробелы/пустые строки не относятся к блоку: подсветка в
         // редакторе не должна захватывать «воздух» между абзацами.
         let end = trim_end_ws(markdown, start, end);
@@ -118,7 +146,12 @@ pub fn to_html_mapped(markdown: &str) -> String {
         }
         let mut html_out = String::with_capacity((end - start) + 32);
         html::push_html(&mut html_out, events.into_iter());
-        let sanitized = sanitize_html(&html_out);
+        let mut sanitized = sanitize_html(&html_out);
+        // Санитайзер срезал бы `data-*`, поэтому вложенную разметку таблицы
+        // добавляем строго после него.
+        if !struct_ranges.is_empty() {
+            sanitized = inject_structural_data_md(&sanitized, &struct_ranges);
+        }
         // HTML-комментарий/опасный контейнер непуст по исходнику, но после
         // санитайзера остаётся лишь пробельный хвост — обёртку не создаём
         // (T-2.5), но хвост сохраняем, чтобы конкатенация совпадала с to_html.
@@ -135,6 +168,210 @@ pub fn to_html_mapped(markdown: &str) -> String {
         result.push_str("</div>");
     }
     result
+}
+
+// ─── Структурная разметка таблиц (TZ-inspect-tables, §3.1) ─────────────
+
+/// Тип структурного элемента таблицы, получающего собственный `data-md`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StructTag {
+    Row,
+    Th,
+    Td,
+}
+
+/// Байтовый диапазон структурного элемента таблицы в исходном markdown.
+#[derive(Debug, Clone, Copy)]
+struct StructRange {
+    tag: StructTag,
+    start: usize,
+    end: usize,
+}
+
+/// Собирает диапазон структурного тега таблицы из очередного события.
+///
+/// Порядок добавления совпадает с порядком следования HTML-тегов, поэтому
+/// инъекция может сопоставлять их курсором. Строка заголовка (`TableRow`
+/// внутри `TableHead`) намеренно не размечается: у шапки интерактивны `th`,
+/// а отдельный `tr` там только запутал бы сопоставление.
+fn collect_struct_range(
+    markdown: &str,
+    event: &Event<'_>,
+    start: usize,
+    end: usize,
+    in_head: &mut bool,
+    out: &mut Vec<StructRange>,
+) {
+    match event {
+        Event::Start(Tag::TableHead) => *in_head = true,
+        Event::End(TagEnd::TableHead) => *in_head = false,
+        Event::Start(Tag::TableRow) => {
+            if !*in_head {
+                let end = trim_end_ws(markdown, start, end);
+                if end > start {
+                    out.push(StructRange {
+                        tag: StructTag::Row,
+                        start,
+                        end,
+                    });
+                }
+            }
+        }
+        Event::Start(Tag::TableCell) => {
+            let (start, end) = trim_cell(markdown, start, end);
+            let tag = if *in_head {
+                StructTag::Th
+            } else {
+                StructTag::Td
+            };
+            out.push(StructRange { tag, start, end });
+        }
+        _ => {}
+    }
+}
+
+/// Обрезает диапазон ячейки до её содержимого (без обрамляющих пробелов).
+/// Если после обрезки содержимого нет (ячейка из пробелов) — возвращает
+/// исходный диапазон парсера, чтобы не потерять место в структуре.
+fn trim_cell(markdown: &str, start: usize, end: usize) -> (usize, usize) {
+    match (
+        first_non_ws(markdown, start, end),
+        last_non_ws_end(markdown, start, end),
+    ) {
+        (Some(s), Some(e)) if s < e => (s, e),
+        _ => (start, end),
+    }
+}
+
+/// Вставляет `data-md="start,end"` в открывающие теги `<tr>`/`<th>`/`<td>`
+/// в порядке `ranges`. Чистая функция над уже санитизированным HTML.
+///
+/// Состояние: `in_head` (меняется по `<thead>`/`</thead>`/`<tbody>`) и
+/// `cell_depth` (глубина вложенности ячеек) — оба учитываются только на
+/// внешнем уровне (`cell_depth == 0`), что защищает от сырой вложенной
+/// таблицы внутри ячейки. При несовпадении типа тега и диапазона тег
+/// пропускается без сдвига курсора (defensive).
+fn inject_structural_data_md(html: &str, ranges: &[StructRange]) -> String {
+    let mut out = String::with_capacity(html.len() + ranges.len() * 24);
+    let mut cursor = 0usize;
+    let mut cell_depth: usize = 0;
+    let mut in_head = false;
+
+    let bytes = html.as_bytes();
+    let mut i = 0usize;
+    while i < bytes.len() {
+        if bytes[i] != b'<' {
+            // Копируем текст до следующего '<' одним куском — дешевле посимвольно.
+            match html[i..].find('<') {
+                Some(off) => {
+                    out.push_str(&html[i..i + off]);
+                    i += off;
+                }
+                None => {
+                    out.push_str(&html[i..]);
+                    break;
+                }
+            }
+            continue;
+        }
+
+        let tag_end = find_tag_end(html, i);
+        let raw = &html[i..=tag_end];
+        let name = tag_name(raw);
+        let closing = raw.as_bytes().get(1) == Some(&b'/');
+
+        let mut injected = false;
+        if !closing {
+            match name.as_str() {
+                "thead" if cell_depth == 0 => in_head = true,
+                "tbody" | "tfoot" if cell_depth == 0 => in_head = false,
+                "th" => {
+                    if cell_depth == 0 && ranges.get(cursor).map(|r| r.tag) == Some(StructTag::Th) {
+                        push_with_data_md(&mut out, raw, ranges[cursor]);
+                        cursor += 1;
+                        injected = true;
+                    }
+                    cell_depth += 1;
+                }
+                "td" => {
+                    if cell_depth == 0 && ranges.get(cursor).map(|r| r.tag) == Some(StructTag::Td) {
+                        push_with_data_md(&mut out, raw, ranges[cursor]);
+                        cursor += 1;
+                        injected = true;
+                    }
+                    cell_depth += 1;
+                }
+                "tr" if cell_depth == 0
+                    && !in_head
+                    && ranges.get(cursor).map(|r| r.tag) == Some(StructTag::Row) =>
+                {
+                    push_with_data_md(&mut out, raw, ranges[cursor]);
+                    cursor += 1;
+                    injected = true;
+                }
+                "tr" => {}
+                _ => {}
+            }
+        } else if cell_depth == 0 && (name == "thead" || name == "tbody" || name == "tfoot") {
+            in_head = false;
+        } else if name == "th" || name == "td" {
+            cell_depth = cell_depth.saturating_sub(1);
+        }
+
+        if !injected {
+            out.push_str(raw);
+        }
+        i = tag_end + 1;
+    }
+    out
+}
+
+/// Индекс `>` открывающего/закрывающего тега, начиная с `<` по `start`,
+/// с учётом кавычек внутри тега (`style="text-align: right"`).
+fn find_tag_end(html: &str, start: usize) -> usize {
+    let bytes = html.as_bytes();
+    let mut i = start + 1;
+    let mut quote: Option<u8> = None;
+    while i < bytes.len() {
+        let b = bytes[i];
+        match quote {
+            Some(q) => {
+                if b == q {
+                    quote = None;
+                }
+            }
+            None => {
+                if b == b'"' || b == b'\'' {
+                    quote = Some(b);
+                } else if b == b'>' {
+                    return i;
+                }
+            }
+        }
+        i += 1;
+    }
+    bytes.len().saturating_sub(1)
+}
+
+/// Имя тега в нижнем регистре из сырого `<...>` (без закрывающего слэша).
+fn tag_name(raw: &str) -> String {
+    raw.trim_start_matches('<')
+        .trim_start_matches('/')
+        .chars()
+        .take_while(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == ':')
+        .collect::<String>()
+        .to_ascii_lowercase()
+}
+
+/// Дописывает тег `raw` в `out`, вставив ` data-md="s,e"` перед `>`.
+fn push_with_data_md(out: &mut String, raw: &str, range: StructRange) {
+    let inner = raw.strip_suffix('>').unwrap_or(raw);
+    out.push_str(inner);
+    out.push_str(" data-md=\"");
+    out.push_str(&range.start.to_string());
+    out.push(',');
+    out.push_str(&range.end.to_string());
+    out.push_str("\">");
 }
 
 /// Байтовый индекс первого непробельного символа в `markdown[from..to]`.
@@ -1485,5 +1722,145 @@ mod tests {
         let html = to_html_mapped(md);
         assert!(table_ranges(&html).is_empty(), "html: {html}");
         assert_eq!(mapped_ranges(md), vec![(0, 3), (5, 9)]);
+    }
+
+    /// AC-9: ячейка со смешанной inline-разметкой выделяется целиком —
+    /// вместе с маркерами (`**`, бэктики), а не только по «внутреннему» тексту.
+    #[test]
+    fn cell_with_inline_markup_maps_full_source() {
+        let md = "| **b** | `c` |\n|---|---|\n| x | y |";
+        let html = to_html_mapped(md);
+        let got: Vec<(String, String)> = table_ranges(&html)
+            .into_iter()
+            .filter(|(t, ..)| t == "th")
+            .map(|(t, s, e)| (t, md[s..e].to_string()))
+            .collect();
+        assert_eq!(
+            got,
+            vec![
+                ("th".to_string(), "**b**".to_string()),
+                ("th".to_string(), "`c`".to_string()),
+            ],
+            "html: {html}"
+        );
+    }
+
+    /// AC-11: экранированный `\|` — ядро берёт диапазоны парсера, а не наивный
+    /// split по `|`, поэтому ячейка мапится целиком.
+    #[test]
+    fn escaped_pipe_cell_maps_correctly() {
+        let md = "| A\\|B | C |\n|---|---|\n| a | b |";
+        let html = to_html_mapped(md);
+        let got: Vec<(String, String)> = table_ranges(&html)
+            .into_iter()
+            .filter(|(t, ..)| t == "th")
+            .map(|(t, s, e)| (t, md[s..e].to_string()))
+            .collect();
+        assert_eq!(
+            got,
+            vec![
+                ("th".to_string(), "A\\|B".to_string()),
+                ("th".to_string(), "C".to_string()),
+            ],
+            "html: {html}"
+        );
+    }
+
+    /// AC-10: CRLF — диапазоны строк и ячеек не захватывают `\r`/`\n`.
+    #[test]
+    fn crlf_table_ranges_trim_line_endings() {
+        let md = "| A |\r\n|---|\r\n| a |\r\n";
+        let html = to_html_mapped(md);
+        let rows: Vec<String> = table_ranges(&html)
+            .into_iter()
+            .filter(|(t, ..)| t == "tr" || t == "th" || t == "td")
+            .map(|(_, s, e)| md[s..e].to_string())
+            .collect();
+        assert_eq!(rows, vec!["A", "| a |", "a"], "html: {html}");
+    }
+
+    /// Несколько таблиц в документе размечаются независимо: курсор диапазонов
+    /// не «перетекает» между блоками.
+    #[test]
+    fn multiple_tables_each_mapped() {
+        let md = "| A |\n|---|\n| a |\n\n| B |\n|---|\n| b |";
+        let html = to_html_mapped(md);
+        let cells: Vec<String> = table_ranges(&html)
+            .into_iter()
+            .filter(|(t, ..)| t == "th" || t == "td")
+            .map(|(_, s, e)| md[s..e].to_string())
+            .collect();
+        assert_eq!(cells, vec!["A", "a", "B", "b"], "html: {html}");
+    }
+
+    /// Выравнивание колонок (`style="text-align: …"`) не мешает инъекции:
+    /// `data-md` оказывается на ячейке, диапазон корректен.
+    #[test]
+    fn aligned_cells_are_mapped() {
+        let md = "| A | B |\n|:--|--:|\n| x | y |";
+        let html = to_html_mapped(md);
+        assert!(
+            html.contains("text-align: right"),
+            "выравнивание потеряно: {html}"
+        );
+        let cells: Vec<String> = table_ranges(&html)
+            .into_iter()
+            .filter(|(t, ..)| t == "th" || t == "td")
+            .map(|(_, s, e)| md[s..e].to_string())
+            .collect();
+        assert_eq!(cells, vec!["A", "B", "x", "y"], "html: {html}");
+    }
+
+    /// T-4: таблица внутри списка тоже размечается; строка — без отступа списка.
+    #[test]
+    fn table_inside_list_is_mapped() {
+        let md = "- | A |\n  |---|\n  | a |";
+        let html = to_html_mapped(md);
+        let ranges = table_ranges(&html);
+        assert!(!ranges.is_empty(), "html: {html}");
+        let (_, s, e) = ranges
+            .iter()
+            .find(|(t, ..)| t == "tr")
+            .expect("нет размеченной строки");
+        assert_eq!(&md[*s..*e], "| a |", "html: {html}");
+    }
+
+    /// AC-14: большая таблица (500×8) размечается полностью — каждая строка и
+    /// ячейка. Тайминговый порог не проверяем (нестабилен), но полнота разметки
+    /// ловит случайную квадратичность/пропуски на большом входе.
+    #[test]
+    fn large_table_maps_every_row_and_cell() {
+        const COLS: usize = 8;
+        const ROWS: usize = 500;
+
+        let mut header = String::from("|");
+        for c in 0..COLS {
+            header.push_str(&format!(" H{c} |"));
+        }
+        let mut sep = String::from("|");
+        for _ in 0..COLS {
+            sep.push_str("---|");
+        }
+        let mut md = format!("{header}\n{sep}\n");
+        for r in 0..ROWS {
+            md.push('|');
+            for c in 0..COLS {
+                md.push_str(&format!(" r{r}c{c} |"));
+            }
+            md.push('\n');
+        }
+
+        let html = to_html_mapped(&md);
+        let ranges = table_ranges(&html);
+        let count = |tag: &str| ranges.iter().filter(|(t, ..)| t == tag).count();
+        assert_eq!(count("th"), COLS, "шапка размечена не полностью");
+        assert_eq!(count("td"), ROWS * COLS, "ячейки размечены не полностью");
+        assert_eq!(count("tr"), ROWS, "строки размечены не полностью");
+        for (tag, s, e) in &ranges {
+            assert!(
+                md.is_char_boundary(*s) && md.is_char_boundary(*e),
+                "граница {tag} {s}..{e} не на символе"
+            );
+        }
     }
 }

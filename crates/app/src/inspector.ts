@@ -38,6 +38,33 @@ export interface Inspector {
 
 const INTERACTIVE_SELECTOR = "button, input, select, a, .col-filter-menu, th";
 
+type InspectMode = "block" | "cell" | "row" | "col";
+
+interface InspectTarget {
+  el: HTMLElement;
+  mode: InspectMode;
+}
+
+/**
+ * Определяет цель подсветки по элементу под курсором и состоянию Shift.
+ * Приоритет: `<th>` (столбец) > `Shift+td` (строка) > `td` (ячейка) >
+ * строка-промежуток (строка) > `.md-block` (блок). Приоритет `<th>` выше
+ * модификатора — столбец не переопределяется Shift (AC-3).
+ */
+function resolveTarget(target: Element | null, shiftKey: boolean): InspectTarget | null {
+  if (!target || typeof target.closest !== "function") return null;
+  const th = target.closest("th[data-md]") as HTMLElement | null;
+  if (th) return { el: th, mode: "col" };
+  const tr = target.closest("tr[data-md]") as HTMLElement | null;
+  const td = target.closest("td[data-md]") as HTMLElement | null;
+  if (td && !shiftKey) return { el: td, mode: "cell" };
+  if (tr) return { el: tr, mode: "row" };
+  if (td) return { el: td, mode: "cell" };
+  const block = target.closest(".md-block[data-md]") as HTMLElement | null;
+  if (block) return { el: block, mode: "block" };
+  return null;
+}
+
 export function createInspector(opts: {
   editor: HTMLTextAreaElement;
   preview: HTMLElement;
@@ -51,6 +78,16 @@ export function createInspector(opts: {
   let blocks: Block[] | null = null;
   let maps: UnitMaps | null = null;
   let activeBlockEl: HTMLElement | null = null;
+  // Бэнды строки/столбца (транзиентные классы), список — для идемпотентной очистки.
+  let bandEls: HTMLElement[] = [];
+  // Последняя наведённая цель (для пересчёта уровня при Shift без движения мыши).
+  let lastHover: Element | null = null;
+  let lastHoverShift = false;
+  // Выделение, выставленное инспектором программно. `selectionchange` приходит
+  // асинхронно, поэтому по совпадению значений отличаем своё выделение от
+  // пользовательского: иначе обработчик каретки перебил бы подсветку ячейки
+  // блочной (он ищет `.md-block`, а не `tr/th/td`).
+  let programmaticSel = { start: -1, end: -1 };
 
   // Состояние textarea и фокуса до включения режима (восстанавливаем на выходе).
   let savedSelection = { start: 0, end: 0 };
@@ -61,11 +98,19 @@ export function createInspector(opts: {
 
   // ---------- подсветка ----------
 
+  function clearBands() {
+    for (const el of bandEls) el.classList.remove("inspect-col", "inspect-row");
+    bandEls = [];
+  }
+
   function clearBlockHighlight() {
     if (activeBlockEl) {
       activeBlockEl.classList.remove("inspect-active");
       activeBlockEl = null;
     }
+    // Бэнды — часть того же цикла очистки (F-6): disable/onRendered/mouseout
+    // обязаны снимать и подсветку, и подсветку строки/столбца.
+    clearBands();
   }
 
   function scrollIntoViewIfNeeded(el: HTMLElement) {
@@ -93,7 +138,43 @@ export function createInspector(opts: {
     // выделение textarea и затереть только что выставленный диапазон.
     if (focus) editor.focus({ preventScroll: true });
     editor.setSelectionRange(start, end);
+    programmaticSel = { start, end };
     scrollIntoViewIfNeeded(el);
+  }
+
+  /**
+   * Подсвечивает столбец целиком: `.inspect-col` на всех ячейках с тем же
+   * `cellIndex`. Индекс ячейки стабилен после переупорядочивания строк
+   * `tables.ts` (AC-8), поэтому столбец остаётся корректным.
+   */
+  function bandColumn(th: HTMLTableCellElement) {
+    const table = th.closest("table") as HTMLTableElement | null;
+    if (!table) return;
+    const col = th.cellIndex;
+    if (col < 0) return;
+    for (const row of Array.from(table.rows)) {
+      const cell = row.cells[col];
+      if (cell) {
+        cell.classList.add("inspect-col");
+        bandEls.push(cell);
+      }
+    }
+  }
+
+  /**
+   * Применяет цель: подсветка источника (через `applyBlock`) + бэнды строки/
+   * столбца. Бэнды всегда пересобираются с нуля — иначе повторный hover по той
+   * же ячейке (когда `applyBlock` сработал по гистерезису) копил бы список.
+   */
+  function applyTarget(target: InspectTarget, focus: boolean, force = false) {
+    clearBands();
+    applyBlock(target.el, focus, force);
+    if (target.mode === "row") {
+      target.el.classList.add("inspect-row");
+      bandEls.push(target.el);
+    } else if (target.mode === "col") {
+      bandColumn(target.el as HTMLTableCellElement);
+    }
   }
 
   function restoreSavedFocus() {
@@ -106,23 +187,50 @@ export function createInspector(opts: {
 
   function onMouseOver(e: MouseEvent) {
     if (!active) return;
-    const target = e.target as Element | null;
-    const el = target?.closest?.("[data-md]") as HTMLElement | null;
-    if (!el) return;
-    applyBlock(el, true);
+    const el = e.target as Element | null;
+    lastHover = el;
+    lastHoverShift = e.shiftKey;
+    const target = resolveTarget(el, e.shiftKey);
+    if (!target) return;
+    applyTarget(target, true);
   }
 
   function onMouseOut(e: MouseEvent) {
     if (!active) return;
     const rel = e.relatedTarget as Node | null;
     if (rel && preview.contains(rel)) return; // всё ещё внутри preview
-    clearBlockHighlight();
+    lastHover = null;
+    clearBlockHighlight(); // снимает и подсветку источника, и бэнды (AC-6)
     restoreSavedFocus();
+  }
+
+  /**
+   * AC-5: Shift нажат/отпущен без движения мыши — пересчитываем уровень для
+   * последней наведённой цели. `e.shiftKey` у модификаторных keydown/keyup
+   * нестабилен, поэтому состояние выводим из типа события.
+   */
+  function onShiftKey(e: KeyboardEvent) {
+    if (!active || e.key !== "Shift") return;
+    if (!lastHover || !lastHover.isConnected) return;
+    const shift = e.type !== "keyup";
+    if (shift === lastHoverShift) return; // реального переключения не было
+    lastHoverShift = shift;
+    const target = resolveTarget(lastHover, shift);
+    if (!target) return;
+    applyTarget(target, true, true);
   }
 
   function onEditorSelection() {
     if (!active || !blocks || !maps) return;
     if (document.activeElement !== editor) return;
+    // Асинхронный `selectionchange` от программного выделения инспектора не
+    // должен перебивать гранулярную подсветку ячейки/строки/столбца.
+    if (
+      (editor.selectionStart ?? 0) === programmaticSel.start &&
+      (editor.selectionEnd ?? 0) === programmaticSel.end
+    ) {
+      return;
+    }
     // «Каретка» = активный край выделения. При протяжке мышью/Shift+стрелках
     // selectionStart фиксирован (якорь), а двигается противоположный край,
     // поэтому ориентируемся на selectionDirection (AC-5).
@@ -145,15 +253,15 @@ export function createInspector(opts: {
 
   function onClickCapture(e: MouseEvent) {
     if (!active) return;
-    const target = e.target as Element | null;
-    if (target?.closest?.(INTERACTIVE_SELECTOR)) return; // дать tables.ts/ссылкам работать
-    const el = target?.closest?.("[data-md]") as HTMLElement | null;
-    if (!el) return;
+    const targetEl = e.target as Element | null;
+    if (targetEl?.closest?.(INTERACTIVE_SELECTOR)) return; // дать tables.ts/ссылкам работать
+    const target = resolveTarget(targetEl, e.shiftKey);
+    if (!target) return;
     e.preventDefault();
     e.stopPropagation();
     // force: клик должен вернуть выделение и фокус в редактор, даже если блок
     // уже подсвечен (иначе focus уходит в предпросмотр, а выделение «гаснет»).
-    applyBlock(el, true, true);
+    applyTarget(target, true, true);
   }
 
   // ---------- API ----------
@@ -173,6 +281,8 @@ export function createInspector(opts: {
     preview.addEventListener("mouseout", onMouseOut);
     preview.addEventListener("click", onClickCapture, true);
     document.addEventListener("selectionchange", onEditorSelection);
+    document.addEventListener("keydown", onShiftKey);
+    document.addEventListener("keyup", onShiftKey);
   }
 
   function disable(): void {
@@ -181,11 +291,16 @@ export function createInspector(opts: {
     clearBlockHighlight();
     blocks = null;
     maps = null;
+    lastHover = null;
+    lastHoverShift = false;
+    programmaticSel = { start: -1, end: -1 };
     statusEl.hidden = true;
     preview.removeEventListener("mouseover", onMouseOver);
     preview.removeEventListener("mouseout", onMouseOut);
     preview.removeEventListener("click", onClickCapture, true);
     document.removeEventListener("selectionchange", onEditorSelection);
+    document.removeEventListener("keydown", onShiftKey);
+    document.removeEventListener("keyup", onShiftKey);
     // OQ-3: восстанавливаем состояние редактора и фокус.
     editor.setSelectionRange(savedSelection.start, savedSelection.end);
     editor.scrollTop = savedScrollTop;
@@ -196,6 +311,7 @@ export function createInspector(opts: {
     clearBlockHighlight();
     blocks = null;
     maps = null;
+    programmaticSel = { start: -1, end: -1 };
     // Без аргумента — только сброс подсветки (вызывается из input-хендлера:
     // DOM ещё старый, переиндексация будет после установки нового innerHTML).
     if (!active || markdown === undefined) return;

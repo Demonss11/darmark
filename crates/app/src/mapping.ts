@@ -104,7 +104,10 @@ export function parseRange(el: HTMLElement): { start: number; end: number } | nu
 /** Собирает размеченные блоки из корня (обычно — предпросмотр), сортирует по start. */
 export function collectBlocks(root: ParentNode): Block[] {
   const list: Block[] = [];
-  for (const el of root.querySelectorAll<HTMLElement>("[data-md]")) {
+  // Селектор сужен намеренно: `data-md` теперь несут и вложенные элементы таблиц
+  // (tr/th/td) ради гранулярности инспектора, но блочные потребители (каретка,
+  // синхронизация скролла) обязаны видеть только топ-блоки `.md-block`.
+  for (const el of root.querySelectorAll<HTMLElement>(".md-block[data-md]")) {
     const range = parseRange(el);
     if (range) list.push({ start: range.start, end: range.end, el });
   }

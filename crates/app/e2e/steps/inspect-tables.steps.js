@@ -11,6 +11,9 @@ import {
   hoverHeaderByText,
   hoverRowByText,
   hoverTableBlock,
+  leavePreview,
+  pressShift,
+  releaseShift,
   rowBandText,
 } from "./helpers.js";
 
@@ -36,6 +39,27 @@ When("я навожу мышь на таблицу целиком", async () => 
 
 When("я кликнул по ячейке {string}", async (text) => {
   await clickCellByText(text);
+});
+
+When("я нажимаю Shift", async () => {
+  await pressShift();
+});
+
+When("я отпускаю Shift", async () => {
+  await releaseShift();
+});
+
+When("курсор уходит из предпросмотра", async () => {
+  await leavePreview();
+});
+
+Then("нет активного элемента инспектора", async () => {
+  const info = await activeInspectInfo();
+  if (info) {
+    throw new Error(
+      `Активный элемент остался: ${info.tag} ${JSON.stringify(info.text)}`
+    );
+  }
 });
 
 Then("в редакторе выделено {string}", async (expected) => {
@@ -71,6 +95,13 @@ Then("подсвечена строка, содержащая {string}", async (
     throw new Error(
       `Подсвечена строка ${JSON.stringify(text)}, ожидалось вхождение ${JSON.stringify(fragment)}`
     );
+  }
+});
+
+Then("нет подсвеченной строки", async () => {
+  const text = await rowBandText();
+  if (text !== null) {
+    throw new Error(`Осталась подсвеченная строка ${JSON.stringify(text)}`);
   }
 });
 

@@ -106,6 +106,15 @@ html, body { height: 100%; margin: 0; }
   border-radius: 2px;
 }
 
+/* Бэнды строки/столбца: фон, не outline. Специфичность с id выше зебры
+   (`.markdown-body ... tr:nth-child(2n)`) и sticky-шапки; транзиентные классы
+   живут только пока курсор над элементом, поэтому `!important` не нужен. */
+#preview .inspect-col,
+#preview tr.inspect-row > td,
+#preview tr.inspect-row > th {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
 /* ---------- типографика предпросмотра ---------- */
 .markdown-body { max-width: 860px; word-wrap: break-word; }
 .markdown-body h1, .markdown-body h2 { border-bottom: 1px solid var(--border); padding-bottom: .2em; }

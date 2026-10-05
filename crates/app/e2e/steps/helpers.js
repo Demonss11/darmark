@@ -729,6 +729,44 @@ export function rowBandText() {
   });
 }
 
+/// Нажимает Shift без движения мыши: keydown на document. Инспектор должен
+/// пересчитать уровень последней наведённой цели (AC-5).
+export async function pressShift() {
+  await browser.execute(() => {
+    document.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Shift", bubbles: true })
+    );
+  });
+  await browser.pause(30);
+}
+
+/// Отпускает Shift: keyup на document — обратный пересчёт уровня (AC-5).
+export async function releaseShift() {
+  await browser.execute(() => {
+    document.dispatchEvent(
+      new KeyboardEvent("keyup", { key: "Shift", bubbles: true })
+    );
+  });
+  await browser.pause(30);
+}
+
+/// Эмулирует уход курсора из предпросмотра: mouseout с `relatedTarget` вне
+/// `#preview` (инспектор снимает подсветку источника и бэнды, AC-6).
+export async function leavePreview() {
+  await browser.execute(() => {
+    const preview = document.getElementById("preview");
+    const editor = document.getElementById("editor");
+    const from = document.querySelector("#preview .inspect-active") ?? preview;
+    from.dispatchEvent(
+      new MouseEvent("mouseout", {
+        bubbles: true,
+        relatedTarget: editor,
+      })
+    );
+  });
+  await browser.pause(30);
+}
+
 /// Эталонный перевод байтового смещения (UTF-8) в UTF-16-индекс по значению
 /// редактора. Независимая реализация для сверки с inspector.ts.
 export function refBytesToUnits(byteStart, byteEnd) {
