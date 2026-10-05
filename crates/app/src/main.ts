@@ -6,6 +6,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { renderMarkdown, readFile, writeFile } from "./tauri";
 import { enhanceTables, attachMenuAutoClose } from "./tables";
+import { createInspector } from "./inspector";
 import "./style.css";
 
 const MD_FILTER = {
@@ -19,7 +20,15 @@ const fileLabel = document.getElementById("file-label") as HTMLElement;
 const statPos = document.getElementById("stat-pos") as HTMLElement;
 const statSize = document.getElementById("stat-size") as HTMLElement;
 const statMsg = document.getElementById("stat-msg") as HTMLElement;
+const statInspect = document.getElementById("stat-inspect") as HTMLElement;
+const btnInspect = document.getElementById("btn-inspect") as HTMLButtonElement;
 const chkPreview = document.getElementById("chk-preview") as HTMLInputElement;
+
+const inspector = createInspector({
+  editor,
+  preview,
+  statusEl: statInspect,
+});
 
 let currentPath: string | null = null;
 let dirty = false;
@@ -44,26 +53,42 @@ function resetRenderState() {
 
 async function doRender() {
   const seq = ++renderSeq;
+  // Фиксируем текст, ушедший в рендер: по нему посчитаны data-md-смещения,
+  // поэтому карту инспектора нужно строить именно по нему (см. T-9/T-14).
+  const source = editor.value;
   try {
-    const html = await renderMarkdown(editor.value);
+    const html = await renderMarkdown(source, inspector.isActive());
     if (seq !== renderSeq) return; // более новый рендер уже в полёте
     // Если HTML не изменился — не трогаем DOM: иначе сбрасывались бы
     // сортировка, фильтры и фокус в предпросмотре на каждом дебаунсе.
-    if (html === lastRenderedHtml) return;
-    lastRenderedHtml = html;
-    preview.innerHTML = html;
-    try {
-      enhanceTables(preview); // Excel-подобные сортировка/фильтры для всех <table>
-    } catch (e) {
-      // Украшение таблиц упало — оставляем читаемый HTML без улучшений (P1.2).
-      flash(`Таблицы: ${String(e)}`);
+    if (html !== lastRenderedHtml) {
+      lastRenderedHtml = html;
+      preview.innerHTML = html;
+      try {
+        enhanceTables(preview); // Excel-подобные сортировка/фильтры для всех <table>
+      } catch (e) {
+        // Украшение таблиц упало — оставляем читаемый HTML без улучшений (P1.2).
+        flash(`Таблицы: ${String(e)}`);
+      }
     }
+    // Переиндексация нужна всегда: после изменения текста карта устарела, даже
+    // если разметка визуально не поменялась (совпадающий HTML — не повод).
+    inspector.onRendered(source);
   } catch (e) {
     if (seq === renderSeq) {
       lastRenderedHtml = "";
       preview.textContent = `Ошибка рендера: ${String(e)}`;
     }
   }
+}
+
+function toggleInspector() {
+  if (inspector.isActive()) inspector.disable();
+  else inspector.enable();
+  btnInspect.classList.toggle("active", inspector.isActive());
+  // HTML с обёртками .md-block отличается от обычного — принудительно перерисовываем.
+  lastRenderedHtml = "";
+  void doRender();
 }
 
 attachMenuAutoClose(preview); // закрытие меню фильтров при прокрутке предпросмотра
@@ -121,6 +146,7 @@ async function newFile() {
   editor.value = "";
   resetRenderState();
   preview.innerHTML = "";
+  inspector.onRendered(editor.value); // сбрасываем устаревшие диапазоны
   updateTitle();
   updateStatus();
   editor.focus();
@@ -184,20 +210,35 @@ document.getElementById("btn-new")!.addEventListener("click", () => void newFile
 document.getElementById("btn-open")!.addEventListener("click", () => void openFile());
 document.getElementById("btn-save")!.addEventListener("click", () => void saveFile());
 document.getElementById("btn-save-as")!.addEventListener("click", () => void saveAs());
+btnInspect.addEventListener("click", toggleInspector);
 
 editor.addEventListener("input", () => {
   dirty = true;
   updateTitle();
   updateStatus();
+  inspector.onRendered(); // сбрасываем подсветку — диапазоны устарели
   scheduleRender();
 });
-for (const ev of ["keyup", "click"]) editor.addEventListener(ev, updateStatus);
+for (const ev of ["keyup", "click", "select"]) {
+  editor.addEventListener(ev, () => {
+    updateStatus();
+    inspector.onEditorActivity(); // переиспользуем единый хук (T-11)
+  });
+}
 
 chkPreview.addEventListener("change", () => {
   preview.style.display = chkPreview.checked ? "" : "none";
 });
 
 window.addEventListener("keydown", (e: KeyboardEvent) => {
+  // Esc выходит из режима инспектора (кроме случая открытого меню фильтра).
+  if (e.key === "Escape" && inspector.isActive()) {
+    if (!document.querySelector(".col-filter-menu")) {
+      e.preventDefault();
+      toggleInspector();
+    }
+    return;
+  }
   if (!(e.ctrlKey || e.metaKey)) return;
   const k = e.key.toLowerCase();
   if (k === "n" && !e.shiftKey) { e.preventDefault(); void newFile(); }
@@ -205,6 +246,7 @@ window.addEventListener("keydown", (e: KeyboardEvent) => {
   else if (k === "s" && e.shiftKey) { e.preventDefault(); void saveAs(); }
   else if (k === "s") { e.preventDefault(); void saveFile(); }
   else if (k === "p") { e.preventDefault(); chkPreview.click(); }
+  else if (k === "i") { e.preventDefault(); toggleInspector(); }
 });
 
 // закрытие окна с несохранёнными изменениями — штатный вопрос Windows-диалога

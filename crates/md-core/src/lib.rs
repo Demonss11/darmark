@@ -8,7 +8,7 @@
 //! - Footnotes (`[^1]`)
 //! - Heading IDs (`# Title {#custom-id}`)
 
-use pulldown_cmark::{html, Options, Parser};
+use pulldown_cmark::{html, Event, Options, Parser};
 
 /// Все расширения, включённые по умолчанию в приложении.
 pub const DEFAULT_OPTIONS: Options = Options::empty()
@@ -32,6 +32,137 @@ pub fn to_html_with(markdown: &str, options: Options) -> String {
     let mut out = String::with_capacity(markdown.len() + 64);
     html::push_html(&mut out, parser);
     sanitize_html(&out)
+}
+
+/// Рендерит markdown с пометкой топ-блоков: каждый блок оборачивается в
+/// `<div class="md-block" data-md="{start},{end}">`, где `start`/`end` — байтовые
+/// смещения блока в исходном markdown (start включительно, end исключительно).
+///
+/// Документ парсится **один раз**: события `OffsetIter` группируются по
+/// топ-блокам и каждая группа прогоняется через `html::push_html`. Это
+/// принципиально — ссылочные определения (`[foo]: /url`) и сноски (`[^1]`)
+/// разрешаются единым парсером на весь документ, поэтому повторная сборка
+/// вырезанных срезов (прошлая реализация) их не теряет.
+///
+/// Инварианты:
+/// * детерминированность — одинаковый вход даёт одинаковый выход;
+/// * содержимое блоков без обёрток побайтово совпадает с [`to_html`]
+///   (тот же `DEFAULT_OPTIONS` + тот же санитайзер);
+/// * `data-md` содержит только цифры и запятую — безопасен для HTML;
+/// * границы блоков — UTF-8 char-boundary (гарантия `OffsetIter`);
+/// * пустые блоки не создаются (проверка по итоговому HTML, а не по срезу).
+pub fn to_html_mapped(markdown: &str) -> String {
+    // Группы событий по топ-блокам: (start, end, события блока).
+    let mut blocks: Vec<(usize, usize, Vec<Event<'_>>)> = Vec::new();
+    let mut group: Vec<Event<'_>> = Vec::new();
+    let mut group_start: Option<usize> = None;
+    let mut depth: usize = 0;
+
+    for (event, range) in Parser::new_ext(markdown, DEFAULT_OPTIONS).into_offset_iter() {
+        match &event {
+            Event::Start(_) => {
+                if depth == 0 {
+                    group_start = Some(range.start);
+                }
+                depth += 1;
+                group.push(event);
+            }
+            Event::End(_) => {
+                depth = depth.saturating_sub(1);
+                group.push(event);
+                if depth == 0 {
+                    let start = group_start.take().unwrap_or(range.start);
+                    blocks.push((start, range.end, std::mem::take(&mut group)));
+                }
+            }
+            _ => {
+                if depth == 0 {
+                    // Одиночные события верхнего уровня, не образующие контейнер:
+                    // `Rule` (`<hr>`), HTML-блоки, «висячий» текст. Каждое —
+                    // самостоятельный блок (иначе `<hr>` выпал бы из подсветки).
+                    blocks.push((range.start, range.end, vec![event]));
+                } else {
+                    group.push(event);
+                }
+            }
+        }
+    }
+
+    // Ссылочные определения не порождают событий, поэтому их байты оказываются
+    // «между» блоками. Приклеиваем такие непустые промежутки к следующему блоку
+    // (а хвостовой — к последнему), чтобы покрытие T-5 не рвалось.
+    let mut prev_end = 0;
+    for block in blocks.iter_mut() {
+        let start = block.0;
+        let end = block.1;
+        if start > prev_end {
+            if let Some(non_ws) = first_non_ws(markdown, prev_end, start) {
+                block.0 = non_ws;
+            }
+        }
+        prev_end = end;
+    }
+    if let Some(last) = blocks.last_mut() {
+        if let Some(end) = last_non_ws_end(markdown, last.1, markdown.len()) {
+            last.1 = end;
+        }
+    }
+
+    let mut result = String::with_capacity(markdown.len() + 64);
+    for (start, end, events) in blocks {
+        // Хвостовые пробелы/пустые строки не относятся к блоку: подсветка в
+        // редакторе не должна захватывать «воздух» между абзацами.
+        let end = trim_end_ws(markdown, start, end);
+        if end <= start {
+            continue;
+        }
+        let mut html_out = String::with_capacity((end - start) + 32);
+        html::push_html(&mut html_out, events.into_iter());
+        let sanitized = sanitize_html(&html_out);
+        // HTML-комментарий/опасный контейнер непуст по исходнику, но после
+        // санитайзера остаётся лишь пробельный хвост — обёртку не создаём
+        // (T-2.5), но хвост сохраняем, чтобы конкатенация совпадала с to_html.
+        if sanitized.trim().is_empty() {
+            result.push_str(&sanitized);
+            continue;
+        }
+        result.push_str("<div class=\"md-block\" data-md=\"");
+        result.push_str(&start.to_string());
+        result.push(',');
+        result.push_str(&end.to_string());
+        result.push_str("\">");
+        result.push_str(&sanitized);
+        result.push_str("</div>");
+    }
+    result
+}
+
+/// Байтовый индекс первого непробельного символа в `markdown[from..to]`.
+fn first_non_ws(markdown: &str, from: usize, to: usize) -> Option<usize> {
+    let slice = markdown.get(from..to)?;
+    slice
+        .char_indices()
+        .find(|(_, c)| !c.is_whitespace())
+        .map(|(i, _)| from + i)
+}
+
+/// Байтовый индекс сразу после последнего непробельного символа в
+/// `markdown[from..to]`.
+fn last_non_ws_end(markdown: &str, from: usize, to: usize) -> Option<usize> {
+    let slice = markdown.get(from..to)?;
+    slice
+        .char_indices()
+        .filter(|(_, c)| !c.is_whitespace())
+        .map(|(i, c)| from + i + c.len_utf8())
+        .next_back()
+}
+
+/// Усекает `end`, убирая хвостовые пробельные символы в `markdown[start..end]`.
+fn trim_end_ws(markdown: &str, start: usize, end: usize) -> usize {
+    match markdown.get(start..end) {
+        Some(slice) => start + slice.trim_end().len(),
+        None => end,
+    }
 }
 
 // ─── Санитайзер HTML-вывода pulldown-cmark (v2: белые списки) ──────────
@@ -870,5 +1001,310 @@ mod tests {
         assert!(style_is_safe("text-align:center"));
         assert!(!style_is_safe("background:red"));
         assert!(!style_is_safe("position:fixed"));
+    }
+
+    // ─── Режим инспектора: to_html_mapped (T-1…T-5) ────────────────────
+
+    /// Извлекает `(start, end)`-пары из `data-md` в порядке документа.
+    fn mapped_ranges(md: &str) -> Vec<(usize, usize)> {
+        let html = to_html_mapped(md);
+        let mut ranges = Vec::new();
+        let mut rest = html.as_str();
+        while let Some(pos) = rest.find("data-md=\"") {
+            let after = &rest[pos + "data-md=\"".len()..];
+            let Some(quote) = after.find('"') else { break };
+            let raw = &after[..quote];
+            if let Some((s, e)) = raw.split_once(',') {
+                if let (Ok(a), Ok(b)) = (s.parse::<usize>(), e.parse::<usize>()) {
+                    ranges.push((a, b));
+                }
+            }
+            rest = &after[quote..];
+        }
+        ranges
+    }
+
+    #[test]
+    fn heading_and_paragraph_two_blocks() {
+        let md = "# H\n\ntext";
+        assert_eq!(mapped_ranges(md), vec![(0, 3), (5, 9)]);
+        let html = to_html_mapped(md);
+        assert_eq!(html.matches("md-block").count(), 2);
+        assert!(html.contains("<h1"), "html: {html}");
+        assert!(html.contains("<p>text</p>"), "html: {html}");
+    }
+
+    #[test]
+    fn gfm_table_one_block() {
+        let md = "| A |\n|---|\n| 1 |";
+        let ranges = mapped_ranges(md);
+        assert_eq!(ranges, vec![(0, md.len())], "ranges: {ranges:?}");
+        let html = to_html_mapped(md);
+        assert_eq!(html.matches("md-block").count(), 1);
+        assert!(html.contains("<table>"), "html: {html}");
+    }
+
+    #[test]
+    fn nested_list_one_block() {
+        let md = "- item\n  - sub\n  - sub2";
+        let ranges = mapped_ranges(md);
+        assert_eq!(ranges, vec![(0, md.len())], "ranges: {ranges:?}");
+        assert_eq!(to_html_mapped(md).matches("md-block").count(), 1);
+    }
+
+    #[test]
+    fn blockquote_with_nested() {
+        let md = "> quote\n> - item";
+        let ranges = mapped_ranges(md);
+        assert_eq!(ranges, vec![(0, md.len())], "ranges: {ranges:?}");
+        assert_eq!(to_html_mapped(md).matches("md-block").count(), 1);
+    }
+
+    #[test]
+    fn fenced_code_block() {
+        let md = "```\n# not heading\n```";
+        let ranges = mapped_ranges(md);
+        assert_eq!(ranges, vec![(0, md.len())], "ranges: {ranges:?}");
+        let html = to_html_mapped(md);
+        assert_eq!(html.matches("md-block").count(), 1);
+        assert!(
+            html.contains("<pre><code># not heading\n</code></pre>"),
+            "html: {html}"
+        );
+    }
+
+    #[test]
+    fn footnote_definition_separate_block() {
+        let md = "Text[^1]\n\n[^1]: note";
+        let html = to_html_mapped(md);
+        // Основной абзац со ссылкой на сноску + определение сноски.
+        assert_eq!(html.matches("md-block").count(), 2, "html: {html}");
+        let ranges = mapped_ranges(md);
+        assert_eq!(ranges.len(), 2, "ranges: {ranges:?}");
+        assert_eq!(ranges[0], (0, 8), "ranges: {ranges:?}");
+        assert_eq!(ranges[1], (10, 20), "ranges: {ranges:?}");
+        assert!(html.contains("footnote"), "html: {html}");
+    }
+
+    #[test]
+    fn setext_heading() {
+        let md = "Title\n=====";
+        let ranges = mapped_ranges(md);
+        assert_eq!(ranges, vec![(0, md.len())], "ranges: {ranges:?}");
+        let html = to_html_mapped(md);
+        assert!(html.contains("<h1>Title</h1>"), "html: {html}");
+    }
+
+    #[test]
+    fn empty_input() {
+        assert_eq!(to_html_mapped(""), "");
+        assert_eq!(to_html_mapped("\n\n"), "");
+    }
+
+    #[test]
+    fn trimmed_no_trailing_blank_lines() {
+        let md = "# H\n\n\n\n";
+        let ranges = mapped_ranges(md);
+        assert_eq!(ranges, vec![(0, 3)], "ranges: {ranges:?}");
+    }
+
+    #[test]
+    fn utf8_boundary() {
+        let md = "# Привет 🌍";
+        let ranges = mapped_ranges(md);
+        assert_eq!(ranges.len(), 1, "ranges: {ranges:?}");
+        let (s, e) = ranges[0];
+        assert!(md.is_char_boundary(s), "start {s} не на границе символа");
+        assert!(md.is_char_boundary(e), "end {e} не на границе символа");
+        // Диапазон покрывает весь кириллический заголовок с эмодзи.
+        assert_eq!(&md[s..e], "# Привет 🌍");
+    }
+
+    #[test]
+    fn crlf_bytes() {
+        let md = "# H\r\n\r\ntext\r\n";
+        let ranges = mapped_ranges(md);
+        // Байты: "# H"(0..3) \r\n \r\n "text"(7..11) \r\n.
+        // trim_end не захватывает хвостовой `\r`.
+        assert_eq!(ranges, vec![(0, 3), (7, 11)], "ranges: {ranges:?}");
+        assert_eq!(&md[ranges[0].0..ranges[0].1], "# H");
+        assert_eq!(&md[ranges[1].0..ranges[1].1], "text");
+    }
+
+    /// Снимает с mapped-HTML обёртки блоков, оставляя только содержимое.
+    /// Учитывает вложенные `<div>` (например, `footnote-definition`).
+    fn strip_mapped_wrappers(html: &str) -> String {
+        const OPEN: &str = "<div class=\"md-block\" data-md=\"";
+        let mut out = String::new();
+        let mut rest = html;
+        while let Some(pos) = rest.find(OPEN) {
+            out.push_str(&rest[..pos]);
+            let after = &rest[pos + OPEN.len()..];
+            // после `data-md="…"` идёт `>` — пропускаем до него
+            let Some(gt) = after.find('>') else { break };
+            let inner = &after[gt + 1..];
+            match find_matching_div_close(inner) {
+                Some(end) => {
+                    out.push_str(&inner[..end]);
+                    rest = &inner[end + "</div>".len()..];
+                }
+                None => {
+                    rest = inner;
+                }
+            }
+        }
+        out.push_str(rest);
+        out
+    }
+
+    /// Индекс парного `</div>` в `s` для уже открытого `<div>` (глубина = 1).
+    fn find_matching_div_close(s: &str) -> Option<usize> {
+        let bytes = s.as_bytes();
+        let mut depth = 1usize;
+        let mut i = 0;
+        while i < bytes.len() {
+            if bytes[i..].starts_with(b"<div") {
+                depth += 1;
+                i += 4;
+            } else if bytes[i..].starts_with(b"</div>") {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(i);
+                }
+                i += 6;
+            } else {
+                i += 1;
+            }
+        }
+        None
+    }
+
+    /// Содержимое блоков (без обёрток) обязано побайтово совпадать с `to_html`.
+    /// Проверяем на документах, задевающих все ветки парсера: ссылочные
+    /// определения, картинки, сноски, `<hr>`, HTML-комментарии.
+    #[test]
+    fn mapped_matches_to_html_regression() {
+        for md in [
+            "# H\n\ntext\n\n| A |\n|---|\n| 1 |\n\n> quote",
+            "[foo]: /url\n\nUse [foo] here.",
+            "![img][logo]\n\n[logo]: /a.png",
+            "Text[^1]\n\n[^1]: note",
+            "text\n\n***\n\nmore",
+            "before\n\n<!-- hidden -->\n\nafter",
+        ] {
+            let mapped = to_html_mapped(md);
+            let plain = to_html(md);
+            let content = strip_mapped_wrappers(&mapped);
+            assert_eq!(content, plain, "несовпадение для входа {md:?}");
+        }
+    }
+
+    #[test]
+    fn reference_definition_resolves_link() {
+        let md = "[foo]: /url\n\nUse [foo] here.";
+        let html = to_html_mapped(md);
+        assert!(
+            html.contains("href=\"/url\""),
+            "ссылка не разрешилась: {html}"
+        );
+        assert!(!html.contains("[foo]"), "осталась сырая ссылка: {html}");
+    }
+
+    #[test]
+    fn reference_definition_resolves_image() {
+        let md = "![img][logo]\n\n[logo]: /a.png";
+        let html = to_html_mapped(md);
+        assert!(
+            html.contains("src=\"/a.png\""),
+            "картинка не разрешилась: {html}"
+        );
+    }
+
+    #[test]
+    fn footnote_reference_resolves_and_labels_stay() {
+        let md = "Text[^1]\n\n[^1]: note";
+        let html = to_html_mapped(md);
+        assert!(
+            html.contains("footnote-reference"),
+            "нет ссылки на сноску: {html}"
+        );
+        assert!(
+            html.contains("footnote-definition-label\">1<"),
+            "метка определения испорчена: {html}"
+        );
+    }
+
+    #[test]
+    fn rule_is_indexed() {
+        let md = "text\n\n***\n\nmore";
+        let ranges = mapped_ranges(md);
+        assert_eq!(ranges, vec![(0, 4), (6, 9), (11, 15)], "ranges: {ranges:?}");
+        let html = to_html_mapped(md);
+        assert_eq!(html.matches("<hr").count(), 1, "html: {html}");
+        assert_eq!(html.matches("md-block").count(), 3, "html: {html}");
+    }
+
+    #[test]
+    fn html_comment_yields_no_empty_block() {
+        let md = "before\n\n<!-- hidden -->\n\nafter";
+        let html = to_html_mapped(md);
+        assert_eq!(
+            html.matches("md-block").count(),
+            2,
+            "пустая обёртка от комментария: {html}"
+        );
+        assert!(!html.contains("hidden"), "комментарий просочился: {html}");
+        assert!(
+            !html.contains("data-md=\"\"") && !html.contains("></div>"),
+            "html: {html}"
+        );
+    }
+
+    fn assert_blocks_cover_nonempty(md: &str) {
+        let ranges = mapped_ranges(md);
+
+        // Диапазоны не пересекаются и упорядочены.
+        for pair in ranges.windows(2) {
+            assert!(pair[0].1 <= pair[1].0, "наложение: {pair:?}");
+        }
+
+        // Каждый диапазон покрывает только «содержательные» байты.
+        for (s, e) in &ranges {
+            assert!(md.is_char_boundary(*s) && md.is_char_boundary(*e));
+            assert!(!md[*s..*e].trim().is_empty(), "пустой блок {s}..{e}");
+        }
+
+        // Каждая непустая строка целиком попадает хотя бы в один диапазон.
+        // (Диапазон может захватывать и пустые строки — например, ссылочное
+        // определение, приклеенное к соседнему блоку.)
+        let mut pos = 0usize;
+        for segment in md.split_inclusive('\n') {
+            let no_nl = segment.strip_suffix('\n').unwrap_or(segment);
+            let content = no_nl.strip_suffix('\r').unwrap_or(no_nl);
+            if !content.trim().is_empty() {
+                let line_start = pos;
+                let line_end = pos + content.len();
+                assert!(
+                    ranges
+                        .iter()
+                        .any(|&(s, e)| s <= line_start && line_end <= e),
+                    "строка {content:?} не покрыта: {ranges:?} в {md:?}"
+                );
+            }
+            pos += segment.len();
+        }
+    }
+
+    #[test]
+    fn mapped_blocks_cover_nonempty_without_overlap() {
+        for md in [
+            "# A\n\ntext\n\n| X |\n|---|\n| 1 |\n\n- a\n- b",
+            "text\n\n***\n\nmore",
+            "[foo]: /url\n\nUse [foo] here.",
+            "![img][logo]\n\n[logo]: /a.png",
+            "Text[^1]\n\n[^1]: note",
+        ] {
+            assert_blocks_cover_nonempty(md);
+        }
     }
 }

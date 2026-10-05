@@ -17,3 +17,6 @@ build/
 
 .gigaide/
 .idea/
+
+# Локальная CRLF-копия фикстуры AC-10 (генерируется, в репо хранится LF-версия)
+crates/app/e2e/fixtures/ac10-unicode-crlf.md

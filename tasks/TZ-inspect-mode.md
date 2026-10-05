@@ -192,7 +192,7 @@ export function createInspector(opts: {
 
 **T-12. Клик по превью (AC-6):**
 - Включённый режим перехватывает `click` в `preview` в capture-фазе: если цель внутри `[data-md]` — выделить диапазон, `editor.focus()`, `preventDefault()+stopPropagation()`.
-- **Кроме** кликов по интерактиве таблиц: если `e.target.closest("button, input, select, a, .col-filter-menu")` — не перехватывать, дать tables.ts отработать (сортировка по th, воронка фильтра).
+- **Кроме** кликов по интерактиве таблиц: если `e.target.closest("button, input, select, a, .col-filter-menu, th")` — не перехватывать, дать tables.ts отработать (сортировка по th, воронка фильтра). `th` добавлен к списку ТЗ: клик по заголовку столбца — это сортировка, а не инспекция.
 
 **T-13. Фокус и выделение textarea:**
 - При hover из превью временно `editor.focus({ preventScroll: true })`; исходный `document.activeElement` запомнить и восстановить при disable/выходе мыши из превью.

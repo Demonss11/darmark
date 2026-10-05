@@ -13,7 +13,10 @@
   "skills": {
     "disabled": [
       "qa",
-      "review"
+      "review",
+      "frontend-design",
+      "git-commit",
+      "frontend-dev"
     ]
   }
 }

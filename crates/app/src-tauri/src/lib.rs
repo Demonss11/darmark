@@ -43,9 +43,16 @@ async fn write_file(path: PathBuf, contents: String) -> Result<(), String> {
 }
 
 /// Рендерит markdown → HTML через md-core (CommonMark + GFM tables/strike/tasklist).
+///
+/// `mapped` включает режим инспектора: топ-блоки оборачиваются в
+/// `<div class="md-block" data-md="start,end">` (см. `md_core::to_html_mapped`).
 #[tauri::command]
-fn render_markdown(markdown: String) -> String {
-    md_core::to_html(&markdown)
+fn render_markdown(markdown: String, mapped: Option<bool>) -> String {
+    if mapped.unwrap_or(false) {
+        md_core::to_html_mapped(&markdown)
+    } else {
+        md_core::to_html(&markdown)
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -53,6 +60,11 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .setup(|app| {
+            #[cfg(windows)]
+            disable_browser_accelerator_keys(app);
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             read_file,
             write_file,
@@ -60,6 +72,38 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running mdedit");
+}
+
+/// Отключает браузерные акселераторы WebView2 (Ctrl+P — печать, F5, Ctrl+F …).
+///
+/// По умолчанию WebView2 перехватывает их на уровне движка, и JS-обработчик
+/// `keydown` их не получает: `Ctrl+P` открывал печать вместо переключения
+/// предпросмотра. Обычные клавиши редактирования (Ctrl+C/V/X/A/Z) не затронуты.
+#[cfg(windows)]
+fn disable_browser_accelerator_keys(app: &tauri::App) {
+    use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Settings3;
+    use tauri::Manager;
+    use windows_core::Interface;
+
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+    let _ = window.with_webview(|webview| {
+        let controller = webview.controller();
+        unsafe {
+            // Controller → CoreWebView2 → Settings (на контроллере метода нет).
+            let Ok(core) = controller.CoreWebView2() else {
+                return;
+            };
+            let Ok(settings) = core.Settings() else {
+                return;
+            };
+            let Ok(settings3) = settings.cast::<ICoreWebView2Settings3>() else {
+                return;
+            };
+            let _ = settings3.SetAreBrowserAcceleratorKeysEnabled(false);
+        }
+    });
 }
 
 #[cfg(test)]
