@@ -4,20 +4,21 @@
 // байтовые смещения в исходном markdown.
 //
 // Главная сложность — единицы измерения: textarea оперирует UTF-16 code units
-// (selectionStart/End), а pulldown-cmark — байтами UTF-8. Поэтому здесь строятся
-// две префиксные карты byte↔UTF-16 по editor.value (который WebView может
-// нормализовать по CRLF — именно он и есть источник истины).
+// (selectionStart/End), а pulldown-cmark — байтами UTF-8. Карты byte↔UTF-16
+// строятся по editor.value, который WebView может нормализовать по CRLF — именно
+// он и есть источник истины. Общая логика вынесена в `mapping.ts`, чтобы её
+// переиспользовала синхронизация скролла.
 
-interface Block {
-  start: number; // байтовый offset в editor.value (inclusive)
-  end: number;   // байтовый offset в editor.value (exclusive)
-  el: HTMLElement;
-}
-
-interface UnitMaps {
-  b2u: Int32Array; // байтовый индекс → позиция в UTF-16 code units
-  u2b: Int32Array; // позиция в UTF-16 code units → байтовый индекс
-}
+import {
+  type Block,
+  type UnitMaps,
+  buildUnitMaps,
+  bytesToUnits,
+  collectBlocks,
+  findBlock,
+  parseRange,
+  unitsToBytes,
+} from "./mapping";
 
 export interface Inspector {
   isActive(): boolean;
@@ -41,8 +42,10 @@ export function createInspector(opts: {
   editor: HTMLTextAreaElement;
   preview: HTMLElement;
   statusEl: HTMLElement;
+  /** Вызывается перед программным scrollIntoView (чтобы синхронизация скролла не тянула вторую панель). */
+  beforeScrollIntoView?: () => void;
 }): Inspector {
-  const { editor, preview, statusEl } = opts;
+  const { editor, preview, statusEl, beforeScrollIntoView } = opts;
 
   let active = false;
   let blocks: Block[] | null = null;
@@ -55,84 +58,6 @@ export function createInspector(opts: {
   let savedFocus: HTMLElement | null = null;
 
   let lastScrollAt = 0;
-
-  // ---------- byte ↔ UTF-16 ----------
-
-  function utf8ByteLength(code: number): number {
-    if (code < 0x80) return 1;
-    if (code < 0x800) return 2;
-    if (code < 0x10000) return 3;
-    return 4;
-  }
-
-  function buildMaps(text: string): UnitMaps {
-    let byteLen = 0;
-    // Итерация по code points: суррогатные пары не разрываются.
-    for (const ch of text) byteLen += utf8ByteLength(ch.codePointAt(0)!);
-
-    const b2u = new Int32Array(byteLen + 1);
-    const u2b = new Int32Array(text.length + 1);
-    let byte = 0;
-    let unit = 0;
-    for (const ch of text) {
-      const code = ch.codePointAt(0)!;
-      const bl = utf8ByteLength(code);
-      const ul = code > 0xffff ? 2 : 1;
-      for (let i = 0; i < bl; i++) b2u[byte + i] = unit;
-      for (let i = 0; i < ul; i++) u2b[unit + i] = byte;
-      byte += bl;
-      unit += ul;
-    }
-    b2u[byte] = unit;
-    u2b[unit] = byte;
-    return { b2u, u2b };
-  }
-
-  function bytesToUnits(b: number): number {
-    if (!maps) return 0;
-    // Зажимаем индекс: выход за границы Int32Array даёт undefined (→ 0, начало
-    // документа) и подсветил бы не тот блок. Лучше крайняя корректная позиция.
-    const i = Math.min(Math.max(b, 0), maps.b2u.length - 1);
-    return maps.b2u[i]!;
-  }
-
-  function unitsToBytes(u: number): number {
-    if (!maps) return 0;
-    const i = Math.min(Math.max(u, 0), maps.u2b.length - 1);
-    return maps.u2b[i]!;
-  }
-
-  // ---------- блоки ----------
-
-  function parseRange(el: HTMLElement): { start: number; end: number } | null {
-    const raw = el.getAttribute("data-md");
-    if (!raw) return null;
-    const [s, e] = raw.split(",");
-    const start = Number(s);
-    const end = Number(e);
-    if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
-    return { start, end };
-  }
-
-  function collectBlocks(): Block[] {
-    const list: Block[] = [];
-    for (const el of preview.querySelectorAll<HTMLElement>("[data-md]")) {
-      const range = parseRange(el);
-      if (range) list.push({ start: range.start, end: range.end, el });
-    }
-    list.sort((a, b) => a.start - b.start);
-    return list;
-  }
-
-  function findBlock(bytePos: number): Block | null {
-    if (!blocks || blocks.length === 0) return null;
-    for (const block of blocks) {
-      if (bytePos >= block.start && bytePos < block.end) return block;
-    }
-    // Каретка точно в конце документа относится к последнему блоку.
-    const last = blocks[blocks.length - 1];
-    return bytePos === last.end ? last : null;
-  }
 
   // ---------- подсветка ----------
 
@@ -150,6 +75,8 @@ export function createInspector(opts: {
     const now = performance.now();
     if (now - lastScrollAt < 100) return; // throttle, чтобы не дёргать скролл
     lastScrollAt = now;
+    // Гасим синхронизацию: программный scrollIntoView не должен тянуть редактор.
+    beforeScrollIntoView?.();
     el.scrollIntoView({ block: "nearest" });
   }
 
@@ -157,9 +84,9 @@ export function createInspector(opts: {
     if (!force && activeBlockEl === el) return; // гистерезис — не дёргать на том же блоке
     clearBlockHighlight();
     const range = parseRange(el);
-    if (!range) return;
-    const start = bytesToUnits(range.start);
-    const end = bytesToUnits(range.end);
+    if (!range || !maps) return;
+    const start = bytesToUnits(maps, range.start);
+    const end = bytesToUnits(maps, range.end);
     el.classList.add("inspect-active");
     activeBlockEl = el;
     // Сначала фокус, потом диапазон: focus() может восстановить сохранённое
@@ -203,7 +130,7 @@ export function createInspector(opts: {
     const caretPos = backward
       ? editor.selectionStart ?? 0
       : editor.selectionEnd ?? 0;
-    const block = findBlock(unitsToBytes(caretPos));
+    const block = findBlock(blocks, unitsToBytes(maps, caretPos));
     if (!block) {
       clearBlockHighlight();
       return;
@@ -272,9 +199,9 @@ export function createInspector(opts: {
     // Без аргумента — только сброс подсветки (вызывается из input-хендлера:
     // DOM ещё старый, переиндексация будет после установки нового innerHTML).
     if (!active || markdown === undefined) return;
-    blocks = collectBlocks();
+    blocks = collectBlocks(preview);
     // Смещения в data-md посчитаны по тексту рендера; строим карту по нему же.
-    maps = buildMaps(markdown);
+    maps = buildUnitMaps(markdown);
   }
 
   return { isActive, enable, disable, onRendered, onEditorActivity: onEditorSelection };

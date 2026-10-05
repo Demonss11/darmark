@@ -57,6 +57,7 @@ html, body { height: 100%; margin: 0; }
   color: #fff;
 }
 #file-label { margin-left: 8px; opacity: 0.8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#toggle-sync { display: flex; gap: 4px; align-items: center; cursor: pointer; opacity: 0.9; }
 #toggle-preview { margin-left: auto; display: flex; gap: 4px; align-items: center; cursor: pointer; }
 
 /* ---------- панели ---------- */
@@ -74,6 +75,11 @@ html, body { height: 100%; margin: 0; }
   color: var(--fg);
   font: 14px/1.5 "Cascadia Mono", Consolas, "Courier New", monospace;
   tab-size: 4;
+  /* Мягкий перенос отключён: логические строки (по \n) совпадают с визуальными,
+     иначе формула scrollTop/lineH для анкорной синхронизации теряет смысл. */
+  white-space: pre;
+  overflow-x: auto;
+  overflow-y: auto;
 }
 
 #preview { flex: 1; min-width: 0; overflow-y: auto; padding: 12px 20px; }

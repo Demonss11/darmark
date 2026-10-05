@@ -12,9 +12,6 @@
   },
   "skills": {
     "disabled": [
-      "qa",
-      "review",
-      "frontend-design",
       "git-commit",
       "frontend-dev"
     ]

@@ -8,6 +8,7 @@ import { renderMarkdown, readFile, writeFile } from "./tauri";
 import { enhanceTables, attachMenuAutoClose } from "./tables";
 import { createInspector } from "./inspector";
 import { resolveLocalImages } from "./images";
+import { createScrollSync } from "./scrollsync";
 import "./style.css";
 
 const MD_FILTER = {
@@ -24,11 +25,16 @@ const statMsg = document.getElementById("stat-msg") as HTMLElement;
 const statInspect = document.getElementById("stat-inspect") as HTMLElement;
 const btnInspect = document.getElementById("btn-inspect") as HTMLButtonElement;
 const chkPreview = document.getElementById("chk-preview") as HTMLInputElement;
+const chkSync = document.getElementById("chk-sync") as HTMLInputElement;
+
+const scrollSync = createScrollSync({ editor, preview });
 
 const inspector = createInspector({
   editor,
   preview,
   statusEl: statInspect,
+  // Программный scrollIntoView инспектора не должен тянуть редактор.
+  beforeScrollIntoView: () => scrollSync.suspend(),
 });
 
 let currentPath: string | null = null;
@@ -50,6 +56,7 @@ function resetRenderState() {
   clearTimeout(debounceTimer);
   renderSeq++;
   lastRenderedHtml = "";
+  scrollSync.onRendered(); // анкоры предыдущего документа устарели — fallback на пропорцию
 }
 
 async function doRender() {
@@ -78,6 +85,9 @@ async function doRender() {
     // Переиндексация нужна всегда: после изменения текста карта устарела, даже
     // если разметка визуально не поменялась (совпадающий HTML — не повод).
     inspector.onRendered(source);
+    // Высоты предпросмотра могли измениться — выравниваем прокрутку (если включена).
+    // Аргумент — текст рендера: по нему строятся анкорные карты sync.
+    scrollSync.onRendered(source);
   } catch (e) {
     if (seq === renderSeq) {
       lastRenderedHtml = "";
@@ -223,6 +233,7 @@ editor.addEventListener("input", () => {
   updateTitle();
   updateStatus();
   inspector.onRendered(); // сбрасываем подсветку — диапазоны устарели
+  scrollSync.onRendered(); // анкоры sync устарели до перерендера — fallback на пропорцию
   scheduleRender();
 });
 for (const ev of ["keyup", "click", "select"]) {
@@ -234,6 +245,10 @@ for (const ev of ["keyup", "click", "select"]) {
 
 chkPreview.addEventListener("change", () => {
   preview.style.display = chkPreview.checked ? "" : "none";
+});
+
+chkSync.addEventListener("change", () => {
+  scrollSync.setEnabled(chkSync.checked);
 });
 
 window.addEventListener("keydown", (e: KeyboardEvent) => {

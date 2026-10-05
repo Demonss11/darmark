@@ -14,6 +14,9 @@
         <button id="btn-save-as" title="Сохранить как (Ctrl+Shift+S)">Сохранить как…</button>
         <span id="file-label">безымянный</span>
         <button id="btn-inspect" title="Инспектор (Ctrl+I)">⌕ Инспектор</button>
+        <label id="toggle-sync" title="Синхронная прокрутка редактора и предпросмотра">
+          <input type="checkbox" id="chk-sync" checked /> синхронно
+        </label>
         <label id="toggle-preview" title="Показать/скрыть предпросмотр (Ctrl+P)">
           <input type="checkbox" id="chk-preview" checked /> предпросмотр
         </label>
@@ -22,6 +25,7 @@
         <textarea
           id="editor"
           spellcheck="false"
+          wrap="off"
           placeholder="# Начните печатать markdown…"
         ></textarea>
         <article id="preview" class="markdown-body"></article>

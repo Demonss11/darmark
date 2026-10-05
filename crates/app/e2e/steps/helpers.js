@@ -287,6 +287,283 @@ export function activeElementId() {
   return browser.execute(() => document.activeElement?.id ?? "");
 }
 
+// ---------- Синхронизация скролла (TZ-scroll-sync-v2) ----------
+//
+// Скролл задаётся программно (`scrollTop`) + синтетическим событием `scroll`,
+// потому что нативное событие от программной установки приходит асинхронно и
+// не гарантирует порядок с rAF-записью sync. Пауза 160 мс пережидает окно
+// игнорирования эха (ECHO_MS = 100 мс) и кадр записи.
+
+const ECHO_SLACK = 160;
+
+/// Включает/выключает тумблер «синхронно» (#chk-sync).
+export async function setSyncEnabled(on) {
+  await browser.execute((v) => {
+    const cb = document.getElementById("chk-sync");
+    if (cb.checked !== v) cb.click();
+  }, on);
+  await browser.pause(ECHO_SLACK);
+}
+
+export function setPreviewVisible(on) {
+  return browser.execute((v) => {
+    const cb = document.getElementById("chk-preview");
+    if (cb.checked !== v) cb.click();
+  }, on);
+}
+
+/// Метрики панели: scrollTop/max, измеренные lineHeight и paddingTop редактора.
+export function scrollState(which) {
+  return browser.execute((w) => {
+    const el = document.getElementById(w === "editor" ? "editor" : "preview");
+    const cs = getComputedStyle(el);
+    const lh = parseFloat(cs.lineHeight);
+    const fs = parseFloat(cs.fontSize);
+    const r = el.getBoundingClientRect();
+    return {
+      scrollTop: el.scrollTop,
+      scrollHeight: el.scrollHeight,
+      clientHeight: el.clientHeight,
+      max: el.scrollHeight - el.clientHeight,
+      lineHeight: Number.isFinite(lh) && lh > 0 ? lh : Number.isFinite(fs) ? fs * 1.2 : 21,
+      paddingTop: parseFloat(cs.paddingTop) || 0,
+      scrollWidth: el.scrollWidth,
+      clientWidth: el.clientWidth,
+      rectTop: r.top,
+      rectBottom: r.bottom,
+    };
+  }, which);
+}
+
+export async function setEditorScrollTop(px) {
+  await browser.pause(ECHO_SLACK);
+  await browser.execute((p) => {
+    const el = document.getElementById("editor");
+    el.scrollTop = p;
+    el.dispatchEvent(new Event("scroll", { bubbles: false }));
+  }, px);
+  await browser.pause(ECHO_SLACK);
+}
+
+/// Вставляет n строк в начало документа и дожидается перерисовки.
+export async function insertLinesAtTop(n) {
+  await browser.execute((count) => {
+    const el = document.getElementById("editor");
+    el.value = "Строка-для-сдвига.\n".repeat(count) + el.value;
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  }, n);
+  await browser.pause(250); // debounce 120 мс + рендер
+}
+
+/// Вставляет n строк в начало, сразу прокручивает редактор на pct% и
+/// возвращает долю предпросмотра, замеренную ДО истечения debounce-рендера.
+/// Два rAF (~32 мс) дают sync записать scrollTop и снять syncing, но не дают
+/// сработать debounce (120 мс). Всё — в одном execute, иначе round-trip
+/// WebDriver сам переждёт дебаунс и рендер успеет пройти.
+export async function insertLinesAtTopAndScrollImmediately(n, pct) {
+  return browser.execute(async (count, p) => {
+    const editor = document.getElementById("editor");
+    const preview = document.getElementById("preview");
+
+    editor.value = "Строка-для-сдвига.\n".repeat(count) + editor.value;
+    editor.dispatchEvent(new Event("input", { bubbles: true }));
+
+    const max = editor.scrollHeight - editor.clientHeight;
+    editor.scrollTop = (max * p) / 100;
+    editor.dispatchEvent(new Event("scroll", { bubbles: false }));
+
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+    const pmax = preview.scrollHeight - preview.clientHeight;
+    return {
+      editorRatio: max > 0 ? editor.scrollTop / max : 0,
+      previewRatio: pmax > 0 ? preview.scrollTop / pmax : 0,
+    };
+  }, n, pct);
+}
+
+/// Позиция первой (0-based) логической строки, содержащей подстроку.
+export function lineOfSubstring(text) {
+  return browser.execute((t) => {
+    const v = document.getElementById("editor").value;
+    const i = v.indexOf(t);
+    return i < 0 ? -1 : v.slice(0, i).split("\n").length - 1;
+  }, text);
+}
+
+/// Прокручивает редактор так, чтобы строка `lineIndex` стала верхней
+/// (повторяет формулу sync: topLine = floor(scrollTop / lineH)).
+export async function scrollEditorToLine(lineIndex) {
+  const st = await scrollState("editor");
+  const target = Math.max(0, Math.min(st.max, lineIndex * st.lineHeight));
+  await setEditorScrollTop(target);
+}
+
+/// Прокручивает редактор к началу строки, содержащей подстроку.
+export async function scrollEditorToSubstring(text) {
+  const line = await lineOfSubstring(text);
+  if (line < 0) throw new Error(`В редакторе нет подстроки ${JSON.stringify(text)}`);
+  await scrollEditorToLine(line);
+}
+
+/// Независимый перевод номера логической строки в байтовое смещение её начала.
+export function byteAtEditorLine(line) {
+  return browser.execute((target) => {
+    if (target <= 0) return 0;
+    const v = document.getElementById("editor").value;
+    const len = (cp) => (cp < 0x80 ? 1 : cp < 0x800 ? 2 : cp < 0x10000 ? 3 : 4);
+    let bytes = 0;
+    let lineNo = 0;
+    for (const ch of v) {
+      bytes += len(ch.codePointAt(0));
+      if (ch === "\n") {
+        lineNo++;
+        if (lineNo === target) return bytes;
+      }
+    }
+    return bytes;
+  }, line);
+}
+
+/// Номер верхней логической строки редактора по его scrollTop (формула §5.1:
+/// topLine = floor(scrollTop / lineH)). Она же — инверсия формулы §5.2, поэтому
+/// обе стороны синхронизации должны сходиться на одном значении.
+export function editorTopLine() {
+  return browser.execute(() => {
+    const el = document.getElementById("editor");
+    const cs = getComputedStyle(el);
+    let lh = parseFloat(cs.lineHeight);
+    if (!(lh > 0)) lh = parseFloat(cs.fontSize) * 1.2;
+    return Math.floor(el.scrollTop / lh);
+  });
+}
+
+/// Блок в начале абзаца, содержащего байтовое смещение `byteOffset` (независимо).
+export function expectedBlockTextAtByte(byteOffset) {
+  return browser.execute((b) => {
+    const blocks = [...document.querySelectorAll("#preview [data-md]")]
+      .map((el) => {
+        const [s, e] = el.getAttribute("data-md").split(",").map(Number);
+        return { start: s, end: e, text: el.textContent.trim() };
+      })
+      .sort((a, c) => a.start - c.start);
+    for (const bl of blocks) if (b >= bl.start && b < bl.end) return bl.text;
+    for (const bl of blocks) if (bl.start > b) return bl.text;
+    return null;
+  }, byteOffset);
+}
+
+/// Верхний видимый [data-md]-блок предпросмотра.
+export function previewTopBlockText() {
+  return browser.execute(() => {
+    const preview = document.getElementById("preview");
+    const prTop = preview.getBoundingClientRect().top;
+    const blocks = [...preview.querySelectorAll("[data-md]")];
+    let found = null;
+    for (const el of blocks) {
+      if (el.getBoundingClientRect().bottom >= prTop) {
+        found = el;
+        break;
+      }
+    }
+    if (!found && blocks.length) found = blocks[blocks.length - 1];
+    return found ? found.textContent.trim() : null;
+  });
+}
+
+/// Прокручивает предпросмотр так, чтобы блок `text` оказался сверху.
+export async function scrollPreviewToBlock(text) {
+  await browser.pause(ECHO_SLACK);
+  const ok = await browser.execute((t) => {
+    const preview = document.getElementById("preview");
+    const el = [...preview.querySelectorAll("[data-md]")].find(
+      (e) => e.textContent.trim() === t
+    );
+    if (!el) return false;
+    const pr = preview.getBoundingClientRect();
+    const br = el.getBoundingClientRect();
+    const pad = parseFloat(getComputedStyle(preview).paddingTop) || 0;
+    preview.scrollTop = preview.scrollTop + (br.top - pr.top) - pad;
+    preview.dispatchEvent(new Event("scroll", { bubbles: false }));
+    return true;
+  }, text);
+  if (!ok) throw new Error(`Блок ${JSON.stringify(text)} не найден в предпросмотре`);
+  await browser.pause(ECHO_SLACK);
+}
+
+/// Прокручивает внутреннюю область таблицы (не панель предпросмотра).
+export async function scrollInnerTable() {
+  await browser.pause(ECHO_SLACK);
+  const ok = await browser.execute(() => {
+    const scroller = document.querySelector("#preview .table-scroll");
+    if (!scroller) return false;
+    scroller.scrollTop = 120;
+    scroller.dispatchEvent(new Event("scroll", { bubbles: false }));
+    return true;
+  });
+  if (!ok) throw new Error("В предпросмотре нет .table-scroll");
+  await browser.pause(ECHO_SLACK);
+}
+
+/// Ошибки, пойманные глобальным обработчиком `error` (см. hooks.js).
+export function capturedErrors() {
+  return browser.execute(() => (window.__errors ?? []).slice());
+}
+
+/// Быстрая серия прокруток редактора (имитация колеса): несколько позиций
+/// подряд в одном кадре. Возвращает { target, actual } финальной позиции.
+export async function rapidScrollEditorToSubstring(text) {
+  await browser.pause(ECHO_SLACK);
+  const res = await browser.execute((t) => {
+    const el = document.getElementById("editor");
+    const cs = getComputedStyle(el);
+    let lh = parseFloat(cs.lineHeight);
+    if (!(lh > 0)) lh = parseFloat(cs.fontSize) * 1.2;
+    const v = el.value;
+    const idx = v.indexOf(t);
+    if (idx < 0) return { target: -1 };
+    const line = v.slice(0, idx).split("\n").length - 1;
+    const max = el.scrollHeight - el.clientHeight;
+    const target = Math.max(0, Math.min(max, line * lh));
+    for (let f = 0.2; f <= 1.0001; f += 0.1) {
+      el.scrollTop = target * f;
+      el.dispatchEvent(new Event("scroll", { bubbles: false }));
+    }
+    el.scrollTop = target;
+    el.dispatchEvent(new Event("scroll", { bubbles: false }));
+    return { target, actual: el.scrollTop };
+  }, text);
+  if (res.target < 0) throw new Error(`В редакторе нет ${JSON.stringify(text)}`);
+  await browser.pause(400); // дать sync досчитать после серии
+  return res;
+}
+
+/// Наводит «мышь» на далёкий блок по видимому тексту (через инспектор).
+export async function hoverBlockFar(text) {
+  await browser.pause(ECHO_SLACK);
+  const raw = await browser.execute((t) => {
+    const preview = document.getElementById("preview");
+    preview.dispatchEvent(new MouseEvent("mouseout", { bubbles: true }));
+    const el = [...preview.querySelectorAll("[data-md]")].find(
+      (e) => e.textContent.trim() === t
+    );
+    if (!el) return null;
+    const box = el.getBoundingClientRect();
+    el.dispatchEvent(
+      new MouseEvent("mouseover", {
+        bubbles: true,
+        clientX: box.left + 1,
+        clientY: box.top + 1,
+      })
+    );
+    return el.getAttribute("data-md");
+  }, text);
+  if (raw === null) throw new Error(`Блок ${JSON.stringify(text)} не найден`);
+  await browser.pause(400); // rAF + suspend-кадр + scrollIntoView
+  return raw;
+}
+
+
 /// Эталонный перевод байтового смещения (UTF-8) в UTF-16-индекс по значению
 /// редактора. Независимая реализация для сверки с inspector.ts.
 export function refBytesToUnits(byteStart, byteEnd) {
