@@ -7,6 +7,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { renderMarkdown, readFile, writeFile } from "./tauri";
 import { enhanceTables, attachMenuAutoClose } from "./tables";
 import { createInspector } from "./inspector";
+import { resolveLocalImages } from "./images";
 import "./style.css";
 
 const MD_FILTER = {
@@ -71,6 +72,9 @@ async function doRender() {
         flash(`Таблицы: ${String(e)}`);
       }
     }
+    // Локальные картинки: относительные src → asset-URL (идемпотентно, DOM
+    // мог не пересоздаваться, если HTML совпал).
+    resolveLocalImages(preview, currentPath);
     // Переиндексация нужна всегда: после изменения текста карта устарела, даже
     // если разметка визуально не поменялась (совпадающий HTML — не повод).
     inspector.onRendered(source);
@@ -198,6 +202,8 @@ async function saveAs() {
     currentPath = selected;
     dirty = false;
     updateTitle();
+    // Новый каталог — относительные картинки нужно перерезолвить от него.
+    resolveLocalImages(preview, currentPath);
     flash("Сохранено");
   } catch (e) {
     flash(`Не сохранилось: ${String(e)}`);

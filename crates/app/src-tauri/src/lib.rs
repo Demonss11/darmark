@@ -27,19 +27,54 @@ fn write_file_impl(path: &Path, contents: &str) -> Result<(), String> {
 }
 
 /// Читает файл с диска (UTF-8). Лимит размера — см. [`MAX_FILE_SIZE`].
+///
+/// При успехе каталог файла разрешается в scope asset-протокола: относительные
+/// картинки в предпросмотре (`./img/pic.png`) резолвятся на фронтенде в asset-URL,
+/// а протокол отдаёт файл, только если его путь разрешён.
 #[tauri::command]
-async fn read_file(path: PathBuf) -> Result<String, String> {
-    tauri::async_runtime::spawn_blocking(move || read_file_impl(&path))
-        .await
-        .map_err(|e| e.to_string())?
+async fn read_file(path: PathBuf, app: tauri::AppHandle) -> Result<String, String> {
+    let result = tauri::async_runtime::spawn_blocking({
+        let path = path.clone();
+        move || read_file_impl(&path)
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    if result.is_ok() {
+        if let Some(dir) = path.parent() {
+            allow_asset_dir(&app, dir);
+        }
+    }
+    result
 }
 
-/// Записывает файл на диск (UTF-8).
+/// Записывает файл на диск (UTF-8). Каталог тоже попадает в scope asset-протокола
+/// (после «Сохранить как» картинки рядом с новым файлом должны отображаться).
 #[tauri::command]
-async fn write_file(path: PathBuf, contents: String) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || write_file_impl(&path, &contents))
-        .await
-        .map_err(|e| e.to_string())?
+async fn write_file(path: PathBuf, contents: String, app: tauri::AppHandle) -> Result<(), String> {
+    let result = tauri::async_runtime::spawn_blocking({
+        let path = path.clone();
+        move || write_file_impl(&path, &contents)
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    if result.is_ok() {
+        if let Some(dir) = path.parent() {
+            allow_asset_dir(&app, dir);
+        }
+    }
+    result
+}
+
+/// Разрешает каталогу файла (и подкаталогам) читаться через asset-протокол.
+///
+/// Модель Notepad++: путь выбрал пользователь в нативном диалоге — это и есть
+/// согласие. `recursive = true`, чтобы работали картинки в подпапках (`images/…`).
+/// Ошибку логируем и не роняем команду: картинки — не критичный путь.
+fn allow_asset_dir(app: &tauri::AppHandle, dir: &Path) {
+    use tauri::Manager;
+    if let Err(e) = app.asset_protocol_scope().allow_directory(dir, true) {
+        eprintln!("asset scope для {}: {e}", dir.display());
+    }
 }
 
 /// Рендерит markdown → HTML через md-core (CommonMark + GFM tables/strike/tasklist).
