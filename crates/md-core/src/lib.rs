@@ -1005,13 +1005,17 @@ mod tests {
 
     // ─── Режим инспектора: to_html_mapped (T-1…T-5) ────────────────────
 
-    /// Извлекает `(start, end)`-пары из `data-md` в порядке документа.
+    /// Извлекает `(start, end)`-пары из `data-md` **обёрток блоков**. Сужено
+    /// намеренно: после разметки ячеек/строк таблиц (`tr`/`th`/`td`) `data-md`
+    /// в документе уже не уникален, а блочные тесты должны видеть только
+    /// `.md-block`.
     fn mapped_ranges(md: &str) -> Vec<(usize, usize)> {
+        const WRAP: &str = "<div class=\"md-block\" data-md=\"";
         let html = to_html_mapped(md);
         let mut ranges = Vec::new();
         let mut rest = html.as_str();
-        while let Some(pos) = rest.find("data-md=\"") {
-            let after = &rest[pos + "data-md=\"".len()..];
+        while let Some(pos) = rest.find(WRAP) {
+            let after = &rest[pos + WRAP.len()..];
             let Some(quote) = after.find('"') else { break };
             let raw = &after[..quote];
             if let Some((s, e)) = raw.split_once(',') {
@@ -1179,6 +1183,79 @@ mod tests {
         None
     }
 
+    /// Удаляет все атрибуты `data-md="…"` из HTML (вместе с предшествующим
+    /// пробелом). Используется инвариантом «без разметки == to_html».
+    fn strip_all_data_md(html: &str) -> String {
+        const ATTR: &str = "data-md=\"";
+        let mut out = String::with_capacity(html.len());
+        let mut rest = html;
+        while let Some(pos) = rest.find(ATTR) {
+            // Срезаем один пробел-разделитель перед атрибутом, если он есть.
+            let cut = if pos > 0 && rest.as_bytes()[pos - 1] == b' ' {
+                pos - 1
+            } else {
+                pos
+            };
+            out.push_str(&rest[..cut]);
+            let after = &rest[pos + ATTR.len()..];
+            match after.find('"') {
+                Some(q) => rest = &after[q + 1..],
+                None => {
+                    rest = after;
+                    break;
+                }
+            }
+        }
+        out.push_str(rest);
+        out
+    }
+
+    /// Диапазоны `data-md` **на структурных тегах таблицы** (`tr`/`th`/`td`)
+    /// в порядке документа: `(tag, start, end)`. Обёртки `.md-block` (тег `div`)
+    /// игнорируются.
+    fn table_ranges(html: &str) -> Vec<(String, usize, usize)> {
+        let bytes = html.as_bytes();
+        let mut out = Vec::new();
+        let mut i = 0;
+        while i < bytes.len() {
+            if bytes[i] != b'<' {
+                i += 1;
+                continue;
+            }
+            let mut j = i + 1;
+            if j < bytes.len() && bytes[j] == b'/' {
+                j += 1;
+            }
+            let name_start = j;
+            while j < bytes.len() && bytes[j].is_ascii_alphanumeric() {
+                j += 1;
+            }
+            let name = html[name_start..j].to_ascii_lowercase();
+            if matches!(name.as_str(), "tr" | "th" | "td") {
+                // Конец открывающего тега (атрибуты могут содержать кавычки, но
+                // `data-md` у нас всегда числовой и не содержит `>`).
+                let mut k = j;
+                while k < bytes.len() && bytes[k] != b'>' {
+                    k += 1;
+                }
+                let tag = &html[i..k.min(bytes.len())];
+                if let Some((_, tail)) = tag.split_once("data-md=\"") {
+                    if let Some(q) = tail.find('"') {
+                        if let Some((s, e)) = tail[..q].split_once(',') {
+                            if let (Ok(a), Ok(b)) = (s.parse::<usize>(), e.parse::<usize>()) {
+                                out.push((name, a, b));
+                            }
+                        }
+                    }
+                }
+                i = k + 1;
+                continue;
+            }
+            i += 1;
+        }
+        out
+    }
+
     /// Содержимое блоков (без обёрток) обязано побайтово совпадать с `to_html`.
     /// Проверяем на документах, задевающих все ветки парсера: ссылочные
     /// определения, картинки, сноски, `<hr>`, HTML-комментарии.
@@ -1191,10 +1268,16 @@ mod tests {
             "Text[^1]\n\n[^1]: note",
             "text\n\n***\n\nmore",
             "before\n\n<!-- hidden -->\n\nafter",
+            // Таблицы: вложенная разметка tr/th/td не должна менять содержимое.
+            "| A | B |\n|---|---|\n| 1 | 2 |",
+            "| Файл | Размер |\n|------|-------:|\n| README.md | 2 КБ |",
+            "| A\\|B | C |\n|---|---|\n| a | b |",
+            "| 🚀 | Привет 🎯 |\n|---|---|\n| a | b |",
+            "| **жирный** | `код` |\n|---|---|\n| a | b |",
         ] {
             let mapped = to_html_mapped(md);
             let plain = to_html(md);
-            let content = strip_mapped_wrappers(&mapped);
+            let content = strip_all_data_md(&strip_mapped_wrappers(&mapped));
             assert_eq!(content, plain, "несовпадение для входа {md:?}");
         }
     }
@@ -1306,5 +1389,101 @@ mod tests {
         ] {
             assert_blocks_cover_nonempty(md);
         }
+    }
+
+    // ─── Режим инспектора: гранулярность таблиц (TZ-inspect-tables) ─────
+    //
+    // Ядро должно разметить tr/th/td атрибутом data-md (байтовые диапазоны
+    // парсера). Тесты красные до реализации §3.1 ТЗ — это TDD-порядок.
+
+    /// Порядок и содержимое вложенной разметки: тег → исходный фрагмент.
+    #[test]
+    fn table_rows_and_cells_are_mapped() {
+        let md = "| A | B |\n|---|---|\n| a1 | b1 |\n| a2 | b2 |";
+        let html = to_html_mapped(md);
+        let got: Vec<(String, String)> = table_ranges(&html)
+            .into_iter()
+            .map(|(tag, s, e)| (tag, md[s..e].to_string()))
+            .collect();
+        let want: Vec<(String, String)> = [
+            ("th", "A"),
+            ("th", "B"),
+            ("tr", "| a1 | b1 |"),
+            ("td", "a1"),
+            ("td", "b1"),
+            ("tr", "| a2 | b2 |"),
+            ("td", "a2"),
+            ("td", "b2"),
+        ]
+        .into_iter()
+        .map(|(t, v)| (t.to_string(), v.to_string()))
+        .collect();
+        assert_eq!(got, want, "html: {html}");
+    }
+
+    /// Вложенные диапазоны не выходят за пределы обёртки `.md-block`.
+    #[test]
+    fn table_inner_ranges_nested_in_block() {
+        let md = "| A |\n|---|\n| a |";
+        let html = to_html_mapped(md);
+        let blocks = mapped_ranges(md);
+        assert_eq!(blocks.len(), 1, "blocks: {blocks:?}");
+        let (bs, be) = blocks[0];
+        let inner = table_ranges(&html);
+        assert!(!inner.is_empty(), "нет разметки ячеек: {html}");
+        for (tag, s, e) in &inner {
+            assert!(
+                bs <= *s && *e <= be,
+                "диапазон {tag} {s}..{e} вне блока {bs}..{be}"
+            );
+        }
+    }
+
+    /// Диапазоны ячеек/строк — на границах UTF-8 (кириллица, эмодзи).
+    #[test]
+    fn table_ranges_on_char_boundaries() {
+        let md = "| 🚀 | Привет 🎯 |\n|---|---|\n| a | b |";
+        let html = to_html_mapped(md);
+        let ranges = table_ranges(&html);
+        assert!(!ranges.is_empty(), "html: {html}");
+        for (tag, s, e) in &ranges {
+            assert!(
+                md.is_char_boundary(*s) && md.is_char_boundary(*e),
+                "граница {tag} {s}..{e} не на символе"
+            );
+            assert!(md.get(*s..*e).is_some(), "срез {tag} {s}..{e} невалиден");
+        }
+    }
+
+    /// Пустая ячейка не ломает соответствие тегов и диапазонов.
+    #[test]
+    fn empty_cell_keeps_structure_order() {
+        let md = "| A | B |\n|---|---|\n| | x |";
+        let html = to_html_mapped(md);
+        let tags: Vec<String> = table_ranges(&html).into_iter().map(|(t, ..)| t).collect();
+        assert_eq!(tags, vec!["th", "th", "tr", "td", "td"], "html: {html}");
+    }
+
+    /// Таблица внутри цитаты тоже размечается; строка — без префикса `> `.
+    #[test]
+    fn table_inside_blockquote_is_mapped() {
+        let md = "> | A |\n> |---|\n> | a |";
+        let html = to_html_mapped(md);
+        let ranges = table_ranges(&html);
+        assert!(!ranges.is_empty(), "html: {html}");
+        let (_, s, e) = ranges
+            .iter()
+            .find(|(t, ..)| t == "tr")
+            .expect("нет размеченной строки");
+        assert_eq!(&md[*s..*e], "| a |", "html: {html}");
+    }
+
+    /// Обычные блоки не получают вложенной разметки.
+    #[test]
+    fn plain_blocks_have_no_inner_ranges() {
+        let md = "# H\n\ntext";
+        let html = to_html_mapped(md);
+        assert!(table_ranges(&html).is_empty(), "html: {html}");
+        assert_eq!(mapped_ranges(md), vec![(0, 3), (5, 9)]);
     }
 }

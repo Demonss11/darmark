@@ -145,7 +145,7 @@ export async function setInspectorActive(on) {
     await browser.waitUntil(
       async () =>
         (await browser.execute(
-          () => document.querySelectorAll("#preview [data-md]").length
+          () => document.querySelectorAll("#preview .md-block[data-md]").length
         )) > 0,
       {
         timeout: 8000,
@@ -164,7 +164,7 @@ export async function setInspectorActive(on) {
 /// Список индексированных блоков: { raw: "start,end", text: видимый текст }.
 export function inspectorBlocks() {
   return browser.execute(() =>
-    Array.from(document.querySelectorAll("#preview [data-md]")).map((el) => ({
+    Array.from(document.querySelectorAll("#preview .md-block[data-md]")).map((el) => ({
       raw: el.getAttribute("data-md"),
       text: el.textContent.trim(),
     }))
@@ -178,7 +178,7 @@ export async function hoverBlockByRaw(raw) {
     // (`activeBlockEl === el`) может проигнорировать hover.
     const preview = document.getElementById("preview");
     preview.dispatchEvent(new MouseEvent("mouseout", { bubbles: true }));
-    const el = [...document.querySelectorAll("#preview [data-md]")].find(
+    const el = [...document.querySelectorAll("#preview .md-block[data-md]")].find(
       (e) => e.getAttribute("data-md") === r
     );
     if (!el) return false;
@@ -202,7 +202,7 @@ export async function hoverBlockByText(text) {
   const raw = await browser.execute((t) => {
     const preview = document.getElementById("preview");
     preview.dispatchEvent(new MouseEvent("mouseout", { bubbles: true }));
-    const el = [...document.querySelectorAll("#preview [data-md]")].find(
+    const el = [...document.querySelectorAll("#preview .md-block[data-md]")].find(
       (e) => e.textContent.trim() === t
     );
     if (!el) return null;
@@ -254,7 +254,7 @@ export async function selectEditorRange(start, end) {
 /// Кликает по блоку предпросмотра (по видимому тексту): mousedown/mouseup/click.
 export async function clickBlockByText(text) {
   const ok = await browser.execute((t) => {
-    const el = [...document.querySelectorAll("#preview [data-md]")].find(
+    const el = [...document.querySelectorAll("#preview .md-block[data-md]")].find(
       (e) => e.textContent.trim() === t
     );
     if (!el) return false;
@@ -441,7 +441,7 @@ export function editorTopLine() {
 /// Блок в начале абзаца, содержащего байтовое смещение `byteOffset` (независимо).
 export function expectedBlockTextAtByte(byteOffset) {
   return browser.execute((b) => {
-    const blocks = [...document.querySelectorAll("#preview [data-md]")]
+    const blocks = [...document.querySelectorAll("#preview .md-block[data-md]")]
       .map((el) => {
         const [s, e] = el.getAttribute("data-md").split(",").map(Number);
         return { start: s, end: e, text: el.textContent.trim() };
@@ -458,7 +458,7 @@ export function previewTopBlockText() {
   return browser.execute(() => {
     const preview = document.getElementById("preview");
     const prTop = preview.getBoundingClientRect().top;
-    const blocks = [...preview.querySelectorAll("[data-md]")];
+    const blocks = [...preview.querySelectorAll(".md-block[data-md]")];
     let found = null;
     for (const el of blocks) {
       if (el.getBoundingClientRect().bottom >= prTop) {
@@ -476,7 +476,7 @@ export async function scrollPreviewToBlock(text) {
   await browser.pause(ECHO_SLACK);
   const ok = await browser.execute((t) => {
     const preview = document.getElementById("preview");
-    const el = [...preview.querySelectorAll("[data-md]")].find(
+    const el = [...preview.querySelectorAll(".md-block[data-md]")].find(
       (e) => e.textContent.trim() === t
     );
     if (!el) return false;
@@ -544,7 +544,7 @@ export async function hoverBlockFar(text) {
   const raw = await browser.execute((t) => {
     const preview = document.getElementById("preview");
     preview.dispatchEvent(new MouseEvent("mouseout", { bubbles: true }));
-    const el = [...preview.querySelectorAll("[data-md]")].find(
+    const el = [...preview.querySelectorAll(".md-block[data-md]")].find(
       (e) => e.textContent.trim() === t
     );
     if (!el) return null;
@@ -563,6 +563,171 @@ export async function hoverBlockFar(text) {
   return raw;
 }
 
+
+// ---------- Гранулярность инспектора для таблиц (TZ-inspect-tables) ----------
+//
+// После разметки tr/td/th атрибутом data-md инспектор должен подсвечивать
+// ячейку/строку/столбец, а не всю таблицу. Наведение, как и в блоковых шагах,
+// эмулируется синтетическим mouseover прямо на целевом элементе. Shift
+// выставляется в свойстве shiftKey события (для выбора строки).
+
+/// Наводит «мышь» на ячейку <td> по её видимому тексту. shift=true → строка.
+export async function hoverCellByText(text, shift = false) {
+  const raw = await browser.execute(
+    (t, sh) => {
+      const preview = document.getElementById("preview");
+      preview.dispatchEvent(new MouseEvent("mouseout", { bubbles: true }));
+      const td = [...document.querySelectorAll("#preview .table-enhanced td[data-md]")].find(
+        (e) => e.textContent.trim() === t
+      );
+      if (!td) return null;
+      const box = td.getBoundingClientRect();
+      td.dispatchEvent(
+        new MouseEvent("mouseover", {
+          bubbles: true,
+          cancelable: true,
+          shiftKey: sh,
+          clientX: box.left + 1,
+          clientY: box.top + 1,
+        })
+      );
+      return td.getAttribute("data-md");
+    },
+    text,
+    shift
+  );
+  if (raw === null) throw new Error(`Ячейка ${JSON.stringify(text)} не найдена`);
+  await browser.pause(30);
+  return raw;
+}
+
+/// Наводит «мышь» на заголовок столбца <th> по видимому тексту (без воронки ▾).
+export async function hoverHeaderByText(name, shift = false) {
+  const raw = await browser.execute(
+    (n, sh) => {
+      const preview = document.getElementById("preview");
+      preview.dispatchEvent(new MouseEvent("mouseout", { bubbles: true }));
+      const th = [...document.querySelectorAll("#preview .table-enhanced thead th[data-md]")].find(
+        (e) => e.textContent.replace("▾", "").trim() === n
+      );
+      if (!th) return null;
+      const box = th.getBoundingClientRect();
+      th.dispatchEvent(
+        new MouseEvent("mouseover", {
+          bubbles: true,
+          cancelable: true,
+          shiftKey: sh,
+          clientX: box.left + 1,
+          clientY: box.top + 1,
+        })
+      );
+      return th.getAttribute("data-md");
+    },
+    name,
+    shift
+  );
+  if (raw === null) throw new Error(`Заголовок ${JSON.stringify(name)} не найден`);
+  await browser.pause(30);
+  return raw;
+}
+
+/// Наводит «мышь» на строку <tr> (tbody), содержащую ячейку с текстом.
+/// Целевой элемент — сам <tr>, поэтому модификатор не обязателен.
+export async function hoverRowByText(text) {
+  const raw = await browser.execute((t) => {
+    const preview = document.getElementById("preview");
+    preview.dispatchEvent(new MouseEvent("mouseout", { bubbles: true }));
+    const tr = [...document.querySelectorAll("#preview .table-enhanced tbody tr[data-md]")].find(
+      (row) => [...row.cells].some((c) => c.textContent.trim() === t)
+    );
+    if (!tr) return null;
+    const box = tr.getBoundingClientRect();
+    tr.dispatchEvent(
+      new MouseEvent("mouseover", {
+        bubbles: true,
+        cancelable: true,
+        shiftKey: true,
+        clientX: box.left + 1,
+        clientY: box.top + 1,
+      })
+    );
+    return tr.getAttribute("data-md");
+  }, text);
+  if (raw === null) throw new Error(`Строка с ячейкой ${JSON.stringify(text)} не найдена`);
+  await browser.pause(30);
+  return raw;
+}
+
+/// Наводит «мышь» на блок таблицы целиком (вне ячеек): target — сам .md-block.
+export async function hoverTableBlock() {
+  const raw = await browser.execute(() => {
+    const preview = document.getElementById("preview");
+    preview.dispatchEvent(new MouseEvent("mouseout", { bubbles: true }));
+    const block = [...document.querySelectorAll("#preview .md-block[data-md]")].find((b) =>
+      b.querySelector("table")
+    );
+    if (!block) return null;
+    const box = block.getBoundingClientRect();
+    block.dispatchEvent(
+      new MouseEvent("mouseover", {
+        bubbles: true,
+        cancelable: true,
+        clientX: box.left + 1,
+        clientY: box.top + 1,
+      })
+    );
+    return block.getAttribute("data-md");
+  });
+  if (raw === null) throw new Error("В предпросмотре нет блока с таблицей");
+  await browser.pause(30);
+  return raw;
+}
+
+/// Кликает по ячейке (mousedown/mouseup/click), как clickBlockByText.
+export async function clickCellByText(text) {
+  const ok = await browser.execute((t) => {
+    const td = [...document.querySelectorAll("#preview .table-enhanced td[data-md]")].find(
+      (e) => e.textContent.trim() === t
+    );
+    if (!td) return false;
+    const box = td.getBoundingClientRect();
+    const opts = {
+      bubbles: true,
+      cancelable: true,
+      clientX: box.left + 1,
+      clientY: box.top + 1,
+    };
+    td.dispatchEvent(new MouseEvent("mousedown", opts));
+    td.dispatchEvent(new MouseEvent("mouseup", opts));
+    td.dispatchEvent(new MouseEvent("click", opts));
+    return true;
+  }, text);
+  if (!ok) throw new Error(`Ячейка ${JSON.stringify(text)} не найдена`);
+  await browser.pause(30);
+}
+
+/// Активный элемент инспектора: тег и видимый текст (или null).
+export function activeInspectInfo() {
+  return browser.execute(() => {
+    const el = document.querySelector("#preview .inspect-active");
+    return el ? { tag: el.tagName, text: el.textContent.trim() } : null;
+  });
+}
+
+/// Число ячеек, подсвеченных бэндом столбца (`.inspect-col`).
+export function columnBandCount() {
+  return browser.execute(
+    () => document.querySelectorAll("#preview .inspect-col").length
+  );
+}
+
+/// Текст строки, подсвеченной бэндом (`.inspect-row`), или null.
+export function rowBandText() {
+  return browser.execute(() => {
+    const tr = document.querySelector("#preview tr.inspect-row");
+    return tr ? tr.textContent.trim() : null;
+  });
+}
 
 /// Эталонный перевод байтового смещения (UTF-8) в UTF-16-индекс по значению
 /// редактора. Независимая реализация для сверки с inspector.ts.
