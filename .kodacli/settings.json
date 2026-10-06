@@ -15,7 +15,11 @@
       "git-commit",
       "qa",
       "review",
-      "frontend-dev"
+      "frontend-dev",
+      "frontend-api-integration-patterns",
+      "frontend-design",
+      "systematic-debugging",
+      "verification-before-completion"
     ]
   }
 }
