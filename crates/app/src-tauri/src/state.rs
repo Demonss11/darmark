@@ -22,8 +22,8 @@ impl DocumentId {
 
 /// Операция правки для undo/redo-стека (D5). Владелец стека — документ.
 ///
-/// Поля закладываются в Фазе 1, стек наполняется вместе с `update_document` (Фаза 2).
-#[allow(dead_code)] // поля начнёт читать update_document в Фазе 2
+/// Поля закладываются в Фазе 1, стек наполняется в Фазе 3 (TS `docStore`/Rust-undo).
+#[allow(dead_code)] // поля начнёт читать undo-стек в Фазе 3
 #[derive(Clone, Debug)]
 pub struct EditOp {
     pub rev: u64,
@@ -35,7 +35,6 @@ pub struct EditOp {
 /// Кэш HTML. Ключ — `(mapped, rev)`, значение — готовый HTML.
 ///
 /// `RenderResult.changed = false`, если запрошенная ревизия уже в кэше: TS тогда не трогает DOM.
-#[allow(dead_code)] // кэш начнёт читать update_document/render_document в Фазе 2
 #[derive(Clone, Debug)]
 pub struct RenderCache {
     pub mapped: bool,
@@ -44,7 +43,7 @@ pub struct RenderCache {
 }
 
 /// Документ: текст, ревизия, путь, кэш рендера и undo/redo.
-#[allow(dead_code)] // cached/undo/redo наполняются в Фазах 2–3
+#[allow(dead_code)] // undo/redo наполняются в Фазе 3
 pub struct Document {
     pub id: DocumentId,
     pub path: Option<PathBuf>,
@@ -77,6 +76,16 @@ pub struct DocMeta {
     pub dirty_hint: bool,
 }
 
+/// Результат рендера: готовый HTML, ревизия и признак «HTML изменился с прошлого раза».
+///
+/// `changed: false` — TS не трогает DOM (переезд `lastRenderedHtml` из фронтенда в хост).
+#[derive(Debug, Serialize)]
+pub struct RenderResult {
+    pub html: String,
+    pub rev: u64,
+    pub changed: bool,
+}
+
 impl Document {
     pub(crate) fn snapshot(&self) -> DocumentSnapshot {
         DocumentSnapshot {
@@ -100,6 +109,42 @@ impl Document {
 
     fn path_string(&self) -> Option<String> {
         self.path.as_ref().map(|p| p.to_string_lossy().into_owned())
+    }
+
+    /// Рендерит документ через `md-core` и обновляет кэш.
+    ///
+    /// Если `(mapped, rev)` уже в кэше — рендер не запускается, `changed: false`.
+    /// Иначе `changed` = отличается ли HTML от последнего отданного (переезд
+    /// `lastRenderedHtml` из TS в хост).
+    pub(crate) fn render(&mut self, mapped: bool) -> RenderResult {
+        if let Some(cached) = &self.cached {
+            if cached.mapped == mapped && cached.rev == self.rev {
+                return RenderResult {
+                    html: cached.html.clone(),
+                    rev: self.rev,
+                    changed: false,
+                };
+            }
+        }
+        let html = if mapped {
+            md_core::to_html_mapped(&self.text)
+        } else {
+            md_core::to_html(&self.text)
+        };
+        let changed = match &self.cached {
+            Some(cached) => cached.html != html,
+            None => true,
+        };
+        self.cached = Some(RenderCache {
+            mapped,
+            rev: self.rev,
+            html: html.clone(),
+        });
+        RenderResult {
+            html,
+            rev: self.rev,
+            changed,
+        }
     }
 }
 
@@ -152,6 +197,22 @@ impl DocumentStore {
         self.docs.get_mut(id)
     }
 
+    /// Применяет правку текста и рендерит. `rev` растёт только при реальной смене
+    /// текста, поэтому повторный вызов с тем же текстом даёт `changed: false`.
+    pub fn update(&mut self, id: &DocumentId, text: String, mapped: bool) -> Option<RenderResult> {
+        let doc = self.docs.get_mut(id)?;
+        if doc.text != text {
+            doc.text = text;
+            doc.rev += 1;
+        }
+        Some(doc.render(mapped))
+    }
+
+    /// Рендерит без правки текста (смена `mapped`, первый рендер после open/new).
+    pub fn render(&mut self, id: &DocumentId, mapped: bool) -> Option<RenderResult> {
+        Some(self.docs.get_mut(id)?.render(mapped))
+    }
+
     /// Закрывает документ. Возвращает `false`, если такого id нет.
     pub fn close(&mut self, id: &DocumentId) -> bool {
         if self.docs.remove(id).is_some() {
@@ -197,5 +258,50 @@ mod tests {
         assert!(store.get(&snap.id).is_none());
         assert!(!store.close(&snap.id));
         assert!(store.order.is_empty());
+    }
+
+    #[test]
+    fn update_bumps_rev_only_on_text_change() {
+        let mut store = DocumentStore::default();
+        let snap = store.create("# A".into());
+
+        let first = store.update(&snap.id, "# B".into(), false).unwrap();
+        assert_eq!(first.rev, 1, "смена текста двигает ревизию");
+
+        let same = store.update(&snap.id, "# B".into(), false).unwrap();
+        assert_eq!(same.rev, 1, "тот же текст ревизию не двигает");
+        assert!(!same.changed, "(mapped, rev) в кэше → DOM не трогаем");
+    }
+
+    #[test]
+    fn render_reports_changed_on_new_html_and_mapped_switch() {
+        let mut store = DocumentStore::default();
+        let snap = store.create("# A".into());
+
+        let plain = store.render(&snap.id, false).unwrap();
+        assert!(plain.changed, "первый рендер всегда changed");
+
+        let repeat = store.render(&snap.id, false).unwrap();
+        assert!(!repeat.changed, "повторный рендер того же (mapped, rev)");
+
+        let mapped = store.render(&snap.id, true).unwrap();
+        assert!(mapped.changed, "смена mapped меняет HTML");
+        assert!(
+            mapped.html.contains("data-md"),
+            "mapped-рендер оборачивает блоки"
+        );
+
+        let back = store.render(&snap.id, false).unwrap();
+        assert!(back.changed, "возврат к plain — снова другой HTML");
+    }
+
+    #[test]
+    fn unknown_document_yields_none() {
+        let mut store = DocumentStore::default();
+        let id = store.create("x".into()).id;
+        store.close(&id);
+
+        assert!(store.update(&id, "y".into(), false).is_none());
+        assert!(store.render(&id, false).is_none());
     }
 }

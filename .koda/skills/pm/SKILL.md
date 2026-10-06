@@ -1,378 +1,180 @@
 ---
 name: pm
-description: Product Manager skill for task research, metric definition, and decomposition into epics and user stories. Specialized for mdedit project (Rust+TypeScript Markdown editor). Use when user wants to research a product task, define KPIs/metrics, break down features into epics and user stories, create product requirements, prioritize backlog, or analyze product opportunities. Make sure to use this skill whenever the user mentions product management, task decomposition, metrics definition, KPI tracking, epics, user stories, backlog grooming, feature analysis, roadmap planning, or product research.
+description: Продуктовое управление — исследование задачи, определение метрик, декомпозиция в эпикосы и пользовательские истории. Используй, когда нужно исследовать продуктовую задачу, задать KPI/метрики, разбить фичу на эпикосы и истории, составить продуктовые требования, приоритизировать бэклог или разобрать продуктовую возможность.
 ---
 
-# Product Manager — mdedit
+# Product Manager
 
-Product management skill for systematic task research, metric preparation, and requirement decomposition, **specialized for the mdedit project** (Rust + TypeScript Markdown editor with Tauri).
+Систематическое исследование задачи, подготовка метрик и декомпозиция требований.
 
-## Проектный контекст
+## Перед началом
 
-**mdedit** — лёгкий Markdown-редактор/вьюер (аналог Notepad++ для Markdown): слева редактор,
-справа HTML-предпросмотр. Стек: Rust (`md-core` — pulldown-cmark 0.13) + TypeScript (Vite, без React) + Tauri 2.
+Прочитай память проекта (`KODA.md`) и правила (`.kodarules`) — оттуда берутся архитектура,
+границы модулей, ограничения и команды проверки. Здесь их не повторяю: при расхождении
+доверяй коду и памяти проекта, а не этому скиллу.
 
-**Архитектура:**
-- `crates/md-core/` — чистое ядро: Markdown → HTML. Без UI-зависимостей. Тесты: `cargo test -p md-core`
-- `crates/app/src/` — фронтенд: vanilla TS + Vite. Сборка: `npm run build` (tsc && vite build)
-- `crates/app/src-tauri/` — Tauri-шелл: IPC (read_file / write_file / render_markdown)
-
-**Жёсткие ограничения:**
-1. **CSP:** `default-src 'self'; style-src 'self' 'unsafe-inline'`. Никаких внешних скриптов/библиотек, никакого `eval`.
-2. **TypeScript strict mode:** `strict`, `noUnusedLocals`, `noUnusedParameters`.
-3. **Разделение ответственности:** задачи по фронтенду (`crates/app/src/*`) не трогают `md-core` и `src-tauri`.
-4. **Стиль:** 2 пробела в TS, стандартный `rustfmt` в Rust. Комментарии на русском.
-
-**Активные задачи:**
-- `tasks/TZ-excel-tables.md` — таблицы «как в Excel»: стабильный ключ + sessionStorage, точечный diff
-  вместо `innerHTML`, предикатные фильтры, мультисортировка, `<mark>`-подсветка, sticky-первый столбец,
-  копирование TSV/MD, печать, ресайз колонок, i18n, a11y
-
-**Завершённые/архивные (в `tasks/архив/`):** `TZ-inspect-mode.md`, `TZ-inspect-tables.md`,
-`TZ-fixes.md`, `TZ-scroll-sync-v2.md`, `TZ-inspect-mode-s1.md` — читать как источник
-сложившихся решений и конвенций, не как бэклог.
-
-**Дорожная карта (из `KODA.md`):** вкладки · подсветка синтаксиса в редакторе · экспорт HTML/PDF ·
-поиск/замена (Ctrl+F) · harness-прогоны CommonMark/GFM поверх `md-core`.
-
-**Команды сборки:**
-```bash
-cargo test -p md-core          # быстрая проверка ядра
-cd crates/app && npm run build # tsc && vite build (tsc падает на ошибках типов)
-npx tauri dev                  # разработка GUI (требует WebView2)
-```
+Перед анализом задачи прочитай соответствующий `tasks/TZ-*.md` **целиком**. Если решение уже
+зафиксировано в ТЗ — ссылайся на раздел, а не предлагай альтернативу.
 
 ## Output Requirements
 
-**MANDATORY:** Always produce ALL of the following in a single structured markdown document. Do NOT skip any section.
+Выдавай все разделы одним структурированным markdown-документом:
 
-- [ ] Research findings (problem, hypothesis, target users table, competitive context, dependencies)
-- [ ] Metrics definition (North Star, >= 3 success metrics with numeric baselines and targets, >= 2 guardrail metrics, adoption metrics)
-- [ ] >= 2 epics with EP-[NNN] IDs, objectives, hypotheses, priorities (P0/P1/P2)
-- [ ] >= 4 user stories in "As a / I want / So that" format with Given/When/Then acceptance criteria
-- [ ] All user stories must include an **Edge Cases** subsection
-- [ ] Requirements matrix table linking requirements to epics and stories
-- [ ] Non-functional requirements with specific numeric targets
-- [ ] Release plan with Phase 1 (MVP) and Phase 2 (Enhancements)
-- [ ] Risks table and Open Questions table
+- [ ] Research findings (проблема, гипотеза, таблица целевых пользователей, конкурентный контекст, зависимости)
+- [ ] Метрики (North Star, ≥ 3 success metrics с числовыми baseline и target, ≥ 2 guardrail, adoption)
+- [ ] ≥ 2 эпикоса с ID `EP-[NNN]`, целью, гипотезой, приоритетом (P0/P1/P2)
+- [ ] ≥ 4 пользовательские истории «Как [роль] / я хочу / чтобы» с критериями Given/When/Then
+- [ ] В каждой истории — подраздел **Edge Cases**
+- [ ] Матрица требований, связывающая требования с эпикосами и историями
+- [ ] Нефункциональные требования с конкретными числовыми целями
+- [ ] План релиза: Phase 1 (MVP) и Phase 2 (Enhancements)
+- [ ] Таблица рисков и таблица открытых вопросов
 
-## Instructions
+## Шаг 1: Исследование задачи
 
-### Step 1: Task Research & Analysis
+1. Определи область: какой модуль затронут (границы — из `KODA.md`), это активное ТЗ,
+   архивное или новый пункт дорожной карты.
+2. Собери применимые архитектурные ограничения из памяти проекта и `.kodarules`.
+3. Определи зависимости между модулями — направление зависимостей задаёт порядок работ.
+4. Зафиксируй находки:
 
-1.1. **Understand the Task Context** (с учётом mdedit):
-- Что за задача: фронтенд (`crates/app/src/*`), Rust-ядро (`crates/md-core/`), IPC (`src-tauri/`), или несколько?
-- Это активное ТЗ (`tasks/TZ-*.md`), архивное (`tasks/архив/`) или новый пункт дорожной карты?
-- Какие архитектурные ограничения применимы (CSP, TS strict, граница модулей)?
-
-1.2. **Gather Context**:
-- Текущее состояние кода: прочитай соответствующий `tasks/TZ-*.md` **целиком** перед анализом
-- Проверь `KODA.md` и `.kodarules` на применимые ограничения и конвенции
-- Определи зависимости между модулями: `md-core` не знает про UI, `src-tauri` — тонкая IPC-прослойка
-- Не изобретай решение, уже описанное в ТЗ: в `TZ-excel-tables.md` есть готовые §3/§4.5/§6
-
-1.3. **Document Research** as markdown (с проектным контекстом):
 ```
-# Research Findings: [Task Name]
+# Research Findings: [Задача]
 **Date:** YYYY-MM-DD
-**Module:** md-core | app/src | src-tauri (выбрать)
+**Module:** [модуль из KODA.md]
 **Related TZ:** TZ-*.md
 
 ## Problem Statement
-[Clear description of the problem or opportunity]
-
 ## Hypothesis
-[What we believe will happen and why]
-
 ## Target Users
 | Persona | Segment | Pain Point |
-|---------|---------|------------|
-| [Name] | [Group] | [Specific pain] |
-
 ## Competitive Context
 | Competitor | Approach | Gap/Opportunity |
-|------------|----------|-----------------|
-| [Name] | [How they solve it] | [What's missing] |
-
 ## Dependencies & Constraints
-- [Technical constraint: CSP? TS strict? module boundary?]
-- [Business constraint]
-
 ## Conclusions
-[Key findings and recommendations]
 ```
 
-### Step 2: Define Metrics & KPIs
+## Шаг 2: Метрики и KPI
 
-2.1. **Identify Metric Categories** (с учётом специфики mdedit):
-- **North Star Metric**: основной показатель ценности (например, скорость рендера Markdown → HTML)
-- **Success Metrics**: метрики успеха фичи
-- **Guardrail Metrics**: метрики, которые не должны деградировать (время рендера, размер бандла, покрытие `tsc`)
-- **Adoption Metrics**: использование фичи пользователями
+Категории:
+- **North Star Metric** — основной показатель ценности.
+- **Success Metrics** — метрики успеха фичи.
+- **Guardrail Metrics** — то, что не должно деградировать. Бери измеримые через команды
+  сборки/тестов из `.kodarules`: время отклика, размер артефакта сборки, число ошибок типов,
+  падающие тесты.
+- **Adoption Metrics** — использование фичи.
 
-2.2. **Document Metrics** as markdown (с релевантными для mdedit метриками):
 ```
-# Metrics Definition: [Feature Name]
-**Date:** YYYY-MM-DD
-**Module:** [md-core | app/src | both]
+# Metrics Definition: [Фича]
 
 ## North Star Metric
-[Metric and target]
-
 ## Success Metrics
 | Metric | Type | Baseline | Target | Measurement |
-|--------|------|----------|--------|-------------|
-| [Name] | Outcome | [Value] | [Goal] | [Tool/Command] |
-
 ## Guardrail Metrics
 | Metric | Current | Min Threshold | Alert |
-|--------|---------|---------------|-------|
-| Время рендера HTML | [ms] | < X ms | debounce 120ms (main.ts) |
-| Размер бандла | [KB] | < X KB | npm run build |
-| tsc errors | 0 | 0 | npm run build |
-
 ## Adoption Metrics
 | Metric | Week 1 | Month 1 | Measurement |
-|--------|--------|---------|-------------|
-| [Name] | [Value] | [Value] | [Tool] |
-
 ## Experiment Design (if applicable)
-- **Hypothesis:** [If X, then Y changes by Z%]
-- **Duration:** [Time period]
-- **Primary Metric:** [Deciding metric]
+- **Hypothesis / Duration / Primary Metric**
 ```
 
-### Step 3: Decompose into Epics
+Метрика обязана быть измеримой конкретной командой. «Код стал лучше» — не метрика.
 
-3.1. **Identify Epics** from research (с учётом модульной архитектуры):
-- Каждый эпикус — значимая часть функциональности
-- Учитывай разделение: md-core (Rust) ↔ app/src (TS) ↔ src-tauri (IPC)
-- Следуй принципам INVEST
-- Сопоставь с success metrics
+## Шаг 3: Декомпозиция в эпикосы
 
-3.2. **Structure Each Epic**:
+Учитывай разделение модулей из `KODA.md`: эпикос не должен пересекать границу модулей
+без явной необходимости. Следуй INVEST, сопоставляй с success metrics.
+
 ```
-## EP-[NNN]: [Epic Name]
-**Module:** md-core | app/src | both
-**Objective:** [Business outcome]
-**Hypothesis:** [If we build X, then Y improves]
-**Impact:** [High/Med/Low on metric]
-**Priority:** [P0/P1/P2]
-**Dependencies:** [Other epics/modules]
-**Estimate:** [XS/S/M/L/XL]
-**Risks:** [Known risks]
-**Related TZ:** TZ-*.md (если применимо)
+## EP-[NNN]: [Название]
+**Module:** [модуль] | **Priority:** [P0/P1/P2] | **Estimate:** [XS/S/M/L/XL]
+**Objective:** [бизнес-результат]
+**Hypothesis:** [если сделаем X, то Y улучшится]
+**Impact:** [High/Med/Low на метрику]
+**Dependencies:** [другие эпикосы/модули]
+**Risks:** [известные риски]
+**Related TZ:** TZ-*.md
 ```
 
-### Step 4: Write User Stories
+## Шаг 4: Пользовательские истории
 
-4.1. **Format per Story**:
 ```
-As a [persona]
-I want [capability]
-So that [value]
-```
-
-4.2. **Acceptance Criteria** (Given/When/Then) **с учётом проектных ограничений**:
-- Проверь, что AC не нарушают CSP
-- Проверь, что AC проходят TS strict (`tsc`)
-- Для Rust-задач: проверь `cargo test -p md-core`
-
-4.3. **Story Structure**:
-```
-## US-[NNN]: [Title]
-**Module:** [md-core | app/src | src-tauri]
-**Epic:** EP-[NNN] | **Priority:** P[P] | **Estimate:** [size]
+## US-[NNN]: [Название]
+**Module:** [модуль] | **Epic:** EP-[NNN] | **Priority:** P[P] | **Estimate:** [size]
 **Related TZ:** TZ-*.md
 
 As a [persona]
 I want [capability]
-So that [value/outcome]
+So that [value]
 
 **Acceptance Criteria:**
 - Given [ctx] When [act] Then [res]
 
 **Edge Cases:**
-- [Edge case and behavior]
+- [кейс и поведение]
 
 **Technical Notes:**
-- [CSP constraint?]
-- [TS strict constraint?]
-- [Module boundary: md-core vs app?]
+- [применимые ограничения проекта — из .kodarules]
 
-**Open Questions:** [Unresolved items]
+**Open Questions:** [неразрешённое]
 ```
 
-### Step 5: Generate Product Requirements Document
+Критерии приёма формулируй так, чтобы их проверял e2e-сценарий или наблюдаемый факт,
+а не «код качественный». Каждый AC обязан соблюдать проектные ограничения.
 
-Create comprehensive markdown document (с проектной спецификой):
+## Шаг 5: PRD
+
+Полный документ собирается из шагов 1–4:
 
 ```markdown
-# Product Requirements: [Project Name]
-**PRD-001** | **Version:** 1.0 | **Status:** Draft
-**Date:** YYYY-MM-DD | **Owner:** [Name]
-**Module Scope:** md-core | app/src | src-tauri
+# Product Requirements: [Название]
+**PRD-[NNN]** | **Version:** 1.0 | **Status:** Draft
+**Date:** YYYY-MM-DD | **Owner:** [Имя]
+**Module Scope:** [модули]
 
----
-## 1. Context
-### 1.1 Problem
-[Problem description]
-
-### 1.2 Opportunity
-[Market or user opportunity]
-
-### 1.3 Strategic Alignment
-[How this aligns with mdedit goals: tabs, syntax highlighting, export, search/replace]
-
----
-## 2. Goals & Metrics
-| Objective | Key Result | Target |
-|-----------|------------|--------|
-| [Objective] | [KR with metric] | [Value] |
-
----
-## 3. Scope
-**In Scope:**
-- [Feature 1] (module: ...)
-- [Feature 2] (module: ...)
-
-**Out of Scope:**
-- [Deferred - target Q]
-
----
-## 4. User Personas
-| Persona | Role | Primary Need |
-|---------|------|--------------|
-| [Name] | [Title] | [Need] |
-
----
+## 1. Context          — Problem / Opportunity / Strategic Alignment
+## 2. Goals & Metrics  — | Objective | Key Result | Target |
+## 3. Scope            — In Scope / Out of Scope
+## 4. User Personas    — | Persona | Role | Primary Need |
 ## 5. User Flows
-1. User starts at [entry point]
-2. [Step with response]
-3. [End state]
-
----
 ## 6. Epics & Stories
-### EP-001: [Name] [module, objective and impact]
-- US-001: [title] (module)
-- US-002: [title] (module)
-
----
 ## 7. Detailed Stories
-### US-001: [Title]
-**Module:** [md-core | app/src | src-tauri]
-**Epic:** EP-001 | **Priority:** P0 | **Estimate:** M
-
-As a [persona]
-I want [capability]
-So that [value]
-
-**Acceptance Criteria:**
-- Given [ctx] When [act] Then [res]
-
----
-## 8. Requirements Matrix
-| ID | Requirement | Priority | Epic | Module | Type |
-|----|-------------|----------|------|--------|------|
-| REQ-001 | [Desc] | P0 | EP-001 | [module] | Functional |
-
----
-## 9. Non-Functional Requirements
-| Metric | Target | Verification |
-|--------|--------|--------------|
-| Время рендера | < [X]ms | debounce 120ms |
-| Размер бандла | < [X] KB | npm run build |
-| tsc errors | 0 | npm run build |
-| Cargo errors | 0 | cargo test -p md-core |
-
----
-## 10. Release Plan
-**Phase 1 - MVP:** [Features], [Date]
-**Phase 2 - Enhance:** [Features], [Date]
-
----
-## 11. Risks
-| Risk | Impact | Mitigation |
-|------|--------|------------|
-| [Risk] | High/Low | [Action] |
-
----
-## 12. Open Questions
-| Question | Owner | Due |
-|----------|-------|-----|
-| [Q] | [Name] | [Date] |
+## 8. Requirements Matrix — | ID | Requirement | Priority | Epic | Module | Type |
+## 9. Non-Functional Requirements — | Metric | Target | Verification |
+## 10. Release Plan    — Phase 1 MVP / Phase 2 Enhance
+## 11. Risks           — | Risk | Impact | Mitigation |
+## 12. Open Questions  — | Question | Owner | Due |
 ```
 
-### Step 6: Prioritize Backlog
+## Шаг 6: Приоритизация бэклога
 
-6.1. **RICE Scoring** (с учётом проектных приоритетов):
+RICE:
+
 ```
 | Story | Reach | Impact | Confidence | Effort | Score |
 |-------|-------|--------|------------|--------|-------|
 | US-001 | [N] | 1-3-9 | 10-50-25% | weeks | [calc] |
 ```
 
-6.2. **Проектные приоритеты:**
-- Активное ТЗ (`tasks/TZ-excel-tables.md`) — P0: оно уже утверждено, декомпозиция не пересматривает scope
-- Архивные ТЗ (`tasks/архив/`) — вне бэклога; используются только как источник конвенций
-- Пункты дорожной карты из `KODA.md` (вкладки, подсветка синтаксиса, экспорт HTML/PDF, Ctrl+F,
-  CommonMark/GFM-harness) — оценивать по RICE
-- Порядок работ определяется `Implementation Plan` из ТЗ (шаги 1–10 в `TZ-excel-tables.md` §9),
-  а не RICE
-- Направление зависимостей: `md-core` (не знает про UI) → `app/src` (vanilla TS) → `src-tauri` (IPC)
+Порядок приоритетов:
+- Утверждённое активное ТЗ — P0: декомпозиция не пересматривает его scope.
+- Архивные ТЗ — вне бэклога, только как источник конвенций.
+- Пункты дорожной карты из памяти проекта — оценивать по RICE.
+- Если в ТЗ есть `Implementation Plan` — порядок работ задаёт он, а не RICE.
 
 ## Best Practices
 
-- **Сначала читай контекст:** перед анализом задачи прочитай соответствующий `tasks/TZ-*.md` **целиком**
-- **Не дублируй ТЗ:** если решение уже зафиксировано (стабильный ключ, предикаты вместо `data-*`,
-  точечный diff), ссылайся на раздел ТЗ, а не предлагай альтернативу
-- **Соблюдай ограничения:** CSP (`default-src 'self'`, без внешних библиотек), TS strict, граница модулей —
-  всегда указывай в AC
-- **Метрики должны быть измеримыми:** через `npm run build`, `cargo test -p md-core`, debounce-таймеры,
-  размер бандла, число ошибок `tsc`
-- **Связывай с модулями:** каждая история и эпикус — с указанием модуля (md-core | app/src | src-tauri)
-- **AC ≠ дизайн:** критерии приёма формулируются так, чтобы их можно было проверить в e2e-сценариях ТЗ
-- **Комментарии на русском:** если генерируешь код, комментарии должны быть на русском
-- **Версионируй PRD:** обновляй версию и статус по мере эволюции понимания
+- Сначала читай контекст: ТЗ целиком, память проекта, правила.
+- Не дублируй ТЗ: зафиксированное решение — ссылкой на раздел.
+- Связывай с модулями: каждая история и эпикос — с указанием модуля.
+- Метрики — только измеримые существующими командами проверки.
+- Комментарии в генерируемом коде — на русском (см. `.kodarules`).
+- Версионируй PRD по мере уточнения понимания.
 
 ## Limitations
 
-- Не заменяет пользовательские интервью
-- Техническая реализуемость требует валидации инженерии (проверка `tsc`, `cargo test`)
-- Финансовые прогнозы требуют FP&A
-- Compliance требует legal review
-- **Не может игнорировать проектные ограничения** (CSP, TS strict, архитектура workspace)
-- **Не пересматривает scope утверждённого ТЗ** — только декомпозирует его
-
-## Примеры для mdedit
-
-### Example 1: Активное ТЗ — таблицы «как в Excel» (`tasks/TZ-excel-tables.md`)
-**User:** "Сделай таблицы в предпросмотре как в Excel: сортировка, фильтры, копирование TSV."
-
-Output:
-- Research: текущий `tables.ts`, состояние в `WeakMap` (губится при `innerHTML`), AC-1..AC-17 ТЗ
-- Metrics: применение фильтра < 50 мс; 0 ошибок `tsc`; `cargo test -p md-core` — зелёные;
-  guardrail — размер бандла не растёт за счёт внешних библиотек (их быть не должно)
-- Epics (по Implementation Plan §9): EP-001 стабильный ключ + sessionStorage, EP-002 точечный diff
-  вместо `innerHTML`, EP-003 предикатные фильтры + мультисортировка, EP-004 копирование TSV/MD
-- Stories: 8–12, edge cases из §6 ТЗ: `innerHTML`-перезапись, `NaN`-ключ, sticky-первый столбец,
-  склейка `<th`/`<td`, переполнение `<select>` (> `PREFILTER_MAX`)
-
-### Example 2: Новый пункт дорожной карты — поиск/замена (Ctrl+F)
-**User:** "Добавь поиск и замену по документу."
-
-Output:
-- Research: скользящее окно маппинга (`mapping.ts`), debounce рендера 120 мс, отсутствие готового
-  layer-механизма выделения
-- Metrics: поиск по 500 КБ < 100 мс; подсветка совпадений в 60 fps; guardrail — время рендера не деградирует
-- Epics: EP-001 поиск + счётчик совпадений, EP-002 переходы F3/Shift+F3, EP-003 замена одна/все
-- Stories: 6–8, edge cases: регистронезависимость, совпадения внутри кода/таблицы, скролл-синхронизация
-
-### Example 3: Точечное исправление — рассинхрон скролла после загрузки изображений
-**User:** "После подгрузки картинок предпросмотр уезжает относительно редактора."
-
-Output:
-- Research: `scrollsync.ts` (пропорция, не пиксели), `mapping.ts` (окно), жизненный цикл загрузки изображений
-- Metrics: ошибка смещения < 2 пикселя после `load`; отсутствие layout thrashing
-- Epics: EP-001 хук на загрузку изображений, EP-002 пересчёт пропорции
-- Stories: 3–4, AC обязательно включают `npm run build` и `cargo test -p md-core`
+- Не заменяет пользовательские интервью.
+- Техническая реализуемость требует проверки командами сборки/тестов.
+- Финансовые прогнозы — вне скоупа.
+- Не может игнорировать проектные ограничения.
+- Не пересматривает scope утверждённого ТЗ — только декомпозирует его.

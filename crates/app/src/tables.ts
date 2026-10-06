@@ -410,9 +410,12 @@ function enhance(table: HTMLTableElement) {
   apply(entry);
 }
 
-// закрыть меню при прокрутке предпросмотра (позиция fixed иначе «отъедет»)
-export function attachMenuAutoClose(scroller: HTMLElement) {
+// закрыть меню при прокрутке предпросмотра (позиция fixed иначе «отъедет»).
+// Возвращает unsubscribe (§5.6): у preview-представления слушатель живёт ровно
+// пока жив сам view — иначе утечка на закрытой DOM-ноде при двух панелях.
+export function attachMenuAutoClose(scroller: HTMLElement): () => void {
   scroller.addEventListener("scroll", closeMenu, { passive: true });
+  return () => scroller.removeEventListener("scroll", closeMenu);
 }
 
 // ---------- публичный API ----------

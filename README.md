@@ -11,7 +11,7 @@ crates/
 │   └── src/lib.rs    #   to_html(), to_html_with() + юнит-тесты (таблицы GFM, tasklist, strike…)
 └── app/
     ├── src/          # Фронтенд (TS + Vite): main.ts, tauri.ts (IPC), tables.ts, inspector.ts, images.ts, style.css
-    └── src-tauri/    # Tauri-шелл: команды read_file / write_file / render_markdown
+    └── src-tauri/    # Tauri-шелл: команды документов (new/open/update/render/save/close)
 ```
 
 `md-core` дополнительно экспортирует `to_html_mapped(md)` для режима инспектора: каждый

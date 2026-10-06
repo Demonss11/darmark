@@ -1,6 +1,6 @@
 # language: ru
 #
-# Предпросмотр собирается реальным Rust-ядром (md-core) через IPC render_markdown.
+# Предпросмотр собирается реальным Rust-ядром (md-core) через IPC update_document/render_document.
 # Здесь проверяем и рендер (кириллица/title/alt), и поведение санитайзера в DOM.
 
 Функционал: Безопасный предпросмотр Markdown

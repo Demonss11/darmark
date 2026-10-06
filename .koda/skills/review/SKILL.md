@@ -31,21 +31,25 @@ GitHub CLI (`gh`) не использовать — репозиторий не 
   (перенести в `md-core` или фронт).
 
 ### Безопасность
-- Файловые операции: проверка `ALLOWED_EXTS`, отсутствие path traversal в `read_file`/`write_file`.
-- XSS-цепочка markdown → HTML → `preview.innerHTML` (`main.ts:doRender`): сырой HTML из markdown,
-  `javascript:`-URL, inline-обработчики в генерируемом HTML = **Critical**.
+- Файловые операции (`open_document`/`save_document`): единственная проверка — лимит
+  10 МБ и валидный UTF-8 (модель Notepad++: путь выбирает пользователь в диалоге).
+  Обход диалога с подстановкой произвольного пути из фронтенда = **Critical**.
+- XSS-цепочка markdown → HTML → `preview.innerHTML` (санитайзер в `md-core`): сырой HTML
+  в обход санитайзера, `javascript:`-URL, inline-обработчики в генерируемом HTML = **Critical**.
+  Текст ошибок IPC выводить только через `textContent`/`flash()`, не `innerHTML`.
 - Секреты, токены, ключи в diff = **Critical**.
-- CSP (`tauri.conf.json`): `default-src 'self'; style-src 'self' 'unsafe-inline'`. Внешние
-  скрипты/библиотеки и любой `eval` = **Critical**; inline-стили допустимы только для ширин колонок.
+- CSP (`tauri.conf.json`): `default-src 'self'; script-src 'self'`. Внешние
+  скрипты/библиотеки и любой `eval` = **Critical**; inline-стили разрешены.
 - Новые npm/crate-зависимости без явного запроса пользователя = **Critical**.
 
 ### TypeScript (фронт)
 - Сборка обязана проходить: `npm run build` = `tsc && vite build`; strict, `noUnusedLocals`,
   `noUnusedParameters`. Неиспользуемая новая сущность = Suggestion (иначе `tsc` упадёт).
-- Гонки перерисовки: новый асинхронный рендер в обход `renderSeq`/debounce 120 мс (`main.ts`) —
-  Suggestion, при реальной потере данных — Critical.
+- Гонки перерисовки: асинхронный рендер обязан проходить через `docStore` (дебаунс 120 мс,
+  отбрасывание ответов со `rev < lastRev`, сверка `id` после await). Новый путь к DOM-рендеру
+  в обход стора = Suggestion, при реальной потере данных — Critical.
 - Состояние таблиц (`tables.ts`) живёт в `WeakMap` по DOM-узлу и теряется при `innerHTML`:
-  новый код, полагающийся на выживание DOM-состояния между рендерами = Suggestion.
+  новый код, полагающийся на выживание DOM-состояния между перерисовками = Suggestion.
 
 ### Rust
 - `cargo test -p md-core` и `cargo check -p mdedit` проходят.

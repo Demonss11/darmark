@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "mdedit: окно main + нативные диалоги; свои команды new_document/open_document/save_document/close_document/render_markdown доступны по умолчанию (файловый доступ — модель Notepad++)",
+  "description": "mdedit: окно main + нативные диалоги; свои команды new_document/open_document/update_document/render_document/save_document/close_document доступны по умолчанию (файловый доступ — модель Notepad++)",
   "windows": ["main"],
   "permissions": [
     "core:default",

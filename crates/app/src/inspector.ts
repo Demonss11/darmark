@@ -4,34 +4,31 @@
 // байтовые смещения в исходном markdown.
 //
 // Главная сложность — единицы измерения: textarea оперирует UTF-16 code units
-// (selectionStart/End), а pulldown-cmark — байтами UTF-8. Карты byte↔UTF-16
-// строятся по editor.value, который WebView может нормализовать по CRLF — именно
-// он и есть источник истины. Общая логика вынесена в `mapping.ts`, чтобы её
-// переиспользовала синхронизация скролла.
+// (selectionStart/End), а pulldown-cmark — байтами UTF-8. Карты byte↔UTF-16 и
+// список блоков берутся из общего RenderIndex (Фаза 4): индекс строит
+// previewView по тексту рендера, здесь он только читается. Синхронизация
+// скролла использует тот же снимок, исключая дубль построения.
 
 import {
   type Block,
   type UnitMaps,
-  buildUnitMaps,
   bytesToUnits,
-  collectBlocks,
   findBlock,
   parseRange,
   unitsToBytes,
 } from "./mapping";
+import type { RenderIndex } from "./renderIndex";
 
 export interface Inspector {
   isActive(): boolean;
   enable(): void;
   disable(): void;
   /**
-   * Вызывается после установки `preview.innerHTML`.
-   * `markdown` — текст, который ушёл в рендер: именно по нему посчитаны
-   * байтовые смещения в `data-md`, поэтому карту byte↔UTF-16 нужно строить
-   * по нему, а не по текущему `editor.value` (который мог измениться, пока
-   * асинхронный рендер был в полёте). Без аргумента — просто сброс подсветки.
+   * Индекс изменился (перестроен после рендера или сброшен при правке).
+   * Данные берутся из RenderIndex: там уже лежит `source` рендера и посчитанные
+   * по нему карты/блоки. Просто пересчитываем привязки либо сбрасываем их.
    */
-  onRendered(markdown?: string): void;
+  onIndexChanged(): void;
   /** Синхронизация editor→preview; вызывается из общего хука main.ts (T-11). */
   onEditorActivity(): void;
 }
@@ -69,12 +66,16 @@ export function createInspector(opts: {
   editor: HTMLTextAreaElement;
   preview: HTMLElement;
   statusEl: HTMLElement;
+  /** Общий индекс рендера: карты byte↔UTF-16 и блоки (Фаза 4). */
+  index: RenderIndex;
   /** Вызывается перед программным scrollIntoView (чтобы синхронизация скролла не тянула вторую панель). */
   beforeScrollIntoView?: () => void;
 }): Inspector {
-  const { editor, preview, statusEl, beforeScrollIntoView } = opts;
+  const { editor, preview, statusEl, index, beforeScrollIntoView } = opts;
 
   let active = false;
+  // Привязки читаются из снимка индекса; здесь — только текущие ссылки на
+  // активные данные (валидны ровно пока индекс не перестроен/не сброшен).
   let blocks: Block[] | null = null;
   let maps: UnitMaps | null = null;
   let activeBlockEl: HTMLElement | null = null;
@@ -283,6 +284,8 @@ export function createInspector(opts: {
     document.addEventListener("selectionchange", onEditorSelection);
     document.addEventListener("keydown", onShiftKey);
     document.addEventListener("keyup", onShiftKey);
+    // Привязки могли появиться, пока режим был выключен, — подхватываем индекс.
+    onIndexChanged();
   }
 
   function disable(): void {
@@ -307,18 +310,18 @@ export function createInspector(opts: {
     restoreSavedFocus();
   }
 
-  function onRendered(markdown?: string): void {
+  function onIndexChanged(): void {
     clearBlockHighlight();
     blocks = null;
     maps = null;
     programmaticSel = { start: -1, end: -1 };
-    // Без аргумента — только сброс подсветки (вызывается из input-хендлера:
-    // DOM ещё старый, переиндексация будет после установки нового innerHTML).
-    if (!active || markdown === undefined) return;
-    blocks = collectBlocks(preview);
-    // Смещения в data-md посчитаны по тексту рендера; строим карту по нему же.
-    maps = buildUnitMaps(markdown);
+    // Индекс пуст (текст изменён до рендера) или режим выключен — только сброс.
+    if (!active) return;
+    const snap = index.current();
+    if (!snap) return;
+    blocks = snap.blocks;
+    maps = snap.maps;
   }
 
-  return { isActive, enable, disable, onRendered, onEditorActivity: onEditorSelection };
+  return { isActive, enable, disable, onIndexChanged, onEditorActivity: onEditorSelection };
 }

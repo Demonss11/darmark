@@ -13,14 +13,15 @@
   "skills": {
     "disabled": [
       "git-commit",
-      "frontend-dev",
       "frontend-api-integration-patterns",
-      "frontend-design",
       "senior-discovery-product",
+      "systematic-debugging",
+      "verification-before-completion",
+      "review",
       "pm",
-      "senior-system-analyst",
       "codebase-design",
-      "systematic-debugging"
+      "writing-style",
+      "senior-system-analyst"
     ]
   }
 }

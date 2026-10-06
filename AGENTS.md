@@ -10,12 +10,18 @@ Tauri 2 + vanilla TypeScript/Vite на фронте + чистое Rust-ядро
 - `crates/md-core/` — чистое ядро markdown→HTML (pulldown-cmark 0.13). **Без Tauri/GUI-зависимостей**;
   должно оставаться переиспользуемым в CLI/тестах. Здесь `to_html()`/`to_html_with()`, XSS-санитайзер
   и юнит-тесты.
-- `crates/app/src/` — фронтенд на чистом TS (без фреймворков): `main.ts` (тулбар, файловые команды,
-  рендер с debounce 120 мс), `ids.ts` (брендированные id §5.1), `tauri.ts` (IPC-обёртки),
-  `tables.ts` (Excel-подобные таблицы), `style.css`.
+- `crates/app/src/` — фронтенд на чистом TS (без фреймворков): `main.ts` (композиционный корень:
+  связывает store, редактор, предпросмотр, тулбар), `docStore.ts` (проекция Rust-стора: текст/rev/
+  path/dirty, дебаунс IPC, защита от гонок), `editorView.ts` (textarea-представление),
+  `renderIndex.ts` (единый индекс на ревизию), `viewRegistry.ts` (реестр тир-1/тир-2 + `ViewContext`),
+  `previewView.ts` (тир-1 preview, единственное `preview.innerHTML`), `ids.ts`
+  (брендированные id §5.1), `tauri.ts` (IPC-обёртки), `tables.ts` (Excel-подобные таблицы),
+  `inspector.ts` (двусторонняя подсветка блоков), `mapping.ts` (байты ↔ UTF-16), `scrollsync.ts`
+  (синхронная прокрутка), `images.ts` (относительные src → asset-URL), `style.css`.
 - `crates/app/src-tauri/` — тонкий Tauri-шелл. Крейт/пакет — `mdedit`, lib — `mdedit_lib`.
   `state.rs` — `DocumentStore` (D5: текст, rev, путь, кэш), `error.rs` — `CommandError { code, message }`.
-  Команды документов `new_document`/`open_document`/`save_document`/`close_document` + `render_markdown`.
+  Команды документов `new_document`/`open_document`/`update_document`/`render_document`/
+  `save_document`/`close_document` (рендер и кэш — в сторе, `render_markdown` удалён).
   Файловый доступ — модель Notepad++ (путь выбирает пользователь в нативном диалоге на фронте),
   единственная проверка — лимит 10 МБ.
 - Задачи только по фронтенду не должны трогать `md-core` и `src-tauri`
@@ -44,8 +50,8 @@ Tauri 2 + vanilla TypeScript/Vite на фронте + чистое Rust-ядро
 - **Строгий TS** (`tsconfig.json`): `strict`, `noUnusedLocals`, `noUnusedParameters`. Неиспользуемые
   сущности ломают сборку — не создавай их.
 - **Рендер идёт на Rust-стороне.** Фронт только присваивает `preview.innerHTML` и не парсит Markdown.
-  Состояние таблиц — `WeakMap` по DOM-узлу (`tables.ts`), теряется при перерисовке; `main.ts` защищает
-  это сравнением `lastRenderedHtml`, но стабильного ключа на таблицу пока нет.
+  Состояние таблиц — `WeakMap` по DOM-узлу (`tables.ts`), теряется при перерисовке; хост защищает
+  это флагом `RenderResult.changed`, но стабильного ключа на таблицу пока нет.
 - **Юнит-тестов фронтенда и CI нет** (`.github/` отсутствует, `vitest` не установлен); проверка
   фронта = `npm run build`. Есть GUI E2E на Cucumber + WebdriverIO (`crates/app/e2e/`, `npm run test:e2e`)
   поверх release-бинарника; нативные диалоги/ОС им не покрываются — помечай `@manual`.

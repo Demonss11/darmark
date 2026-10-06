@@ -6,6 +6,10 @@
 // предпросмотр → строка начала верхнего видимого блока. Иначе (и между вводом
 // и перерендером) работает прежняя пропорциональная синхронизация как fallback.
 //
+// Карты byte↔UTF-16, начала строк и блоки берутся из общего RenderIndex
+// (Фаза 4): их строит previewView по тексту рендера, здесь только читается
+// снимок — тот же, что видит инспектор (без дубля построения).
+//
 // Почему логические строки тождественны визуальным: мягкий перенос у редактора
 // отключён (`wrap="off"` + `white-space: pre` в style.css), поэтому
 // `scrollTop/lineH` точно указывает на логическую строку, а `lineStarts`
@@ -22,25 +26,23 @@
 import {
   type Block,
   type UnitMaps,
-  buildLineStarts,
-  buildUnitMaps,
   bytesToUnits,
-  collectBlocks,
   findBlockContaining,
   findLineAt,
   nextBlockAfter,
   unitsToBytes,
 } from "./mapping";
+import type { RenderIndex } from "./renderIndex";
 
 export interface ScrollSync {
   isEnabled(): boolean;
   /** Включение/выключение; при включении панели сразу выравниваются. */
   setEnabled(enabled: boolean): void;
   /**
-   * markdown — текст рендера: по нему строятся карты/блоки.
-   * Без аргумента — сброс анкорных данных (fallback на пропорцию).
+   * Индекс изменился (перестроен после рендера или сброшен при правке).
+   * Данные берутся из RenderIndex; без снимка — fallback на пропорцию.
    */
-  onRendered(markdown?: string): void;
+  onIndexChanged(): void;
   /**
    * Гасит синхронизацию на короткое время: программная прокрутка инспектора
    * не должна тянуть вторую панель.
@@ -58,8 +60,10 @@ function clamp(v: number, lo: number, hi: number): number {
 export function createScrollSync(opts: {
   editor: HTMLTextAreaElement;
   preview: HTMLElement;
+  /** Общий индекс рендера: карты, строки, блоки (Фаза 4). */
+  index: RenderIndex;
 }): ScrollSync {
-  const { editor, preview } = opts;
+  const { editor, preview, index } = opts;
 
   let enabled = true;
   let syncing = false;          // поднят на время программной записи scrollTop
@@ -247,8 +251,9 @@ export function createScrollSync(opts: {
       }
       alignEditorToPreview(); // редактор — источник истины при включении
     },
-    onRendered(markdown?: string) {
-      if (markdown === undefined) {
+    onIndexChanged() {
+      const snap = index.current();
+      if (!snap) {
         // Между вводом и рендером анкоры устарели — только пропорция.
         blocks = null;
         maps = null;
@@ -258,9 +263,9 @@ export function createScrollSync(opts: {
       }
       if (!enabled) return;
       measure();
-      maps = buildUnitMaps(markdown);
-      lineStarts = buildLineStarts(markdown);
-      blocks = collectBlocks(preview);
+      maps = snap.maps;
+      lineStarts = snap.lineStarts;
+      blocks = snap.blocks;
       alignEditorToPreview();
     },
     suspend() {

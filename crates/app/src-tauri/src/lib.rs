@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use error::CommandError;
-use state::{DocMeta, DocumentId, DocumentSnapshot, DocumentStore};
+use state::{DocMeta, DocumentId, DocumentSnapshot, DocumentStore, RenderResult};
 
 /// Максимальный размер файла, который разрешено открывать (10 МБ).
 /// Единственная проверка при чтении — защита от чтения гигантских файлов.
@@ -99,37 +99,33 @@ async fn open_document(
     Ok(lock_store(&store).insert_loaded(path, text))
 }
 
-/// Сохраняет документ в файл.
-///
-/// Владелец текста — Rust (D5), но до Фазы 2 правки принимает `update_document`,
-/// поэтому текст приходит аргументом (временный мост, см. `tasks/TZ-H1.md` §3.1).
-/// Явный `path` (Save As) приоритетнее запомненного в сторе.
+/// Сохраняет документ в файл. Текст берётся из стора (владелец — Rust, D5);
+/// явный `path` (Save As) приоритетнее запомненного.
 #[tauri::command]
 async fn save_document(
     id: DocumentId,
-    text: String,
     path: Option<PathBuf>,
     app: tauri::AppHandle,
     store: tauri::State<'_, Mutex<DocumentStore>>,
 ) -> Result<DocMeta, CommandError> {
-    // Сначала определяем путь только на чтение: при ошибке записи стор не должен «уплыть».
+    // Сначала читаем путь и текст, не мутируя стор: при ошибке записи стор не «уплывёт».
     let explicit_path = path;
-    let target = {
+    let (target, body) = {
         let guard = lock_store(&store);
         let doc = guard
             .get(&id)
             .ok_or_else(|| CommandError::unknown_document(id.as_str()))?;
-        match &explicit_path {
+        let target = match &explicit_path {
             Some(p) => p.clone(),
             None => doc
                 .path
                 .clone()
                 .ok_or_else(|| CommandError::io("Не задан путь сохранения"))?,
-        }
+        };
+        (target, doc.text.clone())
     };
 
     let write_path = target.clone();
-    let body = text.clone();
     tauri::async_runtime::spawn_blocking(move || write_text(&write_path, &body))
         .await
         .map_err(|e| CommandError::io(e.to_string()))??;
@@ -137,7 +133,7 @@ async fn save_document(
         allow_asset_dir(&app, dir);
     }
 
-    // Запись удалась — только теперь фиксируем путь и текст в сторе.
+    // Запись удалась — только теперь фиксируем путь в сторе.
     let mut guard = lock_store(&store);
     let doc = guard
         .get_mut(&id)
@@ -145,7 +141,6 @@ async fn save_document(
     if let Some(p) = explicit_path {
         doc.path = Some(p);
     }
-    doc.text = text;
     Ok(doc.meta())
 }
 
@@ -155,18 +150,32 @@ fn close_document(id: DocumentId, store: tauri::State<'_, Mutex<DocumentStore>>)
     lock_store(&store).close(&id);
 }
 
-/// Рендерит markdown → HTML через md-core (CommonMark + GFM tables/strike/tasklist).
+/// Применяет правку текста: обновляет стор (`rev` растёт только при смене), рендерит.
 ///
-/// `mapped` включает режим инспектора: топ-блоки оборачиваются в
-/// `<div class="md-block" data-md="start,end">` (см. `md_core::to_html_mapped`).
-/// В Фазе 2 переедет в `update_document`/`render_document` (владелец — стор).
+/// Заменяет stateless `render_markdown`: рендер и кэш `(mapped, rev)` — теперь в сторе,
+/// а `RenderResult.changed` избавляет TS от собственного `lastRenderedHtml`.
 #[tauri::command]
-fn render_markdown(markdown: String, mapped: Option<bool>) -> String {
-    if mapped.unwrap_or(false) {
-        md_core::to_html_mapped(&markdown)
-    } else {
-        md_core::to_html(&markdown)
-    }
+fn update_document(
+    id: DocumentId,
+    text: String,
+    mapped: Option<bool>,
+    store: tauri::State<'_, Mutex<DocumentStore>>,
+) -> Result<RenderResult, CommandError> {
+    lock_store(&store)
+        .update(&id, text, mapped.unwrap_or(false))
+        .ok_or_else(|| CommandError::unknown_document(id.as_str()))
+}
+
+/// Рендерит документ без правки текста (смена `mapped`, первый рендер после open/new).
+#[tauri::command]
+fn render_document(
+    id: DocumentId,
+    mapped: Option<bool>,
+    store: tauri::State<'_, Mutex<DocumentStore>>,
+) -> Result<RenderResult, CommandError> {
+    lock_store(&store)
+        .render(&id, mapped.unwrap_or(false))
+        .ok_or_else(|| CommandError::unknown_document(id.as_str()))
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -183,9 +192,10 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             new_document,
             open_document,
+            update_document,
+            render_document,
             save_document,
-            close_document,
-            render_markdown
+            close_document
         ])
         .run(tauri::generate_context!())
         .expect("error while running mdedit");

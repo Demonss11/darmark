@@ -20,6 +20,13 @@ export interface DocMeta {
   dirty_hint: boolean;
 }
 
+/** Результат рендера: HTML, ревизия и «HTML изменился с прошлого раза». */
+export interface RenderResult {
+  html: string;
+  rev: number;
+  changed: boolean;
+}
+
 /** Создаёт безымянный документ; `text` — стартовый текст. */
 export function newDocument(text?: string): Promise<DocumentSnapshot> {
   return invoke<DocumentSnapshot>("new_document", { text: text ?? null });
@@ -30,23 +37,28 @@ export function openDocument(path: string): Promise<DocumentSnapshot> {
   return invoke<DocumentSnapshot>("open_document", { path });
 }
 
-/** Сохраняет документ; `path` задаётся для «Сохранить как». */
-export function saveDocument(
+/** Применяет правку текста: стор + рендер (`rev` растёт только при смене текста). */
+export function updateDocument(
   id: DocumentId,
   text: string,
-  path?: string
-): Promise<DocMeta> {
-  return invoke<DocMeta>("save_document", { id, text, path: path ?? null });
+  mapped = false
+): Promise<RenderResult> {
+  return invoke<RenderResult>("update_document", { id, text, mapped });
+}
+
+/** Рендерит документ без правки текста (смена `mapped`, первый рендер). */
+export function renderDocument(id: DocumentId, mapped = false): Promise<RenderResult> {
+  return invoke<RenderResult>("render_document", { id, mapped });
+}
+
+/** Сохраняет документ; текст берётся из стора, `path` задаётся для «Сохранить как». */
+export function saveDocument(id: DocumentId, path?: string): Promise<DocMeta> {
+  return invoke<DocMeta>("save_document", { id, path: path ?? null });
 }
 
 /** Закрывает документ в сторе (используется вместе с панелями). */
 export function closeDocument(id: DocumentId): Promise<void> {
   return invoke<void>("close_document", { id });
-}
-
-/** Рендер markdown → HTML (в Фазе 2 переедет в `update_document`/`render_document`). */
-export function renderMarkdown(markdown: string, mapped = false): Promise<string> {
-  return invoke<string>("render_markdown", { markdown, mapped });
 }
 
 /** Достаёт человекочитаемое сообщение из ошибки IPC `{ code, message }` или `Error`. */
