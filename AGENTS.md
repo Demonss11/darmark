@@ -16,7 +16,9 @@ Tauri 2 + vanilla TypeScript/Vite на фронте + чистое Rust-ядро
   `renderIndex.ts` (единый индекс на ревизию), `viewRegistry.ts` (реестр тир-1/тир-2 + `ViewContext`),
   `previewView.ts` (тир-1 preview, единственное `preview.innerHTML`), `layout.ts` (дерево Pane/Split,
   `MAX_PANES=2`), `paneHost.ts` (монтирование панелей), `linkController.ts` (inspector + scrollsync),
-  `statusBar.ts`/`fileActions.ts`/`shell.ts` (оболочка) + `sampleDocument.ts`, `ids.ts`
+  `statusBar.ts`/`fileActions.ts`/`shell.ts` (оболочка) + `sidebar.ts` (rail + сворачиваемый
+  sidebar idea5), `formatActions.ts` (Markdown-обёртки над выделением), `gutter.ts` (номера
+  строк редактора), `sampleDocument.ts`, `ids.ts`
   (брендированные id §5.1), `tauri.ts` (IPC-обёртки), `tables.ts` (Excel-подобные таблицы),
   `inspector.ts` (двусторонняя подсветка блоков), `mapping.ts` (байты ↔ UTF-16), `scrollsync.ts`
   (синхронная прокрутка), `images.ts` (относительные src → asset-URL), `style.css`.

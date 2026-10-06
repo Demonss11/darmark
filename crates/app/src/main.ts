@@ -20,6 +20,9 @@ import { applyLayout, LayoutError, type LayoutNode, type Pane } from "./layout";
 import { createStatusBar } from "./statusBar";
 import { createFileActions } from "./fileActions";
 import { createShell } from "./shell";
+import { createSidebar } from "./sidebar";
+import { createGutter } from "./gutter";
+import { createFormatActions } from "./formatActions";
 import { START_TEXT } from "./sampleDocument";
 import { errorMessage } from "./tauri";
 import type { RenderResult } from "./tauri";
@@ -32,6 +35,31 @@ const preview = document.getElementById("preview") as HTMLElement;
 const panesEl = document.getElementById("panes") as HTMLElement;
 const statInspect = document.getElementById("stat-inspect") as HTMLElement;
 const btnInspect = document.getElementById("btn-inspect") as HTMLButtonElement;
+const gutterEl = document.getElementById("gutter") as HTMLElement;
+const sidebarEl = document.getElementById("sidebar") as HTMLElement;
+const tabName = document.getElementById("tab-name") as HTMLElement;
+const tabDirty = document.getElementById("tab-dirty") as HTMLElement;
+
+/** Имя файла из пути (для таба-заглушки). */
+function baseName(p: string): string {
+  const i = Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\"));
+  return i >= 0 ? p.slice(i + 1) : p;
+}
+
+// Rail + сворачиваемый sidebar (explorer по умолчанию, plugins — заглушка H2).
+const sidebar = createSidebar({
+  sidebar: sidebarEl,
+  panels: {
+    explorer: document.getElementById("panel-explorer") as HTMLElement,
+    plugins: document.getElementById("panel-plugins") as HTMLElement,
+  },
+  rail: {
+    explorer: document.getElementById("rail-explorer") as HTMLElement,
+    plugins: document.getElementById("rail-plugins") as HTMLElement,
+  },
+});
+const gutter = createGutter(editor, gutterEl);
+const format = createFormatActions(editor);
 
 // 1. Общий индекс рендера + связка inspector/scrollsync.
 const renderIndex = createRenderIndex();
@@ -114,6 +142,9 @@ store.subscribe((s) => {
     prevText = s.text;
     previewView.invalidate(); // индекс устарел до нового рендера
   }
+  gutter.update(); // номера строк следуют за текстом редактора
+  tabName.textContent = s.path ? baseName(s.path) : "безымянный";
+  tabDirty.hidden = !s.dirty;
   status.updateTitle();
   status.updateStatus();
 });
@@ -146,7 +177,11 @@ createShell({
     setSyncEnabled: (on) => link.setSyncEnabled(on),
     setActivePane: (p) => paneHost.setActive(p),
     isDirty: () => store.state().dirty,
+    palette: () => status.flash("Палитра — скоро"),
+    flash: (m) => status.flash(m),
   },
+  format,
+  sidebar,
   inspectorActive: () => inspector.isActive(),
   editorPane: EDITOR_PANE,
   previewPane: PREVIEW_PANE,

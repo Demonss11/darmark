@@ -28,6 +28,9 @@ crates/
     │   ├── statusBar.ts#   статусбар/заголовок (читают проекцию стора)
     │   ├── fileActions.ts#  файловые команды (new/open/save/save-as, диалоги)
     │   ├── shell.ts    #   тулбар, хоткеи, тумблеры, закрытие окна
+    │   ├── sidebar.ts  #   rail + сворачиваемый sidebar (idea5), explorer — заглушка
+    │   ├── formatActions.ts# Markdown-обёртки над выделением textarea (bold/italic/code/heading/link)
+    │   ├── gutter.ts   #   номера строк, синхронные прокрутке редактора
     │   ├── sampleDocument.ts# стартовый демо-документ
     │   ├── tauri.ts    #   IPC-обёртки: документы (new/open/update/render/save/close) + errorMessage
     │   ├── ids.ts      #   брендированные DocumentId / PaneId / ViewId (§5.1)
@@ -36,8 +39,8 @@ crates/
     │   ├── mapping.ts  #   конвертация байтовых смещений data-md ↔ UTF-16 (единственная граница)
     │   ├── scrollsync.ts#  синхронная прокрутка: анкоровая по блокам + пропорциональный fallback
     │   ├── images.ts   #   относительные src картинок → asset-URL (convertFileSrc)
-    │   └── style.css   #   CSS-переменные, light/dark через prefers-color-scheme
-    ├── index.html      #   #toolbar, #editor (textarea), #preview (article.markdown-body), #statusbar
+    │   └── style.css   #   одна тёмная тема (idea5): токены, сетка оболочки, gutter, компоненты
+    ├── index.html      #   toolbar/rail/sidebar/tabs/panes/gutter/preview/statusbar
     └── src-tauri/      # Tauri-шелл: команды документов (с рендером)
         ├── src/lib.rs  #   IPC-команды + файловый ввод-вывод (лимит 10 МБ)
         ├── src/state.rs#   DocumentStore (D5): текст, rev, путь, кэш рендера
