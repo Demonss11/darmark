@@ -1,0 +1,15 @@
+[package]
+name = "lua-proto"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Измерительный стенд Lua-плагинного хоста (прототип, в main не мёржится)"
+
+[dependencies]
+# Только 5.5 и только vendored: версия зафиксирована (D13), сравнение с 5.4 исключено.
+# default-features выключены — без serde/async/error-send ради честного замера размера (P2).
+mlua = { version = "0.12", default-features = false, features = ["lua55", "vendored"] }
+
+# Спайк C-hook: нативный C-hook под panic="abort" (см. src/proto_hook.c).
+[build-dependencies]
+cc = "1"

@@ -1,0 +1,21 @@
+[package]
+name = "lua-rpc-spike"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "C-спайк: Lua в отдельном процессе, bidirectional RPC (прототип, в main не мёржится)"
+
+[lib]
+name = "lua_rpc_spike"
+path = "src/lib.rs"
+
+[[bin]]
+name = "rpc-parent"
+path = "src/bin/parent.rs"
+
+[[bin]]
+name = "rpc-child"
+path = "src/bin/child.rs"
+
+[dependencies]
+mlua = { version = "0.12", default-features = false, features = ["lua55", "vendored"] }

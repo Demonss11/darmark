@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
-members = ["crates/md-core", "crates/app/src-tauri"]
+# lua-proto — прототип/спайк, живёт только в ветке proto/lua-plugin-host (TZ-proto-lua-host.md).
+members = ["crates/md-core", "crates/app/src-tauri", "crates/lua-proto", "crates/lua-rpc-spike"]
 
 [workspace.package]
 version = "0.1.0"
@@ -15,3 +16,9 @@ lto = true
 codegen-units = 1
 strip = true
 panic = "abort"
+
+# Прототипный стенд: Lua-ошибка из Rust-callback (hook/host-функция) разворачивается через SEH
+# и несовместима с panic="abort" → отдельный профиль, не затрагивающий релиз mdedit.
+[profile.proto]
+inherits = "release"
+panic = "unwind"
