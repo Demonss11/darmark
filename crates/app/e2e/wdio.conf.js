@@ -1,9 +1,9 @@
-// E2E-конфигурация mdedit: WebdriverIO + Cucumber поверх реального Tauri-бинарника.
+// E2E-конфигурация darmark: WebdriverIO + Cucumber поверх реального Tauri-бинарника.
 // Драйвер — внешний tauri-driver (cargo install tauri-driver); на Windows сервис
 // сам подбирает msedgedriver под установленный WebView2. Код приложения не трогается.
 //
 // Запуск: из crates/app → `npm run test:e2e`
-// Переопределить бинарник: переменная окружения MDEDIT_APP_BINARY.
+// Переопределить бинарник: переменная окружения DARMARK_APP_BINARY.
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -11,8 +11,8 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 
 // Workspace-сборка кладёт бинарник в <repo>/target/release (см. корневой Cargo.toml).
 const appBinary =
-  process.env.MDEDIT_APP_BINARY ??
-  path.resolve(here, "../../../target/release/mdedit.exe");
+  process.env.DARMARK_APP_BINARY ??
+  path.resolve(here, "../../../target/release/darmark.exe");
 
 export const config = {
   runner: "local",

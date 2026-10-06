@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  checks:
+    name: fmt · clippy · tests · frontend
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: crates/app/package-lock.json
+
+      # Прототипные крейты (lua-*) исключены намеренно: у них свои правила/зависимости.
+      - name: rustfmt
+        run: cargo fmt -p md-core -p darmark -- --check
+
+      - name: clippy
+        run: cargo clippy -p md-core -p darmark --all-targets -- -D warnings
+
+      - name: tests
+        run: cargo test -p md-core -p darmark
+
+      - name: frontend build
+        working-directory: crates/app
+        run: |
+          npm ci
+          npm run build
+
+  size-gate:
+    name: size-gate (exe ≤ 6 МБ, D6/§14)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: crates/app/package-lock.json
+
+      - name: install frontend deps
+        working-directory: crates/app
+        run: npm ci
+
+      # `tauri build` сам вызывает `npm run build` (beforeBuildCommand) и встраивает
+      # dist/ в exe; `--no-bundle` пропускает NSIS-упаковку (нам нужен только размер).
+      - name: build release (no bundle)
+        working-directory: crates/app
+        run: npx tauri build --no-bundle
+
+      # Лимит базы D6: GUI-хост без mlua (Lua-рантайм — в отдельном child-бинарнике, H2).
+      - name: check size
+        shell: pwsh
+        run: |
+          $exe = "target/release/darmark.exe"
+          $limit = 6 * 1024 * 1024
+          if (-not (Test-Path $exe)) { throw "не найден $exe — сборка не дала ожидаемый бинарник" }
+          $size = (Get-Item $exe).Length
+          "{0} = {1} байт ({2:N2} МиБ); лимит {3} байт (6 МиБ)" -f $exe, $size, ($size / 1MB), $limit
+          if ($size -gt $limit) { throw "darmark.exe превышает лимит 6 МБ (D6/§14): $size > $limit" }

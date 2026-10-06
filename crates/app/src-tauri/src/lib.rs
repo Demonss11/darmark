@@ -198,7 +198,7 @@ pub fn run() {
             close_document
         ])
         .run(tauri::generate_context!())
-        .expect("error while running mdedit");
+        .expect("error while running darmark");
 }
 
 /// Отключает браузерные акселераторы WebView2 (Ctrl+P — печать, F5, Ctrl+F …).

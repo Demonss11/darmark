@@ -153,7 +153,7 @@ cd crates/app && npm run build
 npx tauri build --no-bundle && npm run test:e2e   # smoke, inspector (+ полный прогон 6 спеков)
 ```
 
-Rust в этой фазе не меняется; `cargo test -p md-core -p mdedit` — опционально, для страховки.
+Rust в этой фазе не меняется; `cargo test -p md-core -p darmark` — опционально, для страховки.
 
 ---
 

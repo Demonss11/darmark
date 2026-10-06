@@ -1,10 +1,10 @@
-# KODA.md — память проекта mdedit
+# KODA.md — память проекта darmark
 
 README **для AI-агентов**. Обязательно читать перед правками.
 
 ## Что это
 
-`mdedit` — лёгкий Markdown-редактор/вьюер (аналог Notepad++ для Markdown): слева редактор,
+`darmark` — лёгкий Markdown-редактор/вьюер (аналог Notepad++ для Markdown): слева редактор,
 справа HTML-предпросмотр. **Без React/фреймворков** — чистый TypeScript + Vite, вся логика
 Markdown на Rust. Целевая платформа — Windows (Tauri 2).
 
@@ -22,6 +22,13 @@ crates/
     │   ├── renderIndex.ts#  единый индекс рендера на ревизию (inspector + scrollsync)
     │   ├── viewRegistry.ts# реестр тир-1/тир-2 провайдеров + ViewContext-фасад (§5.3–5.4)
     │   ├── previewView.ts#  тир-1 preview: единственное место preview.innerHTML
+    │   ├── layout.ts   #   дерево Pane/Split (MAX_PANES=2) + чистые операции (§5.2)
+    │   ├── paneHost.ts #   монтирование layout в DOM: слоты, видимость, активная панель
+    │   ├── linkController.ts# inspector + scrollsync над парой панелей
+    │   ├── statusBar.ts#   статусбар/заголовок (читают проекцию стора)
+    │   ├── fileActions.ts#  файловые команды (new/open/save/save-as, диалоги)
+    │   ├── shell.ts    #   тулбар, хоткеи, тумблеры, закрытие окна
+    │   ├── sampleDocument.ts# стартовый демо-документ
     │   ├── tauri.ts    #   IPC-обёртки: документы (new/open/update/render/save/close) + errorMessage
     │   ├── ids.ts      #   брендированные DocumentId / PaneId / ViewId (§5.1)
     │   ├── tables.ts   #   Excel-подобное поведение <table> в предпросмотре (сортировка/фильтры/поиск)
@@ -46,8 +53,8 @@ crates/
 ```bash
 # Rust-ядро (живёт и тестируется отдельно от GUI)
 cargo test -p md-core          # юнит-тесты ядра — быстрая проверка без GUI
-cargo check -p mdedit          # компиляция Tauri-шелла
-cargo test -p mdedit           # тесты файлового ввода-вывода шелла
+cargo check -p darmark          # компиляция Tauri-шелла
+cargo test -p darmark           # тесты файлового ввода-вывода шелла
 
 # Фронтенд
 cd crates/app
@@ -86,7 +93,7 @@ npm run test:e2e -- --spec e2e/features/tables.feature   # один feature
    Cucumber + WebdriverIO (`crates/app/e2e/`, `npm run test:e2e`) поверх release-бинарника —
    требует пересборки (`npx tauri build --no-bundle`), иначе проверяется старый код.
    Нативные диалоги/ОС E2E не покрываются — сценарии помечать `@manual`.
-   Rust-ядро тестируется через `cargo test -p md-core`, шелл — `cargo test -p mdedit`.
+   Rust-ядро тестируется через `cargo test -p md-core`, шелл — `cargo test -p darmark`.
 
 ## Конвенции
 
@@ -97,8 +104,8 @@ npm run test:e2e -- --spec e2e/features/tables.feature   # один feature
 ## Текущие задачи (ТЗ в `tasks/`)
 
 Перед реализацией задачи — прочитать соответствующий `tasks/TZ-*.md` целиком.
-Активное: `tasks/TZ-H1.md` — ядро Document/View/Pane (Фаза 1 сделана: Rust `state.rs`/`error.rs`
-+ команды документов, TS `ids.ts`/`tauri.ts`, `read_file`/`write_file` удалены).
+`tasks/TZ-H1.md` — ядро Document/View/Pane: **H1 закрыт** (Фазы 0–6, переименование в `darmark`,
+CI + size-gate). Следующая веха — H2 (плагинная система, `docs/ROADMAP.md`).
 
 ## Скиллы (`.koda/skills/`)
 

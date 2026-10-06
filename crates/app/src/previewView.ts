@@ -1,9 +1,9 @@
 // previewView.ts — предпросмотр по тир-1 контракту (HtmlView), встроен на хосте (D2).
 //
 // Единственное место, где выполняется `preview.innerHTML = html` (ТЗ-H1, Фаза 4).
-// Сюда переехали из `main.ts:onRender`: применение HTML, `enhanceTables`,
-// `resolveLocalImages`, делегирование внешних ссылок и перестроение общего
-// `RenderIndex`. Завтра тот же класс может быть заменён плагином: контракт
+// Сюда переехали из `main.ts:onRender`: применение HTML, украшение таблиц
+// (`createTablesController`, per-view), `resolveLocalImages`, делегирование
+// внешних ссылок и перестроение общего `RenderIndex`. Завтра тот же класс может быть заменён плагином: контракт
 // `HtmlView.render(doc)` + `ViewContext` ничего хост-специфичного не знают.
 //
 // Конвейер: docStore (`onRender`) вызывает `applyRender(res, source)`;
@@ -11,7 +11,7 @@
 // строится индекс, иначе `data-md` разъедется с HTML.
 
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { enhanceTables, attachMenuAutoClose } from "./tables";
+import { createTablesController } from "./tables";
 import { resolveLocalImages } from "./images";
 import type { RenderIndex } from "./renderIndex";
 import type { HtmlView, HtmlViewProvider, Json, ViewContext } from "./viewRegistry";
@@ -65,14 +65,15 @@ export const previewViewProvider: HtmlViewProvider = {
       }
     };
     previewEl.addEventListener("click", handleClick);
-    // Меню фильтров таблиц (position: fixed) обязано закрываться при прокрутке.
-    const detachMenuAutoClose = attachMenuAutoClose(previewEl);
+    // Таблицы: украшение + меню фильтров — состояние ЭКЗЕМПЛЯРА preview-вида
+    // (§5.6): меню вешается в body, dispose() его убирает и снимает слушатель.
+    const tables = createTablesController(previewEl);
 
     function applyRender(res: RenderResult, source: string): void {
       if (res.changed) {
         previewEl.innerHTML = res.html;
         try {
-          enhanceTables(previewEl); // Excel-подобные сортировка/фильтры для всех <table>
+          tables.enhance(); // Excel-подобные сортировка/фильтры для всех <table>
         } catch (e) {
           // Украшение таблиц упало — оставляем читаемый HTML без улучшений (P1.2).
           ctx.status(`Таблицы: ${String(e)}`);
@@ -110,7 +111,7 @@ export const previewViewProvider: HtmlViewProvider = {
 
       dispose(): void {
         previewEl.removeEventListener("click", handleClick);
-        detachMenuAutoClose();
+        tables.dispose();
         index.clear();
       },
     };

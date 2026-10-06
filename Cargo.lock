@@ -658,6 +658,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "darmark"
+version = "0.1.0"
+dependencies = [
+ "md-core",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-opener",
+ "tempfile",
+ "webview2-com",
+ "windows-core",
+]
+
+[[package]]
 name = "dbus"
 version = "0.9.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2052,22 +2068,6 @@ name = "md-core"
 version = "0.1.0"
 dependencies = [
  "pulldown-cmark",
-]
-
-[[package]]
-name = "mdedit"
-version = "0.1.0"
-dependencies = [
- "md-core",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-opener",
- "tempfile",
- "webview2-com",
- "windows-core",
 ]
 
 [[package]]

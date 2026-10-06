@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>mdedit</title>
+    <title>darmark</title>
   </head>
   <body>
     <div id="app">
@@ -22,13 +22,23 @@
         </label>
       </header>
       <main id="panes">
-        <textarea
-          id="editor"
-          spellcheck="false"
-          wrap="off"
-          placeholder="# Начните печатать markdown…"
-        ></textarea>
-        <article id="preview" class="markdown-body"></article>
+        <section class="pane pane-editor" id="pane-a" data-pane="pane-editor" data-view="editor">
+          <textarea
+            id="editor"
+            spellcheck="false"
+            wrap="off"
+            placeholder="# Начните печатать markdown…"
+          ></textarea>
+        </section>
+        <div class="divider" id="divider"></div>
+        <section class="pane pane-preview" id="pane-b" data-pane="pane-preview" data-view="preview">
+          <div class="pane-head" id="pane-b-head">
+            <div class="view-switch" id="view-switch">
+              <button class="vtab core active" type="button" aria-current="true">Предпросмотр</button>
+            </div>
+          </div>
+          <article id="preview" class="markdown-body"></article>
+        </section>
       </main>
       <footer id="statusbar">
         <span id="stat-pos">Стр 1, Кол 1</span>

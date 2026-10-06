@@ -1,6 +1,6 @@
 # TZ-H1 — ядро приложения darmark (Document / View / Pane)
 
-> **Статус:** в работе. Фазы 0–4 сделаны; следующий шаг — Фаза 5 (`layout.ts`/`paneHost.ts`, 1–2 панели).
+> **Статус:** **H1 закрыт** (пп. 1–9 ROADMAP). Дальше — H2 (плагинная система).
 > **Нормативная архитектура:** `docs/DESIGN_DOC.md` (разделы §3–§5, §13.2).
 > **Дорожная карта:** `docs/ROADMAP.md` §H1. **Исходный разбор:** `ideas/ОПИСАНИЕ_ПЛАН.md`.
 > **Область:** `crates/app/src-tauri/*` и `crates/app/src/*`. **`crates/md-core` не трогаем.**
@@ -29,7 +29,7 @@ JSON-RPC/stdio · wasm-таргеты · drag-resize разделителя · �
   `btn-save`, `btn-save-as`, `file-label`, `stat-pos`, `stat-size`, `stat-msg`, `stat-inspect`,
   `toolbar`, `panes`, `statusbar`, `toggle-sync`, `toggle-preview`, `app`.
 - **Селекторы:** `#preview .md-block[data-md]`, `.table-enhanced*`, `.inspect-*`, `tr.inspect-row`.
-- **Тексты:** стартовый документ `«Добро пожаловать в mdedit»` (переименование — п. 8 ROADMAP);
+- **Тексты:** стартовый документ `«Добро пожаловать в darmark»`;
   заголовки демо-таблицы `Файл | Размер | Строк | Изменён`.
 - **Константы:** debounce рендера **120 мс**, `ECHO_MS = 100`, throttle инспектора 100 мс.
 - **Глобальные:** `window.__xss`, `window.__errors` / `window.__errorCapture`.
@@ -43,14 +43,14 @@ JSON-RPC/stdio · wasm-таргеты · drag-resize разделителя · �
 | # | Шаг | Срез | Гейт |
 |---|---|---|---|
 | 0 | Контракты (§1) + `DESIGN_DOC` | докс | — |
-| 1 | ✅ Rust `state.rs`/`error.rs` + `new/open/save/close_document`; TS `ids.ts` + `tauri.ts`; `read_file`/`write_file` удалены | +220 / −60 | `cargo test -p md-core`, `cargo test -p mdedit`, `npm run build` |
+| 1 | ✅ Rust `state.rs`/`error.rs` + `new/open/save/close_document`; TS `ids.ts` + `tauri.ts`; `read_file`/`write_file` удалены | +220 / −60 | `cargo test -p md-core`, `cargo test -p darmark`, `npm run build` |
 | 2 | ✅ `update_document`/`render_document`; `renderSeq`/`lastRenderedHtml` удалены из `main.ts` | −25 / +40 | build + e2e `preview`, `tables` |
 | 3 | ✅ TS `docStore.ts` (без DOM) + `editorView.ts`; `editor.value` перестаёт быть источником истины — детали в `tasks/TZ-H1-F3.md` | +200 / −120 | build + e2e `smoke`, `inspector` |
 | 4 | ✅ `viewRegistry.ts`, `ViewContext`-фасад, `previewView.ts` (тир 1); единый `RenderIndex` для inspector+scrollsync — детали в `tasks/TZ-H1-F4.md` | +350 / −200 | build + **все** e2e |
-| 5 | `layout.ts` + `paneHost.ts` (1–2 панели); `tables.ts` → экземпляр-контроллер; inspector/scrollsync → `linkController` | +400 / −150 | build + e2e + ручная 1↔2 |
-| 6 | `main.ts` = композиционный корень (~120 строк); README «Архитектура» + ADR «контракт ViewProvider» | −150 | build |
-| 8 | Переименование `mdedit` → `darmark` (D8): `tauri.conf.json`, `Cargo.toml`, `package.json`, `%APPDATA%`, e2e-фикстуры, стартовый текст | — | build + e2e |
-| 9 | CI + size-gate (release-exe ≤ 6 МБ) | — | CI зелёный |
+| 5 | ✅ `layout.ts` + `paneHost.ts` (1–2 панели); `chk-preview` → видимость панели; `tables.ts` → экземпляр-контроллер; inspector/scrollsync → `linkController`; каркас панелей из `front_idea5` — детали в `tasks/TZ-H1-F5.md` | +400 / −150 | build + e2e + ручная 1↔2 |
+| 6 | ✅ `main.ts` = композиционный корень; модули `statusBar`/`fileActions`/`shell`/`sampleDocument`; README «Архитектура» + ADR-0022 «Контракт ViewProvider» | −150 | build |
+| 8 | ✅ Переименование `mdedit` → `darmark` (D8): `tauri.conf.json` (identifier `dev.darmark.app`, productName), `Cargo.toml`/lib, `package.json`, e2e-фикстуры, стартовый текст, доки. Каталог `%APPDATA%/darmark/` — при появлении SettingsStore (H2) | — | build + e2e |
+| 9 | ✅ CI + size-gate: `.github/workflows/ci.yml` (fmt/clippy/tests/frontend + release-exe ≤ 6 МБ) | — | CI зелёный |
 
 **Гейт каждой фазы:** рабочее приложение + `cargo test` + `npm run build` + соответствующие e2e.
 
@@ -96,7 +96,7 @@ JSON-RPC/stdio · wasm-таргеты · drag-resize разделителя · �
 
 ```bash
 cargo test -p md-core      # ядро не тронуто, тесты зелёные
-cargo test -p mdedit       # DocumentStore + IPC
+cargo test -p darmark       # DocumentStore + IPC
 npm run build              # tsc && vite build (strict)
 ```
 
@@ -182,7 +182,7 @@ pub struct RenderResult { pub html: String, pub rev: u64, pub changed: bool }
 - [x] `saveFile`/`saveAs`: flush через `update_document`.
 - [x] Обновить упоминание `render_markdown` в комментарии e2e-фич и в `KODA.md`/`AGENTS.md`/`README.md`.
 
-**Статус:** Фаза 2 закрыта. Гейт: md-core 63, mdedit 11 (было 8, +3), clippy/fmt чисто,
+**Статус:** Фаза 2 закрыта. Гейт: md-core 63, darmark 11 (было 8, +3), clippy/fmt чисто,
 `npm run build` ✅, release + e2e — 6 спеков ✅.
 
 ### 4.5 E2E и контракты
@@ -197,9 +197,9 @@ pub struct RenderResult { pub html: String, pub rev: u64, pub changed: bool }
 ### 4.6 Гейт Фазы 2
 
 ```bash
-cargo test -p md-core -p mdedit
-cargo clippy -p mdedit --all-targets -- -D warnings
-cargo fmt -p mdedit -- --check
+cargo test -p md-core -p darmark
+cargo clippy -p darmark --all-targets -- -D warnings
+cargo fmt -p darmark -- --check
 cd crates/app && npm run build
 npx tauri build --no-bundle && npm run test:e2e   # все 6 спеков
 ```

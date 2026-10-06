@@ -3,7 +3,7 @@ import { Given, Then } from "@wdio/cucumber-framework";
 import { $, browser } from "@wdio/globals";
 import { waitPreviewContains } from "./helpers.js";
 
-Given("приложение mdedit запущено", async () => {
+Given("приложение darmark запущено", async () => {
   await $("#editor").waitForExist({ timeout: 30_000 });
   await $("#preview").waitForExist({ timeout: 30_000 });
 });

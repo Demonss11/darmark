@@ -18,7 +18,7 @@ strip = true
 panic = "abort"
 
 # Прототипный стенд: Lua-ошибка из Rust-callback (hook/host-функция) разворачивается через SEH
-# и несовместима с panic="abort" → отдельный профиль, не затрагивающий релиз mdedit.
+# и несовместима с panic="abort" → отдельный профиль, не затрагивающий релиз darmark.
 [profile.proto]
 inherits = "release"
 panic = "unwind"

@@ -536,7 +536,7 @@ scan(plugins_dir) -> validate(manifest) -> load(src) -> on_activate(ctx)
 | Уровень | Инструмент | Что проверяет |
 |---|---|---|
 | Ядро | `cargo test -p md-core` | рендер, санитайзер, mapped-инварианты |
-| Хост | `cargo test -p mdedit` | DocumentStore, ревизии, кэш, permissions |
+| Хост | `cargo test -p darmark` | DocumentStore, ревизии, кэш, permissions |
 | Плагинный хост | Rust unit + фикстуры `.lua` | загрузка, sandbox (нет `os`/`io`/`coroutine`/`require`), лимиты (Job Object, watchdog), карантин |
 | Фронтенд | `npm run build` (`tsc && vite build`) | strict-типы |
 | E2E | Cucumber + WebdriverIO | замороженные контракты (см. ниже) |
@@ -599,6 +599,7 @@ scan(plugins_dir) -> validate(manifest) -> load(src) -> on_activate(ctx)
 | 19 | Excel-таблицы не развиваются | §1.3, §5.5 | D12 |
 | 20 | Результат измерений — таблица FINDINGS | §16 | D15 |
 | 21 | Изоляция плагина: отдельный child-процесс | §0, §6, §10, §11.4, §14 | D16; F18, F21, F22–F24, F30–F31, F34, F36 |
+| 22 | Контракт ViewProvider: два тира (тир-1 `HtmlViewProvider` plugin-safe, тир-2 `DomViewProvider`) | §5.3, §5.4, §9.4, §11.2 | — |
 
 ---
 

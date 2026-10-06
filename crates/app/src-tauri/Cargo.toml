@@ -1,12 +1,12 @@
 [package]
-name = "mdedit"
+name = "darmark"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "Lightweight Notepad++-style Markdown editor/viewer (Tauri shell over md-core)"
 
 [lib]
-name = "mdedit_lib"
+name = "darmark_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

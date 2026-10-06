@@ -180,7 +180,7 @@ cd crates/app && npm run build
 npx tauri build --no-bundle && npm run test:e2e   # все 6 спеков
 ```
 
-Rust не меняется; `cargo test -p md-core -p mdedit` — опционально.
+Rust не меняется; `cargo test -p md-core -p darmark` — опционально.
 
 ---
 

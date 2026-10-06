@@ -30,7 +30,7 @@
   `tsc` упадёт на ошибках типов.
 - `npx tauri dev` — запуск GUI. Не запускай без прямого запроса (требует WebView2).
 - GUI E2E (`npm run test:e2e` в `crates/app/`) — только по явному запросу и только после
-  `npx tauri build --no-bundle`: E2E гоняют по `target/release/mdedit.exe`, без пересборки
+  `npx tauri build --no-bundle`: E2E гоняют по `target/release/darmark.exe`, без пересборки
   проверяется старый код.
 - Не коммить и не пушь без прямого запроса пользователя.
 

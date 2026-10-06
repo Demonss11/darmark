@@ -1,4 +1,4 @@
-# mdedit — лёгкий Markdown-редактор/вьюер (Tauri 2 + Rust + TS)
+# darmark — лёгкий Markdown-редактор/вьюер (Tauri 2 + Rust + TS)
 
 Аналог Notepad++ для Markdown: окно с редактором слева и HTML-предпросмотром справа.
 Никакого React/фреймворков — чистый TypeScript + Vite, вся логика Markdown на Rust.
@@ -7,20 +7,40 @@
 
 ```
 crates/
-├── md-core/          # ЧИСТОЕ ЯДРО: markdown → HTML (pulldown-cmark). Без UI-зависимостей.
-│   └── src/lib.rs    #   to_html(), to_html_with() + юнит-тесты (таблицы GFM, tasklist, strike…)
+├── md-core/          # ЧИСТОЕ ЯДРО: markdown → HTML (pulldown-cmark). Без Tauri/GUI.
+│   └── src/lib.rs    #   to_html()/to_html_with()/to_html_mapped() + санитайзер + тесты
 └── app/
-    ├── src/          # Фронтенд (TS + Vite): main.ts, tauri.ts (IPC), tables.ts, inspector.ts, images.ts, style.css
-    └── src-tauri/    # Tauri-шелл: команды документов (new/open/update/render/save/close)
+    ├── src/          # Фронтенд (vanilla TS + Vite)
+    │   ├── main.ts        # композиционный корень: собирает домен, передаёт оболочке
+    │   ├── docStore.ts    # проекция Rust-стора (текст/rev/путь/dirty), дебаунс IPC
+    │   ├── editorView.ts  # тир-2 редактор (textarea)
+    │   ├── renderIndex.ts # единый индекс рендера на ревизию (байты↔UTF-16, блоки)
+    │   ├── viewRegistry.ts# реестр тир-1/тир-2 провайдеров + ViewContext
+    │   ├── previewView.ts # тир-1 предпросмотр (единственный `preview.innerHTML`)
+    │   ├── layout.ts      # дерево Pane/Split (MAX_PANES = 2)
+    │   ├── paneHost.ts    # монтирование панелей в DOM
+    │   ├── linkController.ts # владелец inspector + scrollsync
+    │   ├── inspector.ts / scrollsync.ts / mapping.ts / images.ts / tables.ts
+    │   ├── statusBar.ts / fileActions.ts / shell.ts / sampleDocument.ts
+    │   └── ids.ts / tauri.ts / style.css
+    └── src-tauri/    # Tauri-шелл: DocumentStore (state.rs) + команды + error.rs
 ```
 
-`md-core` дополнительно экспортирует `to_html_mapped(md)` для режима инспектора: каждый
-топ-блок оборачивается в `<div class="md-block" data-md="start,end">`, где `start`/`end` —
-байтовые смещения блока в исходном markdown. Фронтенд (`src/inspector.ts`) использует эти
-метки для двусторонней подсветки, не парся markdown самостоятельно.
+Несущие принципы (нормативная спецификация — `docs/DESIGN_DOC.md`):
 
-Принцип: `md-core` ничего не знает ни про Tauri, ни про GUI — его можно переиспользовать
-в будущем CLI/TUI/harness без изменений. Shell (`src-tauri`) — тонкая прослойка IPC.
+- **`md-core` — чистое ядро** markdown→HTML без Tauri/плагинов/состояния; переиспользуется в
+  CLI/TUI/harness. `to_html_mapped` оборачивает топ-блоки в `<div class="md-block" data-md="start,end">`
+  (байтовые смещения UTF-8) — на этом держатся инспектор и синхронная прокрутка.
+- **Rust-хост владеет данными** (D5): текст, ревизия, путь и кэш рендера живут в `DocumentStore`
+  (`src-tauri/state.rs`); TS-`docStore` — **проекция**, не второй источник истины.
+- **TS владеет представлением**: dirty, selection, scroll, layout и панели.
+- **Рендер — на Rust**, санитизация — единая точка на хосте; фронт не парсит Markdown.
+- **Два тира view** (DESIGN §5.3, ADR-0022): тир-1 (JSON→HTML, plugin-safe) и тир-2 (полный DOM,
+  built-in only). Предпросмотр — тир-1, но встроен на хосте (D2), поэтому горячий путь не идёт
+  через интерпретатор.
+
+Shell (`src-tauri`) — тонкая IPC-прослойка: команды документов
+(`new/open/update/render/save/close_document`) и файловый ввод-вывод (лимит 10 МБ, модель Notepad++).
 
 ## Возможности (MVP)
 
@@ -74,9 +94,9 @@ crates/
    Никакого отдельного `cargo build` делать не нужно — это часть шага выше.
 
    Результат:
-   - **портативный exe** (без установщика): `src-tauri/target/release/mdedit.exe`
+   - **портативный exe** (без установщика): `src-tauri/target/release/darmark.exe`
      — единый файл, внутри и Rust-логика, и HTML/CSS/JS фронта; ничего рядом лежать не должно;
-   - **установщик**: `src-tauri/target/release/bundle/nsis/mdedit_0.1.0_x64-setup.exe`.
+   - **установщик**: `src-tauri/target/release/bundle/nsis/darmark_0.1.0_x64-setup.exe`.
    Профиль release в корневом `Cargo.toml`: `opt-level="s"`, LTO, strip, panic=abort — ради минимального размера.
 
 > Важно: обычный `cargo build` / `cargo run` НЕ собирает единый exe с фронтом —
@@ -89,15 +109,18 @@ sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev
   libssl-dev libayatana-appindicator3-dev librsvg2-dev
 cargo test -p md-core            # ядро живёт и тестируется отдельно от GUI
 cd crates/app && npm install && npm run build   # фронтенд
-cargo check -p mdedit             # компиляция шелла
+cargo check -p darmark             # компиляция шелла
 ```
 
 ## Быстрая проверка ядра без GUI
 
 ```
 cargo test -p md-core        # тесты ядра (GFM-таблицы + XSS-санитайзер v2 + harness + to_html_mapped)
-cargo test -p mdedit         # 3 теста IPC Tauri-шелла (чтение/запись/лимит размера)
+cargo test -p darmark         # тесты DocumentStore + IPC Tauri-шелла
 ```
+
+CI (`.github/workflows/ci.yml`, windows-latest): `rustfmt` + `clippy -D warnings` + `cargo test`
+(`md-core`, `darmark`) + `npm run build`, отдельным job — **size-gate** (release-exe ≤ 6 МБ, D6/§14).
 
 ## GUI E2E: Cucumber + WebdriverIO (Tauri WebDriver)
 
@@ -131,7 +154,7 @@ cargo test -p mdedit         # 3 теста IPC Tauri-шелла (чтение/�
 
 1. `cargo install tauri-driver --locked` — внешний WebDriver-драйвер Tauri (в PATH).
 2. Собранный release-бинарник: `npx tauri build --no-bundle` (или `npm run tauri:build`).
-   Тесты работают именно с `target/release/mdedit.exe`, поэтому после правок фронта
+   Тесты работают именно с `target/release/darmark.exe`, поэтому после правок фронта
    бинарник нужно пересобрать.
 3. WebView2 + установленный Edge: `tauri-service` сам подбирает `msedgedriver` под версию.
 
@@ -142,7 +165,7 @@ npm run test:e2e                       # все сценарии, кроме @ma
 npm run test:e2e -- --spec e2e/features/tables.feature   # только один feature
 ```
 
-Переопределить путь к бинарнику: переменная окружения `MDEDIT_APP_BINARY`.
+Переопределить путь к бинарнику: переменная окружения `DARMARK_APP_BINARY`.
 
 
 ## Безопасность и модель угроз
@@ -161,7 +184,7 @@ npm run test:e2e -- --spec e2e/features/tables.feature   # только один
   `eval` и `http:`-картинки запрещены; локальные ресурсы идут только через asset-протокол.
 - **Файловый доступ.** Модель Notepad++: путь выбирает пользователь в нативном диалоге
   (открытие/сохранение) — диалог и есть согласие, «белого списка» каталогов нет,
-  `read_file`/`write_file` читают/пишут любой выбранный путь. Единственная защита при
+  `open_document`/`save_document` читают/пишут любой выбранный путь. Единственная защита при
   чтении — лимит 10 МБ; не-UTF-8 файлы не читаются. (Осознанный отказ от defense-in-depth
   P0.1/P2.2 ради простоты.)
 - **Локальные картинки.** Для отображения относительных `src` asset-протокол разрешён, но в
