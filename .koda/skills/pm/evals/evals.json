@@ -1,0 +1,44 @@
+[
+  {
+    "id": 1,
+    "name": "onboarding_redesign",
+    "prompt": "Our app's onboarding completion rate is 40%. We need to research this problem, define metrics to track success, and break it down into epics and user stories to increase completion to 70%.",
+    "expectations": {
+      "has_research_section": "Contains problem statement, hypothesis, user analysis",
+      "has_metrics_section": "Defines North Star metric, success metrics, guardrail metrics with baselines and targets",
+      "has_epics": "Contains at least 2 epics with IDs, objectives, priorities",
+      "has_user_stories": "Contains at least 4 user stories in As a/I want/So that format with Given/When/Then acceptance criteria",
+      "has_prd_structure": "Has structured markdown with Context, Goals, Scope, Epics & Stories sections",
+      "metrics_are_smart": "Metrics include specific baseline values and measurable targets",
+      "stories_have_edge_cases": "At least some stories include edge cases section"
+    }
+  },
+  {
+    "id": 2,
+    "name": "subscription_feature",
+    "prompt": "I'm a PM for a SaaS product. Create a product research doc, metrics definition, and decompose the task of adding a subscription payment system into epics and user stories with acceptance criteria.",
+    "expectations": {
+      "has_research_section": "Contains competitive context, target users, dependencies",
+      "has_north_star_metric": "Defines a clear North Star metric for the subscription feature",
+      "has_success_metrics": "Includes metrics like payment success rate, subscription adoption, MRR impact",
+      "has_epics": "Contains at least 2 epics covering payment gateway integration and billing management",
+      "has_user_stories": "Contains at least 4 user stories with acceptance criteria",
+      "handles_edge_cases": "Stories cover edge cases like failed payments, retries, cancellations",
+      "has_prd_output": "Produces structured markdown PRD with version, status, scope, and release plan"
+    }
+  },
+  {
+    "id": 3,
+    "name": "support_dashboard",
+    "prompt": "Our support team needs a customer activity dashboard. Research the problem, define KPIs and metrics, decompose into epics and stories. Output as a markdown document.",
+    "expectations": {
+      "has_research_section": "Researches support team workflow and current tool gaps",
+      "has_metrics_section": "Defines metrics like ticket resolution time, first-contact resolution rate",
+      "has_epics": "Contains epics for Activity Feed, Search/Filter, Export/Reports or similar",
+      "has_user_stories": "Contains at least 4 user stories with Given/When/Then criteria",
+      "has_personas": "Defines support team personas (e.g. Support Agent, Support Manager)",
+      "has_prd_structure": "Structured markdown with all required sections (Context, Metrics, Epics, Stories)",
+      "has_requirements_matrix": "Includes requirements matrix linking requirements to epics and stories"
+    }
+  }
+]
