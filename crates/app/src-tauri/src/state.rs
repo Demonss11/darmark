@@ -119,42 +119,29 @@ impl DocumentStore {
 
     /// Создаёт безымянный документ с заданным текстом; возвращает снимок.
     pub fn create(&mut self, text: String) -> DocumentSnapshot {
-        let id = self.fresh_id();
-        let doc = Document {
-            id: id.clone(),
-            path: None,
-            text,
-            rev: 0,
-            cached: None,
-            undo: Vec::new(),
-            redo: Vec::new(),
-        };
-        self.order.push(id.clone());
-        self.docs.insert(id.clone(), doc);
-        self.docs
-            .get(&id)
-            .expect("документ только что вставлен")
-            .snapshot()
+        self.insert(None, text)
     }
 
     /// Создаёт документ, привязанный к файлу на диске; возвращает снимок.
     pub fn insert_loaded(&mut self, path: PathBuf, text: String) -> DocumentSnapshot {
+        self.insert(Some(path), text)
+    }
+
+    fn insert(&mut self, path: Option<PathBuf>, text: String) -> DocumentSnapshot {
         let id = self.fresh_id();
         let doc = Document {
             id: id.clone(),
-            path: Some(path),
+            path,
             text,
             rev: 0,
             cached: None,
             undo: Vec::new(),
             redo: Vec::new(),
         };
+        let snapshot = doc.snapshot();
         self.order.push(id.clone());
-        self.docs.insert(id.clone(), doc);
-        self.docs
-            .get(&id)
-            .expect("документ только что вставлен")
-            .snapshot()
+        self.docs.insert(id, doc);
+        snapshot
     }
 
     pub fn get(&self, id: &DocumentId) -> Option<&Document> {

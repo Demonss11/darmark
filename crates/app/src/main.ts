@@ -8,6 +8,7 @@ import {
   newDocument,
   openDocument,
   saveDocument,
+  closeDocument,
   renderMarkdown,
   errorMessage,
 } from "./tauri";
@@ -173,7 +174,9 @@ async function newFile() {
     return;
   }
   try {
+    const previous = currentId; // закрываем прошлый документ после успешной замены
     applySnapshot(await newDocument(""));
+    if (previous) closeDocument(previous).catch(() => {});
     resetRenderState();
     preview.innerHTML = "";
     inspector.onRendered(editor.value); // сбрасываем устаревшие диапазоны
@@ -195,9 +198,13 @@ async function openFile() {
     defaultPath: currentPath ?? undefined,
   });
   if (typeof selected !== "string") return; // отмена
-  resetRenderState();
   try {
-    applySnapshot(await openDocument(selected));
+    const previous = currentId; // закрываем прошлый документ после успешной замены
+    const snap = await openDocument(selected);
+    applySnapshot(snap);
+    if (previous) closeDocument(previous).catch(() => {});
+    // Гасим отложенный рендер и делаем неактуальными уже запущенные — после смены текста.
+    resetRenderState();
     updateTitle();
     void doRender();
     updateStatus();
@@ -207,7 +214,10 @@ async function openFile() {
 }
 
 async function saveFile() {
-  if (!currentId) return;
+  if (!currentId) {
+    flash("Документ не создан — сохранение недоступно");
+    return;
+  }
   if (!currentPath) return saveAs();
   try {
     await saveDocument(currentId, editor.value);
@@ -220,7 +230,10 @@ async function saveFile() {
 }
 
 async function saveAs() {
-  if (!currentId) return;
+  if (!currentId) {
+    flash("Документ не создан — сохранение недоступно");
+    return;
+  }
   const selected = await save({
     defaultPath: currentPath ?? "untitled.md",
     filters: [MD_FILTER],

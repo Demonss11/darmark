@@ -1,0 +1,1274 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>darmark — pluggable markdown editor</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/inter@5.0.0/index.css" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/jetbrains-mono@5.0.0/index.css" />
+<style>
+  :root {
+    --bg-0: #0b0c10;
+    --bg-1: #11131a;
+    --bg-2: #161821;
+    --bg-3: #1c1f2a;
+    --border: #262a38;
+    --border-soft: #1e2130;
+    --text: #e4e5ec;
+    --text-dim: #9095a8;
+    --text-mute: #5c6178;
+    --accent: #7c5cff;
+    --accent-2: #5b8cff;
+    --accent-soft: rgba(124, 92, 255, 0.12);
+    --green: #4ade80;
+    --amber: #fbbf24;
+    --red: #f87171;
+  }
+  html, body { height: 100%; }
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    background: var(--bg-0);
+    color: var(--text);
+    overflow: hidden;
+    font-size: 13px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background: #2a2e3e;
+    border-radius: 8px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover { background: #3a3f55; background-clip: padding-box; border: 2px solid transparent; }
+
+  /* Editor textarea */
+  #editor {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13.5px;
+    line-height: 1.65;
+    background: transparent;
+    color: var(--text);
+    caret-color: var(--accent);
+    resize: none;
+    outline: none;
+    border: none;
+    padding: 14px 16px;
+    width: 100%;
+    height: 100%;
+    tab-size: 2;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+
+  /* Line numbers */
+  .line-numbers {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13.5px;
+    line-height: 1.65;
+    color: var(--text-mute);
+    padding: 14px 10px 14px 14px;
+    text-align: right;
+    user-select: none;
+    min-width: 48px;
+    background: var(--bg-1);
+    border-right: 1px solid var(--border-soft);
+  }
+
+  /* Preview styles */
+  #preview {
+    padding: 24px 32px;
+    color: var(--text);
+    line-height: 1.65;
+    overflow-y: auto;
+    height: 100%;
+  }
+  #preview h1 { font-size: 28px; font-weight: 700; margin: 0 0 14px; padding-bottom: 10px; border-bottom: 1px solid var(--border); color: #fff; }
+  #preview h2 { font-size: 20px; font-weight: 600; margin: 22px 0 10px; color: #fff; }
+  #preview h3 { font-size: 16px; font-weight: 600; margin: 18px 0 8px; color: #fff; }
+  #preview p { margin: 0 0 12px; color: #cfd1dc; }
+  #preview a { color: var(--accent-2); text-decoration: none; border-bottom: 1px dashed rgba(91,140,255,0.4); }
+  #preview a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+  #preview code {
+    font-family: 'JetBrains Mono', monospace;
+    background: var(--bg-3);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 12.5px;
+    color: #e9b3ff;
+  }
+  #preview pre {
+    background: var(--bg-1);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    overflow-x: auto;
+    margin: 12px 0 16px;
+  }
+  #preview pre code {
+    background: transparent;
+    padding: 0;
+    color: #d4d4dc;
+    font-size: 12.5px;
+  }
+  #preview blockquote {
+    border-left: 3px solid var(--accent);
+    padding: 4px 14px;
+    margin: 12px 0;
+    color: var(--text-dim);
+    background: var(--accent-soft);
+    border-radius: 0 6px 6px 0;
+  }
+  #preview ul, #preview ol { padding-left: 22px; margin: 8px 0 12px; color: #cfd1dc; }
+  #preview li { margin: 4px 0; }
+  #preview table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0 16px;
+    font-size: 13px;
+  }
+  #preview th, #preview td {
+    border: 1px solid var(--border);
+    padding: 8px 12px;
+    text-align: left;
+  }
+  #preview th {
+    background: var(--bg-2);
+    font-weight: 600;
+    color: #fff;
+  }
+  #preview tr:nth-child(even) td { background: rgba(255,255,255,0.015); }
+  #preview hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+  #preview .md-block { scroll-margin-top: 10px; }
+
+  /* Toolbar buttons */
+  .tb-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    border: 1px solid transparent;
+    background: transparent;
+    font-size: 12.5px;
+    font-weight: 500;
+  }
+  .tb-btn:hover { background: var(--bg-3); color: var(--text); }
+  .tb-btn.active { background: var(--accent-soft); color: var(--accent); border-color: rgba(124,92,255,0.25); }
+  .tb-btn svg { width: 15px; height: 15px; }
+
+  .icon-btn {
+    width: 30px; height: 30px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 6px;
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .icon-btn:hover { background: var(--bg-3); color: var(--text); }
+  .icon-btn svg { width: 16px; height: 16px; }
+
+  /* Sidebar */
+  .file-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 10px 5px 14px;
+    border-radius: 5px;
+    cursor: pointer;
+    color: var(--text-dim);
+    font-size: 12.5px;
+    transition: all 0.12s;
+    margin: 1px 6px;
+  }
+  .file-item:hover { background: var(--bg-3); color: var(--text); }
+  .file-item.active { background: var(--accent-soft); color: var(--text); }
+  .file-item.active::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 4px; bottom: 4px;
+    width: 2px;
+    background: var(--accent);
+    border-radius: 2px;
+  }
+  .file-item { position: relative; }
+  .folder-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px;
+    color: var(--text);
+    font-size: 11.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    cursor: pointer;
+    user-select: none;
+  }
+  .folder-item svg { width: 12px; height: 12px; transition: transform 0.15s; }
+  .folder-item.collapsed svg { transform: rotate(-90deg); }
+
+  /* Tabs */
+  .tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    border-right: 1px solid var(--border-soft);
+    cursor: pointer;
+    color: var(--text-dim);
+    font-size: 12.5px;
+    transition: all 0.12s;
+    background: var(--bg-1);
+    position: relative;
+    min-width: 120px;
+    max-width: 200px;
+  }
+  .tab:hover { background: var(--bg-2); }
+  .tab.active {
+    background: var(--bg-0);
+    color: var(--text);
+  }
+  .tab.active::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--accent);
+  }
+  .tab .close {
+    width: 16px; height: 16px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 3px;
+    opacity: 0;
+    transition: all 0.12s;
+  }
+  .tab:hover .close, .tab.active .close { opacity: 0.6; }
+  .tab .close:hover { opacity: 1; background: rgba(255,255,255,0.08); }
+  .tab .dirty {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--amber);
+    margin-left: auto;
+  }
+
+  /* Statusbar */
+  .statusbar {
+    display: flex;
+    align-items: center;
+    height: 24px;
+    background: var(--bg-1);
+    border-top: 1px solid var(--border-soft);
+    font-size: 11.5px;
+    color: var(--text-dim);
+    padding: 0 10px;
+    gap: 2px;
+  }
+  .status-item {
+    padding: 0 10px;
+    height: 100%;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: default;
+    transition: background 0.12s;
+  }
+  .status-item:hover { background: var(--bg-3); }
+  .status-item.accent { color: var(--accent); }
+  .status-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 6px rgba(74,222,128,0.5);
+  }
+
+  /* Resize handle */
+  .resize-handle {
+    width: 4px;
+    cursor: col-resize;
+    background: var(--border-soft);
+    transition: background 0.15s;
+    position: relative;
+  }
+  .resize-handle:hover, .resize-handle.active {
+    background: var(--accent);
+  }
+  .resize-handle::before {
+    content: '';
+    position: absolute;
+    left: -4px; right: -4px;
+    top: 0; bottom: 0;
+  }
+
+  /* Inspector panel */
+  .inspector {
+    background: var(--bg-1);
+    border-left: 1px solid var(--border-soft);
+    width: 280px;
+    overflow-y: auto;
+    font-size: 12px;
+  }
+  .inspector-row {
+    display: grid;
+    grid-template-columns: 90px 1fr;
+    padding: 6px 14px;
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .inspector-row .k { color: var(--text-mute); }
+  .inspector-row .v { color: var(--text); font-family: 'JetBrains Mono', monospace; font-size: 11.5px; }
+
+  /* Breadcrumbs */
+  .crumb {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--text-dim);
+    font-size: 12px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .crumb:hover { background: var(--bg-3); color: var(--text); }
+  .crumb-sep { color: var(--text-mute); font-size: 11px; }
+
+  /* Minimap hint */
+  .minimap {
+    width: 80px;
+    background: var(--bg-1);
+    border-left: 1px solid var(--border-soft);
+    opacity: 0.7;
+    padding: 8px 4px;
+    overflow: hidden;
+    position: relative;
+  }
+  .minimap-line {
+    height: 2px;
+    background: var(--text-mute);
+    margin-bottom: 1px;
+    opacity: 0.4;
+    border-radius: 1px;
+  }
+
+  /* Command palette */
+  .cmd-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    backdrop-filter: blur(4px);
+    display: none;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 15vh;
+    z-index: 100;
+  }
+  .cmd-overlay.open { display: flex; }
+  .cmd-palette {
+    width: 560px;
+    max-width: 90vw;
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    overflow: hidden;
+  }
+  .cmd-input {
+    width: 100%;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text);
+    padding: 14px 18px;
+    font-size: 14px;
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .cmd-list { max-height: 320px; overflow-y: auto; }
+  .cmd-item {
+    padding: 9px 18px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+  .cmd-item:hover, .cmd-item.selected { background: var(--accent-soft); color: var(--text); }
+  .cmd-item .shortcut {
+    margin-left: auto;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-mute);
+    background: var(--bg-3);
+    padding: 2px 6px;
+    border-radius: 3px;
+  }
+
+  /* Notification toast */
+  .toast {
+    position: fixed;
+    bottom: 36px;
+    right: 20px;
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    padding: 10px 16px;
+    border-radius: 6px;
+    font-size: 12.5px;
+    color: var(--text);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+    transform: translateX(120%);
+    transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+    z-index: 200;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .toast.show { transform: translateX(0); }
+
+  /* Logo */
+  .logo {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 700;
+    font-size: 14px;
+    letter-spacing: -0.01em;
+    color: #fff;
+  }
+  .logo-mark {
+    width: 22px; height: 22px;
+    border-radius: 5px;
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-weight: 800;
+    font-size: 12px;
+    box-shadow: 0 2px 8px rgba(124,92,255,0.4);
+  }
+
+  /* Animations */
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  .fade-in { animation: fadeIn 0.2s ease; }
+
+  /* Selection */
+  ::selection { background: rgba(124,92,255,0.35); color: #fff; }
+</style>
+</head>
+<body>
+
+<div class="flex flex-col h-screen">
+
+  <!-- TITLEBAR / TOOLBAR -->
+  <div class="flex items-center h-11 border-b border-[var(--border-soft)] bg-[var(--bg-1)] px-3 gap-2 select-none" style="padding-left: 14px;">
+    <!-- Logo -->
+    <div class="logo mr-4">
+      <span class="logo-mark">d</span>
+      <span>darmark</span>
+      <span class="text-[10px] text-[var(--text-mute)] font-mono ml-1">v0.1</span>
+    </div>
+
+    <!-- File actions -->
+    <button class="tb-btn" onclick="newDoc()" title="Новый документ (Ctrl+N)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+      Новый
+    </button>
+    <button class="tb-btn" onclick="openDoc()" title="Открыть (Ctrl+O)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+      Открыть
+    </button>
+    <button class="tb-btn" onclick="saveDoc()" title="Сохранить (Ctrl+S)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+      Сохранить
+    </button>
+
+    <div class="w-px h-5 bg-[var(--border)] mx-1"></div>
+
+    <!-- Format -->
+    <button class="icon-btn" title="Жирный (Ctrl+B)" onclick="wrapSelection('**')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/><path d="M6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/></svg>
+    </button>
+    <button class="icon-btn" title="Курсив (Ctrl+I)" onclick="wrapSelection('_')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="4" x2="10" y2="4"/><line x1="14" y1="20" x2="5" y2="20"/><line x1="15" y1="4" x2="9" y2="20"/></svg>
+    </button>
+    <button class="icon-btn" title="Код" onclick="wrapSelection('`')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+    </button>
+    <button class="icon-btn" title="Заголовок" onclick="insertHeading()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 4v16M18 4v16M6 12h12"/></svg>
+    </button>
+    <button class="icon-btn" title="Ссылка" onclick="insertLink()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+    </button>
+
+    <div class="w-px h-5 bg-[var(--border)] mx-1"></div>
+
+    <!-- View toggles -->
+    <button class="tb-btn" id="btn-preview" onclick="togglePreview()" title="Предпросмотр">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+      Превью
+    </button>
+    <button class="tb-btn" id="btn-sync" onclick="toggleSync()" title="Синхронная прокрутка">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+      Синхро
+    </button>
+    <button class="tb-btn" id="btn-inspect" onclick="toggleInspector()" title="Инспектор">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      Инспектор
+    </button>
+
+    <div class="flex-1"></div>
+
+    <!-- Command palette trigger -->
+    <button class="tb-btn" onclick="openCommandPalette()" title="Командная палитра (Ctrl+Shift+P)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+      <span class="mono text-[11px] text-[var(--text-mute)]">Ctrl+Shift+P</span>
+    </button>
+
+    <button class="icon-btn" title="Настройки">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </button>
+  </div>
+
+  <!-- MAIN AREA -->
+  <div class="flex flex-1 overflow-hidden">
+
+    <!-- SIDEBAR -->
+    <aside id="sidebar" class="flex flex-col bg-[var(--bg-1)] border-r border-[var(--border-soft)]" style="width: 240px;">
+      <div class="flex items-center justify-between px-3 py-2 border-b border-[var(--border-soft)]">
+        <span class="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-mute)]">Проводник</span>
+        <div class="flex gap-1">
+          <button class="icon-btn" title="Новый файл" style="width:22px;height:22px;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+          <button class="icon-btn" title="Обновить" style="width:22px;height:22px;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;"><polyline points="23 4 23 9 18 9"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="flex-1 overflow-y-auto py-2">
+        <!-- Workspace -->
+        <div class="folder-item" onclick="this.classList.toggle('collapsed'); this.nextElementSibling.classList.toggle('hidden');">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+          <span>darmark</span>
+        </div>
+        <div class="pl-2">
+          <!-- docs folder -->
+          <div class="folder-item" onclick="this.classList.toggle('collapsed'); this.nextElementSibling.classList.toggle('hidden');">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;color:var(--amber);"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+            <span class="normal-case font-medium text-[12.5px] text-[var(--text-dim)]">docs</span>
+          </div>
+          <div class="pl-3">
+            <div class="file-item active" onclick="selectFile(this, 'readme')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;color:var(--accent-2);"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              <span>readme.md</span>
+            </div>
+            <div class="file-item" onclick="selectFile(this, 'changelog')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;color:var(--accent-2);"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              <span>changelog.md</span>
+            </div>
+            <div class="file-item" onclick="selectFile(this, 'plugins')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;color:var(--accent-2);"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              <span>plugins.md</span>
+            </div>
+          </div>
+
+          <!-- plugins folder -->
+          <div class="folder-item collapsed" onclick="this.classList.toggle('collapsed'); this.nextElementSibling.classList.toggle('hidden');">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;color:var(--amber);"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+            <span class="normal-case font-medium text-[12.5px] text-[var(--text-dim)]">plugins</span>
+          </div>
+          <div class="pl-3 hidden">
+            <div class="file-item">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;color:var(--green);"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+              <span>word-count.lua</span>
+            </div>
+          </div>
+
+          <!-- root files -->
+          <div class="file-item">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;color:var(--text-mute);"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <span>DESIGN_DOC.md</span>
+          </div>
+          <div class="file-item">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;color:var(--text-mute);"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+            <span>ROADMAP.md</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sidebar footer: recent -->
+      <div class="border-t border-[var(--border-soft)] py-2">
+        <div class="px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-mute)]">Недавние</div>
+        <div class="file-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          <span class="truncate">design-notes.md</span>
+        </div>
+        <div class="file-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          <span class="truncate">meeting-2024.md</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- CENTER: tabs + editor/preview -->
+    <main class="flex-1 flex flex-col min-w-0 bg-[var(--bg-0)]">
+
+      <!-- Tabs -->
+      <div class="flex items-center bg-[var(--bg-1)] border-b border-[var(--border-soft)] h-[35px] overflow-x-auto">
+        <div class="tab active" data-tab="readme">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;color:var(--accent-2);flex-shrink:0;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          <span class="truncate">readme.md</span>
+          <span class="close" onclick="event.stopPropagation(); closeTab(this)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </span>
+        </div>
+        <div class="tab" data-tab="changelog">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;color:var(--accent-2);flex-shrink:0;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          <span class="truncate">changelog.md</span>
+          <span class="dirty" title="Не сохранено"></span>
+          <span class="close" onclick="event.stopPropagation(); closeTab(this)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </span>
+        </div>
+        <div class="tab" data-tab="plugins">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;color:var(--accent-2);flex-shrink:0;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          <span class="truncate">plugins.md</span>
+          <span class="close" onclick="event.stopPropagation(); closeTab(this)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </span>
+        </div>
+        <div class="flex-1"></div>
+        <button class="icon-btn" style="margin-right:8px;" title="Разделить">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/></svg>
+        </button>
+      </div>
+
+      <!-- Breadcrumbs -->
+      <div class="flex items-center h-7 px-3 bg-[var(--bg-0)] border-b border-[var(--border-soft)] gap-1">
+        <span class="crumb">darmark</span>
+        <span class="crumb-sep">›</span>
+        <span class="crumb">docs</span>
+        <span class="crumb-sep">›</span>
+        <span class="crumb" style="color:var(--text);">readme.md</span>
+      </div>
+
+      <!-- Split editor/preview -->
+      <div class="flex-1 flex overflow-hidden" id="split-view">
+
+        <!-- Editor pane -->
+        <div class="flex flex-col bg-[var(--bg-0)]" id="editor-pane" style="width: 50%;">
+          <div class="flex items-center justify-between h-7 px-3 border-b border-[var(--border-soft)] bg-[var(--bg-1)]">
+            <div class="flex items-center gap-2 text-[11px] text-[var(--text-mute)]">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+              <span>РЕДАКТОР</span>
+              <span class="mono" id="rev-badge">rev 42</span>
+            </div>
+            <div class="flex items-center gap-1">
+              <span class="text-[10px] mono text-[var(--text-mute)]">UTF-8 · Markdown</span>
+            </div>
+          </div>
+          <div class="flex-1 flex overflow-hidden">
+            <div class="line-numbers overflow-hidden" id="line-numbers">1</div>
+            <div class="flex-1 overflow-auto relative">
+              <textarea id="editor" spellcheck="false"></textarea>
+            </div>
+          </div>
+        </div>
+
+        <!-- Resize handle -->
+        <div class="resize-handle" id="resize-handle"></div>
+
+        <!-- Preview pane -->
+        <div class="flex flex-col bg-[var(--bg-2)]" id="preview-pane" style="width: 50%;">
+          <div class="flex items-center justify-between h-7 px-3 border-b border-[var(--border-soft)] bg-[var(--bg-1)]">
+            <div class="flex items-center gap-2 text-[11px] text-[var(--text-mute)]">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              <span>ПРЕДПРОСМОТР</span>
+              <span class="mono" id="render-time">12 мс</span>
+            </div>
+            <div class="flex items-center gap-1">
+              <button class="icon-btn" title="Копировать HTML" style="width:22px;height:22px;" onclick="copyHtml()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              </button>
+            </div>
+          </div>
+          <div id="preview" class="flex-1"></div>
+        </div>
+      </div>
+    </main>
+
+    <!-- INSPECTOR -->
+    <aside id="inspector" class="inspector hidden">
+      <div class="flex items-center justify-between px-3 py-2 border-b border-[var(--border-soft)]">
+        <span class="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-mute)]">Инспектор</span>
+        <button class="icon-btn" style="width:20px;height:20px;" onclick="toggleInspector()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="py-2">
+        <div class="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-mute)]">Документ</div>
+        <div class="inspector-row"><span class="k">ID</span><span class="v">doc_7f3a</span></div>
+        <div class="inspector-row"><span class="k">Ревизия</span><span class="v" id="insp-rev">42</span></div>
+        <div class="inspector-row"><span class="k">Размер</span><span class="v" id="insp-size">1.2 КБ</span></div>
+        <div class="inspector-row"><span class="k">Строк</span><span class="v" id="insp-lines">38</span></div>
+        <div class="inspector-row"><span class="k">Слов</span><span class="v" id="insp-words">187</span></div>
+        <div class="inspector-row"><span class="k">Кодировка</span><span class="v">UTF-8</span></div>
+        <div class="inspector-row"><span class="k">EOL</span><span class="v">LF</span></div>
+
+        <div class="px-3 py-1 mt-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-mute)]">Курсор</div>
+        <div class="inspector-row"><span class="k">Позиция</span><span class="v" id="insp-pos">1:1</span></div>
+        <div class="inspector-row"><span class="k">Смещение</span><span class="v" id="insp-offset">0 байт</span></div>
+        <div class="inspector-row"><span class="k">Выделение</span><span class="v" id="insp-sel">0 симв.</span></div>
+
+        <div class="px-3 py-1 mt-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-mute)]">Блок</div>
+        <div class="inspector-row"><span class="k">Тип</span><span class="v" id="insp-block">paragraph</span></div>
+        <div class="inspector-row"><span class="k">Диапазон</span><span class="v" id="insp-range">0–124</span></div>
+
+        <div class="px-3 py-1 mt-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-mute)]">Плагины</div>
+        <div class="inspector-row"><span class="k">Активных</span><span class="v" style="color:var(--green);">1</span></div>
+        <div class="inspector-row"><span class="k">word-count</span><span class="v" style="color:var(--green);">✓ ok</span></div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- STATUSBAR -->
+  <div class="statusbar">
+    <div class="status-item">
+      <span class="status-dot"></span>
+      <span>Готов</span>
+    </div>
+    <div class="status-item" id="stat-msg">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+      <span id="stat-msg-text">Слова: 187 · Плагинов: 1</span>
+    </div>
+    <div class="flex-1"></div>
+    <div class="status-item" id="stat-inspect">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <span>Ln <span id="stat-ln">1</span>, Col <span id="stat-col">1</span></span>
+    </div>
+    <div class="status-item">
+      <span id="stat-size">1.2 КБ</span>
+    </div>
+    <div class="status-item">
+      <span>Markdown</span>
+    </div>
+    <div class="status-item">
+      <span>UTF-8</span>
+    </div>
+    <div class="status-item">
+      <span>LF</span>
+    </div>
+    <div class="status-item accent">
+      <span class="status-dot" style="background:var(--accent);box-shadow:0 0 6px rgba(124,92,255,0.5);"></span>
+      <span>darmark</span>
+    </div>
+  </div>
+</div>
+
+<!-- Command palette -->
+<div class="cmd-overlay" id="cmd-overlay" onclick="if(event.target===this) closeCommandPalette()">
+  <div class="cmd-palette">
+    <input class="cmd-input" id="cmd-input" placeholder="Введите команду или найдите файл..." autocomplete="off" />
+    <div class="cmd-list" id="cmd-list"></div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;color:var(--accent);"><polyline points="20 6 9 17 4 12"/></svg>
+  <span id="toast-text">Сохранено</span>
+</div>
+
+<script>
+// ========= Demo content =========
+const DEMO_DOCS = {
+  readme: `# Добро пожаловать в darmark
+
+**darmark** — лёгкий Markdown-редактор с плагинным UX.
+Открыл \`.lua\` — поправил — работает. Никакой пересборки.
+
+## Возможности
+
+- Мгновенный предпросмотр с синхронной прокруткой
+- Excel-подобные таблицы
+- Инспектор байтовых смещений
+- Lua-плагины без компиляции
+
+## Пример плагина
+
+\`\`\`lua
+-- word-count/main.lua
+function on_activate(ctx)
+  ctx.subscribe("document:changed", function(doc_id)
+    local len = host.get_document_len(doc_id)
+    local text = host.get_document_range(doc_id, 0, len)
+    host.show_message("Слова: " .. count_words(text))
+  end)
+end
+\`\`\`
+
+## Таблица
+
+| Файл | Размер | Строк | Изменён |
+|------|--------|-------|---------|
+| readme.md | 1.2 КБ | 38 | сегодня |
+| changelog.md | 840 Б | 22 | вчера |
+| plugins.md | 2.4 КБ | 64 | 2 дня |
+
+> Плагин исполняется в отдельном процессе; хост не разделяет с ним адресное пространство.
+
+Подробнее — в [DESIGN_DOC.md](./DESIGN_DOC.md).
+`,
+  changelog: `# Changelog
+
+## v0.1.0 — 2024-11-15
+
+### Добавлено
+- Базовый редактор и предпросмотр
+- Синхронная прокрутка
+- Инспектор байтовых смещений
+- Поддержка Lua 5.5 плагинов
+
+### Исправлено
+- Утечка памяти при частом обновлении preview
+- Некорректный рендер таблиц с пустыми ячейками
+`,
+  plugins: `# Плагины darmark
+
+Плагины — это \`.lua\` файлы, которые лежат в \`%APPDATA%/darmark/plugins/\`.
+
+## Структура плагина
+
+\`\`\`
+word-count/
+├── manifest.json
+└── main.lua
+\`\`\`
+
+## Манифест
+
+\`\`\`json
+{
+  "id": "word-count",
+  "name": "Word Count",
+  "version": "1.0.0",
+  "api_version": 1,
+  "entry": "main.lua",
+  "permissions": ["document:read", "ui:statusbar"]
+}
+\`\`\`
+`
+};
+
+let currentDoc = 'readme';
+let syncScroll = true;
+let previewVisible = true;
+let inspectorVisible = false;
+let rev = 42;
+
+// ========= Init =========
+const editor = document.getElementById('editor');
+const preview = document.getElementById('preview');
+const lineNumbers = document.getElementById('line-numbers');
+
+editor.value = DEMO_DOCS[currentDoc];
+renderPreview();
+updateLineNumbers();
+updateInspector();
+
+// ========= Render =========
+let renderTimer = null;
+function renderPreview() {
+  const t0 = performance.now();
+  // Wrap top-level blocks with data-md for scroll sync
+  const html = marked.parse(editor.value);
+  preview.innerHTML = html;
+  // Add md-block wrappers
+  wrapBlocks();
+  const dt = (performance.now() - t0).toFixed(1);
+  document.getElementById('render-time').textContent = dt + ' мс';
+}
+
+function wrapBlocks() {
+  // Simple: wrap direct children of preview
+  const kids = Array.from(preview.children);
+  kids.forEach((el, i) => {
+    if (!el.classList.contains('md-block')) {
+      el.classList.add('md-block');
+      el.setAttribute('data-md', i);
+    }
+  });
+}
+
+function scheduleRender() {
+  clearTimeout(renderTimer);
+  renderTimer = setTimeout(() => {
+    renderPreview();
+    rev++;
+    document.getElementById('rev-badge').textContent = 'rev ' + rev;
+    document.getElementById('insp-rev').textContent = rev;
+  }, 120);
+}
+
+// ========= Line numbers =========
+function updateLineNumbers() {
+  const lines = editor.value.split('\n').length;
+  let html = '';
+  for (let i = 1; i <= lines; i++) html += i + '\n';
+  lineNumbers.textContent = html;
+  document.getElementById('insp-lines').textContent = lines;
+  document.getElementById('stat-size').textContent = formatSize(new Blob([editor.value]).size);
+  document.getElementById('insp-size').textContent = formatSize(new Blob([editor.value]).size);
+  const words = (editor.value.match(/\S+/g) || []).length;
+  document.getElementById('insp-words').textContent = words;
+  document.getElementById('stat-msg-text').textContent = `Слова: ${words} · Плагинов: 1`;
+}
+
+function formatSize(bytes) {
+  if (bytes < 1024) return bytes + ' Б';
+  return (bytes / 1024).toFixed(1) + ' КБ';
+}
+
+// Sync line numbers scroll with editor
+const editorContainer = editor.parentElement;
+editorContainer.addEventListener('scroll', () => {
+  lineNumbers.scrollTop = editorContainer.scrollTop;
+  if (syncScroll && previewVisible) {
+    const ratio = editorContainer.scrollTop / (editorContainer.scrollHeight - editorContainer.clientHeight || 1);
+    preview.parentElement.scrollTop = ratio * (preview.parentElement.scrollHeight - preview.parentElement.clientHeight);
+  }
+});
+
+// ========= Editor events =========
+editor.addEventListener('input', () => {
+  scheduleRender();
+  updateLineNumbers();
+});
+
+editor.addEventListener('keyup', updateCursor);
+editor.addEventListener('click', updateCursor);
+editor.addEventListener('select', updateCursor);
+
+function updateCursor() {
+  const pos = editor.selectionStart;
+  const text = editor.value.slice(0, pos);
+  const ln = text.split('\n').length;
+  const col = pos - text.lastIndexOf('\n');
+  document.getElementById('stat-ln').textContent = ln;
+  document.getElementById('stat-col').textContent = col;
+  document.getElementById('insp-pos').textContent = ln + ':' + col;
+  document.getElementById('insp-offset').textContent = pos + ' байт';
+  const selLen = Math.abs(editor.selectionEnd - editor.selectionStart);
+  document.getElementById('insp-sel').textContent = selLen + ' симв.';
+}
+
+// ========= Toolbar actions =========
+function newDoc() {
+  editor.value = '# Новый документ\n\nНачните писать...';
+  scheduleRender();
+  updateLineNumbers();
+  showToast('Создан новый документ');
+}
+
+function openDoc() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.md,.markdown,.txt';
+  input.onchange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      editor.value = ev.target.result;
+      scheduleRender();
+      updateLineNumbers();
+      showToast('Открыт: ' + file.name);
+    };
+    reader.readAsText(file);
+  };
+  input.click();
+}
+
+function saveDoc() {
+  const blob = new Blob([editor.value], { type: 'text/markdown' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = currentDoc + '.md';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  showToast('Сохранено: ' + currentDoc + '.md');
+}
+
+function wrapSelection(marker) {
+  const start = editor.selectionStart;
+  const end = editor.selectionEnd;
+  const text = editor.value;
+  const selected = text.slice(start, end);
+  editor.value = text.slice(0, start) + marker + selected + marker + text.slice(end);
+  editor.selectionStart = start + marker.length;
+  editor.selectionEnd = end + marker.length;
+  editor.focus();
+  scheduleRender();
+  updateLineNumbers();
+}
+
+function insertHeading() {
+  const start = editor.selectionStart;
+  const text = editor.value;
+  const lineStart = text.lastIndexOf('\n', start - 1) + 1;
+  editor.value = text.slice(0, lineStart) + '## ' + text.slice(lineStart);
+  editor.focus();
+  scheduleRender();
+  updateLineNumbers();
+}
+
+function insertLink() {
+  const start = editor.selectionStart;
+  const end = editor.selectionEnd;
+  const text = editor.value;
+  const selected = text.slice(start, end) || 'ссылка';
+  const insert = `[${selected}](https://)`;
+  editor.value = text.slice(0, start) + insert + text.slice(end);
+  editor.focus();
+  scheduleRender();
+  updateLineNumbers();
+}
+
+// ========= Toggle views =========
+function togglePreview() {
+  previewVisible = !previewVisible;
+  document.getElementById('preview-pane').style.display = previewVisible ? 'flex' : 'none';
+  document.getElementById('resize-handle').style.display = previewVisible ? 'block' : 'none';
+  document.getElementById('btn-preview').classList.toggle('active', previewVisible);
+  if (previewVisible) {
+    document.getElementById('editor-pane').style.width = '50%';
+  } else {
+    document.getElementById('editor-pane').style.width = '100%';
+  }
+}
+
+function toggleSync() {
+  syncScroll = !syncScroll;
+  document.getElementById('btn-sync').classList.toggle('active', syncScroll);
+  showToast(syncScroll ? 'Синхронная прокрутка включена' : 'Синхронная прокрутка выключена');
+}
+
+function toggleInspector() {
+  inspectorVisible = !inspectorVisible;
+  document.getElementById('inspector').classList.toggle('hidden', !inspectorVisible);
+  document.getElementById('btn-inspect').classList.toggle('active', inspectorVisible);
+}
+
+// Init active states
+document.getElementById('btn-preview').classList.add('active');
+document.getElementById('btn-sync').classList.add('active');
+
+// ========= Resize handle =========
+const resizeHandle = document.getElementById('resize-handle');
+const editorPane = document.getElementById('editor-pane');
+const splitView = document.getElementById('split-view');
+
+let isResizing = false;
+resizeHandle.addEventListener('mousedown', (e) => {
+  isResizing = true;
+  resizeHandle.classList.add('active');
+  document.body.style.cursor = 'col-resize';
+  document.body.style.userSelect = 'none';
+});
+
+document.addEventListener('mousemove', (e) => {
+  if (!isResizing) return;
+  const rect = splitView.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const pct = (x / rect.width) * 100;
+  if (pct > 20 && pct < 80) {
+    editorPane.style.width = pct + '%';
+    document.getElementById('preview-pane').style.width = (100 - pct) + '%';
+  }
+});
+
+document.addEventListener('mouseup', () => {
+  if (isResizing) {
+    isResizing = false;
+    resizeHandle.classList.remove('active');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  }
+});
+
+// ========= File selection =========
+function selectFile(el, key) {
+  document.querySelectorAll('.file-item').forEach(f => f.classList.remove('active'));
+  el.classList.add('active');
+  if (DEMO_DOCS[key]) {
+    currentDoc = key;
+    editor.value = DEMO_DOCS[key];
+    scheduleRender();
+    updateLineNumbers();
+    // Update active tab
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    const tab = document.querySelector(`.tab[data-tab="${key}"]`);
+    if (tab) tab.classList.add('active');
+  }
+}
+
+// ========= Tabs =========
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    const key = tab.dataset.tab;
+    if (DEMO_DOCS[key]) {
+      currentDoc = key;
+      editor.value = DEMO_DOCS[key];
+      scheduleRender();
+      updateLineNumbers();
+      document.querySelectorAll('.file-item').forEach(f => f.classList.remove('active'));
+    }
+  });
+});
+
+function closeTab(btn) {
+  const tab = btn.closest('.tab');
+  const wasActive = tab.classList.contains('active');
+  tab.remove();
+  if (wasActive) {
+    const first = document.querySelector('.tab');
+    if (first) first.click();
+  }
+}
+
+// ========= Inspector =========
+function updateInspector() {
+  updateCursor();
+}
+
+// ========= Command palette =========
+const commands = [
+  { name: 'Новый документ', shortcut: 'Ctrl+N', action: newDoc },
+  { name: 'Открыть файл', shortcut: 'Ctrl+O', action: openDoc },
+  { name: 'Сохранить', shortcut: 'Ctrl+S', action: saveDoc },
+  { name: 'Переключить предпросмотр', shortcut: 'Ctrl+Shift+V', action: togglePreview },
+  { name: 'Переключить синхронную прокрутку', shortcut: '', action: toggleSync },
+  { name: 'Открыть инспектор', shortcut: 'Ctrl+Shift+I', action: toggleInspector },
+  { name: 'Жирный', shortcut: 'Ctrl+B', action: () => wrapSelection('**') },
+  { name: 'Курсив', shortcut: 'Ctrl+I', action: () => wrapSelection('_') },
+  { name: 'Код', shortcut: 'Ctrl+`', action: () => wrapSelection('`') },
+  { name: 'Вставить заголовок', shortcut: '', action: insertHeading },
+  { name: 'Вставить ссылку', shortcut: 'Ctrl+K', action: insertLink },
+  { name: 'Копировать HTML', shortcut: '', action: copyHtml },
+];
+
+function openCommandPalette() {
+  document.getElementById('cmd-overlay').classList.add('open');
+  const input = document.getElementById('cmd-input');
+  input.value = '';
+  input.focus();
+  renderCommandList('');
+}
+
+function closeCommandPalette() {
+  document.getElementById('cmd-overlay').classList.remove('open');
+  editor.focus();
+}
+
+function renderCommandList(filter) {
+  const list = document.getElementById('cmd-list');
+  const filtered = commands.filter(c => c.name.toLowerCase().includes(filter.toLowerCase()));
+  list.innerHTML = filtered.map((c, i) => `
+    <div class="cmd-item ${i === 0 ? 'selected' : ''}" data-idx="${i}" onclick="runCommand(${commands.indexOf(c)})">
+      <span>${c.name}</span>
+      ${c.shortcut ? `<span class="shortcut">${c.shortcut}</span>` : ''}
+    </div>
+  `).join('') || '<div class="cmd-item" style="color:var(--text-mute);">Ничего не найдено</div>';
+}
+
+function runCommand(idx) {
+  closeCommandPalette();
+  commands[idx].action();
+}
+
+document.getElementById('cmd-input').addEventListener('input', (e) => {
+  renderCommandList(e.target.value);
+});
+
+document.getElementById('cmd-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeCommandPalette();
+  if (e.key === 'Enter') {
+    const sel = document.querySelector('.cmd-item.selected');
+    if (sel) sel.click();
+  }
+});
+
+// ========= Copy HTML =========
+function copyHtml() {
+  navigator.clipboard.writeText(preview.innerHTML).then(() => {
+    showToast('HTML скопирован в буфер обмена');
+  });
+}
+
+// ========= Toast =========
+let toastTimer = null;
+function showToast(msg) {
+  const toast = document.getElementById('toast');
+  document.getElementById('toast-text').textContent = msg;
+  toast.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.remove('show'), 2500);
+}
+
+// ========= Keyboard shortcuts =========
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'p') {
+    e.preventDefault();
+    openCommandPalette();
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+    e.preventDefault();
+    saveDoc();
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'n') {
+    e.preventDefault();
+    newDoc();
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'o') {
+    e.preventDefault();
+    openDoc();
+  }
+  if (e.key === 'Escape') {
+    closeCommandPalette();
+  }
+});
+
+// Tab key in editor
+editor.addEventListener('keydown', (e) => {
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    const start = editor.selectionStart;
+    const end = editor.selectionEnd;
+    editor.value = editor.value.slice(0, start) + '  ' + editor.value.slice(end);
+    editor.selectionStart = editor.selectionEnd = start + 2;
+    scheduleRender();
+    updateLineNumbers();
+  }
+});
+
+// Initial cursor
+updateCursor();
+</script>
+
+</body>
+</html>

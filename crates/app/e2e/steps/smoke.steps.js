@@ -1,6 +1,6 @@
 // Шаги дымовых проверок оболочки.
 import { Given, Then } from "@wdio/cucumber-framework";
-import { $ } from "@wdio/globals";
+import { $, browser } from "@wdio/globals";
 import { waitPreviewContains } from "./helpers.js";
 
 Given("приложение mdedit запущено", async () => {
@@ -9,8 +9,12 @@ Given("приложение mdedit запущено", async () => {
 });
 
 Then("поле редактора содержит непустой документ", async () => {
-  const value = await $("#editor").getValue();
-  if (!value || value.length === 0) throw new Error("Поле редактора пусто");
+  // Стартовый документ создаётся через IPC (bootstrap → newDocument), поэтому
+  // дожидаемся непустого значения, а не только существования #editor.
+  await browser.waitUntil(
+    async () => ((await $("#editor").getValue()) ?? "").length > 0,
+    { timeout: 8_000, timeoutMsg: "Поле редактора пусто" }
+  );
 });
 
 Then("предпросмотр содержит заголовок {string}", async (title) => {

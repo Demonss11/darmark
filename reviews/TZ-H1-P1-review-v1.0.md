@@ -1,7 +1,7 @@
 # Отчёт по Фазе 1 (H1 — ядро Document / View / Pane)
 
 **Дата:** 06.10.2026
-**Ревизия:** v1.0 — Фаза 1 закрыта.
+**Ревизия:** v1.1 — Фаза 1 закрыта; правки по `reviews/TZ-H1-review-v1.0.md` внесены.
 **Основание:** `docs/ROADMAP.md` §H1 (п. 2), `tasks/TZ-H1.md` §2–§3, `docs/DESIGN_DOC.md` §4–§5.
 **Ветка:** рабочая (H2-прототип `crates/lua-rpc-spike` не затронут).
 
@@ -132,3 +132,36 @@ npm run test:e2e              # требует cargo install tauri-driver --lock
 **Фаза 2:** `update_document`/`render_document` — рендер и кэш `(mapped, rev)` переезжают в
 `DocumentStore`; `renderSeq`/`lastRenderedHtml` удаляются из `main.ts`; `save_document` теряет
 аргумент `text`. Гейт: build + e2e `preview`, `tables`.
+
+---
+
+## 9. Правки по ревью (`reviews/TZ-H1-review-v1.0.md`)
+
+Ревью выполнено по коммиту `b612bd9`. Все код-находки разобраны; повторные гейты — ниже.
+
+| # | Находка | Действие |
+|---|---|---|
+| 1 | Документы не закрывались — утечка стора | **Исправлено:** `newFile`/`openFile` после успешной замены закрывают прошлый документ (`closeDocument(previous)`); при ошибке создания/открытия прошлый остаётся |
+| 2 | `save_document` мутировал стор до записи | **Исправлено:** сначала чтение пути и `write_text`, мутация `path`/`text` — только после успешной записи |
+| 3 | Гонка стартового документа в e2e `smoke` | **Исправлено:** шаг ждёт непустого `#editor` (`waitUntil`), а не только существования элемента |
+| 4 | `saveFile`/`saveAs` молча выходили без документа | **Исправлено:** статус-бар сообщает «Документ не создан — сохранение недоступно» |
+| 5 | `resetRenderState()` в `openFile` до `await` | **Исправлено:** перенесён после `applySnapshot`, чтобы не терять правку и не рендерить старый текст |
+| 6 | Коммит смешивал H1 и H2 (F37/F38) | **Процессная:** история не переписывалась; на будущее — H1 отдельным коммитом только по `crates/app/*` + `tasks/`/`KODA.md`/`AGENTS.md` |
+| 7 | Сломанная разметка `AGENTS.md:57`, висячий пробел `:4` | **Исправлено** |
+| 8 | `capabilities/default.json` описывал удалённые команды | **Исправлено:** описание перечисляет `new/open/save/close_document` + `render_markdown` |
+| 9 | Артефакт сборки `crates/app/dist/index.html` в git | **Исправлено:** `git rm --cached crates/app/dist/index.html` (файл остаётся на диске, `frontendDist` пересобирается) |
+| 10 | Дублирование конструктора `create`/`insert_loaded` | **Исправлено:** общий приватный `insert(path, text)`; убран `expect(...)` |
+| 11 | Мёртвые заделы `ids.ts` / `closeDocument` | `closeDocument` теперь используется; генераторы/`as*` — осознанный API под Фазы 3–5; держим в техдолге рядом с `#[allow(dead_code)]` |
+| 12 | Клонирование текста на open/save | **Принято для Фазы 1:** снимается при переходе на `update_document` (передача владения в снапшот) |
+
+### Гейт после правок
+
+| Проверка | Результат |
+|---|---|
+| `cargo test -p md-core -p mdedit` | ✅ 63 + 8 |
+| `cargo clippy -p mdedit --all-targets -- -D warnings` | ✅ чисто |
+| `cargo fmt -p mdedit -- --check` | ✅ чисто |
+| `npm run build` | ✅ успешно |
+| `npx tauri build --no-bundle` + `npm run test:e2e` | ✅ **6 спеков** (17 в `tables`; всего по логам шагов — зелёные) |
+
+Коммит/пуш не выполнялись.

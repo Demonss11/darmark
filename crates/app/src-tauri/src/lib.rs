@@ -112,27 +112,24 @@ async fn save_document(
     app: tauri::AppHandle,
     store: tauri::State<'_, Mutex<DocumentStore>>,
 ) -> Result<DocMeta, CommandError> {
+    // Сначала определяем путь только на чтение: при ошибке записи стор не должен «уплыть».
+    let explicit_path = path;
     let target = {
-        let mut guard = lock_store(&store);
+        let guard = lock_store(&store);
         let doc = guard
-            .get_mut(&id)
+            .get(&id)
             .ok_or_else(|| CommandError::unknown_document(id.as_str()))?;
-        let target = match path {
-            Some(p) => {
-                doc.path = Some(p.clone());
-                p
-            }
+        match &explicit_path {
+            Some(p) => p.clone(),
             None => doc
                 .path
                 .clone()
                 .ok_or_else(|| CommandError::io("Не задан путь сохранения"))?,
-        };
-        doc.text = text.clone();
-        target
+        }
     };
 
     let write_path = target.clone();
-    let body = text;
+    let body = text.clone();
     tauri::async_runtime::spawn_blocking(move || write_text(&write_path, &body))
         .await
         .map_err(|e| CommandError::io(e.to_string()))??;
@@ -140,10 +137,15 @@ async fn save_document(
         allow_asset_dir(&app, dir);
     }
 
-    let guard = lock_store(&store);
+    // Запись удалась — только теперь фиксируем путь и текст в сторе.
+    let mut guard = lock_store(&store);
     let doc = guard
-        .get(&id)
+        .get_mut(&id)
         .ok_or_else(|| CommandError::unknown_document(id.as_str()))?;
+    if let Some(p) = explicit_path {
+        doc.path = Some(p);
+    }
+    doc.text = text;
     Ok(doc.meta())
 }
 
