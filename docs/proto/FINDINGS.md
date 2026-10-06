@@ -18,6 +18,8 @@
 > **Уточнения F33/F34, закрытые тем же прогоном:** абсолютный дедлайн invocation (**F35** —
 > прогресс-таймаут не ловит chatty-плагин) и устойчивость протокола (**F36** — кадры child'а
 > трактуются как hostile: лимит размера, fallible-парсер, без panic).
+> **ADR-0021 §3 закрыт полностью:** добавлены карантин N=3 (**F37**) и канонические строки
+> границы изоляции для UI/магазина (**F38**); прогон — тот же `run-d16.ps1` (exit 0 = гейт).
 > **Решение D16 принято: вариант C** (`docs/adr/0021-plugin-isolation-process.md`).
 
 Замеры выполнены на Windows x86_64-msvc, rustc 1.99, mlua 0.12.2, vendored Lua 5.5.1
@@ -66,6 +68,8 @@
 | F34 | **D16:** range/delta host-API снижает память child'а (F22/F30) | `range-parent` на документе 10 МБ: **full** (`get_document_text`) — peak **20.72–20.75 МиБ**; **range** (`get_document_len`+`get_document_range(0,4096)`) — **0.72–0.73 МиБ**; **delta** (`+apply_edit`) — **0.71 МиБ**. Передано байт child'у: 10 485 760 vs 4096 vs 64 | **подтверждено**: окно/дельта кратно (~28×) легче полной копии — при модели «child на плагин» это снимает ×N-копию документа. Обязательное требование ADR-0021 §3 закрыто |
 | F35 | **D16:** строгий per-call wall-clock — не прогресс-таймаут (F33) | `watchdog-parent` + `chatty.lua` (цикл дешёвых `get_document_version`). Прогресс-таймаут 500 мс **не срабатывает** (каждое событие сбрасывает бюджет), плагин снимается только `--overall-ms` — за **3000 мс**. С `--deadline-ms 1500` снятие по **абсолютному дедлайну** за **1500.06 мс** (`DEADLINE_FIRED=1`), не сбрасываемому событиями | **закрыто:** введён абсолютный дедлайн invocation, независимый от прогресса. Прогресс-таймаут остаётся для `while true do end`, дедлайн — для «кооперирующегося» плагина. Оба снимают child через `TerminateJobObject` |
 | F36 | **D16:** host доверяет кадрам от child'а, а child — недоверенный | `lib.rs`: `read_frame` ограничен `MAX_EVENT_FRAME_BYTES` = 1 МиБ (входящее в host) до аллокации, `try_reserve` вместо `vec!`; `Cur` стал fallible (`try_*` → `io::Error`), `parse_event`/`parse_command`/`parse_reply` не паникуют. E2E-фикстура `bad-child` шлёт неполный кадр (`EV_HOSTCALL` без полей): host сообщает `PROTOCOL_ERROR` («кадр короче: нужно 4 Б, осталось 0»), снимает child, **не абортит**. 8 юнит-тестов (oversized, truncated, huge count) зелёные | **закрыто:** нарушение протокола — отказ плагина, не паника/OOM хоста. Отдельный лимит host → child (`MAX_HOST_FRAME_BYTES` = 16 МиБ) нужен, т.к. документ ≤ 10 МБ идёт в child |
+| F37 | **D16/§10.2:** карантин плагина после N=3 неудач подряд (ADR-0021 §3) | `Quarantine` в `lib.rs` + harness `quarantine-parent`, фикстура `crash.lua` (child `abort`). Порог 3: `crash`×4 → `failures=1,2,3(disabled=1)`, затем `SKIP` — перезапусков нет. Сброс серией: `crash,crash,hello,crash` → после `hello` `failures=0`, карантин не включён (`disabled=0`). 3 юнит-теста (порог, сброс, ручное включение) | **подтверждено:** механизм автоотключения детерминирован; успех сбрасывает серию; состояние per-plugin живёт в хосте (§6.2) |
+| F38 | **§11.4/ADR-0021 §2.6:** формулировка «изоляция отказов, не защита данных» в UI/магазине | Канонические строки в `lib.rs`: `ISOLATION_NOTICE` (всегда) и `DOCUMENT_ACCESS_NOTICE` (при `document`); `permission_notices(permissions)` — единый источник для UI. `quarantine-parent --permissions document:read` печатает оба `NOTICE`; юнит-тест на состав | **закрыто на уровне текста/политики:** строки и правило их выбора зафиксированы в коде и покрыты тестом; рендеринг в UI/магазине — задача H2 |
 
 **Реализация M10:** `crates/lua-rpc-spike/src/bin/gui_parent.rs` (+ `[[bin]] gui-parent`), прогон —
 `crates/lua-rpc-spike/run-m10.ps1` (roundtrip / break / break-write; exit 0 = гейт пройден).
@@ -82,6 +86,10 @@
 `child.rs`, общий обработчик `serve_host_call` в `lib.rs`, `src/bin/range_parent.rs`
 (+ `[[bin]] range-parent`), фикстуры `plugins/{range,delta}.lua`. Метрика — `PeakProcessMemoryUsed`
 Job'а на документе 10 МБ.
+**Реализация F37 (карантин):** `Quarantine` в `lib.rs` (порог, серия, сброс, ручное включение),
+`src/bin/quarantine_parent.rs` (+ `[[bin]] quarantine-parent`), фикстуры `crash.lua`/`hello.lua`.
+**Реализация F38 (граница изоляции):** `ISOLATION_NOTICE`/`DOCUMENT_ACCESS_NOTICE` и
+`permission_notices` в `lib.rs`; печатаются `quarantine-parent --permissions <csv>`.
 Грабли реализации: `std::process::Child::wait()` закрывает собственный `stdin`, поэтому запись
 «в мёртвого child» надо вести через **заранее взятый** `ChildStdin`, иначе `.unwrap()` паникует
 (под `panic="abort"` — fail-fast `0xC0000409`).
@@ -210,7 +218,11 @@ N×spawn (~2 мс).
   `Cur`/`parse_*` fallible, `bad-child` не роняет host (8 юнит-тестов).
 - range/delta-API против N1 (латентность).
 - ~~Решение **B vs C** и запись в ADR~~ — **закрыто**: вариант C, `docs/adr/0021-plugin-isolation-process.md`.
-- **Карантин N=3** (ADR-0021 §3) — пока только заявлен, кода нет.
+- ~~**Карантин N=3** (ADR-0021 §3)~~ — **закрыто (F37)**: `Quarantine` + `quarantine-parent`; порог,
+  сброс серией, ручное включение (3 юнит-теста, гейт `run-d16.ps1`).
+- ~~**Формулировка «изоляция отказов, не защита данных»** (§11.4, ADR-0021 §3)~~ — **закрыто (F38)**:
+  канонические строки `ISOLATION_NOTICE`/`DOCUMENT_ACCESS_NOTICE` + `permission_notices` в коде;
+  рендеринг в UI/магазине — H2.
 - P3: `MemoryError` на `hog.lua`; `spin.lua` под лимитом; M6 на `count.lua`; M7 (два инстанса в одном процессе).
 - P5: host-функции на заглушке + permissions; возврат ошибок Lua-значением.
 - P6: внешние строки 5.5 (M9).

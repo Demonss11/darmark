@@ -4,7 +4,15 @@
 import { confirm, open, save } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { renderMarkdown, readFile, writeFile } from "./tauri";
+import {
+  newDocument,
+  openDocument,
+  saveDocument,
+  renderMarkdown,
+  errorMessage,
+} from "./tauri";
+import type { DocumentId } from "./ids";
+import type { DocumentSnapshot } from "./tauri";
 import { enhanceTables, attachMenuAutoClose } from "./tables";
 import { createInspector } from "./inspector";
 import { resolveLocalImages } from "./images";
@@ -37,6 +45,7 @@ const inspector = createInspector({
   beforeScrollIntoView: () => scrollSync.suspend(),
 });
 
+let currentId: DocumentId | null = null;
 let currentPath: string | null = null;
 let dirty = false;
 let renderSeq = 0; // защита от «гонки» асинхронных рендеров
@@ -151,19 +160,29 @@ function flash(msg: string) {
 
 // ---------- команды файла ----------
 
+// Приводит UI к снимку документа из Rust-стора: id/путь/текст ведёт хост.
+function applySnapshot(snap: DocumentSnapshot) {
+  currentId = snap.id;
+  currentPath = snap.path;
+  dirty = false;
+  editor.value = snap.text;
+}
+
 async function newFile() {
   if (dirty && !(await confirm("Несохранённые изменения будут потеряны. Продолжить?", { title: "mdedit", kind: "warning" }))) {
     return;
   }
-  currentPath = null;
-  dirty = false;
-  editor.value = "";
-  resetRenderState();
-  preview.innerHTML = "";
-  inspector.onRendered(editor.value); // сбрасываем устаревшие диапазоны
-  updateTitle();
-  updateStatus();
-  editor.focus();
+  try {
+    applySnapshot(await newDocument(""));
+    resetRenderState();
+    preview.innerHTML = "";
+    inspector.onRendered(editor.value); // сбрасываем устаревшие диапазоны
+    updateTitle();
+    updateStatus();
+    editor.focus();
+  } catch (e) {
+    flash(`Новый документ: ${errorMessage(e)}`);
+  }
 }
 
 async function openFile() {
@@ -178,45 +197,45 @@ async function openFile() {
   if (typeof selected !== "string") return; // отмена
   resetRenderState();
   try {
-    editor.value = await readFile(selected);
-    currentPath = selected;
-    dirty = false;
+    applySnapshot(await openDocument(selected));
     updateTitle();
     void doRender();
     updateStatus();
   } catch (e) {
-    flash(`Не открылось: ${String(e)}`);
+    flash(`Не открылось: ${errorMessage(e)}`);
   }
 }
 
 async function saveFile() {
+  if (!currentId) return;
   if (!currentPath) return saveAs();
   try {
-    await writeFile(currentPath, editor.value);
+    await saveDocument(currentId, editor.value);
     dirty = false;
     updateTitle();
     flash("Сохранено");
   } catch (e) {
-    flash(`Не сохранилось: ${String(e)}`);
+    flash(`Не сохранилось: ${errorMessage(e)}`);
   }
 }
 
 async function saveAs() {
+  if (!currentId) return;
   const selected = await save({
     defaultPath: currentPath ?? "untitled.md",
     filters: [MD_FILTER],
   });
   if (typeof selected !== "string") return;
   try {
-    await writeFile(selected, editor.value);
-    currentPath = selected;
+    const meta = await saveDocument(currentId, editor.value, selected);
+    currentPath = meta.path;
     dirty = false;
     updateTitle();
     // Новый каталог — относительные картинки нужно перерезолвить от него.
     resolveLocalImages(preview, currentPath);
     flash("Сохранено");
   } catch (e) {
-    flash(`Не сохранилось: ${String(e)}`);
+    flash(`Не сохранилось: ${errorMessage(e)}`);
   }
 }
 
@@ -292,8 +311,9 @@ appWindow
   })
   .catch((e) => console.error("onCloseRequested:", e));
 
-// стартовый документ — сразу видно, что таблицы рендерятся
-editor.value = [
+// Стартовый документ — сразу видно, что таблицы рендерятся.
+// Создаётся в Rust-сторе: с этого момента id/путь/текст ведёт хост (D5).
+const START_TEXT = [
   "# Добро пожаловать в mdedit",
   "",
   "Лёгкий редактор Markdown. Слева — исходник, справа — HTML-предпросмотр,",
@@ -320,7 +340,17 @@ editor.value = [
   "",
   "> Цитаты тоже работают.",
 ].join("\n");
-void doRender();
-updateStatus();
-updateTitle();
-editor.focus();
+
+async function bootstrap() {
+  try {
+    applySnapshot(await newDocument(START_TEXT));
+  } catch (e) {
+    flash(`Запуск: ${errorMessage(e)}`);
+  }
+  void doRender();
+  updateStatus();
+  updateTitle();
+  editor.focus();
+}
+
+void bootstrap();

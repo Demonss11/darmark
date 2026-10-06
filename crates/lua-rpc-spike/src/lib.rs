@@ -262,6 +262,78 @@ pub fn serve_host_call(method: &str, arg: &[u8], document: &[u8]) -> Vec<u8> {
     }
 }
 
+/// Состояние карантина одного плагина (ADR-0021 §3, §10.2 DESIGN_DOC): после `threshold`
+/// **подряд** неудач плагин автоотключается до ручного включения. Успешный запуск сбрасывает
+/// счётчик. Состояние per-plugin живёт в хосте (плагин stateless, §6.2).
+#[derive(Debug, Clone)]
+pub struct Quarantine {
+    threshold: u32,
+    consecutive_failures: u32,
+    disabled: bool,
+}
+
+impl Quarantine {
+    pub fn new(threshold: u32) -> Self {
+        Self {
+            threshold: threshold.max(1),
+            consecutive_failures: 0,
+            disabled: false,
+        }
+    }
+
+    pub fn consecutive_failures(&self) -> u32 {
+        self.consecutive_failures
+    }
+
+    pub fn is_disabled(&self) -> bool {
+        self.disabled
+    }
+
+    /// Успешный запуск: серия неудач прервана.
+    pub fn record_success(&mut self) {
+        self.consecutive_failures = 0;
+    }
+
+    /// Неудача запуска (краш, зависание, отказ): при накоплении `threshold` — карантин.
+    pub fn record_failure(&mut self) {
+        self.consecutive_failures += 1;
+        if self.consecutive_failures >= self.threshold {
+            self.disabled = true;
+        }
+    }
+
+    /// Ручное включение после карантина: счётчик и флаг сбрасываются.
+    pub fn reset(&mut self) {
+        self.consecutive_failures = 0;
+        self.disabled = false;
+    }
+}
+
+/// Формулировка границы безопасности (§11.4 DESIGN_DOC, ADR-0021 §2.6). Показывается в UI
+/// и в магазине плагинов: изоляция ограничена **отказами**, защита данных не обеспечивается.
+pub const ISOLATION_NOTICE: &str =
+    "Плагин исполняется в отдельном процессе: его сбой или зависание не затрагивают редактор. \
+     Это изоляция отказов, а не защита данных.";
+
+/// Предупреждение для плагинов с доступом к документу (§11.4: «плагин с permission document
+/// видит содержимое документа полностью»).
+pub const DOCUMENT_ACCESS_NOTICE: &str =
+    "Плагин с доступом к документу (document) читает его содержимое полностью, включая \
+     конфиденциальный текст.";
+
+/// Предупреждения для UI установки/магазина по разрешениям плагина (`contributes`/`permissions`).
+/// Единый источник формулировок; рендеринг — задача UI (H2).
+pub fn permission_notices(permissions: &[&str]) -> Vec<&'static str> {
+    let mut notices = vec![ISOLATION_NOTICE];
+    if permissions
+        .iter()
+        .any(|p| *p == "document" || p.starts_with("document:"))
+    {
+        notices.push(DOCUMENT_ACCESS_NOTICE);
+    }
+    notices
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -334,5 +406,47 @@ mod tests {
         v.extend_from_slice(b"abc");
         let mut c = Cur::new(&v);
         assert!(c.try_str().is_err());
+    }
+
+    #[test]
+    fn quarantine_disables_after_threshold() {
+        let mut q = Quarantine::new(3);
+        q.record_failure();
+        q.record_failure();
+        assert!(!q.is_disabled());
+        assert_eq!(q.consecutive_failures(), 2);
+        q.record_failure();
+        assert!(q.is_disabled(), "после 3 неудач подряд — карантин");
+    }
+
+    #[test]
+    fn quarantine_success_resets_series() {
+        let mut q = Quarantine::new(3);
+        q.record_failure();
+        q.record_failure();
+        q.record_success();
+        assert_eq!(q.consecutive_failures(), 0);
+        q.record_failure();
+        assert!(!q.is_disabled(), "серия прервана успехом");
+    }
+
+    #[test]
+    fn quarantine_manual_reset_reenables() {
+        let mut q = Quarantine::new(2);
+        q.record_failure();
+        q.record_failure();
+        assert!(q.is_disabled());
+        q.reset();
+        assert!(!q.is_disabled());
+        assert_eq!(q.consecutive_failures(), 0);
+    }
+
+    #[test]
+    fn permission_notices_include_isolation_and_document() {
+        let plain = permission_notices(&["ui:statusbar"]);
+        assert_eq!(plain, vec![ISOLATION_NOTICE]);
+        let doc = permission_notices(&["document:read"]);
+        assert!(doc.contains(&ISOLATION_NOTICE));
+        assert!(doc.contains(&DOCUMENT_ACCESS_NOTICE));
     }
 }

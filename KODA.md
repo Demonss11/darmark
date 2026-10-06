@@ -1,12 +1,12 @@
 # KODA.md — память проекта mdedit
 
-README **для AI-агентов**. Обязательно читать перед правками. Полное человеческое описание — в `README.md`.
+README **для AI-агентов**. Обязательно читать перед правками.
 
 ## Что это
 
 `mdedit` — лёгкий Markdown-редактор/вьюер (аналог Notepad++ для Markdown): слева редактор,
 справа HTML-предпросмотр. **Без React/фреймворков** — чистый TypeScript + Vite, вся логика
-Markdown на Rust. Целевая платформа — Windows (Tauri 2), разработка возможна на Linux.
+Markdown на Rust. Целевая платформа — Windows (Tauri 2).
 
 ## Архитектура (Cargo workspace)
 
@@ -17,12 +17,15 @@ crates/
 └── app/
     ├── src/            # Фронтенд (vanilla TS + Vite)
     │   ├── main.ts     #   тулбар, debounce-рендер 120 мс, lastRenderedHtml, файловые команды
-    │   ├── tauri.ts    #   тонкие IPC-обёртки: renderMarkdown / readFile / writeFile
+    │   ├── tauri.ts    #   IPC-обёртки: документы (new/open/save/close) + renderMarkdown
+    │   ├── ids.ts      #   брендированные DocumentId / PaneId / ViewId (§5.1)
     │   ├── tables.ts   #   Excel-подобное поведение <table> в предпросмотре (сортировка/фильтры/поиск)
     │   └── style.css   #   CSS-переменные, light/dark через prefers-color-scheme
     ├── index.html      #   #toolbar, #editor (textarea), #preview (article.markdown-body), #statusbar
-    └── src-tauri/      # Tauri-шелл: команды read_file / write_file / render_markdown
-        └── src/lib.rs  #   IPC + проверка расширений (ALLOWED_EXTS)
+    └── src-tauri/      # Tauri-шелл: команды документов + render_markdown
+        ├── src/lib.rs  #   IPC-команды + файловый ввод-вывод (лимит 10 МБ)
+        ├── src/state.rs#   DocumentStore (D5): текст, rev, путь, кэш рендера
+        └── src/error.rs#   CommandError { code, message }
 ```
 
 **Главный принцип:** `md-core` НИЧЕГО не знает про Tauri/GUI — переиспользуется в CLI/TUI/тестах
@@ -62,25 +65,18 @@ npx tauri build                # релиз → NSIS-установщик в src
    и не может «изнутри» отличить, изменилась ли конкретная таблица — для этого нужен стабильный ключ.
 5. **Тестовой инфраструктуры для фронта нет**: в `package.json` только `dev`/`build`/`preview`,
    `vitest` не установлен, CI (`.github/`) нет. Rust-ядро тестируется через `cargo test`.
-6. **Состояние таблиц** (`tables.ts`) исторически в `WeakMap` по DOM-узлу — теряется при `innerHTML`.
-   Задачи по стабильному ключу/персистентности описаны в `tasks/TZ-excel-tables.md`.
 
 ## Конвенции
 
 - Комментарии на русском, объясняют **зачем**, а не **что**.
-- UI-строки сейчас захардкожены по-русски в `tables.ts`/`main.ts`; план i18n — в `tasks/TZ-excel-tables.md` (AC-17).
 - Зависимости добавлять только после проверки, что они уместны и проходят CSP/размер-бюджет.
 - Стиль: 2 пробела в TS, стандартный `rustfmt` в Rust.
 
 ## Текущие задачи (ТЗ в `tasks/`)
 
-- `TZ-excel-tables.md` — таблицы «как в Excel»: стабильный ключ + sessionStorage-персистентность,
-  точечный diff вместо `innerHTML`, предикатные фильтры, мультисортировка, `<mark>`-подсветка,
-  sticky-первый столбец, копирование TSV/MD, печать, ресайз колонок, i18n, a11y, юнит-тесты ядра таблиц.
-- `TZ-inspect-mode.md` — режим инспектора (hover/click подсветка md-блоков).
-- `TZ-fixes.md` — точечные исправления.
-
 Перед реализацией задачи — прочитать соответствующий `tasks/TZ-*.md` целиком.
+Активное: `tasks/TZ-H1.md` — ядро Document/View/Pane (Фаза 1 сделана: Rust `state.rs`/`error.rs`
++ команды документов, TS `ids.ts`/`tauri.ts`, `read_file`/`write_file` удалены).
 
 ## Дорожная карта (из README)
 

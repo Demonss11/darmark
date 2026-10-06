@@ -47,5 +47,10 @@ path = "src/bin/range_parent.rs"
 name = "bad-child"
 path = "src/bin/bad_child.rs"
 
+# ADR-0021 §3: карантин N=3 и формулировка границы изоляции (F37).
+[[bin]]
+name = "quarantine-parent"
+path = "src/bin/quarantine_parent.rs"
+
 [dependencies]
 mlua = { version = "0.12", default-features = false, features = ["lua55", "vendored"] }

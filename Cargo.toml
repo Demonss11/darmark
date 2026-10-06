@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-# lua-proto — прототип/спайк, живёт только в ветке proto/lua-plugin-host (TZ-proto-lua-host.md).
+# lua-proto — прототип/спайк, живёт только в ветке proto/lua-plugin-host
 members = ["crates/md-core", "crates/app/src-tauri", "crates/lua-proto", "crates/lua-rpc-spike"]
 
 [workspace.package]

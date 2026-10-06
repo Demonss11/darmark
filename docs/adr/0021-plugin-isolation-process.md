@@ -68,8 +68,12 @@
       abort; 8 юнит-тестов.
 - [x] **Job Object лимиты** (память/CPU/time) и `KILL_ON_JOB_CLOSE`; уборка child'ов при
       смерти host. **Проверено в P9 (F28/F29).**
-- [ ] **Карантин:** N=3 падений подряд → авто-отключение плагина.
-- [ ] **Изоляция отказов, не защита данных** — формулировка в UI/магазине (§11.4).
+- [x] **Карантин:** N=3 падений подряд → авто-отключение плагина. **Проверено в прототипе (F37):**
+      `crash`×4 при пороге 3 → `disabled=1` и `SKIP`; `crash,crash,hello,crash` показывает сброс
+      серии успехом; 3 юнит-теста. Состояние per-plugin живёт в хосте (§6.2).
+- [x] **Изоляция отказов, не защита данных** — формулировка в UI/магазине (§11.4). **Зафиксировано
+      (F38):** канонические строки `ISOLATION_NOTICE` (всегда) и `DOCUMENT_ACCESS_NOTICE`
+      (при `document`) + `permission_notices` в коде; рендеринг в UI/магазине — задача H2.
 
 ---
 
@@ -105,6 +109,8 @@
 ## 6. Ссылки
 
 - FINDINGS: F9–F14 (in-process), F16–F25 (C-спайк), F26–F31 (P9: M10–M12), F32 (UI-freeze),
-  F33–F36 (закрытие D16: прогресс-таймаут, range/delta, дедлайн F35, устойчивость протокола F36).
-- `reviews/TZ-proto-lua-host-P1-review-v1.4.md`, `reviews/TZ-proto-lua-host-P9-review-v1.0.md`.
+  F33–F38 (закрытие D16/§3: прогресс-таймаут, range/delta, дедлайн F35, устойчивость протокола
+  F36, карантин F37, граница изоляции F38).
+- `reviews/TZ-proto-lua-host-P1-review-v1.4.md`, `reviews/TZ-proto-lua-host-P9-review-v1.0.md`,
+  `reviews/TZ-proto-lua-host-F35-F36-review-v1.0.md`.
 - ТЗ: `tasks/TZ-proto-lua-host.md` §11.

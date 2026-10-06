@@ -70,6 +70,22 @@ try {
   if (-not ($peaks['range'] -lt $peaks['full'] / 2)) { Write-Host "ГЕЙТ F22: range не легче full/2"; $failed++ }
   if (-not ($peaks['delta'] -lt $peaks['full'] / 2)) { Write-Host "ГЕЙТ F22: delta не легче full/2"; $failed++ }
 
+  # ---- (5) ADR-0021 §3: карантин N=3 и формулировка границы изоляции ----
+  $qp = (Resolve-Path "target\release\quarantine-parent.exe").Path
+  Write-Host "=== карантин: crash x4, порог 3 ==="
+  $qOut = & $qp --child $child --plugins $pl --sequence "crash.lua,crash.lua,crash.lua,crash.lua" --threshold 3 --permissions "document:read"
+  $qOut | Where-Object { $_ -match 'STEP|QUARANTINE|SKIP|RESULT|NOTICE' }
+  if (-not ($qOut | Where-Object { $_ -match 'RESULT .*disabled=1' })) { Write-Host "  ! карантин не включился"; $failed++ }
+  if (-not ($qOut | Where-Object { $_ -match 'SKIP name=crash.lua reason=quarantined' })) { Write-Host "  ! карантинированный плагин перезапущен"; $failed++ }
+  # Формулировки: изоляция отказов всегда + предупреждение о document при соответствующем праве.
+  $notices = @($qOut | Where-Object { $_ -match '^NOTICE ' }).Count
+  if ($notices -ne 2) { Write-Host "  ! ожидалось 2 NOTICE (изоляция + document), получено $notices"; $failed++ }
+
+  Write-Host "=== карантин: сброс серии успехом (crash,crash,hello,crash) ==="
+  $rOut = & $qp --child $child --plugins $pl --sequence "crash.lua,crash.lua,hello.lua,crash.lua" --threshold 3
+  $rOut | Where-Object { $_ -match 'STEP|RESULT' }
+  if (-not ($rOut | Where-Object { $_ -match 'RESULT .*disabled=0' })) { Write-Host "  ! серия не сброшена успехом"; $failed++ }
+
   Write-Host ("СВОДКА: full={0:N2} МиБ range={1:N2} МиБ delta={2:N2} МиБ; watchdog={3:N0} мс vs CPU={4:N0} мс" -f `
       $peaks['full'], $peaks['range'], $peaks['delta'], $wdLat, $cpuLat)
 
