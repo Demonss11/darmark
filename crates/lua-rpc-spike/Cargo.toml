@@ -17,5 +17,35 @@ path = "src/bin/parent.rs"
 name = "rpc-child"
 path = "src/bin/child.rs"
 
+# GUI-parent (subsystem 2) для P9/M10: stdio-round-trip без консоли. См. TZ-proto-lua-host §4.1.
+[[bin]]
+name = "gui-parent"
+path = "src/bin/gui_parent.rs"
+
+# Job Object harness для P9/M11: лимиты RSS/CPU/время вместо ручного kill.
+[[bin]]
+name = "job-parent"
+path = "src/bin/job_parent.rs"
+
+# Модель процессов для P9/M12: общий child vs child-на-плагин (RSS/время/изоляция отказа).
+[[bin]]
+name = "model-parent"
+path = "src/bin/model_parent.rs"
+
+# D16/ADR-0021: per-call wall-clock watchdog поверх Job Object (F32).
+[[bin]]
+name = "watchdog-parent"
+path = "src/bin/watchdog_parent.rs"
+
+# D16/ADR-0021: range/delta host-API против полной передачи документа (F22/F30).
+[[bin]]
+name = "range-parent"
+path = "src/bin/range_parent.rs"
+
+# F36: враждебный child (неполный кадр) для гейта устойчивости протокола host'а.
+[[bin]]
+name = "bad-child"
+path = "src/bin/bad_child.rs"
+
 [dependencies]
 mlua = { version = "0.12", default-features = false, features = ["lua55", "vendored"] }

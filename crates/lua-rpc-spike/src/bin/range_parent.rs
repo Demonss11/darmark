@@ -1,6 +1,9 @@
-//! Parent C-спайка: запускает child, обслуживает его host-вызовы (заглушка-документ
-//! в памяти) и меряет spawn/init/round-trip/передачу большого документа,
-//! а также изоляцию (kill по таймауту, крах child).
+//! Parent D16 (ADR-0021): **range/delta host-API** против полной передачи документа (F22/F30).
+//!
+//! При модели «child на плагин» каждый процесс, тянущий документ целиком, держит его копию
+//! (10 МБ → ≈20.7 МиБ commit, замер F30). Здесь сравниваются два пути на одном и том же
+//! документе: `full` (`get_document_text`) и `range`/`delta` (`get_document_range`,
+//! `get_document_len`, `apply_edit`). Метрика — пиковая committed-память child'а по Job Object.
 
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -8,6 +11,7 @@ use std::sync::mpsc::{self, RecvTimeoutError};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use lua_rpc_spike::job::Job;
 use lua_rpc_spike::{
     parse_event, put_bytes, put_u32, read_frame, serve_host_call, write_frame, Event, CMD_REPLY,
     CMD_RUN,
@@ -18,18 +22,21 @@ struct Args {
     plugin: PathBuf,
     doc_size: usize,
     timeout: Duration,
+    label: String,
 }
 
 fn parse_args() -> Result<Args, String> {
     let mut child = None;
     let mut plugin = None;
-    let mut doc_size = 1024usize;
-    let mut timeout = Duration::from_millis(3000);
+    let mut doc_size = 10 * 1024 * 1024;
+    let mut timeout = Duration::from_millis(15000);
+    let mut label = "run".to_string();
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
         match a.as_str() {
             "--child" => child = Some(PathBuf::from(it.next().ok_or("--child требует путь")?)),
             "--plugin" => plugin = Some(PathBuf::from(it.next().ok_or("--plugin требует путь")?)),
+            "--label" => label = it.next().ok_or("--label требует значение")?,
             "--doc-size" => {
                 doc_size = it
                     .next()
@@ -53,6 +60,7 @@ fn parse_args() -> Result<Args, String> {
         plugin: plugin.ok_or("не указан --plugin <path>")?,
         doc_size,
         timeout,
+        label,
     })
 }
 
@@ -66,80 +74,89 @@ fn build_document(size: usize) -> String {
     s
 }
 
+fn mib(bytes: usize) -> f64 {
+    bytes as f64 / (1024.0 * 1024.0)
+}
+
 fn main() {
     let args = match parse_args() {
         Ok(a) => a,
         Err(e) => {
-            eprintln!("[parent] ошибка: {e}");
+            println!("RESULT error={e}");
             std::process::exit(2);
         }
     };
-
     let source = match std::fs::read(&args.plugin) {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("[parent] не прочитать {}: {e}", args.plugin.display());
+            println!("RESULT error=read_plugin:{e}");
             std::process::exit(2);
         }
     };
     let document = build_document(args.doc_size);
-    eprintln!(
-        "[parent] child={} plugin={} doc_size={} timeout={}ms",
-        args.child.display(),
+    println!(
+        "SCENARIO label={} plugin={} doc_size={}",
+        args.label,
         args.plugin.display(),
-        args.doc_size,
-        args.timeout.as_millis()
+        args.doc_size
     );
 
-    let spawn_t = Instant::now();
-    let mut child = Command::new(&args.child)
+    // Лимитов памяти нет: меряем фактический commit child'а на каждом пути.
+    let job = match Job::new().and_then(|j| {
+        j.set_limits(0, 0)?; // только KILL_ON_JOB_CLOSE
+        Ok(j)
+    }) {
+        Ok(j) => j,
+        Err(e) => {
+            println!("RESULT error=job:{e}");
+            std::process::exit(2);
+        }
+    };
+
+    let mut child = match Command::new(&args.child)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
+        .stderr(Stdio::null())
         .spawn()
-        .unwrap_or_else(|e| {
-            eprintln!("[parent] не запустить child: {e}");
+    {
+        Ok(c) => c,
+        Err(e) => {
+            println!("RESULT error=spawn:{e}");
             std::process::exit(2);
-        });
-    let spawn_ms = spawn_t.elapsed().as_secs_f64() * 1000.0;
+        }
+    };
+    if let Err(e) = job.assign_pid(child.id()) {
+        println!("RESULT error=assign_pid:{e}");
+        let _ = child.kill();
+        std::process::exit(2);
+    }
 
+    let mut to_child = child.stdin.take().unwrap();
     let stdout = child.stdout.take().unwrap();
     let (tx, rx) = mpsc::channel::<Vec<u8>>();
     let reader = thread::spawn(move || {
         let mut r = stdout;
-        loop {
-            match read_frame(&mut r) {
-                Ok(p) => {
-                    if tx.send(p).is_err() {
-                        break;
-                    }
-                }
-                Err(_) => break,
+        while let Ok(p) = read_frame(&mut r) {
+            if tx.send(p).is_err() {
+                break;
             }
         }
     });
 
-    let run_t = Instant::now();
+    let started = Instant::now();
     let mut run_msg = vec![CMD_RUN];
     put_bytes(&mut run_msg, &source);
-    if let Err(e) = write_frame(child.stdin.as_mut().unwrap(), &run_msg) {
-        eprintln!("[parent] не отправить CMD_RUN: {e}");
+    if write_frame(&mut to_child, &run_msg).is_err() {
+        println!("RESULT error=send_run");
     }
 
-    let mut init_ms: Option<f64> = None;
-    let outcome: String;
-
+    let mut done: Option<(u8, String)> = None;
     loop {
         match rx.recv_timeout(args.timeout) {
-            Ok(payload) => {
-                match parse_event(&payload) {
-                    Ok(Event::Ready) => {
-                        let ms = run_t.elapsed().as_secs_f64() * 1000.0;
-                        init_ms = Some(ms);
-                        eprintln!("[parent] child готов (init) за {ms:.2} мс");
-                    }
+            Ok(p) => {
+                match parse_event(&p) {
                     Ok(Event::Log { level, message }) => {
-                        eprintln!("[child:{level}] {message}");
+                        println!("LOG[{level}] {message}");
                     }
                     Ok(Event::HostCall { id, method, arg }) => {
                         let result = serve_host_call(method, arg, document.as_bytes());
@@ -147,48 +164,49 @@ fn main() {
                         put_u32(&mut reply, id);
                         reply.push(0);
                         put_bytes(&mut reply, &result);
-                        if let Err(e) = write_frame(child.stdin.as_mut().unwrap(), &reply) {
-                            outcome = format!("ошибка записи ответа: {e}");
+                        if write_frame(&mut to_child, &reply).is_err() {
                             break;
                         }
                     }
                     Ok(Event::Done { status, summary }) => {
-                        outcome = format!("status={status} {summary}");
+                        done = Some((status, summary.to_string()));
                         break;
                     }
-                    Ok(Event::Unknown(tag)) => eprintln!("[parent] неизвестный тег {tag}"),
+                    Ok(_) => {}
                     Err(e) => {
-                        // F36: нарушение протокола — отказ плагина, не паника.
-                        outcome = format!("нарушение протокола: {e}");
-                        let _ = child.kill();
+                        // F36: нарушение протокола — отказ, не паника.
+                        println!("PROTOCOL_ERROR {e}");
+                        job.terminate(1);
                         break;
                     }
                 }
             }
             Err(RecvTimeoutError::Timeout) => {
-                outcome = format!("таймаут {} мс → kill child", args.timeout.as_millis());
-                let _ = child.kill();
+                job.terminate(1);
                 break;
             }
-            Err(RecvTimeoutError::Disconnected) => {
-                outcome = "child закрыл поток (вероятно, упал/абортнул) → parent жив".to_string();
-                break;
-            }
+            Err(RecvTimeoutError::Disconnected) => break,
         }
     }
 
-    let run_ms = run_t.elapsed().as_secs_f64() * 1000.0;
+    let wall_ms = started.elapsed().as_secs_f64() * 1000.0;
     let _ = child.wait();
     reader.join().ok();
 
-    eprintln!("[parent] ── итог ──");
-    eprintln!("[parent] spawn_ms={spawn_ms:.2}");
-    eprintln!(
-        "[parent] init_ms={}",
-        init_ms
-            .map(|v| format!("{v:.2}"))
-            .unwrap_or_else(|| "n/a".into())
+    let peak = job.peak_process_memory();
+    if let Some((st, summary)) = &done {
+        println!("CHILD_SUMMARY status={st} {summary}");
+    }
+    println!("WALL_MS {wall_ms:.2}");
+    println!("JOB_PEAK_BYTES {peak}");
+    println!("JOB_PEAK_MIB {:.2}", mib(peak));
+
+    let ok = done.as_ref().map(|(st, _)| *st == 0).unwrap_or(false);
+    println!(
+        "RESULT label={} pass={} peak_mib={:.2}",
+        args.label,
+        (ok && peak > 0) as u8,
+        mib(peak)
     );
-    eprintln!("[parent] run_ms={run_ms:.2}");
-    eprintln!("[parent] outcome: {outcome}");
+    std::process::exit(if ok { 0 } else { 1 });
 }
