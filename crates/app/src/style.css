@@ -500,6 +500,46 @@ body {
 .markdown-body table th { background: var(--bg-2); color: var(--head); font-weight: 600; }
 .markdown-body table tbody tr:hover td { background: var(--bg-2); }
 
+/* YAML-шапка (md-core::frontmatter): «таблица-таблиц» ключ → значение. */
+.md-frontmatter {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg-1);
+}
+.md-frontmatter th.fm-key,
+.md-frontmatter td.fm-val { vertical-align: top; text-align: left; }
+.md-frontmatter th.fm-key {
+  width: 1%;
+  white-space: nowrap;
+  background: transparent;
+  color: var(--fg-dim);
+  font-weight: 600;
+}
+.md-frontmatter td.fm-val { color: var(--fg); }
+.md-frontmatter tbody tr:hover td { background: transparent; }
+/* Вложенные таблицы-значения: компактнее, без тяжёлой рамки. */
+.md-frontmatter .md-frontmatter {
+  width: auto;
+  margin: 2px 0;
+  border-color: var(--line-soft);
+  background: transparent;
+}
+.md-frontmatter .md-frontmatter th.fm-key { background: transparent; }
+.md-frontmatter .fm-list { margin: 2px 0; padding-left: 18px; }
+.md-frontmatter .fm-null,
+.md-frontmatter .fm-empty,
+.md-frontmatter .fm-deep { color: var(--fg-mute); }
+.md-frontmatter-source {
+  margin: 1em 0;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg-1);
+  overflow-x: auto;
+  font-size: 12.5px;
+}
+.md-frontmatter-source code { white-space: pre; }
+
 /* панель инструментов над таблицей: поиск / счётчик / сброс */
 .table-tools {
   display: flex;

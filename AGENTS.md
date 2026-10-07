@@ -8,8 +8,8 @@ Tauri 2 + vanilla TypeScript/Vite на фронте + чистое Rust-ядро
 ## Структура и границы
 
 - `crates/md-core/` — чистое ядро markdown→HTML (pulldown-cmark 0.13). **Без Tauri/GUI-зависимостей**;
-  должно оставаться переиспользуемым в CLI/тестах. Здесь `to_html()`/`to_html_with()`, XSS-санитайзер
-  и юнит-тесты.
+  должно оставаться переиспользуемым в CLI/тестах. Здесь `to_html()`/`to_html_with()`/`to_html_mapped()`,
+  XSS-санитайзер, рендер ведущей YAML-шапки в «таблицу-таблиц» (`frontmatter.rs`) и юнит-тесты.
 - `crates/app/src/` — фронтенд на чистом TS (без фреймворков): `main.ts` (композиционный корень:
   связывает store, редактор, предпросмотр, тулбар), `docStore.ts` (проекция Rust-стора: текст/rev/
   path/dirty, дебаунс IPC, защита от гонок), `editorView.ts` (textarea-представление),
@@ -55,7 +55,8 @@ Tauri 2 + vanilla TypeScript/Vite на фронте + чистое Rust-ядро
 - `npx tauri build` — релизный NSIS-установщик в `src-tauri/target/release/bundle/nsis/`.
 - `cd crates/app; npm run test:e2e` — GUI E2E (Cucumber + WebdriverIO поверх release-бинарника).
   Требует `cargo install tauri-driver --locked` и собранный `target/release/darmark.exe`
-  (`npx tauri build --no-bundle`). Фичи/шаги — `crates/app/e2e/`.
+  (`npx tauri build --no-bundle`). Фичи/шаги — `crates/app/e2e/` (в т.ч. `frontmatter.feature` —
+  YAML-шапка как таблица; таблицы шапки не украшаются `tables.ts`).
 
 Требования: Rust ≥ 1.80, Node ≥ 20.
 

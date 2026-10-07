@@ -441,7 +441,12 @@ export function createTablesController(root: HTMLElement): TablesController {
   root.addEventListener("scroll", onScroll, { passive: true });
   return {
     enhance() {
-      for (const table of root.querySelectorAll<HTMLTableElement>("table")) {
+      // YAML-шапка (md-core::frontmatter) — это метаданные, а не датасет:
+      // сортировка/поиск/фильтры там неуместны, поэтому таблицы с классом
+      // `md-frontmatter` (включая вложенные) не украшаем.
+      for (const table of root.querySelectorAll<HTMLTableElement>(
+        "table:not(.md-frontmatter)",
+      )) {
         enhance(table, menu);
       }
     },

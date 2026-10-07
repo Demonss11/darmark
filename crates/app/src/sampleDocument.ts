@@ -1,8 +1,20 @@
 // sampleDocument.ts — стартовый демо-документ («Добро пожаловать в darmark»).
 // Вынесен из main.ts: текст — данные, а не композиция. Замороженный контракт
 // e2e: приложение обязано показать заголовок «Добро пожаловать в darmark».
+// Ведущая YAML-шапка демонстрирует рендер метаданных таблицей-таблиц (frontmatter).
 
 export const START_TEXT = [
+  "---",
+  "title: darmark",
+  "subtitle: Лёгкий редактор Markdown",
+  "tags:",
+  "  - markdown",
+  "  - preview",
+  "author:",
+  "  name: darmark",
+  "  site: https://tauri.app",
+  "---",
+  "",
   "# Добро пожаловать в darmark",
   "",
   "Лёгкий редактор Markdown. Слева — исходник, справа — HTML-предпросмотр,",
