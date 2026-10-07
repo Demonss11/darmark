@@ -17,6 +17,7 @@ use super::scan::scan_plugins;
 use super::services::DocumentServices;
 use super::settings::SettingsStore;
 use super::supervisor::{Supervisor, SupervisorParams};
+use super::HostServices;
 
 /// Процессные тесты конкурируют за CPU (chatty/hang крутят цикл) и искажают замеры watchdog,
 /// поэтому выполняем их строго по одному. Заодно глушим WER-диалоги Windows: иначе `abort`
@@ -131,6 +132,10 @@ fn services(store: &Arc<Mutex<DocumentStore>>) -> Arc<dyn super::HostServices> {
     Arc::new(DocumentServices::new(Arc::clone(store)))
 }
 
+fn views() -> Arc<Mutex<super::views::PluginViews>> {
+    Arc::new(Mutex::new(super::views::PluginViews::new()))
+}
+
 fn sup(id: &str, file: &str, perms: &[&str], store: &Arc<Mutex<DocumentStore>>) -> Supervisor {
     let params = SupervisorParams::new(child_exe(), id, services(store))
         .with_permissions(perms.iter().map(|p| p.to_string()).collect());
@@ -235,6 +240,7 @@ fn invocation_failure_clears_supervisor() {
         fixture("event-hang.lua"),
         Vec::new(),
         services(&store),
+        Vec::new(),
     )
     .with_watchdog(Duration::from_millis(300), Duration::from_secs(30));
 
@@ -266,6 +272,7 @@ fn quarantine_after_three_failures() {
         fixture("crash.lua"),
         Vec::new(),
         services(&store),
+        Vec::new(),
     )
     .with_watchdog(Duration::from_secs(15), Duration::from_secs(30));
 
@@ -289,6 +296,7 @@ fn manual_enable_clears_quarantine() {
         fixture("crash.lua"),
         Vec::new(),
         services(&store),
+        Vec::new(),
     )
     .with_watchdog(Duration::from_secs(15), Duration::from_secs(30));
     for _ in 0..3 {
@@ -314,6 +322,7 @@ fn manager_lists_and_reloads_plugin() {
         fixture("edit.lua"),
         vec!["document:write".to_string()],
         services(&store),
+        Vec::new(),
     ));
 
     manager.set_plugin_enabled("edit", true).expect("включение");
@@ -411,7 +420,7 @@ fn loader_takes_manifest_permissions_and_settings_state() {
 
     let store = store_with_doc("x");
     let exe = PathBuf::from("darmark-plugin-host.exe");
-    let result = load_plugins(dir.path(), &exe, services(&store), &settings);
+    let result = load_plugins(dir.path(), &exe, services(&store), &settings, views());
     assert!(result.errors.is_empty());
     assert!(store
         .lock()
@@ -450,6 +459,7 @@ fn loader_defaults_to_enabled() {
         &PathBuf::from("darmark-plugin-host.exe"),
         services(&store),
         &SettingsStore::default(),
+        views(),
     );
     let list = result.manager.list_plugins();
     assert!(list[0].enabled, "по умолчанию плагин включён");
@@ -486,6 +496,7 @@ fn reload_rereads_lua_from_disk() {
         &child_exe(),
         services(&store),
         &SettingsStore::default(),
+        views(),
     );
     assert!(
         result.errors.is_empty(),
@@ -532,6 +543,7 @@ fn duplicate_ids_are_reported_not_overwritten() {
         &PathBuf::from("darmark-plugin-host.exe"),
         services(&store),
         &SettingsStore::default(),
+        views(),
     );
     assert_eq!(
         result.manager.list_plugins().len(),
@@ -553,4 +565,144 @@ fn doc_text(store: &Arc<Mutex<DocumentStore>>, id: &str) -> String {
         .get(&DocumentId::new(id))
         .map(|doc| doc.text.clone())
         .unwrap_or_default()
+}
+
+// ─── Фаза 4: view через DocumentServices, регистрация contributes ────────
+
+fn view_contrib(kind: &str, title: &str, tier: u8) -> plugin_proto::manifest::ViewContrib {
+    plugin_proto::manifest::ViewContrib {
+        kind: kind.to_string(),
+        title: title.to_string(),
+        tier,
+    }
+}
+
+#[test]
+fn document_services_set_view_content_sanitizes_and_notifies() {
+    let store = store_with_doc("x");
+    let views = views();
+    views
+        .lock()
+        .unwrap()
+        .register("p", &[view_contrib("main", "Main", 1)]);
+
+    let notified = Arc::new(Mutex::new(0u32));
+    let notified_for = Arc::clone(&notified);
+    let notify: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
+        *notified_for.lock().unwrap() += 1;
+    });
+    let services = DocumentServices::new(Arc::clone(&store))
+        .with_views(Arc::clone(&views))
+        .with_notify(notify);
+
+    let result = services
+        .handle(
+            "set_view_content",
+            json!({
+                "view_id": "p:main",
+                "html": "<img src=x onerror=alert(1)>",
+                "_plugin_id": "p",
+            }),
+        )
+        .unwrap();
+    assert_eq!(result, json!(true));
+    assert_eq!(*notified.lock().unwrap(), 1, "notify обязан сработать");
+    let html = views.lock().unwrap().snapshot()[0].html.clone();
+    assert!(!html.contains("onerror"), "html не санитизирован: {html}");
+}
+
+#[test]
+fn set_view_content_rejects_foreign_plugin() {
+    let store = store_with_doc("x");
+    let views = views();
+    views
+        .lock()
+        .unwrap()
+        .register("p", &[view_contrib("main", "Main", 1)]);
+    let services = DocumentServices::new(Arc::clone(&store)).with_views(Arc::clone(&views));
+
+    let err = services
+        .handle(
+            "set_view_content",
+            json!({ "view_id": "other:main", "html": "x", "_plugin_id": "p" }),
+        )
+        .unwrap_err();
+    assert_eq!(err.code, "bad_view_id");
+}
+
+#[test]
+fn set_view_content_requires_plugin_id() {
+    let store = store_with_doc("x");
+    let views = views();
+    views
+        .lock()
+        .unwrap()
+        .register("p", &[view_contrib("main", "Main", 1)]);
+    let services = DocumentServices::new(Arc::clone(&store)).with_views(Arc::clone(&views));
+
+    let err = services
+        .handle(
+            "set_view_content",
+            json!({ "view_id": "p:main", "html": "x" }),
+        )
+        .unwrap_err();
+    assert_eq!(err.code, "bad_args", "без _plugin_id вызов отвергается");
+}
+
+#[test]
+fn apply_edit_defers_document_changed() {
+    let store = store_with_doc("# A");
+    let pending: Arc<Mutex<Vec<(String, u64)>>> = Arc::new(Mutex::new(Vec::new()));
+    let services =
+        DocumentServices::new(Arc::clone(&store)).with_pending_changed(Arc::clone(&pending));
+
+    services
+        .handle(
+            "apply_edit",
+            json!({ "doc_id": "doc-1", "start": 0, "stop": 0, "text": "X" }),
+        )
+        .unwrap();
+    let queued = pending.lock().unwrap().clone();
+    assert_eq!(
+        queued,
+        vec![("doc-1".to_string(), 1)],
+        "правка → отложенный changed"
+    );
+
+    // Эхо-правка тем же результатом rev не двигает → новое событие не копится.
+    services
+        .handle(
+            "apply_edit",
+            json!({ "doc_id": "doc-1", "start": 0, "stop": 1, "text": "X" }),
+        )
+        .unwrap();
+    assert_eq!(pending.lock().unwrap().len(), 1, "эхо не порождает событие");
+}
+
+#[test]
+fn load_plugins_registers_contributed_views() {
+    let dir = tempfile::tempdir().unwrap();
+    let manifest = r#"{"id":"word-count","name":"Word Count","version":"1.0.0","api_version":1,"entry":"main.lua","contributes":{"views":[{"kind":"stats","title":"Статистика","tier":1}]}}"#;
+    write_plugin(
+        dir.path(),
+        "word-count",
+        manifest,
+        Some("function on_activate(ctx) end"),
+    );
+
+    let store = store_with_doc("x");
+    let views = views();
+    let result = load_plugins(
+        dir.path(),
+        &PathBuf::from("darmark-plugin-host.exe"),
+        services(&store),
+        &SettingsStore::default(),
+        Arc::clone(&views),
+    );
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
+
+    let snapshot = views.lock().unwrap().snapshot();
+    assert_eq!(snapshot.len(), 1);
+    assert_eq!(snapshot[0].view_id, "word-count:stats");
+    assert_eq!(snapshot[0].title, "Статистика");
 }

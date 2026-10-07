@@ -18,6 +18,7 @@ import { createLinkController } from "./linkController";
 import { createPaneHost } from "./paneHost";
 import { applyLayout, LayoutError, type LayoutNode, type Pane } from "./layout";
 import { createStatusBar } from "./statusBar";
+import { createPluginViews } from "./pluginViews";
 import { createFileActions } from "./fileActions";
 import { createShell } from "./shell";
 import { createSidebar } from "./sidebar";
@@ -75,6 +76,16 @@ const store = createDocStore({
 });
 
 const status = createStatusBar({ store, editor, appName: APP_NAME });
+
+// 2.5. Плагинные тир-1 view (H2, Фаза 4): вкладки в шапке панели предпросмотра
+//      и контейнер `#plugin-view`. Список приходит из Rust, событие
+//      `plugin-views-changed` перестраивает вкладки. Дефолт — виден `#preview`.
+const pluginViews = createPluginViews({
+  switchEl: document.getElementById("view-switch") as HTMLElement,
+  containerEl: document.getElementById("plugin-view") as HTMLElement,
+  previewEl: preview,
+  status: (msg) => status.flash(msg),
+});
 
 // 3. Реестр представлений: тир-1 preview встроен на хосте (D2).
 const registry = createViewRegistry();
@@ -200,6 +211,9 @@ async function bootstrap(): Promise<void> {
   setPreviewVisible(chkPreview.checked);
   status.updateStatus();
   status.updateTitle();
+  // Плагинные view — после документа и тумблеров, чтобы их вкладки не влияли
+  // на стартовое состояние предпросмотра (ошибка IPC глушится в контроллере).
+  await pluginViews.refresh();
   editorView.focus();
 }
 

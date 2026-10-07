@@ -26,6 +26,12 @@ After(async () => {
   await setInspectorActive(false);
   await setPreviewVisible(true);
   await setSyncEnabled(true);
+  // Возвращаем активной core-вкладку «Предпросмотр»: плагинный сценарий мог
+  // переключиться на `#plugin-view`, скрыв `#preview` (нулевая геометрия).
+  await browser.execute(() => {
+    const core = document.querySelector("#view-switch .vtab.core");
+    if (core && !core.classList.contains("active")) core.click();
+  });
   await browser.execute(() => {
     const editor = document.getElementById("editor");
     const preview = document.getElementById("preview");

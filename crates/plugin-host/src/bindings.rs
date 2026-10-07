@@ -7,7 +7,7 @@
 use std::fmt;
 use std::sync::Arc;
 
-use mlua::{Lua, Result, Table, Value, Variadic};
+use mlua::{Function, Lua, Result, Table, Value, Variadic};
 use plugin_proto::envelope::PluginError;
 use serde_json::json;
 
@@ -177,6 +177,23 @@ fn register_host(lua: &Lua, plugin_id: &str, api: Arc<dyn HostApi>) -> Result<()
         )?,
     )?;
 
+    // Тир-1 view: HTML уходит на GUI-хост и там санитизируется (md-core) перед вставкой
+    // в DOM — плагин не может протолкнуть сырой HTML (D7/§11.1). Требуется permission
+    // `view:modify` (проверяет Supervisor).
+    let api_view = Arc::clone(&api);
+    host.set(
+        "set_view_content",
+        lua.create_function(move |lua, (view_id, html): (String, String)| {
+            defuse(
+                lua,
+                api_view.call(
+                    "set_view_content",
+                    json!({ "view_id": view_id, "html": html }),
+                ),
+            )
+        })?,
+    )?;
+
     let api_get_setting = Arc::clone(&api);
     host.set(
         "get_setting",
@@ -270,22 +287,74 @@ fn register_json(lua: &Lua) -> Result<()> {
     Ok(())
 }
 
-/// Строит `ctx` для `on_activate`/`on_deactivate`. В Фазе 1 `subscribe`/`unsubscribe` —
-/// заглушки (событийная шина — Фаза 4), но вызовы не падают, чтобы эталонный `word-count`
-/// грузился уже сейчас.
+/// Строит `ctx` для `on_activate`/`on_deactivate` (§6.2/§9.3 DESIGN_DOC).
+///
+/// Подписки хранятся в `ctx._subs` (таблица `name → список функций`), чтобы
+/// [`dispatch_event`] мог доставить событие подписчикам. `subscribe` возвращает
+/// `unsubscribe`-функцию; `unsubscribe(name, handler)` снимает подписку вручную.
+/// Реализация на Lua: сравнение функций по ссылке (`==`) — родная семантика Lua.
 pub fn make_context(lua: &Lua, plugin_id: &str) -> Result<Table> {
     let ctx = lua.create_table()?;
     ctx.set("plugin_id", plugin_id)?;
     ctx.set("api_version", plugin_proto::HOST_API_VERSION)?;
-    ctx.set(
-        "subscribe",
-        lua.create_function(|_, _args: Variadic<Value>| Ok(()))?,
-    )?;
-    ctx.set(
-        "unsubscribe",
-        lua.create_function(|_, _args: Variadic<Value>| Ok(()))?,
-    )?;
+    ctx.set("_subs", lua.create_table()?)?;
+    lua.load(
+        r#"
+        local ctx = ...
+        function ctx.subscribe(name, handler)
+          local list = ctx._subs[name]
+          if not list then
+            list = {}
+            ctx._subs[name] = list
+          end
+          list[#list + 1] = handler
+          return function()
+            for i = #list, 1, -1 do
+              if list[i] == handler then table.remove(list, i) end
+            end
+          end
+        end
+        function ctx.unsubscribe(name, handler)
+          local list = ctx._subs[name]
+          if not list then return end
+          for i = #list, 1, -1 do
+            if list[i] == handler then table.remove(list, i) end
+          end
+        end
+        "#,
+    )
+    .set_name("ctx.subscribe")
+    .call::<()>(ctx.clone())?;
     Ok(ctx)
+}
+
+/// Доставляет событие `name` с `payload` подписчикам `ctx._subs[name]`, затем
+/// глобальному `on_event(name, payload)`, если он объявлен.
+///
+/// Подписчики получают `(name, payload)`. `ctx` — `None`, если плагин ещё не
+/// загружен: тогда вызывается только глобальный `on_event` (если есть).
+pub fn dispatch_event(
+    lua: &Lua,
+    ctx: Option<&Table>,
+    name: &str,
+    payload: &serde_json::Value,
+) -> Result<()> {
+    let lua_payload = json_to_lua(lua, payload)?;
+
+    if let Some(ctx) = ctx {
+        if let Ok(Some(subs)) = ctx.get::<Option<Table>>("_subs") {
+            if let Ok(Some(list)) = subs.get::<Option<Table>>(name) {
+                for handler in list.sequence_values::<Function>() {
+                    handler?.call::<()>((name, lua_payload.clone()))?;
+                }
+            }
+        }
+    }
+
+    if let Ok(handler) = lua.globals().get::<Function>("on_event") {
+        handler.call::<()>((name, lua_payload))?;
+    }
+    Ok(())
 }
 
 /// Конвертация JSON → Lua (обёртка над внутренним конвертером для вызывающих извне модуля).
@@ -423,6 +492,7 @@ mod tests {
                 "get_document_text" => json!("full text"),
                 "apply_edit" => json!(true),
                 "get_setting" => json!(true),
+                "set_view_content" => json!(true),
                 _ => serde_json::Value::Null,
             })
         }
@@ -570,14 +640,117 @@ mod tests {
     }
 
     #[test]
-    fn context_has_version_and_subscribe_noop() {
+    fn context_has_version_and_subscribe_returns_unsubscribe() {
         let lua = crate::sandbox::create().unwrap();
         let ctx = make_context(&lua, "p").unwrap();
         lua.globals().set("ctx", ctx).unwrap();
         let version: u32 = lua
-            .load("ctx.subscribe('document:changed', function() end); return ctx.api_version")
+            .load(
+                "local unsub = ctx.subscribe('document:changed', function() end); \
+                 return ctx.api_version",
+            )
             .eval()
             .unwrap();
         assert_eq!(version, plugin_proto::HOST_API_VERSION);
+    }
+
+    #[test]
+    fn set_view_content_roundtrip() {
+        let (lua, host) = lua_with_host();
+        let (ok, err): (Value, Value) = lua
+            .load(
+                r#"
+                local ok, err = host.set_view_content("p:main", "<b>hi</b>")
+                return ok, err
+                "#,
+            )
+            .eval()
+            .unwrap();
+        assert_eq!(ok, Value::Boolean(true));
+        assert_eq!(err, Value::Nil);
+
+        let calls = host.calls.lock().unwrap();
+        assert!(
+            calls.iter().any(|(m, a)| m == "set_view_content"
+                && a["view_id"] == "p:main"
+                && a["html"] == "<b>hi</b>"),
+            "вызов не дошёл до хоста: {calls:?}"
+        );
+    }
+
+    #[test]
+    fn subscribe_handler_called_on_dispatch() {
+        let lua = crate::sandbox::create().unwrap();
+        let ctx = make_context(&lua, "p").unwrap();
+        lua.globals().set("ctx", ctx.clone()).unwrap();
+        lua.load(
+            r#"
+            hits = 0
+            ctx.subscribe("document:changed", function(name, payload) hits = hits + 1 end)
+            "#,
+        )
+        .exec()
+        .unwrap();
+
+        dispatch_event(
+            &lua,
+            Some(&ctx),
+            "document:changed",
+            &json!({ "doc_id": "d", "rev": 1 }),
+        )
+        .unwrap();
+        let hits: i64 = lua.globals().get("hits").unwrap();
+        assert_eq!(hits, 1, "подписчик обязан получить событие");
+    }
+
+    #[test]
+    fn unsubscribe_stops_dispatch() {
+        let lua = crate::sandbox::create().unwrap();
+        let ctx = make_context(&lua, "p").unwrap();
+        lua.globals().set("ctx", ctx.clone()).unwrap();
+        lua.load(
+            r#"
+            hits = 0
+            unsub = ctx.subscribe("document:changed", function() hits = hits + 1 end)
+            "#,
+        )
+        .exec()
+        .unwrap();
+
+        let unsub: Function = lua.globals().get("unsub").unwrap();
+        unsub.call::<()>(()).unwrap();
+        dispatch_event(&lua, Some(&ctx), "document:changed", &json!({})).unwrap();
+        let hits: i64 = lua.globals().get("hits").unwrap();
+        assert_eq!(hits, 0, "после unsubscribe handler не вызывается");
+
+        // ctx.unsubscribe(name, handler) снимает подписку по ссылке.
+        lua.load(
+            r#"
+            local function h() hits = hits + 1 end
+            ctx.subscribe("e", h)
+            ctx.unsubscribe("e", h)
+            "#,
+        )
+        .exec()
+        .unwrap();
+        dispatch_event(&lua, Some(&ctx), "e", &json!({})).unwrap();
+        let hits: i64 = lua.globals().get("hits").unwrap();
+        assert_eq!(hits, 0, "ctx.unsubscribe обязан снять подписку");
+    }
+
+    #[test]
+    fn dispatch_event_calls_global_on_event() {
+        let lua = crate::sandbox::create().unwrap();
+        lua.load(
+            r#"
+            hits = 0
+            function on_event(name, payload) hits = hits + 1 end
+            "#,
+        )
+        .exec()
+        .unwrap();
+        dispatch_event(&lua, None, "document:changed", &json!({})).unwrap();
+        let hits: i64 = lua.globals().get("hits").unwrap();
+        assert_eq!(hits, 1);
     }
 }

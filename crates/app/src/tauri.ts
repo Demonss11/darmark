@@ -2,6 +2,7 @@
 // Вся тяжёлая логика (парсинг md, владение документами) — на Rust-стороне.
 import { invoke } from "@tauri-apps/api/core";
 import type { DocumentId } from "./ids";
+import type { Json } from "./viewRegistry";
 
 /** Проекция документа из Rust-стора: текст + ревизия + путь. Надмножество `DocMeta`. */
 export interface DocumentSnapshot {
@@ -59,6 +60,30 @@ export function saveDocument(id: DocumentId, path?: string): Promise<DocMeta> {
 /** Закрывает документ в сторе (используется вместе с панелями). */
 export function closeDocument(id: DocumentId): Promise<void> {
   return invoke<void>("close_document", { id });
+}
+
+/** Описание плагинного тир-1 представления (IPC-команда `plugin_views`, §4.6 TZ-H2). */
+export interface PluginViewInfo {
+  view_id: string;
+  plugin_id: string;
+  kind: string;
+  title: string;
+  html: string;
+}
+
+/** Список плагинных тир-1 представлений (пусто, если плагинов нет). */
+export function pluginViews(): Promise<PluginViewInfo[]> {
+  return invoke<PluginViewInfo[]>("plugin_views");
+}
+
+/** Обратная маршрутизация клика из плагинного view в Lua-хендлер (ADR-0022). */
+export function pluginViewAction(
+  viewId: string,
+  action: string,
+  payload?: Json
+): Promise<void> {
+  // Tauri сопоставляет camelCase-ключ `viewId` с Rust-параметром `view_id`.
+  return invoke<void>("plugin_view_action", { viewId, action, payload: payload ?? null });
 }
 
 /** Достаёт человекочитаемое сообщение из ошибки IPC `{ code, message }` или `Error`. */

@@ -5,17 +5,19 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use plugin_proto::envelope::PluginError;
 use plugin_proto::limits::{DEADLINE_MS, PROGRESS_TIMEOUT_MS};
+use plugin_proto::manifest::ViewContrib;
 use plugin_proto::quarantine::Quarantine;
 use serde::Serialize;
 use serde_json::Value;
 
 use super::settings::SettingsStore;
 use super::supervisor::{Supervisor, SupervisorParams};
+use super::views::PluginViews;
 use super::{HostServices, PluginStatus};
 
 /// Порог карантина: 3 неудачи подряд (ADR-0021 §3).
@@ -26,6 +28,10 @@ pub struct PluginRuntime {
     pub id: String,
     pub permissions: Vec<String>,
     pub status: PluginStatus,
+    /// Тир-1 view из манифеста (регистрируются в общем [`PluginViews`] при загрузке;
+    /// здесь — для менеджера UI Фазы 5: перерегистрация при перезагрузке).
+    #[allow(dead_code)]
+    pub views: Vec<ViewContrib>,
     quarantine: Quarantine,
     exe: PathBuf,
     /// Кэш исходника; используется, если [`PluginRuntime::entry_path`] не задан (тесты).
@@ -47,11 +53,13 @@ impl PluginRuntime {
         source: impl Into<String>,
         permissions: Vec<String>,
         services: Arc<dyn HostServices>,
+        views: Vec<ViewContrib>,
     ) -> Self {
         Self {
             id: id.into(),
             permissions,
             status: PluginStatus::Stopped,
+            views,
             quarantine: Quarantine::new(QUARANTINE_THRESHOLD),
             exe: exe.into(),
             source: source.into(),
@@ -173,6 +181,15 @@ impl PluginRuntime {
         self.stop();
     }
 
+    /// Доставляет событие шины плагину (`event`). Отказ invocation снимает child и
+    /// копит серию карантина — тот же путь, что у [`PluginRuntime::invoke`].
+    pub fn dispatch_event(&mut self, name: &str, payload: Value) -> Result<Value, PluginError> {
+        self.invoke(
+            "event",
+            serde_json::json!({ "name": name, "payload": payload }),
+        )
+    }
+
     /// Вызов метода активного плагина.
     ///
     /// Отказ invocation (краш/дедлайн/прогресс/протокол) снимает child: supervisor
@@ -278,6 +295,18 @@ impl PluginManager {
     pub fn get_mut(&mut self, id: &str) -> Option<&mut PluginRuntime> {
         self.plugins.get_mut(id)
     }
+
+    /// Изменяемый обход всех плагинов (старт enabled-плагинов, Фаза 4).
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut PluginRuntime> {
+        self.plugins.values_mut()
+    }
+
+    /// Изменяемый обход только активных плагинов (доставка событий, §9).
+    pub fn iter_active_mut(&mut self) -> impl Iterator<Item = &mut PluginRuntime> {
+        self.plugins
+            .values_mut()
+            .filter(|p| matches!(p.status, PluginStatus::Active))
+    }
 }
 
 /// Результат загрузки реестра: менеджер + ошибки сканирования (битые манифесты и т.п.).
@@ -296,6 +325,7 @@ pub fn load_plugins(
     exe: &Path,
     services: Arc<dyn HostServices>,
     settings: &SettingsStore,
+    views: Arc<Mutex<PluginViews>>,
 ) -> LoadResult {
     let report = super::scan::scan_plugins(plugins_dir);
     let mut manager = PluginManager::default();
@@ -313,12 +343,19 @@ pub fn load_plugins(
             continue;
         }
         let enabled = settings.plugin_enabled(&id);
+        let contributes = discovered.manifest.contributes.views.clone();
+        // Тир-1 view регистрируются в общем реестре ещё до старта child: фронтенд
+        // узнаёт о представлениях сразу после `plugin-views-changed`.
+        if let Ok(mut views) = views.lock() {
+            views.register(&id, &contributes);
+        }
         let mut runtime = PluginRuntime::new(
             id,
             exe,
             discovered.source,
             discovered.manifest.permissions.clone(),
             Arc::clone(&services),
+            contributes,
         )
         .with_entry_path(discovered.entry_path);
         runtime.set_enabled(enabled);

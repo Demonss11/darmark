@@ -52,6 +52,16 @@ pub fn to_html_with(markdown: &str, options: Options) -> String {
     sanitize_html(&out)
 }
 
+/// Санитизирует произвольный HTML-фрагмент **той же** политикой белых списков,
+/// что и [`to_html`].
+///
+/// Публичный вход для плагинных тир-1 view (§11.1 DESIGN_DOC): HTML, присланный
+/// плагином через `host.set_view_content`, обязан пройти ровно ту же санитизацию,
+/// что и предпросмотр. Расширенный allowlist `data-p-*` (D7/§11.2) действует и здесь.
+pub fn sanitize_fragment(html: &str) -> String {
+    sanitize_html(html)
+}
+
 /// Определяет ведущую YAML-шапку Markdown-документа.
 ///
 /// Шапкой считается **только блок в начале документа**: первая строка — ровно
@@ -613,7 +623,27 @@ fn tag_attrs(tag: &str) -> &'static [&'static str] {
 }
 
 fn is_allowed_attr(tag: &str, attr: &str) -> bool {
-    GLOBAL_ATTRS.contains(&attr) || tag_attrs(tag).contains(&attr)
+    GLOBAL_ATTRS.contains(&attr) || tag_attrs(tag).contains(&attr) || is_plugin_data_attr(attr)
+}
+
+/// Атрибут плагина `data-p-<pluginid>-<suffix>` — единственный класс `data-*`,
+/// переживающий санитизацию (D7/§11.2, обратная маршрутизация §9.4).
+///
+/// `pluginid` — `[a-z0-9_-]+`, `suffix` — непустой. Прочие `data-*` срезаются как
+/// раньше: расширение allowlist не открывает произвольные data-атрибуты.
+fn is_plugin_data_attr(attr: &str) -> bool {
+    let Some(rest) = attr.strip_prefix("data-p-") else {
+        return false;
+    };
+    // Разделитель pluginid↔suffix — первый `-`; pluginid непуст, suffix непуст.
+    let Some((plugin_id, suffix)) = rest.split_once('-') else {
+        return false;
+    };
+    !plugin_id.is_empty()
+        && !suffix.is_empty()
+        && rest
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_')
 }
 
 fn is_url_attr(attr: &str) -> bool {
@@ -2038,5 +2068,69 @@ mod tests {
             .map(|(_, s, e)| md[s..e].to_string())
             .collect();
         assert_eq!(cells, vec!["A", "B", "x", "y"], "html: {html}");
+    }
+
+    // ─── Фаза 4: публичный вход санитизации + allowlist data-p-* (D7/§11.2) ─
+
+    #[test]
+    fn sanitize_fragment_matches_to_html_policy() {
+        // Публичный вход не меняет политику: тот же тег-allowlist и XSS-срез.
+        let html = sanitize_fragment(r#"<img src="x" onerror="alert(1)">"#);
+        assert!(!html.contains("onerror"), "html: {html}");
+        assert!(!sanitize_fragment("<script>x</script>").contains("<script"));
+    }
+
+    #[test]
+    fn plugin_data_attr_survives_sanitize_fragment() {
+        let html = sanitize_fragment(r#"<span data-p-word-count-action="inc">x</span>"#);
+        assert!(
+            html.contains(r#"data-p-word-count-action="inc""#),
+            "атрибут плагина срезан: {html}"
+        );
+    }
+
+    #[test]
+    fn plugin_data_attr_survives_to_html() {
+        // Тот же allowlist действует и на пути предпросмотра.
+        let html = to_html(r#"<div data-p-word-count-action="inc">x</div>"#);
+        assert!(
+            html.contains(r#"data-p-word-count-action="inc""#),
+            "атрибут плагина срезан: {html}"
+        );
+    }
+
+    #[test]
+    fn generic_data_attr_is_still_stripped() {
+        let html = sanitize_fragment(r#"<span data-foo="bar">x</span>"#);
+        assert!(!html.contains("data-foo"), "html: {html}");
+    }
+
+    #[test]
+    fn plugin_data_attr_value_with_quote_is_escaped() {
+        // Значение с `"` не должно «разорвать» атрибут и создать новый.
+        let html = sanitize_fragment(r#"<span data-p-p-action="a&quot;b">x</span>"#);
+        assert!(
+            html.contains(r#"data-p-p-action="a&quot;b""#),
+            "кавычка не заэкранирована: {html}"
+        );
+        assert!(!html.contains("a\"b"), "атрибут порвался: {html}");
+    }
+
+    #[test]
+    fn plugin_data_attr_does_not_open_xss() {
+        let html = sanitize_fragment(r#"<span data-p-p-action="x" onerror="alert(1)">y</span>"#);
+        assert!(html.contains("data-p-p-action"), "html: {html}");
+        assert!(!html.contains("onerror"), "html: {html}");
+        let html = sanitize_fragment(r#"<a href="javascript:alert(1)" data-p-p-action="x">y</a>"#);
+        assert!(!html.to_lowercase().contains("javascript:"), "html: {html}");
+    }
+
+    #[test]
+    fn malformed_plugin_data_attr_is_stripped() {
+        // Нет суффикса / пустой pluginid / пустой суффикс — не плагинный атрибут.
+        for attr in ["data-p-", "data-p--action", "data-p-foo-"] {
+            let html = sanitize_fragment(&format!(r#"<span {attr}="v">x</span>"#));
+            assert!(!html.contains("data-p-"), "{attr} не срезан: {html}");
+        }
     }
 }

@@ -12,11 +12,16 @@ use serde_json::{json, Value};
 use crate::state::{DocumentId, DocumentStore};
 use crate::MAX_FILE_SIZE;
 
+use super::views::PluginViews;
 use super::HostServices;
 
 /// Потолок одного окна `get_document_range`: основной путь чтения — небольшие окна; гигантский
 /// `len` раздул бы `Reply` и мог бы заблокировать запись в stdin child (§3.2 ревью).
 const MAX_RANGE_BYTES: usize = plugin_proto::frame::MAX_EVENT_FRAME_BYTES;
+
+/// Очередь отложенных `document:changed` (плагинные `apply_edit`): `(doc_id, rev)`.
+/// Общая между `DocumentServices` (кладёт) и `PluginHost` (дренит в EventBus).
+pub type PendingChanged = Arc<Mutex<Vec<(String, u64)>>>;
 
 /// Документные host-функции поверх общего [`DocumentStore`].
 ///
@@ -25,16 +30,104 @@ const MAX_RANGE_BYTES: usize = plugin_proto::frame::MAX_EVENT_FRAME_BYTES;
 /// вызывающей стороной (§4.2 ревью).
 pub struct DocumentServices {
     store: Arc<Mutex<DocumentStore>>,
+    /// Реестр плагинных view (Фаза 4): нужен только для `set_view_content`.
+    views: Option<Arc<Mutex<PluginViews>>>,
+    /// Уведомление фронтенда об изменении представлений (эмит `plugin-views-changed`).
+    notify: Option<Arc<dyn Fn() + Send + Sync>>,
+    /// Отложенные `document:changed` от плагинных `apply_edit`: `(doc_id, rev)`.
+    ///
+    /// Публиковать их в EventBus прямо здесь нельзя — `apply_edit` исполняется под
+    /// блокировкой `Mutex<PluginManager>` (внутри `pump`/invoke), а публикация+повторный
+    /// `pump` взяли бы тот же нереентрантный мьютекс (дедлок). Поэтому копим в очереди,
+    /// а [`super::host::PluginHost::pump`] дренит её после отпускания manager.
+    pending_changed: Option<PendingChanged>,
 }
 
 impl DocumentServices {
     pub fn new(store: Arc<Mutex<DocumentStore>>) -> Self {
-        Self { store }
+        Self {
+            store,
+            views: None,
+            notify: None,
+            pending_changed: None,
+        }
+    }
+
+    /// Подключает реестр view (Фаза 4). Без него `set_view_content` возвращает ошибку.
+    pub fn with_views(mut self, views: Arc<Mutex<PluginViews>>) -> Self {
+        self.views = Some(views);
+        self
+    }
+
+    /// Подключает колбэк уведомления фронтенда о смене контента view.
+    pub fn with_notify(mut self, notify: Arc<dyn Fn() + Send + Sync>) -> Self {
+        self.notify = Some(notify);
+        self
+    }
+
+    /// Подключает очередь отложенных `document:changed` (плагинные `apply_edit`).
+    pub fn with_pending_changed(mut self, pending: PendingChanged) -> Self {
+        self.pending_changed = Some(pending);
+        self
+    }
+
+    /// `set_view_content`: санитизация и запись HTML в реестр представлений.
+    ///
+    /// Не трогает `DocumentStore` (важно для дедлок-безопасности: вызов приходит
+    /// из `pump`, где блокировка стора уже отпущена). `_plugin_id` инжектится
+    /// `Supervisor` — плагин не может подменить владельца view.
+    fn set_view_content(&self, args: &Value) -> Result<Value, PluginError> {
+        let view_id = args.get("view_id").and_then(Value::as_str).ok_or_else(|| {
+            PluginError::new("bad_args", "set_view_content: нет строкового view_id")
+        })?;
+        let html = args
+            .get("html")
+            .and_then(Value::as_str)
+            .ok_or_else(|| PluginError::new("bad_args", "set_view_content: нет строкового html"))?;
+
+        // Проверка владения обязательна: `_plugin_id` инжектит `Supervisor` (плагин не может
+        // подменить владельца view). Без инъекции вызов отвергается, а не «проходит без проверки».
+        let plugin_id = args
+            .get("_plugin_id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| PluginError::new("bad_args", "set_view_content: нет _plugin_id"))?;
+        if !view_id.starts_with(&format!("{plugin_id}:")) {
+            return Err(PluginError::new(
+                "bad_view_id",
+                format!("view_id {view_id} не принадлежит плагину {plugin_id}"),
+            ));
+        }
+
+        let views = self.views.as_ref().ok_or_else(|| {
+            PluginError::new(
+                "no_views",
+                "реестр представлений недоступен в этом окружении",
+            )
+        })?;
+        let changed = {
+            let mut views = views
+                .lock()
+                .map_err(|_| PluginError::new("internal", "реестр представлений отравлен"))?;
+            views.set_content(view_id, html)?
+        };
+        // Эмитим событие только при реальной смене HTML (§7 риски: избежать шторма IPC).
+        if changed {
+            if let Some(notify) = &self.notify {
+                notify();
+            }
+        }
+        Ok(json!(true))
     }
 }
 
 impl HostServices for DocumentServices {
     fn handle(&self, method: &str, args: Value) -> Result<Value, PluginError> {
+        // View-путь не берёт блокировку стора: вызывается из pump под уже снятым
+        // сторовым guard'ом (§4.2/Фаза 4). Все прочие host-call'ы — документные.
+        if method == "set_view_content" {
+            return self.set_view_content(&args);
+        }
+
         let mut store = self
             .store
             .lock()
@@ -90,12 +183,22 @@ impl HostServices for DocumentServices {
                     .get("text")
                     .and_then(Value::as_str)
                     .ok_or_else(|| PluginError::new("bad_args", "apply_edit: нет text"))?;
-                let _rev = store.apply_edit(&id, start, stop, text).ok_or_else(|| {
+                let prev_rev = store.get(&id).map(|doc| doc.rev);
+                let rev = store.apply_edit(&id, start, stop, text).ok_or_else(|| {
                     PluginError::new(
                         "invalid_range",
                         format!("apply_edit: диапазон {start}..{stop} невалиден"),
                     )
                 })?;
+                // Правка изменила документ → откладываем `document:changed` для шины (§4.5/§7).
+                // Публикует и доставляет его `PluginHost::pump` уже без manager-блокировки.
+                if prev_rev != Some(rev) {
+                    if let Some(pending) = &self.pending_changed {
+                        if let Ok(mut queue) = pending.lock() {
+                            queue.push((id.as_str().to_string(), rev));
+                        }
+                    }
+                }
                 Ok(json!(true))
             }
             // Уведомление в статусбар/меню — UI-часть в Фазе 5; здесь принимаем и игнорируем.

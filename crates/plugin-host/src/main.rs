@@ -173,18 +173,38 @@ fn handle_invoke(
             Ok(Value::Null)
         }
         "event" => {
-            if let Ok(handler) = lua.globals().get::<Function>("on_event") {
-                let name = args
-                    .get("name")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default()
-                    .to_string();
-                let payload = args.get("payload").cloned().unwrap_or(Value::Null);
+            let name = args
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            let payload = args.get("payload").cloned().unwrap_or(Value::Null);
+            // Подписчики ctx._subs[name] + глобальный on_event (если объявлен).
+            bindings::dispatch_event(lua, loaded.as_ref().map(|l| &l.ctx), &name, &payload)
+                .map_err(|e| PluginError::lua(format!("event {name}: {e}")))?;
+            Ok(Value::Null)
+        }
+        "action" => {
+            // Обратная маршрутизация из тир-1 view (§9.4): клик по `data-p-*` на
+            // контейнере → хост → сюда. Возвращаемый плагином HTML уходит обратно
+            // через host.set_view_content и санитизируется на GUI-хосте (D7/§11.1).
+            let view_id = args
+                .get("view_id")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            let action = args
+                .get("action")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            let payload = args.get("payload").cloned().unwrap_or(Value::Null);
+            if let Ok(handler) = lua.globals().get::<Function>("on_action") {
                 let lua_payload = bindings::json_to_lua(lua, &payload)
                     .map_err(|e| PluginError::lua(e.to_string()))?;
                 handler
-                    .call::<()>((name, lua_payload))
-                    .map_err(|e| PluginError::lua(format!("on_event: {e}")))?;
+                    .call::<()>((view_id, action, lua_payload))
+                    .map_err(|e| PluginError::lua(format!("on_action: {e}")))?;
             }
             Ok(Value::Null)
         }
@@ -395,5 +415,80 @@ mod tests {
     fn plugin_id_from_stem_for_self_test() {
         assert_eq!(plugin_id_of(Path::new("word-count/main.lua")), "main");
         assert_eq!(plugin_id_of(Path::new("word-count.lua")), "word-count");
+    }
+
+    /// Готовит child-состояние с загруженным плагином из `source`.
+    fn loaded_lua(source: &str) -> (mlua::Lua, Arc<dyn HostApi>, Option<Loaded>) {
+        let lua = sandbox::create().unwrap();
+        let host: Arc<dyn HostApi> = Arc::new(StderrHost);
+        let mut loaded = None;
+        handle_invoke(
+            &lua,
+            &host,
+            &mut loaded,
+            "load",
+            &json!({ "source": source, "plugin_id": "p" }),
+        )
+        .expect("load");
+        (lua, host, loaded)
+    }
+
+    #[test]
+    fn action_invokes_on_action_handler() {
+        let (lua, host, mut loaded) = loaded_lua(
+            "function on_activate(ctx) end\n\
+             function on_action(view_id, action, payload) seen = {view_id, action, payload} end",
+        );
+        handle_invoke(
+            &lua,
+            &host,
+            &mut loaded,
+            "action",
+            &json!({ "view_id": "p:main", "action": "inc", "payload": { "n": 1 } }),
+        )
+        .expect("action");
+
+        let (view_id, action, n): (String, String, i64) = lua
+            .load("return seen[1], seen[2], seen[3].n")
+            .eval()
+            .unwrap();
+        assert_eq!(view_id, "p:main");
+        assert_eq!(action, "inc");
+        assert_eq!(n, 1);
+    }
+
+    #[test]
+    fn action_without_handler_is_noop() {
+        let (lua, host, mut loaded) = loaded_lua("function on_activate(ctx) end");
+        let value = handle_invoke(
+            &lua,
+            &host,
+            &mut loaded,
+            "action",
+            &json!({ "view_id": "p:main", "action": "x", "payload": null }),
+        )
+        .expect("action");
+        assert_eq!(value, Value::Null);
+    }
+
+    #[test]
+    fn event_reaches_ctx_subscriber() {
+        let (lua, host, mut loaded) = loaded_lua(
+            "function on_activate(ctx)\n\
+               ctx.subscribe('document:changed', function(name, payload) hits = (hits or 0) + 1 end)\n\
+             end",
+        );
+        handle_invoke(&lua, &host, &mut loaded, "activate", &Value::Null).expect("activate");
+        handle_invoke(
+            &lua,
+            &host,
+            &mut loaded,
+            "event",
+            &json!({ "name": "document:changed", "payload": { "doc_id": "d", "rev": 1 } }),
+        )
+        .expect("event");
+
+        let hits: i64 = lua.globals().get("hits").unwrap();
+        assert_eq!(hits, 1, "подписчик ctx обязан получить событие");
     }
 }

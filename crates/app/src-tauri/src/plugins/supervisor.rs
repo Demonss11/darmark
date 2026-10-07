@@ -315,9 +315,13 @@ impl Supervisor {
     }
 
     /// Проверяет permission и исполняет host-call.
+    ///
+    /// В object-args инжектится `_plugin_id` (`self.plugin_id`): хост не доверяет
+    /// идентификатору из плагина (плагин не может подменить владельца view/настроек).
     fn serve_host_call(&self, method: &str, args: &Value) -> Result<Value, PluginError> {
         check_permission(&self.permissions, method)?;
-        self.services.handle(method, args.clone())
+        self.services
+            .handle(method, with_plugin_id(args, &self.plugin_id))
     }
 
     /// Принудительно завершает child (Job Object + kill процесса).
@@ -364,6 +368,22 @@ impl Supervisor {
     }
 }
 
+/// Возвращает копию object-args с инжектированным `_plugin_id`.
+///
+/// Хост не доверяет идентификатору из плагина: `serve_host_call` подставляет
+/// `self.plugin_id` перед передачей в [`HostServices`]. Не-object args остаются
+/// как есть (host-call'ы с object-аргументами — контракт H2).
+fn with_plugin_id(args: &Value, plugin_id: &str) -> Value {
+    let mut args = args.clone();
+    if let Some(object) = args.as_object_mut() {
+        object.insert(
+            "_plugin_id".to_string(),
+            Value::String(plugin_id.to_string()),
+        );
+    }
+    args
+}
+
 /// Читает `PluginError` из `payload["error"]`; при сбое разбора — `protocol`.
 fn decode_error(payload: &Value) -> PluginError {
     match payload.get("error") {
@@ -381,6 +401,7 @@ pub fn required_permission(method: &str) -> Option<&'static str> {
         | "get_document_version"
         | "get_document_text" => Some("document:read"),
         "apply_edit" => Some("document:write"),
+        "set_view_content" => Some("view:modify"),
         "show_message" => Some("ui:statusbar"),
         _ => None,
     }
@@ -435,5 +456,29 @@ mod tests {
     fn read_calls_require_document_read() {
         let err = check_permission(&[], "get_document_range").unwrap_err();
         assert_eq!(err.permission.as_deref(), Some("document:read"));
+    }
+
+    #[test]
+    fn set_view_content_requires_view_modify() {
+        let err = check_permission(&["view:create".to_string()], "set_view_content").unwrap_err();
+        assert_eq!(err.code, "permission_denied");
+        assert_eq!(err.permission.as_deref(), Some("view:modify"));
+        assert!(check_permission(&["view:modify".to_string()], "set_view_content").is_ok());
+    }
+
+    #[test]
+    fn plugin_id_is_injected_into_host_call_args() {
+        let args = serde_json::json!({ "view_id": "p:main", "html": "<b>x</b>" });
+        let injected = with_plugin_id(&args, "p");
+        assert_eq!(injected["_plugin_id"], "p");
+        assert_eq!(injected["view_id"], "p:main");
+        // Исходные аргументы не мутируются.
+        assert!(args.get("_plugin_id").is_none());
+    }
+
+    #[test]
+    fn plugin_id_injection_keeps_non_object_args() {
+        let injected = with_plugin_id(&Value::Null, "p");
+        assert_eq!(injected, Value::Null);
     }
 }

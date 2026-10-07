@@ -5,11 +5,14 @@
 //! Здесь же — сканирование/настройки/манифесты, проверка permissions (до вызова host-функции)
 //! и карантин per-plugin.
 
+pub mod bus;
+pub mod host;
 pub mod manager;
 pub mod scan;
 pub mod services;
 pub mod settings;
 pub mod supervisor;
+pub mod views;
 
 #[cfg(test)]
 mod tests;

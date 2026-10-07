@@ -12,7 +12,7 @@ pub mod plugins;
 mod state;
 
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use error::CommandError;
 use state::{DocMeta, DocumentId, DocumentSnapshot, DocumentStore, RenderResult};
@@ -66,12 +66,81 @@ fn allow_asset_dir(app: &tauri::AppHandle, dir: &Path) {
 }
 
 fn lock_store<'a>(
-    store: &'a tauri::State<'_, Mutex<DocumentStore>>,
+    store: &'a tauri::State<'_, Arc<Mutex<DocumentStore>>>,
 ) -> std::sync::MutexGuard<'a, DocumentStore> {
     // Под `panic = "abort"` отравление мьютекса невозможно: паника абортит процесс.
     store
         .lock()
         .expect("стор документов не должен быть отравлен")
+}
+
+/// Информация о плагинном тир-1 представлении — контракт с фронтендом.
+///
+/// Объявлена платформенно-нейтрально (вне `plugins`): команда `plugin_views`
+/// должна компилироваться и на не-Windows. `serde` — snake_case по умолчанию.
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct PluginViewInfo {
+    pub view_id: String,
+    pub plugin_id: String,
+    pub kind: String,
+    pub title: String,
+    pub html: String,
+}
+
+/// Платформенно-нейтральное состояние плагинной подсистемы для Tauri-команд.
+///
+/// На Windows содержит реальный `plugins::host::PluginHost`; на прочих
+/// платформах — пустую заглушку, чтобы единый `generate_handler!` собирался
+/// (модуль `plugins` включается только под Windows).
+struct PluginState {
+    #[cfg(windows)]
+    host: plugins::host::PluginHost,
+}
+
+impl PluginState {
+    #[cfg(not(windows))]
+    fn new() -> Self {
+        Self {}
+    }
+
+    /// Создаёт/изменяет документ, публикует событие и доставляет его плагинам.
+    ///
+    /// На не-Windows — no-op: плагинной подсистемы нет.
+    fn publish_document_changed(&self, doc_id: &str, rev: u64) {
+        #[cfg(windows)]
+        {
+            self.host.publish_document_changed(doc_id, rev);
+            self.host.pump();
+        }
+        #[cfg(not(windows))]
+        {
+            let _ = (doc_id, rev);
+        }
+    }
+
+    fn publish_opened(&self, doc_id: &str, path: Option<&str>) {
+        #[cfg(windows)]
+        {
+            self.host.publish_opened(doc_id, path);
+            self.host.pump();
+        }
+        #[cfg(not(windows))]
+        {
+            let _ = (doc_id, path);
+        }
+    }
+
+    fn publish_closed(&self, doc_id: &str) {
+        #[cfg(windows)]
+        {
+            self.host.publish_closed(doc_id);
+            self.host.pump();
+        }
+        #[cfg(not(windows))]
+        {
+            let _ = doc_id;
+        }
+    }
 }
 
 // ---------- команды документов (1:1 с будущими host-функциями плагинов, §4.3) ----------
@@ -80,9 +149,13 @@ fn lock_store<'a>(
 #[tauri::command]
 fn new_document(
     text: Option<String>,
-    store: tauri::State<'_, Mutex<DocumentStore>>,
+    store: tauri::State<'_, Arc<Mutex<DocumentStore>>>,
+    plugins: tauri::State<'_, PluginState>,
 ) -> DocumentSnapshot {
-    lock_store(&store).create(text.unwrap_or_default())
+    let snapshot = lock_store(&store).create(text.unwrap_or_default());
+    // Guard стора уже отпущен: pump может обслужить host-call к DocumentStore.
+    plugins.publish_opened(snapshot.id.as_str(), snapshot.path.as_deref());
+    snapshot
 }
 
 /// Открывает файл с диска и регистрирует его в сторе.
@@ -90,7 +163,8 @@ fn new_document(
 async fn open_document(
     path: PathBuf,
     app: tauri::AppHandle,
-    store: tauri::State<'_, Mutex<DocumentStore>>,
+    store: tauri::State<'_, Arc<Mutex<DocumentStore>>>,
+    plugins: tauri::State<'_, PluginState>,
 ) -> Result<DocumentSnapshot, CommandError> {
     let read_path = path.clone();
     let text = tauri::async_runtime::spawn_blocking(move || read_text(&read_path))
@@ -99,7 +173,9 @@ async fn open_document(
     if let Some(dir) = path.parent() {
         allow_asset_dir(&app, dir);
     }
-    Ok(lock_store(&store).insert_loaded(path, text))
+    let snapshot = lock_store(&store).insert_loaded(path, text);
+    plugins.publish_opened(snapshot.id.as_str(), snapshot.path.as_deref());
+    Ok(snapshot)
 }
 
 /// Сохраняет документ в файл. Текст берётся из стора (владелец — Rust, D5);
@@ -109,7 +185,7 @@ async fn save_document(
     id: DocumentId,
     path: Option<PathBuf>,
     app: tauri::AppHandle,
-    store: tauri::State<'_, Mutex<DocumentStore>>,
+    store: tauri::State<'_, Arc<Mutex<DocumentStore>>>,
 ) -> Result<DocMeta, CommandError> {
     // Сначала читаем путь и текст, не мутируя стор: при ошибке записи стор не «уплывёт».
     let explicit_path = path;
@@ -149,8 +225,15 @@ async fn save_document(
 
 /// Закрывает документ (появляется вместе с панелями; в UI пока не вызывается).
 #[tauri::command]
-fn close_document(id: DocumentId, store: tauri::State<'_, Mutex<DocumentStore>>) {
-    lock_store(&store).close(&id);
+fn close_document(
+    id: DocumentId,
+    store: tauri::State<'_, Arc<Mutex<DocumentStore>>>,
+    plugins: tauri::State<'_, PluginState>,
+) {
+    let closed = lock_store(&store).close(&id);
+    if closed {
+        plugins.publish_closed(id.as_str());
+    }
 }
 
 /// Применяет правку текста: обновляет стор (`rev` растёт только при смене), рендерит.
@@ -162,36 +245,107 @@ fn update_document(
     id: DocumentId,
     text: String,
     mapped: Option<bool>,
-    store: tauri::State<'_, Mutex<DocumentStore>>,
+    store: tauri::State<'_, Arc<Mutex<DocumentStore>>>,
+    plugins: tauri::State<'_, PluginState>,
 ) -> Result<RenderResult, CommandError> {
-    lock_store(&store)
-        .update(&id, text, mapped.unwrap_or(false))
-        .ok_or_else(|| CommandError::unknown_document(id.as_str()))
+    let (result, rev_changed) = {
+        let mut guard = lock_store(&store);
+        let prev = guard.get(&id).map(|doc| doc.rev);
+        let result = guard
+            .update(&id, text, mapped.unwrap_or(false))
+            .ok_or_else(|| CommandError::unknown_document(id.as_str()))?;
+        let rev_changed = prev != Some(result.rev);
+        (result, rev_changed)
+    };
+    // Guard отпущен до pump: событие доставляется плагинам, их host-call'ы берут стор.
+    // Событие шлём только при реальной смене ревизии (эхо-защита, §7 риски).
+    if rev_changed {
+        plugins.publish_document_changed(id.as_str(), result.rev);
+    }
+    Ok(result)
 }
 
 /// Рендерит документ без правки текста (смена `mapped`, первый рендер после open/new).
+///
+/// Событий не публикует: ревизия не меняется.
 #[tauri::command]
 fn render_document(
     id: DocumentId,
     mapped: Option<bool>,
-    store: tauri::State<'_, Mutex<DocumentStore>>,
+    store: tauri::State<'_, Arc<Mutex<DocumentStore>>>,
 ) -> Result<RenderResult, CommandError> {
     lock_store(&store)
         .render(&id, mapped.unwrap_or(false))
         .ok_or_else(|| CommandError::unknown_document(id.as_str()))
 }
 
+// ---------- команды плагинных представлений (Фаза 4, контракт с фронтендом) ----------
+
+/// Снимок плагинных тир-1 представлений (пусто, если плагинов нет/не-Windows).
+#[tauri::command]
+fn plugin_views(state: tauri::State<'_, PluginState>) -> Vec<PluginViewInfo> {
+    #[cfg(windows)]
+    {
+        state.host.plugin_views()
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = state;
+        Vec::new()
+    }
+}
+
+/// Обратная маршрутизация из тир-1 view: `{view_id, action, payload}` → `on_action`
+/// плагина. Возвращаемое значение — ответ Lua-хендлера (обычно `null`).
+#[tauri::command]
+fn plugin_view_action(
+    view_id: String,
+    action: String,
+    payload: Option<serde_json::Value>,
+    state: tauri::State<'_, PluginState>,
+) -> Result<serde_json::Value, CommandError> {
+    #[cfg(windows)]
+    {
+        state
+            .host
+            .plugin_view_action(&view_id, &action, payload)
+            .map_err(|error| CommandError::new(error::ErrorCode::Plugin, error.message))
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (view_id, action, payload, state);
+        Err(CommandError::new(
+            error::ErrorCode::Plugin,
+            "плагинная подсистема доступна только на Windows",
+        ))
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Стор в `Arc`: его же копию получает плагинная подсистема (host-call'ы к документам).
+    let store = Arc::new(Mutex::new(DocumentStore::default()));
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .manage(Mutex::new(DocumentStore::default()))
+        .manage(store)
         .setup(|app| {
+            use tauri::Manager;
             #[cfg(windows)]
             {
                 disable_browser_accelerator_keys(app);
                 init_settings_dir();
+                if let Err(e) = setup_plugins(app) {
+                    // Ошибка плагинной подсистемы не роняет GUI (§4.7).
+                    eprintln!("плагинная подсистема не запущена: {e}");
+                    app.manage(PluginState {
+                        host: plugins::host::PluginHost::empty(),
+                    });
+                }
+            }
+            #[cfg(not(windows))]
+            {
+                app.manage(PluginState::new());
             }
             Ok(())
         })
@@ -201,21 +355,97 @@ pub fn run() {
             update_document,
             render_document,
             save_document,
-            close_document
+            close_document,
+            plugin_views,
+            plugin_view_action
         ])
         .run(tauri::generate_context!())
         .expect("error while running darmark");
 }
 
-/// Отключает браузерные акселераторы WebView2 (Ctrl+P — печать, F5, Ctrl+F …).
+/// Каталог плагинов: `%APPDATA%/darmark/plugins`, с override `DARMARK_PLUGINS_DIR`
+/// для тестов/E2E (изоляция от реального профиля пользователя).
+#[cfg(windows)]
+fn plugins_dir() -> PathBuf {
+    if let Some(dir) = std::env::var_os("DARMARK_PLUGINS_DIR") {
+        return PathBuf::from(dir);
+    }
+    let base = std::env::var_os("APPDATA")
+        .map(PathBuf::from)
+        .unwrap_or_default();
+    base.join("darmark").join("plugins")
+}
+
+/// Поднимает плагинную подсистему: настройки → scan/load → notify → старт enabled.
 ///
-/// По умолчанию WebView2 перехватывает их на уровне движка, и JS-обработчик
-/// `keydown` их не получает: `Ctrl+P` открывал печать вместо переключения
-/// предпросмотра. Обычные клавиши редактирования (Ctrl+C/V/X/A/Z) не затронуты.
+/// Child-exe резолвится [`plugins::supervisor::Supervisor::resolve_child_exe`]; при
+/// его отсутствии плагины не стартуют, а GUI продолжает работу.
+#[cfg(windows)]
+fn setup_plugins(app: &mut tauri::App) -> Result<(), String> {
+    use tauri::{Emitter, Manager};
+
+    use plugins::host::PluginHost;
+    use plugins::manager::load_plugins;
+    use plugins::services::DocumentServices;
+    use plugins::settings::SettingsStore;
+    use plugins::supervisor::Supervisor;
+    use plugins::views::PluginViews;
+
+    let exe = Supervisor::resolve_child_exe().ok_or_else(|| {
+        format!(
+            "{} не найден рядом с darmark.exe",
+            plugins::supervisor::CHILD_EXE_NAME
+        )
+    })?;
+
+    let settings = match SettingsStore::config_path() {
+        Some(path) => SettingsStore::load(&path),
+        None => SettingsStore::default(),
+    };
+
+    let store = app.state::<Arc<Mutex<DocumentStore>>>().inner().clone();
+    let views = Arc::new(Mutex::new(PluginViews::new()));
+    // Очередь отложенных document:changed от плагинных apply_edit (общая services ↔ host).
+    let pending_changed: plugins::services::PendingChanged = Arc::new(Mutex::new(Vec::new()));
+
+    // notify эмитит `plugin-views-changed` (без payload) при смене состава/контента view.
+    let handle = app.handle().clone();
+    let notify: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
+        if let Err(e) = handle.emit("plugin-views-changed", ()) {
+            eprintln!("не эмитить plugin-views-changed: {e}");
+        }
+    });
+
+    let services: Arc<dyn plugins::HostServices> = Arc::new(
+        DocumentServices::new(store)
+            .with_views(Arc::clone(&views))
+            .with_notify(Arc::clone(&notify))
+            .with_pending_changed(Arc::clone(&pending_changed)),
+    );
+
+    let result = load_plugins(
+        &plugins_dir(),
+        &exe,
+        Arc::clone(&services),
+        &settings,
+        Arc::clone(&views),
+    );
+    for error in &result.errors {
+        eprintln!("плагин {}: {}", error.dir.display(), error.message);
+    }
+
+    let host = PluginHost::new(result.manager, views, services, notify, pending_changed);
+    // Best-effort старт enabled-плагинов; notify внутри.
+    host.start_enabled();
+    app.manage(PluginState { host });
+    Ok(())
+}
+
 /// Создаёт каталог `%APPDATA%/darmark/` и `config.json` при первом запуске (хвост TZ-H1 п.8).
 ///
-/// Загрузку/автозапуск плагинов и подключение менеджера к состоянию делает Фаза 5; здесь важен
-/// лишь факт существования конфига, чтобы `SettingsStore::load` работал предсказуемо.
+/// Автозапуск enabled-плагинов и их представлений поднимает [`setup_plugins`] (Фаза 4);
+/// менеджер UI — Фаза 5. Здесь важен лишь факт существования конфига, чтобы
+/// `SettingsStore::load` работал предсказуемо.
 #[cfg(windows)]
 fn init_settings_dir() {
     use plugins::settings::SettingsStore;
@@ -228,6 +458,11 @@ fn init_settings_dir() {
     }
 }
 
+/// Отключает браузерные акселераторы WebView2 (Ctrl+P — печать, F5, Ctrl+F …).
+///
+/// По умолчанию WebView2 перехватывает их на уровне движка, и JS-обработчик `keydown`
+/// их не получает: `Ctrl+P` открывал печать вместо переключения предпросмотра.
+/// Обычные клавиши редактирования (Ctrl+C/V/X/A/Z) не затронуты.
 #[cfg(windows)]
 fn disable_browser_accelerator_keys(app: &tauri::App) {
     use tauri::Manager;

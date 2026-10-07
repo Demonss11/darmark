@@ -60,8 +60,12 @@ pub struct SettingsStore {
 }
 
 impl SettingsStore {
-    /// Путь конфига в `%APPDATA%/darmark/config.json`. `None`, если `APPDATA` не задан.
+    /// Путь конфига: `DARMARK_CONFIG_PATH` (override для тестов/E2E) либо
+    /// `%APPDATA%/darmark/config.json`. `None`, если ни override, ни `APPDATA` не заданы.
     pub fn config_path() -> Option<PathBuf> {
+        if let Some(path) = std::env::var_os("DARMARK_CONFIG_PATH") {
+            return Some(PathBuf::from(path));
+        }
         let base = std::env::var_os("APPDATA")?;
         Some(PathBuf::from(base).join("darmark").join("config.json"))
     }
