@@ -27,7 +27,11 @@ Tauri 2 + vanilla TypeScript/Vite на фронте + чистое Rust-ядро
   Команды документов `new_document`/`open_document`/`update_document`/`render_document`/
   `save_document`/`close_document` (рендер и кэш — в сторе, `render_markdown` удалён).
   Файловый доступ — модель Notepad++ (путь выбирает пользователь в нативном диалоге на фронте),
-  единственная проверка — лимит 10 МБ.
+  единственная проверка — лимит 10 МБ. Подсистема плагинов (H2, `src/plugins/`, только Windows):
+  `supervisor.rs` — spawn child `darmark-plugin-host.exe`, Job Object, watchdog (прогресс+дедлайн),
+  проверка permissions и обслуживание host-call'ов; `services.rs` — range/delta к `DocumentStore`;
+  `manager.rs` — жизненный цикл, карантин N=3, `list/set_enabled/reload`; `PluginManager`
+  линкует `plugin-proto`, но **не** `plugin-host`/`mlua` (D6/ADR-0021).
 - Задачи только по фронтенду не должны трогать `md-core` и `src-tauri`
 - `crates/plugin-proto/` — продуктовое ядро плагинной системы (H2, TZ-H2): кадры транспорта
   (`frame.rs`), serde-конверт хост↔child (`envelope.rs`), Job Object (`job.rs`), карантин
@@ -85,3 +89,16 @@ Tauri 2 + vanilla TypeScript/Vite на фронте + чистое Rust-ядро
 
 - Комментарии на русском, объясняют **зачем**, а не «что». Отступ 2 пробела в TS; стандартный `rustfmt` в Rust.
 - Не коммить и не пушить без прямого запроса.
+
+## Агенты и навыки проекта
+
+- `.opencode/agents/` — роли-субагенты под стек: `code-reviewer` (read-only ревью диффов/PR до мержа:
+  баги, безопасность, производительность, поддерживаемость), `rust-developer` (написание/рефакторинг/
+  отладка Rust), `frontend-developer` (vanilla TS/DOM, состояние, IPC, строгая типизация, a11y).
+- `.opencode/skills/` — `coding-discipline`: дисциплина изменений — минимальный дифф, хирургические
+  правки, проверяемый результат.
+- Прочие навыки, на которые ссылаются агенты (например, `review`, `frontend-dev`,
+  `verification-before-completion`), — **встроенные навыки OpenCode**, в репозитории не хранятся.
+  При переносе репозитория их ссылки могут не разрешиться — тогда замени их на доступные аналоги.
+- Описания агентов/навыков держи стек-ориентированными, но **без хардкода путей** конкретных файлов,
+  кроме случаев, когда файл — часть описания репозитория (как в этом документе).

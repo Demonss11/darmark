@@ -18,6 +18,12 @@ impl DocumentId {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+
+    /// Конструирует id из строки: плагины адресуют документ строкой в host-call'ах.
+    /// Несуществующий id просто не найдётся в сторе.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self(id.into())
+    }
 }
 
 /// Операция правки для undo/redo-стека (D5). Владелец стека — документ.
@@ -222,6 +228,39 @@ impl DocumentStore {
             false
         }
     }
+
+    /// Правка диапазона в **байтовых** смещениях UTF-8: заменяет `[start, stop)` на `text`.
+    ///
+    /// Единый путь изменений (D5): `rev` растёт только при реальной смене текста, поэтому
+    /// эхо-правка тем же текстом не зацикливает подписчиков (`document:changed`, §7).
+    /// `None` — документ не найден или смещения невалидны (не на границе символа / вне текста).
+    pub fn apply_edit(
+        &mut self,
+        id: &DocumentId,
+        start: usize,
+        stop: usize,
+        text: &str,
+    ) -> Option<u64> {
+        let doc = self.docs.get_mut(id)?;
+        if start > stop || stop > doc.text.len() {
+            return None;
+        }
+        if !doc.text.is_char_boundary(start) || !doc.text.is_char_boundary(stop) {
+            return None;
+        }
+        if start == stop && text.is_empty() {
+            return Some(doc.rev);
+        }
+        let mut new_text = String::with_capacity(doc.text.len() - (stop - start) + text.len());
+        new_text.push_str(&doc.text[..start]);
+        new_text.push_str(text);
+        new_text.push_str(&doc.text[stop..]);
+        if doc.text != new_text {
+            doc.text = new_text;
+            doc.rev += 1;
+        }
+        Some(doc.rev)
+    }
 }
 
 #[cfg(test)]
@@ -303,5 +342,42 @@ mod tests {
 
         assert!(store.update(&id, "y".into(), false).is_none());
         assert!(store.render(&id, false).is_none());
+        assert!(store.apply_edit(&id, 0, 0, "z").is_none());
+    }
+
+    #[test]
+    fn apply_edit_splices_and_bumps_rev() {
+        let mut store = DocumentStore::default();
+        let id = store.create("hello world".into()).id;
+
+        // Заменяем "world" (байты 6..11) на "there".
+        assert_eq!(store.apply_edit(&id, 6, 11, "there"), Some(1));
+        assert_eq!(store.get(&id).unwrap().text, "hello there");
+
+        // Правка тем же текстом ревизию не двигает (эхо-защита).
+        assert_eq!(store.apply_edit(&id, 6, 11, "there"), Some(1));
+
+        // Вставка без удаления.
+        assert_eq!(store.apply_edit(&id, 0, 0, ">> "), Some(2));
+        assert_eq!(store.get(&id).unwrap().text, ">> hello there");
+    }
+
+    #[test]
+    fn apply_edit_rejects_invalid_offsets() {
+        let mut store = DocumentStore::default();
+        // "ё" — двухбайтовый символ: смещение в 1 не является границей символа.
+        let id = store.create("ё".into()).id;
+
+        assert!(
+            store.apply_edit(&id, 1, 2, "x").is_none(),
+            "середина символа"
+        );
+        assert!(
+            store.apply_edit(&id, 5, 6, "x").is_none(),
+            "за пределами текста"
+        );
+        assert!(store.apply_edit(&id, 2, 1, "x").is_none(), "start > stop");
+        // Корректные границы проходят.
+        assert_eq!(store.apply_edit(&id, 0, 2, "e"), Some(1));
     }
 }

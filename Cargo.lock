@@ -662,6 +662,7 @@ name = "darmark"
 version = "0.1.0"
 dependencies = [
  "md-core",
+ "plugin-proto",
  "serde",
  "serde_json",
  "tauri",

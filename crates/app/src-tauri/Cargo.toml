@@ -21,6 +21,7 @@ tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 md-core = { path = "../../md-core" }
+plugin-proto = { path = "../../plugin-proto" }
 
 # Windows-only: доступ к настройкам WebView2. Браузерные акселераторы (Ctrl+P —
 # печать, F5, Ctrl+F и т.п.) перехватывают хоткеи приложения, поэтому их надо

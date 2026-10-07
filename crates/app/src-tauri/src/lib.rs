@@ -6,6 +6,9 @@
 //! «белого списка» каталогов нет — диалог и есть согласие).
 
 mod error;
+// Плагинная подсистема — только Windows: Job Object и CREATE_NO_WINDOW (TZ-H2).
+#[cfg(windows)]
+pub mod plugins;
 mod state;
 
 use std::path::{Path, PathBuf};

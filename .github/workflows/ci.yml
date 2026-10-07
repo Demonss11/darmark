@@ -33,6 +33,10 @@ jobs:
       - name: clippy
         run: cargo clippy -p md-core -p darmark --all-targets -- -D warnings
 
+      # Тесты darmark включают Supervisor, который гоняет child-бинарник из target/debug.
+      - name: build plugin-host (для тестов Supervisor)
+        run: cargo build -p plugin-host
+
       - name: tests
         run: cargo test -p md-core -p darmark
 

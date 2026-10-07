@@ -182,6 +182,13 @@ fn register_host(lua: &Lua, plugin_id: &str, api: Arc<dyn HostApi>) -> Result<()
         })?,
     )?;
 
+    // Тест/dev-утилита изоляции отказов: аварийно завершает child-процесс.
+    // GUI не страдает — граница процесса (D6/ADR-0021); нужна для фикстуры `crash`.
+    host.set(
+        "crash",
+        lua.create_function(|_, ()| -> Result<()> { std::process::abort() })?,
+    )?;
+
     lua.globals().set("host", host)?;
 
     // print перенаправляем в лог: иначе вывод плагина уходит в stdout хоста (§6.1).
