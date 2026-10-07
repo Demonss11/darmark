@@ -1,0 +1,399 @@
+//! Child-процесс плагинного хоста darmark (Фаза 1 TZ-H2).
+//!
+//! По умолчанию работает как stdio-хост: читает кадры `ToChild` (host → child) из stdin,
+//! шлёт `ToHost` (child → host) в stdout. Host-call'ы плагина (`host.get_document_*`,
+//! `apply_edit`, `show_message`) идут честным round-trip'ом: `ToHost::HostCall` →
+//! ожидание `ToChild::Reply` (аргумент/ответ передаются только как дельта/окно, §4.2 TZ-H2).
+//!
+//! Режим `--self-test <path>` — dev-проверка песочницы без GUI-хоста.
+//!
+//! GUI-хост (`src-tauri`) **не** линкует этот крейт: child спавнится как внешний exe (D6/ADR-0021).
+
+mod bindings;
+mod sandbox;
+
+use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
+use std::process::ExitCode;
+use std::sync::{Arc, Mutex};
+
+use mlua::{Function, Table};
+use plugin_proto::envelope::{self, PluginError, ToChild, ToHost};
+use plugin_proto::MAX_PLUGIN_SOURCE_BYTES;
+use serde_json::{json, Value};
+
+use bindings::HostApi;
+
+/// Заглушка plugin_id до Фазы 3 (id берётся из манифеста): хост всегда передаёт его в `load`.
+const DEFAULT_PLUGIN_ID: &str = "plugin";
+
+// ─── stdio-транспорт ────────────────────────────────────────────────────
+
+/// Разделяемый stdio-endpoint. За ним сериализуются host-call'ы плагина и служебные кадры.
+struct ChildIo {
+    reader: Box<dyn Read + Send>,
+    writer: Box<dyn Write + Send>,
+    next_id: u32,
+}
+
+/// `HostApi` поверх stdio: каждый вызов — `ToHost::HostCall` + блокирующее ожидание `Reply`.
+struct RpcHost {
+    io: Arc<Mutex<ChildIo>>,
+}
+
+impl HostApi for RpcHost {
+    fn call(&self, method: &str, args: Value) -> Result<Value, PluginError> {
+        // Держим блокировку на весь round-trip: во время host-call верхний цикл не читает stdin,
+        // так что следующий кадр гарантированно — ответ хоста.
+        let mut io = self.io.lock().unwrap();
+        let id = io.next_id;
+        io.next_id = io.next_id.wrapping_add(1);
+        envelope::write_to_host(
+            &mut io.writer,
+            &ToHost::HostCall {
+                id,
+                method: method.to_string(),
+                args,
+            },
+        )
+        .map_err(|e| PluginError::protocol(format!("не отправить host-call: {e}")))?;
+
+        match envelope::read_to_child(&mut io.reader) {
+            Ok(Ok(ToChild::Reply { id: rid, result })) if rid == id => result,
+            Ok(Ok(other)) => Err(PluginError::protocol(format!(
+                "ожидался Reply #{id}, получено {other:?}"
+            ))),
+            Ok(Err(e)) => Err(e),
+            Err(e) => Err(PluginError::crashed(format!("stdio-граница закрыта: {e}"))),
+        }
+    }
+
+    fn log(&self, level: &str, message: &str) {
+        let mut io = self.io.lock().unwrap();
+        let _ = envelope::write_to_host(
+            &mut io.writer,
+            &ToHost::Log {
+                level: level.to_string(),
+                message: message.to_string(),
+            },
+        );
+    }
+
+    fn emit(&self, kind: &str, payload: Value) {
+        let mut io = self.io.lock().unwrap();
+        let _ = envelope::write_to_host(
+            &mut io.writer,
+            &ToHost::Event {
+                kind: kind.to_string(),
+                payload,
+            },
+        );
+    }
+}
+
+/// Загруженный плагин: `plugin_id` и единый `ctx` на весь жизненный цикл.
+///
+/// `ctx` создаётся один раз при `load` и переиспользуется в `on_deactivate`: состояние,
+/// накопленное в `on_activate`, должно доживать до деактивации (§6.2 DESIGN_DOC).
+struct Loaded {
+    plugin_id: String,
+    ctx: Table,
+}
+
+/// Публикует результат `Invoke` как `ToHost::Event`: `done` при успехе, `error` при отказе.
+/// Ответ child'а на `Invoke` — именно событие (у `ToChild::Reply` обратное направление:
+/// это хост отвечает на `HostCall`).
+fn announce_result(host: &Arc<dyn HostApi>, id: u32, result: Result<Value, PluginError>) {
+    match result {
+        Ok(value) => host.emit("done", json!({ "id": id, "result": value })),
+        Err(error) => host.emit("error", json!({ "id": id, "error": error })),
+    }
+}
+
+/// Обрабатывает один `Invoke`. Возвращает результат, который публикуется как `ToHost::Event`.
+fn handle_invoke(
+    lua: &mlua::Lua,
+    host: &Arc<dyn HostApi>,
+    loaded: &mut Option<Loaded>,
+    method: &str,
+    args: &Value,
+) -> Result<Value, PluginError> {
+    match method {
+        "load" => {
+            let source = args
+                .get("source")
+                .and_then(Value::as_str)
+                .ok_or_else(|| PluginError::protocol("load: отсутствует string-поле source"))?;
+            if source.len() as u64 > MAX_PLUGIN_SOURCE_BYTES {
+                return Err(PluginError::protocol(format!(
+                    "исходник {0} байт превышает лимит {MAX_PLUGIN_SOURCE_BYTES}",
+                    source.len()
+                )));
+            }
+            let plugin_id = args
+                .get("plugin_id")
+                .and_then(Value::as_str)
+                .unwrap_or(DEFAULT_PLUGIN_ID)
+                .to_string();
+
+            // Регистрация глобалов выполняется ровно один раз на процесс (перезагрузка = новый child).
+            bindings::register(lua, &plugin_id, Arc::clone(host))
+                .map_err(|e| PluginError::lua(format!("не зарегистрировать host: {e}")))?;
+            lua.load(source)
+                .set_name(plugin_id.as_str())
+                .exec()
+                .map_err(|e| PluginError::lua(format!("{plugin_id}: ошибка загрузки: {e}")))?;
+
+            let ctx = bindings::make_context(lua, &plugin_id)
+                .map_err(|e| PluginError::lua(format!("не создать ctx: {e}")))?;
+            *loaded = Some(Loaded { plugin_id, ctx });
+            host.emit("ready", json!(null));
+            Ok(Value::Null)
+        }
+        "activate" => {
+            let loaded = loaded
+                .as_ref()
+                .ok_or_else(|| PluginError::protocol("activate до load"))?;
+            let activate: Function = lua.globals().get("on_activate").map_err(|_| {
+                PluginError::lua(format!("{}: отсутствует on_activate", loaded.plugin_id))
+            })?;
+            activate
+                .call::<()>(loaded.ctx.clone())
+                .map_err(|e| PluginError::lua(format!("{}: on_activate: {e}", loaded.plugin_id)))?;
+            Ok(Value::Null)
+        }
+        "deactivate" => {
+            if let Some(loaded) = loaded.as_ref() {
+                if let Ok(deactivate) = lua.globals().get::<Function>("on_deactivate") {
+                    deactivate.call::<()>(loaded.ctx.clone()).map_err(|e| {
+                        PluginError::lua(format!("{}: on_deactivate: {e}", loaded.plugin_id))
+                    })?;
+                }
+            }
+            Ok(Value::Null)
+        }
+        "event" => {
+            if let Ok(handler) = lua.globals().get::<Function>("on_event") {
+                let name = args
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string();
+                let payload = args.get("payload").cloned().unwrap_or(Value::Null);
+                let lua_payload = bindings::json_to_lua(lua, &payload)
+                    .map_err(|e| PluginError::lua(e.to_string()))?;
+                handler
+                    .call::<()>((name, lua_payload))
+                    .map_err(|e| PluginError::lua(format!("on_event: {e}")))?;
+            }
+            Ok(Value::Null)
+        }
+        other => Err(PluginError::protocol(format!("неизвестный метод: {other}"))),
+    }
+}
+
+fn run_stdio() -> ExitCode {
+    let io = Arc::new(Mutex::new(ChildIo {
+        reader: Box::new(std::io::stdin()),
+        writer: Box::new(std::io::stdout()),
+        next_id: 1,
+    }));
+    let host: Arc<dyn HostApi> = Arc::new(RpcHost {
+        io: Arc::clone(&io),
+    });
+
+    let lua = match sandbox::create() {
+        Ok(lua) => lua,
+        Err(e) => {
+            eprintln!("[child] не создать Lua-состояние: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    let mut loaded: Option<Loaded> = None;
+    loop {
+        let frame = {
+            let mut guard = io.lock().unwrap();
+            envelope::read_to_child(&mut guard.reader)
+        };
+        let invoke = match frame {
+            Ok(Ok(msg)) => msg,
+            Ok(Err(protocol)) => {
+                // Host прислал неразбираемый конверт: сообщаем и завершаемся (не паникуем).
+                host.emit("error", json!({ "message": protocol.message }));
+                return ExitCode::FAILURE;
+            }
+            // EOF: хост закрыл пайп — штатное завершение.
+            Err(_) => return ExitCode::SUCCESS,
+        };
+
+        match invoke {
+            ToChild::Invoke { id, method, args } => {
+                let reply = handle_invoke(&lua, &host, &mut loaded, &method, &args);
+                announce_result(&host, id, reply);
+            }
+            // Reply на верхнем уровне не ожидается: ответы разбирает `RpcHost::call`.
+            ToChild::Reply { id, .. } => {
+                host.emit(
+                    "error",
+                    json!({ "message": format!("неожиданный Reply #{id} на верхнем уровне") }),
+                );
+            }
+        }
+    }
+}
+
+// ─── self-test (dev) ────────────────────────────────────────────────────
+
+/// Хост-заглушка для `--self-test`: лог в stderr, документных вызовов нет.
+struct StderrHost;
+
+impl HostApi for StderrHost {
+    fn call(&self, method: &str, _args: Value) -> Result<Value, PluginError> {
+        Err(PluginError::protocol(format!(
+            "self-test: host-call {method} недоступен"
+        )))
+    }
+
+    fn log(&self, level: &str, message: &str) {
+        eprintln!("[{level}] {message}");
+    }
+
+    fn emit(&self, _kind: &str, _payload: Value) {}
+}
+
+fn plugin_id_of(path: &Path) -> String {
+    path.file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| DEFAULT_PLUGIN_ID.to_string())
+}
+
+/// Читает исходник плагина, **сначала** проверяя фактическую длину прочитанного буфера
+/// (защита от роста файла между проверкой и чтением — TOCTOU).
+fn read_plugin_source(path: &Path) -> Result<String, String> {
+    let bytes = std::fs::read(path).map_err(|e| format!("не читается {}: {e}", path.display()))?;
+    if bytes.len() as u64 > MAX_PLUGIN_SOURCE_BYTES {
+        return Err(format!(
+            "плагин больше {} КБ ({} байт)",
+            MAX_PLUGIN_SOURCE_BYTES / 1024,
+            bytes.len()
+        ));
+    }
+    String::from_utf8(bytes).map_err(|e| format!("{}: не UTF-8: {e}", path.display()))
+}
+
+fn load_and_activate(path: &Path) -> Result<(), String> {
+    let source = read_plugin_source(path)?;
+    let plugin_id = plugin_id_of(path);
+
+    let lua = sandbox::create().map_err(|e| format!("не создать Lua-состояние: {e}"))?;
+    bindings::register(&lua, &plugin_id, Arc::new(StderrHost))
+        .map_err(|e| format!("не зарегистрировать host: {e}"))?;
+
+    lua.load(source.as_str())
+        .set_name(plugin_id.as_str())
+        .exec()
+        .map_err(|e| format!("ошибка загрузки {plugin_id}: {e}"))?;
+
+    let activate: Function = lua
+        .globals()
+        .get("on_activate")
+        .map_err(|_| format!("{plugin_id}: отсутствует on_activate"))?;
+    let ctx =
+        bindings::make_context(&lua, &plugin_id).map_err(|e| format!("не создать ctx: {e}"))?;
+    // Один ctx на весь цикл: состояние из on_activate доживает до on_deactivate (§6.2).
+    activate
+        .call::<()>(ctx.clone())
+        .map_err(|e| format!("{plugin_id}: on_activate упал: {e}"))?;
+
+    if let Ok(deactivate) = lua.globals().get::<Function>("on_deactivate") {
+        deactivate
+            .call::<()>(ctx)
+            .map_err(|e| format!("{plugin_id}: on_deactivate упал: {e}"))?;
+    }
+
+    eprintln!("[child] {plugin_id}: on_activate вызван, sandbox активен");
+    Ok(())
+}
+
+// ─── точка входа ────────────────────────────────────────────────────────
+
+enum Mode {
+    Stdio,
+    SelfTest(PathBuf),
+}
+
+fn parse_mode() -> Result<Mode, String> {
+    let mut args = std::env::args().skip(1);
+    let mut self_test = None;
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--self-test" | "--plugin" => {
+                let path = args.next().ok_or_else(|| format!("{arg} требует путь"))?;
+                self_test = Some(PathBuf::from(path));
+            }
+            "--help" | "-h" => {
+                print_usage();
+                std::process::exit(0);
+            }
+            other => return Err(format!("неизвестный аргумент: {other}")),
+        }
+    }
+    Ok(match self_test {
+        Some(path) => Mode::SelfTest(path),
+        None => Mode::Stdio,
+    })
+}
+
+fn print_usage() {
+    eprintln!("darmark-plugin-host — child-хост Lua-плагинов darmark");
+    eprintln!("  (без аргументов)     stdio-режим: конверт хост ↔ child");
+    eprintln!("  --self-test <path>   загрузить и активировать плагин (лог в stderr)");
+}
+
+fn main() -> ExitCode {
+    match parse_mode() {
+        Ok(Mode::Stdio) => run_stdio(),
+        Ok(Mode::SelfTest(path)) => match load_and_activate(&path) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(message) => {
+                eprintln!("[child] ошибка: {message}");
+                ExitCode::FAILURE
+            }
+        },
+        Err(message) => {
+            eprintln!("[child] ошибка аргументов: {message}");
+            print_usage();
+            ExitCode::FAILURE
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fixture(name: &str) -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests")
+            .join("fixtures")
+            .join(name)
+    }
+
+    #[test]
+    fn self_test_runs_hello_fixture() {
+        load_and_activate(&fixture("hello.lua")).expect("hello.lua должен активироваться");
+    }
+
+    #[test]
+    fn missing_on_activate_is_reported() {
+        let err = load_and_activate(&fixture("no-activate.lua")).unwrap_err();
+        assert!(err.contains("on_activate"), "err: {err}");
+    }
+
+    #[test]
+    fn plugin_id_from_stem_for_self_test() {
+        assert_eq!(plugin_id_of(Path::new("word-count/main.lua")), "main");
+        assert_eq!(plugin_id_of(Path::new("word-count.lua")), "word-count");
+    }
+}

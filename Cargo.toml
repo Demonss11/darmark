@@ -1,7 +1,16 @@
 [workspace]
 resolver = "2"
-# lua-proto — прототип/спайк, живёт только в ветке proto/lua-plugin-host
-members = ["crates/md-core", "crates/app/src-tauri", "crates/lua-proto", "crates/lua-rpc-spike"]
+# plugin-proto/plugin-host — продуктовая плагинная система (H2). lua-proto/lua-rpc-spike —
+# прототип/спайк: перенос блоков завершён (Фаза 0), но они остаются источником фикстур
+# crash/hang/chatty/edit для гейта Фазы 2 и потому держатся в workspace до неё. CI их не гоняет.
+members = [
+  "crates/md-core",
+  "crates/app/src-tauri",
+  "crates/plugin-proto",
+  "crates/plugin-host",
+  "crates/lua-proto",
+  "crates/lua-rpc-spike",
+]
 
 [workspace.package]
 version = "0.1.0"

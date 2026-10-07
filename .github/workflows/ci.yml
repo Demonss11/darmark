@@ -42,6 +42,39 @@ jobs:
           npm ci
           npm run build
 
+  plugin-checks:
+    name: plugins · fmt · clippy · tests · mlua-guard
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: rustfmt
+        run: cargo fmt -p plugin-proto -p plugin-host -- --check
+
+      - name: clippy
+        run: cargo clippy -p plugin-proto -p plugin-host --all-targets -- -D warnings
+
+      - name: tests
+        run: cargo test -p plugin-proto -p plugin-host
+
+      # D6/ADR-0021: GUI-хост не должен линковать mlua — Lua живёт только в child-бинарнике.
+      - name: mlua must not leak into GUI host
+        shell: pwsh
+        run: |
+          $tree = cargo tree -p darmark
+          $leak = $tree | Select-String -Pattern 'mlua'
+          if ($leak) {
+            $leak | ForEach-Object { Write-Host $_ }
+            throw "mlua просочился в darmark (D6/ADR-0021): GUI-хост обязан оставаться без Lua-рантайма"
+          }
+          "cargo tree -p darmark не содержит mlua"
+
   size-gate:
     name: size-gate (exe ≤ 6 МБ, D6/§14)
     runs-on: windows-latest

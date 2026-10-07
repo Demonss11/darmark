@@ -29,6 +29,15 @@ Tauri 2 + vanilla TypeScript/Vite на фронте + чистое Rust-ядро
   Файловый доступ — модель Notepad++ (путь выбирает пользователь в нативном диалоге на фронте),
   единственная проверка — лимит 10 МБ.
 - Задачи только по фронтенду не должны трогать `md-core` и `src-tauri`
+- `crates/plugin-proto/` — продуктовое ядро плагинной системы (H2, TZ-H2): кадры транспорта
+  (`frame.rs`), serde-конверт хост↔child (`envelope.rs`), Job Object (`job.rs`), карантин
+  (`quarantine.rs`), манифест и валидация (`manifest.rs`), формулировки границы (`notices.rs`),
+  бюджеты watchdog (`limits.rs`). **Без mlua и без Tauri** — линкуется и в GUI-хост, и в child.
+- `crates/plugin-host/` — child-процесс `darmark-plugin-host` с Lua 5.5 (mlua, vendored). Единственный
+  крейт с `mlua`; `src-tauri` его **не** линкует (D6/ADR-0021, проверяется CI: `cargo tree -p darmark`
+  без `mlua`). Здесь песочница (D17), `host.*`/`md.*`/`json.*` и stdio-цикл конверта.
+- `crates/lua-proto/`, `crates/lua-rpc-spike/` — **прототип** (источник переноса блоков и фикстур
+  `crash`/`hang`/`chatty`/`edit`), в продукт не линкуются; держатся в workspace до Фазы 2 TZ-H2.
 
 ## Команды
 
@@ -36,6 +45,9 @@ Tauri 2 + vanilla TypeScript/Vite на фронте + чистое Rust-ядро
 
 - `cargo test -p md-core` — юнит-тесты ядра; быстро, без GUI. Запускать после любых правок Rust.
 - `cargo check -p darmark` — компиляция Tauri-шелла.
+- `cargo test -p plugin-proto -p plugin-host` — плагинные крейты (H2). `plugin-host` тянет `mlua`
+  (vendored) — первая сборка долгая. `cargo run -p plugin-host -- --self-test <plugin.lua>` — прогон
+  плагина в песочнице без GUI. Guard инварианта: `cargo tree -p darmark | Select-String mlua` пусто.
 - `cd crates/app; npm install; npm run build` — `tsc && vite build`; `tsc` **валит сборку на любой
   ошибке типов**. Запускать после правок TS (отдельного typecheck-скрипта нет).
 - `npm run dev` — Vite dev-сервер на фиксированном `:5173` (`strictPort`, чтобы Tauri dev не «уплывал»).
@@ -67,10 +79,6 @@ Tauri 2 + vanilla TypeScript/Vite на фронте + чистое Rust-ядро
 ## Работа с задачами
 
 - Перед реализацией **прочитай целиком** соответствующий `tasks/TZ-*.md`.
-- Уже существующие инструкции для агентов: `KODA.md` (подробная память проекта), `.kodarules`
-  (жёсткие правила: не читать локи/игнорируемые каталоги, не коммитить/пушить без запроса),
-  `.kodaignore` (файлы-шум: `Cargo.lock`, `package-lock.json` и т.п.). При расхождении доверяй коду,
-  а не докам — часть утверждений `KODA.md` устарела после появления санитайзера и DOM-diff.
 
 ## Конвенции
 
