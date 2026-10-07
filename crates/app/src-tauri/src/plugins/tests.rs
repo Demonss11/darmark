@@ -12,9 +12,10 @@ use serde_json::json;
 
 use crate::state::{DocumentId, DocumentStore};
 
+use super::host::PluginHost;
 use super::manager::{load_plugins, PluginManager, PluginRuntime};
 use super::scan::scan_plugins;
-use super::services::DocumentServices;
+use super::services::{DocumentServices, Exporter, StatusSink};
 use super::settings::SettingsStore;
 use super::supervisor::{Supervisor, SupervisorParams};
 use super::HostServices;
@@ -57,9 +58,11 @@ fn fixture(name: &str) -> String {
     std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("фикстура {}: {e}", path.display()))
 }
 
+/// Корень репозитория: `CARGO_MANIFEST_DIR` = `crates/app/src-tauri`, три `parent()` до `<repo>`.
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
+        .and_then(|p| p.parent())
         .and_then(|p| p.parent())
         .expect("корень workspace")
         .to_path_buf()
@@ -241,6 +244,7 @@ fn invocation_failure_clears_supervisor() {
         Vec::new(),
         services(&store),
         Vec::new(),
+        Vec::new(),
     )
     .with_watchdog(Duration::from_millis(300), Duration::from_secs(30));
 
@@ -273,6 +277,7 @@ fn quarantine_after_three_failures() {
         Vec::new(),
         services(&store),
         Vec::new(),
+        Vec::new(),
     )
     .with_watchdog(Duration::from_secs(15), Duration::from_secs(30));
 
@@ -296,6 +301,7 @@ fn manual_enable_clears_quarantine() {
         fixture("crash.lua"),
         Vec::new(),
         services(&store),
+        Vec::new(),
         Vec::new(),
     )
     .with_watchdog(Duration::from_secs(15), Duration::from_secs(30));
@@ -322,6 +328,7 @@ fn manager_lists_and_reloads_plugin() {
         fixture("edit.lua"),
         vec!["document:write".to_string()],
         services(&store),
+        Vec::new(),
         Vec::new(),
     ));
 
@@ -705,4 +712,381 @@ fn load_plugins_registers_contributed_views() {
     assert_eq!(snapshot.len(), 1);
     assert_eq!(snapshot[0].view_id, "word-count:stats");
     assert_eq!(snapshot[0].title, "Статистика");
+}
+
+// ─── Фаза 5: экспорт, статусбар, команды, менеджер ─────────────────────
+
+#[test]
+fn export_html_success_returns_true() {
+    let store = store_with_doc("x");
+    let captured = Arc::new(Mutex::new(String::new()));
+    let captured_for = Arc::clone(&captured);
+    let exporter: Exporter = Arc::new(move |html: &str| {
+        *captured_for.lock().unwrap() = html.to_string();
+        Ok(true)
+    });
+    let services = DocumentServices::new(store).with_exporter(exporter);
+
+    let result = services
+        .handle("export_html", json!({ "html": "<p>x</p>" }))
+        .unwrap();
+    assert_eq!(result, json!(true));
+    assert_eq!(*captured.lock().unwrap(), "<p>x</p>");
+}
+
+#[test]
+fn export_html_cancel_returns_false() {
+    let store = store_with_doc("x");
+    let exporter: Exporter = Arc::new(|_html: &str| Ok(false));
+    let services = DocumentServices::new(store).with_exporter(exporter);
+
+    let result = services
+        .handle("export_html", json!({ "html": "x" }))
+        .unwrap();
+    assert_eq!(result, json!(false), "отмена диалога → false, не ошибка");
+}
+
+#[test]
+fn export_html_io_error_is_value() {
+    let store = store_with_doc("x");
+    let exporter: Exporter = Arc::new(|_html: &str| Err("диск полон".to_string()));
+    let services = DocumentServices::new(store).with_exporter(exporter);
+
+    let err = services
+        .handle("export_html", json!({ "html": "x" }))
+        .unwrap_err();
+    assert_eq!(err.code, "export_failed");
+    assert!(
+        err.message.contains("диск полон"),
+        "message: {}",
+        err.message
+    );
+}
+
+#[test]
+fn export_html_without_exporter_is_error() {
+    let store = store_with_doc("x");
+    let services = DocumentServices::new(store);
+    let err = services
+        .handle("export_html", json!({ "html": "x" }))
+        .unwrap_err();
+    assert_eq!(err.code, "no_exporter");
+}
+
+#[test]
+fn show_message_calls_status_sink() {
+    let store = store_with_doc("x");
+    let seen = Arc::new(Mutex::new(Vec::<(String, String)>::new()));
+    let seen_for = Arc::clone(&seen);
+    let sink: StatusSink = Arc::new(move |plugin_id: &str, text: &str| {
+        seen_for
+            .lock()
+            .unwrap()
+            .push((plugin_id.to_string(), text.to_string()));
+    });
+    let services = DocumentServices::new(store).with_status_sink(sink);
+
+    let result = services
+        .handle(
+            "show_message",
+            json!({ "text": "Слова: 5", "_plugin_id": "word-count" }),
+        )
+        .unwrap();
+    assert!(result.is_null());
+    assert_eq!(
+        *seen.lock().unwrap(),
+        vec![("word-count".to_string(), "Слова: 5".to_string())]
+    );
+}
+
+#[test]
+fn show_message_without_plugin_id_is_rejected() {
+    let store = store_with_doc("x");
+    let services = DocumentServices::new(store);
+    let err = services
+        .handle("show_message", json!({ "text": "x" }))
+        .unwrap_err();
+    assert_eq!(err.code, "bad_args");
+}
+
+#[test]
+fn set_enabled_registers_view_before_activation() {
+    let _guard = serial();
+    let store = store_with_doc("x");
+    let views = views();
+    let pending: Arc<Mutex<Vec<(String, u64)>>> = Arc::new(Mutex::new(Vec::new()));
+    let notify_calls = Arc::new(Mutex::new(0u32));
+    let notify_calls_for = Arc::clone(&notify_calls);
+    let notify: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
+        *notify_calls_for.lock().unwrap() += 1;
+    });
+    let services: Arc<dyn HostServices> = Arc::new(
+        DocumentServices::new(Arc::clone(&store))
+            .with_views(Arc::clone(&views))
+            .with_notify(Arc::clone(&notify))
+            .with_pending_changed(Arc::clone(&pending)),
+    );
+    let mut manager = PluginManager::default();
+    manager.register(PluginRuntime::new(
+        "viewplugin",
+        child_exe(),
+        fixture("view-activate.lua"),
+        vec!["view:modify".to_string()],
+        Arc::clone(&services),
+        vec![view_contrib("main", "Main", 1)],
+        Vec::new(),
+    ));
+    let host = PluginHost::new(
+        manager,
+        Arc::clone(&views),
+        services,
+        Arc::clone(&notify),
+        pending,
+    );
+
+    // Порядок критичен: view регистрируются ДО старта, иначе set_view_content из
+    // on_activate вернул бы unknown_view и активация упала.
+    host.set_enabled("viewplugin", true).expect("включение");
+
+    let snapshot = views.lock().unwrap().snapshot();
+    assert_eq!(snapshot.len(), 1, "view зарегистрирован");
+    assert_eq!(snapshot[0].view_id, "viewplugin:main");
+    assert!(
+        !snapshot[0].html.is_empty(),
+        "on_activate записал контент: {:?}",
+        snapshot[0].html
+    );
+    assert!(
+        *notify_calls.lock().unwrap() >= 1,
+        "notify обязан сработать"
+    );
+}
+
+#[test]
+fn set_enabled_false_removes_views() {
+    let _guard = serial();
+    let store = store_with_doc("x");
+    let views = views();
+    let pending: Arc<Mutex<Vec<(String, u64)>>> = Arc::new(Mutex::new(Vec::new()));
+    let notify: Arc<dyn Fn() + Send + Sync> = Arc::new(|| {});
+    let services: Arc<dyn HostServices> = Arc::new(
+        DocumentServices::new(Arc::clone(&store))
+            .with_views(Arc::clone(&views))
+            .with_notify(Arc::clone(&notify))
+            .with_pending_changed(Arc::clone(&pending)),
+    );
+    let mut manager = PluginManager::default();
+    manager.register(PluginRuntime::new(
+        "viewplugin",
+        child_exe(),
+        fixture("view-activate.lua"),
+        vec!["view:modify".to_string()],
+        Arc::clone(&services),
+        vec![view_contrib("main", "Main", 1)],
+        Vec::new(),
+    ));
+    let host = PluginHost::new(
+        manager,
+        Arc::clone(&views),
+        services,
+        Arc::clone(&notify),
+        pending,
+    );
+
+    host.set_enabled("viewplugin", true).expect("включение");
+    assert_eq!(views.lock().unwrap().snapshot().len(), 1);
+
+    host.set_enabled("viewplugin", false).expect("выключение");
+    assert!(
+        views.lock().unwrap().snapshot().is_empty(),
+        "выключение снимает view плагина"
+    );
+
+    // Повторное включение (e2e «тумблер вкл/выкл»): view регистрируется заново ДО старта,
+    // on_activate снова пишет контент — вкладка обязана вернуться с непустым HTML.
+    host.set_enabled("viewplugin", true)
+        .expect("повторное включение");
+    let snapshot = views.lock().unwrap().snapshot();
+    assert_eq!(
+        snapshot.len(),
+        1,
+        "view вернулся после повторного включения"
+    );
+    assert!(
+        !snapshot[0].html.is_empty(),
+        "on_activate повторно записал контент: {:?}",
+        snapshot[0].html
+    );
+}
+
+#[test]
+fn set_enabled_persists_to_config() {
+    let _guard = serial();
+    let dir = tempfile::tempdir().unwrap();
+    let config = dir.path().join("config.json");
+
+    let store = store_with_doc("x");
+    let views = views();
+    let pending: Arc<Mutex<Vec<(String, u64)>>> = Arc::new(Mutex::new(Vec::new()));
+    let notify: Arc<dyn Fn() + Send + Sync> = Arc::new(|| {});
+    let services: Arc<dyn HostServices> = Arc::new(
+        DocumentServices::new(Arc::clone(&store))
+            .with_views(Arc::clone(&views))
+            .with_notify(Arc::clone(&notify))
+            .with_pending_changed(Arc::clone(&pending)),
+    );
+    let mut manager = PluginManager::default();
+    manager.register(PluginRuntime::new(
+        "viewplugin",
+        child_exe(),
+        fixture("view-activate.lua"),
+        vec!["view:modify".to_string()],
+        Arc::clone(&services),
+        vec![view_contrib("main", "Main", 1)],
+        Vec::new(),
+    ));
+    let host = PluginHost::new(manager, views, services, notify, pending)
+        .with_settings(SettingsStore::default(), Some(config.clone()));
+
+    // Выключение из менеджера обязано сохраниться в config.json (§12) — переживает рестарт.
+    host.set_enabled("viewplugin", false).expect("выключение");
+    let loaded = SettingsStore::load(&config);
+    assert!(
+        !loaded.plugin_enabled("viewplugin"),
+        "выключение не сохранилось в config.json"
+    );
+    let _ = std::fs::remove_dir_all(dir.path());
+}
+
+#[test]
+fn run_plugin_command_delivers_doc_id_and_edits() {
+    let _guard = serial();
+    let store = store_with_doc("");
+    let views = views();
+    let pending: Arc<Mutex<Vec<(String, u64)>>> = Arc::new(Mutex::new(Vec::new()));
+    let notify: Arc<dyn Fn() + Send + Sync> = Arc::new(|| {});
+    let services: Arc<dyn HostServices> = Arc::new(
+        DocumentServices::new(Arc::clone(&store))
+            .with_views(Arc::clone(&views))
+            .with_notify(Arc::clone(&notify))
+            .with_pending_changed(Arc::clone(&pending)),
+    );
+    let mut manager = PluginManager::default();
+    let mut runtime = PluginRuntime::new(
+        "cmd",
+        child_exe(),
+        fixture("command-edit.lua"),
+        vec!["document:write".to_string()],
+        Arc::clone(&services),
+        Vec::new(),
+        Vec::new(),
+    );
+    runtime.start().expect("активация");
+    manager.register(runtime);
+    let host = PluginHost::new(manager, views, services, notify, pending);
+
+    host.run_plugin_command("test.command", Some("doc-1"));
+
+    assert_eq!(
+        doc_text(&store, "doc-1"),
+        "C",
+        "command:invoked дошёл с doc_id и применился"
+    );
+    assert_eq!(doc_rev(&store), 1);
+}
+
+#[test]
+fn list_plugins_reports_commands_and_notices() {
+    let dir = tempfile::tempdir().unwrap();
+    let manifest = r#"{"id":"export-html","name":"Export HTML","version":"1.0.0","api_version":1,"entry":"main.lua","permissions":["document:read"],"contributes":{"commands":[{"id":"export-html.export","title":"Экспорт в HTML","keybinding":"Ctrl+Alt+E"}]}}"#;
+    write_plugin(
+        dir.path(),
+        "export-html",
+        manifest,
+        Some("function on_activate(ctx) end"),
+    );
+
+    let store = store_with_doc("x");
+    let result = load_plugins(
+        dir.path(),
+        &PathBuf::from("darmark-plugin-host.exe"),
+        services(&store),
+        &SettingsStore::default(),
+        views(),
+    );
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
+
+    let list = result.manager.list_plugins();
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0].commands.len(), 1);
+    assert_eq!(list[0].commands[0].id, "export-html.export");
+    assert_eq!(list[0].commands[0].title, "Экспорт в HTML");
+    assert_eq!(
+        list[0].commands[0].keybinding.as_deref(),
+        Some("Ctrl+Alt+E")
+    );
+    assert!(
+        list[0]
+            .notices
+            .iter()
+            .any(|n| n == plugin_proto::notices::ISOLATION_NOTICE),
+        "notices: {:?}",
+        list[0].notices
+    );
+    assert!(
+        list[0]
+            .notices
+            .iter()
+            .any(|n| n == plugin_proto::notices::DOCUMENT_ACCESS_NOTICE),
+        "notices: {:?}",
+        list[0].notices
+    );
+}
+
+#[test]
+fn plugin_info_serializes_frontend_contract() {
+    // Фронт (`tauri.ts`) ждёт `status.state`, сообщение в `status.message` и
+    // `keybinding: null` для команды без привязки — проверяем форму JSON.
+    let info = crate::PluginInfo {
+        id: "p".to_string(),
+        status: crate::PluginStatus::Failed {
+            message: "boom".to_string(),
+        },
+        permissions: vec!["document:read".to_string()],
+        enabled: false,
+        commands: vec![crate::CommandInfo {
+            id: "p.cmd".to_string(),
+            title: "Cmd".to_string(),
+            keybinding: None,
+        }],
+        notices: Vec::new(),
+    };
+    let value = serde_json::to_value(&info).unwrap();
+    assert_eq!(value["status"]["state"], "failed");
+    assert_eq!(value["status"]["message"], "boom");
+    assert_eq!(value["enabled"], false);
+    assert!(
+        value["commands"][0]["keybinding"].is_null(),
+        "keybinding должен быть null, а не отсутствовать: {value}"
+    );
+}
+
+#[test]
+fn reference_plugins_validate() {
+    // Эталонные плагины лежат в корне репозитория (`plugins/`), в дистрибутив не входят (D6).
+    let repo_root = workspace_root();
+    let report = scan_plugins(&repo_root.join("plugins"));
+    assert!(
+        report.errors.is_empty(),
+        "ошибки скана эталонных плагинов: {:?}",
+        report.errors
+    );
+    let ids: Vec<&str> = report
+        .plugins
+        .iter()
+        .map(|p| p.manifest.id.as_str())
+        .collect();
+    for expected in ["word-count", "export-html", "format-selection"] {
+        assert!(ids.contains(&expected), "нет плагина {expected}: {ids:?}");
+    }
 }

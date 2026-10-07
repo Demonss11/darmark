@@ -87,6 +87,46 @@ pub struct PluginViewInfo {
     pub html: String,
 }
 
+/// Статус плагина для менеджера UI (§4.7 TZ-H2).
+///
+/// Объявлен платформенно-нейтрально (вне `plugins`): команда `list_plugins` должна
+/// компилироваться и на не-Windows. Сериализуется как `{"state":"active"}` и т.п.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum PluginStatus {
+    /// Остановлен (выключен пользователем или ещё не запускался).
+    Stopped,
+    /// Загружен и активирован.
+    Active,
+    /// Отказ загрузки/активации; сообщение для UI.
+    Failed { message: String },
+    /// Автоотключён после серии падений (карантин).
+    Quarantined,
+}
+
+/// Команда, объявленная плагином (`contributes.commands`), — контракт с фронтендом.
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct CommandInfo {
+    pub id: String,
+    pub title: String,
+    /// Клавиатурная привязка; сериализуется как `null`, если не задана.
+    pub keybinding: Option<String>,
+}
+
+/// Проекция плагина для менеджера UI (IPC-команда `list_plugins`, Фаза 5).
+///
+/// Платформенно-нейтральна: на не-Windows команда возвращает пустой список.
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct PluginInfo {
+    pub id: String,
+    pub status: PluginStatus,
+    pub permissions: Vec<String>,
+    pub enabled: bool,
+    pub commands: Vec<CommandInfo>,
+    /// Формулировки границы изоляции/доступа к документу (F38).
+    pub notices: Vec<String>,
+}
+
 /// Платформенно-нейтральное состояние плагинной подсистемы для Tauri-команд.
 ///
 /// На Windows содержит реальный `plugins::host::PluginHost`; на прочих
@@ -146,7 +186,7 @@ impl PluginState {
 // ---------- команды документов (1:1 с будущими host-функциями плагинов, §4.3) ----------
 
 /// Создаёт безымянный документ (`text` — стартовый текст или пусто).
-#[tauri::command]
+#[tauri::command(async)]
 fn new_document(
     text: Option<String>,
     store: tauri::State<'_, Arc<Mutex<DocumentStore>>>,
@@ -224,7 +264,7 @@ async fn save_document(
 }
 
 /// Закрывает документ (появляется вместе с панелями; в UI пока не вызывается).
-#[tauri::command]
+#[tauri::command(async)]
 fn close_document(
     id: DocumentId,
     store: tauri::State<'_, Arc<Mutex<DocumentStore>>>,
@@ -240,7 +280,7 @@ fn close_document(
 ///
 /// Заменяет stateless `render_markdown`: рендер и кэш `(mapped, rev)` — теперь в сторе,
 /// а `RenderResult.changed` избавляет TS от собственного `lastRenderedHtml`.
-#[tauri::command]
+#[tauri::command(async)]
 fn update_document(
     id: DocumentId,
     text: String,
@@ -297,7 +337,7 @@ fn plugin_views(state: tauri::State<'_, PluginState>) -> Vec<PluginViewInfo> {
 
 /// Обратная маршрутизация из тир-1 view: `{view_id, action, payload}` → `on_action`
 /// плагина. Возвращаемое значение — ответ Lua-хендлера (обычно `null`).
-#[tauri::command]
+#[tauri::command(async)]
 fn plugin_view_action(
     view_id: String,
     action: String,
@@ -319,6 +359,97 @@ fn plugin_view_action(
             "плагинная подсистема доступна только на Windows",
         ))
     }
+}
+
+// ---------- команды менеджера плагинов (Фаза 5, контракт с фронтендом) ----------
+
+/// Снимок реестра плагинов (пусто, если плагинов нет/не-Windows).
+#[tauri::command]
+fn list_plugins(state: tauri::State<'_, PluginState>) -> Vec<PluginInfo> {
+    #[cfg(windows)]
+    {
+        state.host.list_plugins()
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = state;
+        Vec::new()
+    }
+}
+
+/// Включает/выключает плагин; включение снимает карантин (§4.7).
+#[tauri::command(async)]
+fn set_plugin_enabled(
+    id: String,
+    enabled: bool,
+    state: tauri::State<'_, PluginState>,
+) -> Result<(), CommandError> {
+    #[cfg(windows)]
+    {
+        state
+            .host
+            .set_enabled(&id, enabled)
+            .map_err(|error| CommandError::new(error::ErrorCode::Plugin, error.message))
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (id, enabled, state);
+        Err(plugin_unavailable())
+    }
+}
+
+/// Перезагружает плагин с диска без рестарта приложения (§4.7).
+#[tauri::command(async)]
+fn reload_plugin(id: String, state: tauri::State<'_, PluginState>) -> Result<(), CommandError> {
+    #[cfg(windows)]
+    {
+        state
+            .host
+            .reload(&id)
+            .map_err(|error| CommandError::new(error::ErrorCode::Plugin, error.message))
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (id, state);
+        Err(plugin_unavailable())
+    }
+}
+
+/// Исполняет команду плагина: публикует `command:invoked{command_id, doc_id}` в шину.
+///
+/// `doc_id` — текущий документ: у плагина нет собственного доступа к «активному»
+/// документу, поэтому команда несёт его с собой (Фаза 5).
+#[tauri::command(async)]
+fn run_plugin_command(
+    command_id: String,
+    store: tauri::State<'_, Arc<Mutex<DocumentStore>>>,
+    state: tauri::State<'_, PluginState>,
+) -> Result<(), CommandError> {
+    #[cfg(windows)]
+    {
+        // Guard стора отпущен до pump: доставка события может обслужить host-call к стору.
+        let doc_id = lock_store(&store)
+            .last_id()
+            .map(|id| id.as_str().to_string());
+        state
+            .host
+            .run_plugin_command(&command_id, doc_id.as_deref());
+        Ok(())
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (command_id, store, state);
+        Err(plugin_unavailable())
+    }
+}
+
+/// Ошибка «плагинная подсистема доступна только на Windows» (не-Windows заглушки).
+#[cfg(not(windows))]
+fn plugin_unavailable() -> CommandError {
+    CommandError::new(
+        error::ErrorCode::Plugin,
+        "плагинная подсистема доступна только на Windows",
+    )
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -357,7 +488,11 @@ pub fn run() {
             save_document,
             close_document,
             plugin_views,
-            plugin_view_action
+            plugin_view_action,
+            list_plugins,
+            set_plugin_enabled,
+            reload_plugin,
+            run_plugin_command
         ])
         .run(tauri::generate_context!())
         .expect("error while running darmark");
@@ -383,10 +518,11 @@ fn plugins_dir() -> PathBuf {
 #[cfg(windows)]
 fn setup_plugins(app: &mut tauri::App) -> Result<(), String> {
     use tauri::{Emitter, Manager};
+    use tauri_plugin_dialog::DialogExt;
 
     use plugins::host::PluginHost;
     use plugins::manager::load_plugins;
-    use plugins::services::DocumentServices;
+    use plugins::services::{DocumentServices, Exporter, StatusSink};
     use plugins::settings::SettingsStore;
     use plugins::supervisor::Supervisor;
     use plugins::views::PluginViews;
@@ -398,8 +534,9 @@ fn setup_plugins(app: &mut tauri::App) -> Result<(), String> {
         )
     })?;
 
-    let settings = match SettingsStore::config_path() {
-        Some(path) => SettingsStore::load(&path),
+    let config_path = SettingsStore::config_path();
+    let settings = match &config_path {
+        Some(path) => SettingsStore::load(path),
         None => SettingsStore::default(),
     };
 
@@ -408,11 +545,63 @@ fn setup_plugins(app: &mut tauri::App) -> Result<(), String> {
     // Очередь отложенных document:changed от плагинных apply_edit (общая services ↔ host).
     let pending_changed: plugins::services::PendingChanged = Arc::new(Mutex::new(Vec::new()));
 
-    // notify эмитит `plugin-views-changed` (без payload) при смене состава/контента view.
+    // notify эмитит оба события: состав/контент view (`plugin-views-changed`) и
+    // статус/состав плагинов для менеджера UI (`plugins-changed`). Фронт перечитывает снимки.
     let handle = app.handle().clone();
     let notify: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
         if let Err(e) = handle.emit("plugin-views-changed", ()) {
             eprintln!("не эмитить plugin-views-changed: {e}");
+        }
+        if let Err(e) = handle.emit("plugins-changed", ()) {
+            eprintln!("не эмитить plugins-changed: {e}");
+        }
+    });
+
+    // Экспорт HTML: нативный save-диалог — согласие пользователя; `filesystem:write`
+    // не требуется (§6.3). Отмена → `Ok(false)`, IO-ошибка → `Err` (значением плагину).
+    //
+    // `blocking_save_file` сам постит показ диалога в event-loop главного потока и ждёт;
+    // вызывать его нельзя с главного потока (дедлок). Поэтому диалог идёт в отдельном
+    // потоке, а плагинные команды помечены `#[tauri::command(async)]` — host-call
+    // обслуживается вне main, event-loop свободен и обслуживает показ.
+    let export_handle = app.handle().clone();
+    let exporter: Exporter = Arc::new(move |html: &str| -> Result<bool, String> {
+        let handle = export_handle.clone();
+        let html = html.to_string();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let result = match handle
+                .dialog()
+                .file()
+                .add_filter("HTML", &["html"])
+                .set_file_name("export.html")
+                .blocking_save_file()
+            {
+                None => Ok(false), // пользователь закрыл диалог
+                Some(file_path) => {
+                    file_path
+                        .into_path()
+                        .map_err(|e| e.to_string())
+                        .and_then(|path| {
+                            std::fs::write(&path, &html)
+                                .map(|_| true)
+                                .map_err(|e| format!("{}: {e}", path.display()))
+                        })
+                }
+            };
+            let _ = tx.send(result);
+        });
+        rx.recv().map_err(|e| e.to_string())?
+    });
+
+    // Уведомление статусбара: событие `plugin-message{plugin_id,text}` для фронтенда.
+    let message_handle = app.handle().clone();
+    let status_sink: StatusSink = Arc::new(move |plugin_id: &str, text: &str| {
+        if let Err(e) = message_handle.emit(
+            "plugin-message",
+            serde_json::json!({ "plugin_id": plugin_id, "text": text }),
+        ) {
+            eprintln!("не эмитить plugin-message: {e}");
         }
     });
 
@@ -420,7 +609,9 @@ fn setup_plugins(app: &mut tauri::App) -> Result<(), String> {
         DocumentServices::new(store)
             .with_views(Arc::clone(&views))
             .with_notify(Arc::clone(&notify))
-            .with_pending_changed(Arc::clone(&pending_changed)),
+            .with_pending_changed(Arc::clone(&pending_changed))
+            .with_exporter(exporter)
+            .with_status_sink(status_sink),
     );
 
     let result = load_plugins(
@@ -434,7 +625,8 @@ fn setup_plugins(app: &mut tauri::App) -> Result<(), String> {
         eprintln!("плагин {}: {}", error.dir.display(), error.message);
     }
 
-    let host = PluginHost::new(result.manager, views, services, notify, pending_changed);
+    let host = PluginHost::new(result.manager, views, services, notify, pending_changed)
+        .with_settings(settings, config_path);
     // Best-effort старт enabled-плагинов; notify внутри.
     host.start_enabled();
     app.manage(PluginState { host });

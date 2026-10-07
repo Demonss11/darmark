@@ -1,6 +1,8 @@
-// Шаги плагинного тир-1 view (H2, Фаза 4). Список представлений приходит из
-// Rust-хоста событием `plugin-views-changed`; клик по `data-p-<plugin_id>-action`
-// возвращается в Lua-хендлер (`on_action`) и обновляет HTML контейнера.
+// Шаги плагинного тир-1 view (H2, Фаза 4) и менеджера плагинов (Фаза 5). Список
+// представлений приходит из Rust-хоста событием `plugin-views-changed`; клик по
+// `data-p-<plugin_id>-action` возвращается в Lua-хендлер (`on_action`) и обновляет
+// HTML контейнера. Менеджер (`#plugin-manager`) читает `list_plugins` и меняет
+// состояние через `set_plugin_enabled`/`reload_plugin`.
 import { Given, Then, When } from "@wdio/cucumber-framework";
 import { browser } from "@wdio/globals";
 
@@ -19,12 +21,17 @@ Given("плагин {string} загружен", async (pluginId) => {
 });
 
 Then("в {string} есть вкладка плагина {string}", async (selector, viewId) => {
-  const ok = await browser.execute(
-    (sel, id) => !!document.querySelector(`${sel} .vtab.plugin[data-view="${id}"]`),
-    selector,
-    viewId
+  // Переключение вкладок приходит асинхронно событием `plugin-views-changed`,
+  // поэтому проверка — с ожиданием (в отличие от клика по вкладке).
+  await browser.waitUntil(
+    async () =>
+      browser.execute(
+        (sel, id) => !!document.querySelector(`${sel} .vtab.plugin[data-view="${id}"]`),
+        selector,
+        viewId
+      ),
+    { timeout: 10000, timeoutMsg: `В ${selector} нет вкладки плагина ${viewId}` }
   );
-  if (!ok) throw new Error(`В ${selector} нет вкладки плагина ${viewId}`);
 });
 
 When("я переключаюсь на вкладку плагина {string}", async (viewId) => {
@@ -69,4 +76,99 @@ Then("плагинный маркер равен {string}", async (expected) => 
       ),
     { timeout: 10000, timeoutMsg: `Маркер #e2e-marker не стал ${expected}` }
   );
+});
+
+// ---------- Менеджер плагинов (H2, Фаза 5) ----------
+//
+// Панель плагинов скрыта, пока активна панель «Файлы»: открываем её кликом по
+// rail-кнопке (если уже видима — не трогаем, иначе клик свернул бы sidebar).
+// Тумблер вкл/выкл — настоящий `<input class="pl-enabled">` внутри
+// `.pl-item[data-plugin=...]`; его click порождает change → IPC.
+
+When("я открываю панель плагинов", async () => {
+  const visible = await browser.execute(() => {
+    const panel = document.getElementById("panel-plugins");
+    if (panel && !panel.hidden) return true;
+    document.getElementById("rail-plugins")?.click();
+    return !document.getElementById("panel-plugins")?.hidden;
+  });
+  if (!visible) {
+    await browser.waitUntil(
+      async () =>
+        browser.execute(() => !document.getElementById("panel-plugins")?.hidden),
+      { timeout: 5000, timeoutMsg: "Панель плагинов не открылась" }
+    );
+  }
+});
+
+Then("в менеджере плагинов есть {string} со статусом {string}", async (pluginId, state) => {
+  await browser.waitUntil(
+    async () =>
+      browser.execute(
+        (id, st) => {
+          const item = document.querySelector(
+            `#plugin-manager .pl-item[data-plugin="${id}"]`
+          );
+          const badge = item?.querySelector(".pl-badge");
+          return !!badge && badge.classList.contains(st);
+        },
+        pluginId,
+        state
+      ),
+    {
+      timeout: 15000,
+      timeoutMsg: `В менеджере нет плагина ${pluginId} со статусом ${state}`,
+    }
+  );
+});
+
+/// Ставит тумблер плагина в нужное положение (клик только при расхождении).
+async function setPluginToggle(pluginId, enabled) {
+  const ok = await browser.execute(
+    (id, want) => {
+      const item = document.querySelector(
+        `#plugin-manager .pl-item[data-plugin="${id}"]`
+      );
+      const cb = item?.querySelector("input.pl-enabled");
+      if (!cb) return false;
+      if (cb.checked !== want) cb.click();
+      return true;
+    },
+    pluginId,
+    enabled
+  );
+  if (!ok) throw new Error(`В менеджере нет тумблера плагина ${pluginId}`);
+}
+
+When("я выключаю плагин {string}", async (pluginId) => {
+  await setPluginToggle(pluginId, false);
+});
+
+When("я включаю плагин {string}", async (pluginId) => {
+  await setPluginToggle(pluginId, true);
+});
+
+Then("в {string} нет вкладки плагина {string}", async (selector, viewId) => {
+  await browser.waitUntil(
+    async () =>
+      browser.execute(
+        (sel, id) => !document.querySelector(`${sel} .vtab.plugin[data-view="${id}"]`),
+        selector,
+        viewId
+      ),
+    { timeout: 10000, timeoutMsg: `В ${selector} осталась вкладка плагина ${viewId}` }
+  );
+});
+
+When("я перезагружаю плагин {string}", async (pluginId) => {
+  const ok = await browser.execute((id) => {
+    const item = document.querySelector(
+      `#plugin-manager .pl-item[data-plugin="${id}"]`
+    );
+    const btn = item?.querySelector("button.pl-reload");
+    if (!btn || btn.disabled) return false;
+    btn.click();
+    return true;
+  }, pluginId);
+  if (!ok) throw new Error(`Кнопка «Перезагрузить» плагина ${pluginId} недоступна`);
 });

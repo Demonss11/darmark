@@ -18,7 +18,6 @@ pub mod views;
 mod tests;
 
 use plugin_proto::envelope::PluginError;
-use serde::Serialize;
 use serde_json::Value;
 
 /// Услуги хоста, которые плагин вызывает через host-call (range/delta документа, настройки,
@@ -29,16 +28,6 @@ pub trait HostServices: Send + Sync + 'static {
     fn handle(&self, method: &str, args: Value) -> Result<Value, PluginError>;
 }
 
-/// Статус плагина для менеджера (§4.7 TZ-H2).
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-#[serde(tag = "state", rename_all = "snake_case")]
-pub enum PluginStatus {
-    /// Остановлен (выключен пользователем или ещё не запускался).
-    Stopped,
-    /// Загружен и активирован.
-    Active,
-    /// Отказ загрузки/активации; сообщение для UI.
-    Failed { message: String },
-    /// Автоотключён после серии падений (карантин).
-    Quarantined,
-}
+// Типы контракта с фронтендом объявлены платформенно-нейтрально в `crate`: команда
+// `list_plugins` должна компилироваться и на не-Windows.
+pub use crate::{CommandInfo, PluginInfo, PluginStatus};

@@ -66,9 +66,15 @@ impl EventBus {
         );
     }
 
-    /// Публикует `command:invoked{command_id}`.
-    pub fn publish_command(&mut self, command_id: &str) {
-        self.push("command:invoked", json!({ "command_id": command_id }));
+    /// Публикует `command:invoked{command_id, doc_id}`.
+    ///
+    /// `doc_id` — текущий документ (может отсутствовать): у плагина нет собственного
+    /// доступа к «активному» документу вне события, поэтому команда несёт его с собой (§9).
+    pub fn publish_command(&mut self, command_id: &str, doc_id: Option<&str>) {
+        self.push(
+            "command:invoked",
+            json!({ "command_id": command_id, "doc_id": doc_id }),
+        );
     }
 
     fn push(&mut self, name: &str, payload: Value) {
@@ -124,7 +130,7 @@ mod tests {
         let mut bus = EventBus::new();
         bus.publish_opened("d1", Some("C:/a.md"));
         bus.publish_document_changed("d1", 1);
-        bus.publish_command("word-count.count");
+        bus.publish_command("word-count.count", Some("d1"));
         bus.publish_closed("d1");
 
         let events = bus.drain();
@@ -160,5 +166,24 @@ mod tests {
         bus.publish_opened("d1", Some("C:/a.md"));
         let events = bus.drain();
         assert_eq!(events[0].payload["path"], "C:/a.md");
+    }
+
+    #[test]
+    fn command_invoked_carries_doc_id() {
+        let mut bus = EventBus::new();
+        bus.publish_command("export-html.export", Some("doc-1"));
+        let events = bus.drain();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].name, "command:invoked");
+        assert_eq!(events[0].payload["command_id"], "export-html.export");
+        assert_eq!(events[0].payload["doc_id"], "doc-1");
+    }
+
+    #[test]
+    fn command_invoked_without_document_has_null_doc_id() {
+        let mut bus = EventBus::new();
+        bus.publish_command("word-count.count", None);
+        let events = bus.drain();
+        assert!(events[0].payload["doc_id"].is_null());
     }
 }

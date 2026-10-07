@@ -114,6 +114,17 @@ fn register_host(lua: &Lua, plugin_id: &str, api: Arc<dyn HostApi>) -> Result<()
         })?,
     )?;
 
+    // Экспорт HTML через нативный диалог хоста (Фаза 5): согласие даёт сам диалог
+    // сохранения, поэтому permission `filesystem:write` не требуется (§6.3/§8).
+    // Контракт `(ok, err)`: успех → true, отмена диалога → false, IO-ошибка → err.
+    let api_export = Arc::clone(&api);
+    host.set(
+        "export_html",
+        lua.create_function(move |lua, html: String| {
+            defuse(lua, api_export.call("export_html", json!({ "html": html })))
+        })?,
+    )?;
+
     let api_len = Arc::clone(&api);
     host.set(
         "get_document_len",
@@ -493,6 +504,7 @@ mod tests {
                 "apply_edit" => json!(true),
                 "get_setting" => json!(true),
                 "set_view_content" => json!(true),
+                "export_html" => json!(true),
                 _ => serde_json::Value::Null,
             })
         }
@@ -675,6 +687,30 @@ mod tests {
                 && a["view_id"] == "p:main"
                 && a["html"] == "<b>hi</b>"),
             "вызов не дошёл до хоста: {calls:?}"
+        );
+    }
+
+    #[test]
+    fn export_html_roundtrip() {
+        let (lua, host) = lua_with_host();
+        let (ok, err): (Value, Value) = lua
+            .load(
+                r#"
+                local ok, err = host.export_html("<p>x</p>")
+                return ok, err
+                "#,
+            )
+            .eval()
+            .unwrap();
+        assert_eq!(ok, Value::Boolean(true), "успех экспорта → true");
+        assert_eq!(err, Value::Nil);
+
+        let calls = host.calls.lock().unwrap();
+        assert!(
+            calls
+                .iter()
+                .any(|(m, a)| m == "export_html" && a["html"] == "<p>x</p>"),
+            "вызов export_html не дошёл до хоста: {calls:?}"
         );
     }
 

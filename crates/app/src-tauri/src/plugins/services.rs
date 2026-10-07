@@ -23,6 +23,13 @@ const MAX_RANGE_BYTES: usize = plugin_proto::frame::MAX_EVENT_FRAME_BYTES;
 /// Общая между `DocumentServices` (кладёт) и `PluginHost` (дренит в EventBus).
 pub type PendingChanged = Arc<Mutex<Vec<(String, u64)>>>;
 
+/// Экспорт HTML в файл (Фаза 5). `Ok(true)` — сохранено, `Ok(false)` — пользователь
+/// отменил нативный диалог, `Err` — IO-ошибка (вернётся плагину значением).
+pub type Exporter = Arc<dyn Fn(&str) -> Result<bool, String> + Send + Sync>;
+
+/// Канал уведомлений статусбара: `(plugin_id, text)`. Эмитит событие `plugin-message`.
+pub type StatusSink = Arc<dyn Fn(&str, &str) + Send + Sync>;
+
 /// Документные host-функции поверх общего [`DocumentStore`].
 ///
 /// Держит `Arc<Mutex<DocumentStore>>` (а не `&`): host-call обслуживается синхронно в потоке
@@ -41,6 +48,10 @@ pub struct DocumentServices {
     /// `pump` взяли бы тот же нереентрантный мьютекс (дедлок). Поэтому копим в очереди,
     /// а [`super::host::PluginHost::pump`] дренит её после отпускания manager.
     pending_changed: Option<PendingChanged>,
+    /// Экспорт HTML через нативный диалог хоста (Фаза 5). Без него `export_html` — ошибка.
+    exporter: Option<Exporter>,
+    /// Уведомление статусбара (Фаза 5). Без него `show_message` — no-op.
+    status_sink: Option<StatusSink>,
 }
 
 impl DocumentServices {
@@ -50,6 +61,8 @@ impl DocumentServices {
             views: None,
             notify: None,
             pending_changed: None,
+            exporter: None,
+            status_sink: None,
         }
     }
 
@@ -68,6 +81,18 @@ impl DocumentServices {
     /// Подключает очередь отложенных `document:changed` (плагинные `apply_edit`).
     pub fn with_pending_changed(mut self, pending: PendingChanged) -> Self {
         self.pending_changed = Some(pending);
+        self
+    }
+
+    /// Подключает экспорт HTML (нативный диалог сохранения хоста, Фаза 5).
+    pub fn with_exporter(mut self, exporter: Exporter) -> Self {
+        self.exporter = Some(exporter);
+        self
+    }
+
+    /// Подключает канал уведомлений статусбара (`plugin-message`, Фаза 5).
+    pub fn with_status_sink(mut self, sink: StatusSink) -> Self {
+        self.status_sink = Some(sink);
         self
     }
 
@@ -118,14 +143,56 @@ impl DocumentServices {
         }
         Ok(json!(true))
     }
+
+    /// `export_html`: HTML → нативный диалог сохранения (Фаза 5, §6.3).
+    ///
+    /// Не берёт блокировку стора: диалог может висеть до выбора пользователя, а
+    /// замороженный `DocumentStore` заблокировал бы редактор. Permission не требуется —
+    /// согласие даёт сам диалог (`filesystem:write` не нужен).
+    fn export_html(&self, args: &Value) -> Result<Value, PluginError> {
+        let html = args
+            .get("html")
+            .and_then(Value::as_str)
+            .ok_or_else(|| PluginError::new("bad_args", "export_html: нет строкового html"))?;
+        let exporter = self.exporter.as_ref().ok_or_else(|| {
+            PluginError::new("no_exporter", "экспорт недоступен в этом окружении")
+        })?;
+        match exporter(html) {
+            // Успех → true; отмена диалога → false (плагин различает исход).
+            Ok(saved) => Ok(json!(saved)),
+            Err(message) => Err(PluginError::new("export_failed", message)),
+        }
+    }
+
+    /// `show_message`: уведомление в статусбар через событие `plugin-message`.
+    ///
+    /// `_plugin_id` инжектится `Supervisor` — плагин не может подменить автора сообщения.
+    fn show_message(&self, args: &Value) -> Result<Value, PluginError> {
+        let text = args
+            .get("text")
+            .and_then(Value::as_str)
+            .ok_or_else(|| PluginError::new("bad_args", "show_message: нет строкового text"))?;
+        let plugin_id = args
+            .get("_plugin_id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| PluginError::new("bad_args", "show_message: нет _plugin_id"))?;
+        if let Some(sink) = &self.status_sink {
+            sink(plugin_id, text);
+        }
+        Ok(Value::Null)
+    }
 }
 
 impl HostServices for DocumentServices {
     fn handle(&self, method: &str, args: Value) -> Result<Value, PluginError> {
-        // View-путь не берёт блокировку стора: вызывается из pump под уже снятым
-        // сторовым guard'ом (§4.2/Фаза 4). Все прочие host-call'ы — документные.
-        if method == "set_view_content" {
-            return self.set_view_content(&args);
+        // View-путь и UI-пути не берут блокировку стора: вызываются из pump под уже
+        // снятым сторовым guard'ом (§4.2/Фаза 4). Экспорт открывает модальный диалог —
+        // держать стор замороженным нельзя (Фаза 5). Все прочие host-call'ы — документные.
+        match method {
+            "set_view_content" => return self.set_view_content(&args),
+            "export_html" => return self.export_html(&args),
+            "show_message" => return self.show_message(&args),
+            _ => {}
         }
 
         let mut store = self
@@ -201,8 +268,6 @@ impl HostServices for DocumentServices {
                 }
                 Ok(json!(true))
             }
-            // Уведомление в статусбар/меню — UI-часть в Фазе 5; здесь принимаем и игнорируем.
-            "show_message" => Ok(Value::Null),
             // Настройки плагина (§12) скоупируются по plugin_id; наполнение — Фаза 5.
             "get_setting" | "set_setting" => Ok(Value::Null),
             other => Err(PluginError::protocol(format!(

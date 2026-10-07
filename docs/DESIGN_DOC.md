@@ -331,7 +331,8 @@ host.on_event(view_id, event_name, handler) -- подписка на событ�
 **Хост:**
 ```lua
 host.log(level, message)         -- level: "debug"|"info"|"warn"|"error" -> stderr хоста
-host.show_message(text)          -- уведомление в статусбар
+host.show_message(text)          -- уведомление в статусбар (permission ui:statusbar)
+host.export_html(text)           -- (ok, err): нативный диалог сохранения; filesystem:write не нужен
 ```
 
 **Lua-нативные удобства** (регистрируются хостом, не требуют JSON-прослойки):
@@ -368,6 +369,10 @@ json.encode(value) / json.decode(s)
 ```
 
 ### 6.5. Пример плагина (эталон документации)
+
+Подписчик получает `(name, payload)`; `doc_id` (и `rev`) лежат в `payload`, а не
+передаются отдельным аргументом:
+
 ```lua
 -- word-count/main.lua
 local function count_words(text)
@@ -377,7 +382,8 @@ local function count_words(text)
 end
 
 function on_activate(ctx)
-  ctx.subscribe("document:changed", function(doc_id)
+  ctx.subscribe("document:changed", function(name, payload)
+    local doc_id = payload.doc_id
     local len = host.get_document_len(doc_id)
     local text = host.get_document_range(doc_id, 0, len)
     host.show_message("Слова: " .. count_words(text))
@@ -385,6 +391,24 @@ function on_activate(ctx)
 end
 
 function on_deactivate(ctx) end
+```
+
+Команды из `contributes.commands` приходят тем же каналом подписки. Событие
+`command:invoked` несёт `{command_id, doc_id}`: у плагина нет собственного
+«активного» документа, поэтому текущий `doc_id` передаётся вместе с командой.
+
+```lua
+-- export-html/main.lua
+function on_activate(ctx)
+  ctx.subscribe("command:invoked", function(name, payload)
+    if payload.command_id == "export-html.export" then
+      local doc_id = payload.doc_id
+      local len = host.get_document_len(doc_id)
+      local text = host.get_document_range(doc_id, 0, len)
+      host.export_html(md.to_html(text))
+    end
+  end)
+end
 ```
 
 ### 6.6. Жизненный цикл
@@ -447,7 +471,7 @@ scan(plugins_dir) -> validate(manifest) -> load(src) -> on_activate(ctx)
 | `view:scroll` | `view_id`, `top` |
 | `view:focus` | `view_id` |
 | `pane:resized` | `pane_id`, `w`, `h` |
-| `command:invoked` | `command_id` |
+| `command:invoked` | `command_id`, `doc_id` |
 
 ### 9.2. Модель доставки: notify-only + pull
 Событие **не несёт содержимое документа**. Оно несёт `doc_id` и `rev`. Плагин, если ему нужен текст, вызывает `get_document_range`/`get_document_text`. Причины:

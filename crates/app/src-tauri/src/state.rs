@@ -219,6 +219,14 @@ impl DocumentStore {
         Some(self.docs.get_mut(id)?.render(mapped))
     }
 
+    /// id последнего открытого/созданного документа (UI H1 держит один активный).
+    ///
+    /// Плагины не имеют собственного «активного» документа: команда `command:invoked`
+    /// несёт его с собой (Фаза 5). `None`, если документов нет.
+    pub fn last_id(&self) -> Option<DocumentId> {
+        self.order.last().cloned()
+    }
+
     /// Закрывает документ. Возвращает `false`, если такого id нет.
     pub fn close(&mut self, id: &DocumentId) -> bool {
         if self.docs.remove(id).is_some() {
@@ -332,6 +340,20 @@ mod tests {
 
         let back = store.render(&snap.id, false).unwrap();
         assert!(back.changed, "возврат к plain — снова другой HTML");
+    }
+
+    #[test]
+    fn last_id_tracks_most_recent_open() {
+        let mut store = DocumentStore::default();
+        assert!(store.last_id().is_none(), "пустой стор — нет активного");
+
+        let first = store.create("a".into()).id;
+        let second = store.create("b".into()).id;
+        assert_eq!(store.last_id(), Some(second.clone()), "последний созданный");
+
+        // Закрытие последнего возвращает предыдущий открытый.
+        store.close(&second);
+        assert_eq!(store.last_id(), Some(first));
     }
 
     #[test]

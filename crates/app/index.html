@@ -145,7 +145,7 @@
               <polyline points="14 2 14 8 20 8" />
             </svg>
           </button>
-          <button class="rail-btn" id="rail-plugins" title="Плагины — скоро" disabled>
+          <button class="rail-btn" id="rail-plugins" title="Плагины">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z" />
               <line x1="16" y1="8" x2="2" y2="22" />
@@ -171,7 +171,8 @@
           <div class="side-panel" id="panel-plugins" hidden>
             <div class="side-head"><span class="side-title">Плагины</span></div>
             <div class="pl-panel">
-              <div class="side-empty">скоро</div>
+              <!-- контейнер менеджера плагинов (H2, Фаза 5); заполняет pluginManager.ts -->
+              <div id="plugin-manager"></div>
             </div>
           </div>
         </aside>

@@ -9,16 +9,18 @@
 //! блокировку `DocumentStore` до `pump` — host-call `set_view_content`/range идёт в
 //! тот же стор. Здесь, в `pump`, `DocumentStore` не берётся вообще.
 
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use plugin_proto::envelope::PluginError;
 use serde_json::{json, Value};
 
-use crate::PluginViewInfo;
+use crate::{PluginInfo, PluginViewInfo};
 
 use super::bus::EventBus;
 use super::manager::PluginManager;
 use super::services::PendingChanged;
+use super::settings::SettingsStore;
 use super::views::PluginViews;
 use super::HostServices;
 
@@ -44,6 +46,10 @@ pub struct PluginHost {
     #[allow(dead_code)]
     services: Arc<dyn HostServices>,
     notify: Arc<dyn Fn() + Send + Sync>,
+    /// Настройки приложения (вкл/выкл плагинов, §12) и путь `config.json` для записи.
+    /// Вкл/выкл из менеджера обязан переживать рестарт, поэтому сохраняется на диск.
+    settings: Mutex<SettingsStore>,
+    config_path: Option<PathBuf>,
 }
 
 /// Максимум раундов `pump`: обработчик события может сам править документ (`apply_edit`)
@@ -72,6 +78,8 @@ impl PluginHost {
             pending_changed: Arc::new(Mutex::new(Vec::new())),
             services: Arc::new(NoopServices),
             notify: Arc::new(|| {}),
+            settings: Mutex::new(SettingsStore::default()),
+            config_path: None,
         }
     }
 
@@ -89,12 +97,27 @@ impl PluginHost {
             pending_changed,
             services,
             notify,
+            settings: Mutex::new(SettingsStore::default()),
+            config_path: None,
         }
+    }
+
+    /// Подключает `SettingsStore` и путь `config.json`: вкл/выкл плагинов из менеджера
+    /// сохраняется, чтобы переживать рестарт (§12). Без пути — только in-memory.
+    pub fn with_settings(mut self, settings: SettingsStore, config_path: Option<PathBuf>) -> Self {
+        self.settings = Mutex::new(settings);
+        self.config_path = config_path;
+        self
     }
 
     /// `plugin_views`: снимок реестра представлений для фронтенда.
     pub fn plugin_views(&self) -> Vec<PluginViewInfo> {
         lock(&self.views).snapshot()
+    }
+
+    /// `list_plugins`: снимок реестра плагинов для менеджера UI (Фаза 5).
+    pub fn list_plugins(&self) -> Vec<PluginInfo> {
+        lock(&self.manager).list_plugins()
     }
 
     /// `plugin_view_action`: обратная маршрутизация из тир-1 view (§9.4).
@@ -116,6 +139,15 @@ impl PluginHost {
                 PluginError::new("bad_view_id", format!("view_id без plugin_id: {view_id}"))
             })?;
 
+        // `view_id` обязан быть зарегистрированным тир-1 представлением (§9.4): не даём
+        // дёрнуть `on_action` с произвольным/чужим id (реестр — источник истины).
+        if !lock(&self.views).contains(view_id) {
+            return Err(PluginError::new(
+                "unknown_view",
+                format!("представление не зарегистрировано: {view_id}"),
+            ));
+        }
+
         let result = {
             let mut manager = lock(&self.manager);
             let runtime = manager.get_mut(plugin_id).ok_or_else(|| {
@@ -130,8 +162,13 @@ impl PluginHost {
                 }),
             )
         };
+        // Отказ invocation увёл статус в failed/quarantined — сообщаем фронтенду.
+        let failed = result.is_err();
         // `on_action` мог править документ (`apply_edit`) — дреним manager до pump.
         self.pump();
+        if failed {
+            (self.notify)();
+        }
         result
     }
 
@@ -150,10 +187,17 @@ impl PluginHost {
         lock(&self.bus).publish_closed(doc_id);
     }
 
-    /// Публикует `command:invoked` (задел Фазы 5: команды менеджера/тулбара).
-    #[allow(dead_code)]
-    pub fn publish_command(&self, command_id: &str) {
-        lock(&self.bus).publish_command(command_id);
+    /// Публикует `command:invoked{command_id, doc_id}` (команды менеджера/тулбара, Фаза 5).
+    pub fn publish_command(&self, command_id: &str, doc_id: Option<&str>) {
+        lock(&self.bus).publish_command(command_id, doc_id);
+    }
+
+    /// `run_plugin_command`: публикует команду в шину и доставляет плагинам.
+    ///
+    /// `doc_id` — текущий документ (плагин не имеет собственного «активного» документа).
+    pub fn run_plugin_command(&self, command_id: &str, doc_id: Option<&str>) {
+        self.publish_command(command_id, doc_id);
+        self.pump();
     }
 
     /// Доставляет накопленные события всем активным плагинам.
@@ -166,6 +210,9 @@ impl PluginHost {
     /// вызвать `apply_edit`, породив новый `document:changed`; такие события лежат в
     /// [`Self::pending_changed`] и доставляются следующим раундом. Число раундов ограничено.
     pub fn pump(&self) {
+        // Отказ доставки уводит статус плагина в failed/quarantined — менеджер UI
+        // должен узнать об этом сразу, а не после следующего действия пользователя.
+        let mut status_changed = false;
         for _ in 0..MAX_PUMP_ROUNDS {
             // Переносим отложенные `document:changed` (от плагинных apply_edit) в шину.
             {
@@ -189,9 +236,13 @@ impl PluginHost {
                             "плагин {}: событие {} не доставлено: {}",
                             runtime.id, event.name, error.message
                         );
+                        status_changed = true;
                     }
                 }
             }
+        }
+        if status_changed {
+            (self.notify)();
         }
     }
 
@@ -214,41 +265,61 @@ impl PluginHost {
         (self.notify)();
     }
 
-    /// Вкл/выкл плагина (задел IPC-команд менеджера, Фаза 5).
+    /// `set_plugin_enabled`: вкл/выкл плагина (IPC-команда менеджера, Фаза 5).
     ///
-    /// Выключение убирает представления плагина из реестра (иначе остаются «зомби»-вкладки),
-    /// включение перерегистрирует их из манифеста.
-    #[allow(dead_code)]
+    /// **Порядок критичен:** при включении contributed view регистрируются в реестре
+    /// **до** старта child — иначе `host.set_view_content` из `on_activate` вернул бы
+    /// `unknown_view`. При выключении — наоборот: стоп, затем снятие view (нет «зомби»).
     pub fn set_enabled(&self, id: &str, enabled: bool) -> Result<(), PluginError> {
-        let contributes = {
-            let mut manager = lock(&self.manager);
-            let contributes = manager.get(id).map(|runtime| runtime.views.clone());
-            let result = manager.set_plugin_enabled(id, enabled);
-            (contributes, result)
+        let views_contrib = {
+            let manager = lock(&self.manager);
+            manager
+                .get(id)
+                .map(|runtime| runtime.views.clone())
+                .ok_or_else(|| PluginError::new("unknown_plugin", format!("нет плагина {id}")))?
         };
-        let (contributes, result) = contributes;
+
+        if enabled {
+            let mut views = lock(&self.views);
+            views.remove_plugin(id);
+            views.register(id, &views_contrib);
+        }
+
+        let result = lock(&self.manager).set_plugin_enabled(id, enabled);
+
+        // Неудачный старт или выключение — view плагина не должны висеть в реестре.
+        if !enabled || result.is_err() {
+            lock(&self.views).remove_plugin(id);
+        }
+
+        // Вкл/выкл должен переживать рестарт: фиксируем в config.json (§12).
         if result.is_ok() {
-            let contributes = contributes.unwrap_or_default();
-            {
-                let mut views = lock(&self.views);
-                views.remove_plugin(id);
-                if enabled {
-                    views.register(id, &contributes);
+            if let Some(path) = &self.config_path {
+                let mut settings = lock(&self.settings);
+                settings.set_plugin_enabled(id, enabled);
+                if let Err(e) = settings.save(path) {
+                    eprintln!("не сохранить config.json: {e}");
                 }
             }
-            (self.notify)();
         }
+
+        // `on_activate` мог править документ; `notify` — статус/состав изменились.
+        self.pump();
+        (self.notify)();
         result
     }
 
-    /// Перезагрузка плагина без рестарта GUI (задел Фазы 5).
-    #[allow(dead_code)]
+    /// `reload_plugin`: перезапуск без рестарта GUI (Фаза 5).
+    ///
+    /// Неудачная перезагрузка (синтаксис и т.п.) снимает view плагина: иначе остаётся
+    /// «зомби»-вкладка со старым HTML при статусе «ошибка».
     pub fn reload(&self, id: &str) -> Result<(), PluginError> {
         let result = lock(&self.manager).reload_plugin(id);
-        if result.is_ok() {
-            self.pump();
-            (self.notify)();
+        if result.is_err() {
+            lock(&self.views).remove_plugin(id);
         }
+        self.pump();
+        (self.notify)();
         result
     }
 }

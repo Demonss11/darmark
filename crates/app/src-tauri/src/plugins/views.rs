@@ -79,6 +79,11 @@ impl PluginViews {
         self.views.values().cloned().collect()
     }
 
+    /// Зарегистрировано ли представление с таким `view_id` (валидация маршрутизации).
+    pub fn contains(&self, view_id: &str) -> bool {
+        self.views.contains_key(view_id)
+    }
+
     /// Убирает все представления плагина (выключение/перезагрузка/удаление).
     pub fn remove_plugin(&mut self, plugin_id: &str) {
         self.views.retain(|_, view| view.plugin_id != plugin_id);
@@ -111,6 +116,8 @@ mod tests {
         assert_eq!(snapshot[0].kind, "stats");
         assert_eq!(snapshot[0].title, "Статистика");
         assert_eq!(snapshot[0].html, "");
+        assert!(views.contains("word-count:stats"));
+        assert!(!views.contains("nope:view"));
     }
 
     #[test]

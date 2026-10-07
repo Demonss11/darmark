@@ -1,0 +1,13 @@
+{
+  "id": "format-selection",
+  "name": "Format Selection",
+  "version": "1.0.0",
+  "api_version": 1,
+  "entry": "main.lua",
+  "permissions": ["document:read", "document:write"],
+  "contributes": {
+    "commands": [
+      { "id": "format-selection.bold", "title": "Жирный (весь документ)" }
+    ]
+  }
+}

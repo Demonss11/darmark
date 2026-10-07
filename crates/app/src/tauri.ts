@@ -86,6 +86,51 @@ export function pluginViewAction(
   return invoke<void>("plugin_view_action", { viewId, action, payload: payload ?? null });
 }
 
+/** Статус плагина — tagged union из Rust (§4.7 TZ-H2). */
+export type PluginStatus =
+  | { state: "stopped" }
+  | { state: "active" }
+  | { state: "quarantined" }
+  | { state: "failed"; message: string };
+
+/** Команда, объявленная плагином (`contributes.commands`). */
+export interface PluginCommandInfo {
+  id: string;
+  title: string;
+  keybinding: string | null;
+}
+
+/** Проекция плагина для менеджера (IPC-команда `list_plugins`, Фаза 5). */
+export interface PluginInfo {
+  id: string;
+  status: PluginStatus;
+  permissions: string[];
+  enabled: boolean;
+  commands: PluginCommandInfo[];
+  notices: string[];
+}
+
+/** Список плагинов со статусами/разрешениями (пусто, если плагинов нет). */
+export function listPlugins(): Promise<PluginInfo[]> {
+  return invoke<PluginInfo[]>("list_plugins");
+}
+
+/** Включает/выключает плагин; включение снимает карантин (§4.7). */
+export function setPluginEnabled(id: string, enabled: boolean): Promise<void> {
+  return invoke<void>("set_plugin_enabled", { id, enabled });
+}
+
+/** Перезагружает плагин с диска без рестарта приложения (§4.7). */
+export function reloadPlugin(id: string): Promise<void> {
+  return invoke<void>("reload_plugin", { id });
+}
+
+/** Исполняет команду плагина (`command:invoked` в Lua-хендлер). */
+export function runPluginCommand(commandId: string): Promise<void> {
+  // Tauri сопоставляет camelCase-ключ `commandId` с Rust-параметром `command_id`.
+  return invoke<void>("run_plugin_command", { commandId });
+}
+
 /** Достаёт человекочитаемое сообщение из ошибки IPC `{ code, message }` или `Error`. */
 export function errorMessage(e: unknown): string {
   if (e && typeof e === "object" && "message" in e) {

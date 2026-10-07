@@ -8,6 +8,7 @@
 // Панели — дерево layout (MAX_PANES = 2). Ядро Markdown — `md-core` (Rust).
 
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { listen } from "@tauri-apps/api/event";
 import { createDocStore } from "./docStore";
 import { createRenderIndex } from "./renderIndex";
 import { createViewRegistry, type ViewContext } from "./viewRegistry";
@@ -19,6 +20,7 @@ import { createPaneHost } from "./paneHost";
 import { applyLayout, LayoutError, type LayoutNode, type Pane } from "./layout";
 import { createStatusBar } from "./statusBar";
 import { createPluginViews } from "./pluginViews";
+import { createPluginManager } from "./pluginManager";
 import { createFileActions } from "./fileActions";
 import { createShell } from "./shell";
 import { createSidebar } from "./sidebar";
@@ -115,6 +117,19 @@ const pluginViews = createPluginViews({
   previewEl: preview,
   status: (msg) => status.flash(msg),
 });
+
+// Менеджер плагинов (Фаза 5): список/статусы/вкл-выкл/перезагрузка в панели
+//    `#panel-plugins`. Данные — из Rust-хоста (`list_plugins`), изменения приходят
+//    событием `plugins-changed`. Ошибка IPC глушится в контроллере.
+const pluginManager = createPluginManager({
+  root: document.getElementById("plugin-manager") as HTMLElement,
+  status: (msg) => status.flash(msg),
+});
+
+// Сообщения плагинов (`host.show_message`) — в статусбар с указанием источника.
+void listen<{ plugin_id: string; text: string }>("plugin-message", (event) => {
+  status.flash(`${event.payload.plugin_id}: ${event.payload.text}`);
+}).catch(() => null);
 
 // 4. Панели: фиксированные две (редактор + предпросмотр), MAX_PANES = 2.
 const EDITOR_PANE = asPaneId("pane-editor");
@@ -216,6 +231,8 @@ async function bootstrap(): Promise<void> {
   // Плагинные view — после документа и тумблеров, чтобы их вкладки не влияли
   // на стартовое состояние предпросмотра (ошибка IPC глушится в контроллере).
   await pluginViews.refresh();
+  // Менеджер плагинов — после view: панель может быть скрыта, DOM всё равно готов.
+  await pluginManager.refresh();
   editorView.focus();
 }
 

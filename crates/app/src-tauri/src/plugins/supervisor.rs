@@ -232,7 +232,7 @@ impl Supervisor {
     ///
     /// Два таймера: прогресс сбрасывается каждым кадром child'а, дедлайн — нет (ловит `chatty`).
     fn await_result(&mut self, id: u32) -> Result<Value, PluginError> {
-        let started = Instant::now();
+        let mut started = Instant::now();
         let mut last_progress = started;
 
         loop {
@@ -269,8 +269,15 @@ impl Supervisor {
                     method,
                     args,
                 })) => {
-                    last_progress = Instant::now();
+                    let call_started = Instant::now();
                     let result = self.serve_host_call(&method, &args);
+                    // Обслуживание host-call'а — время хоста, а не исполнения плагина:
+                    // `export_html` открывает нативный диалог и может блокироваться минутами.
+                    // Исключаем это время из абсолютного дедлайна, иначе после закрытия
+                    // диалога child был бы снят как «chatty» (F35 применим к циклу плагина,
+                    // а не к диалогу пользователя). Прогресс-таймер сбрасываем явно.
+                    started += call_started.elapsed();
+                    last_progress = Instant::now();
                     self.write_to_child(&ToChild::Reply { id: hid, result })?;
                 }
                 Ok(Ok(ToHost::Event { kind, payload })) => {
@@ -403,6 +410,9 @@ pub fn required_permission(method: &str) -> Option<&'static str> {
         "apply_edit" => Some("document:write"),
         "set_view_content" => Some("view:modify"),
         "show_message" => Some("ui:statusbar"),
+        // Экспорт HTML идёт через нативный диалог хоста: согласие даёт сам диалог,
+        // permission (в т.ч. `filesystem:write`) не требуется (§5 Фаза 5 / §6.3).
+        "export_html" => None,
         _ => None,
     }
 }
@@ -464,6 +474,24 @@ mod tests {
         assert_eq!(err.code, "permission_denied");
         assert_eq!(err.permission.as_deref(), Some("view:modify"));
         assert!(check_permission(&["view:modify".to_string()], "set_view_content").is_ok());
+    }
+
+    #[test]
+    fn export_html_requires_no_permission() {
+        assert_eq!(required_permission("export_html"), None);
+        assert!(
+            check_permission(&[], "export_html").is_ok(),
+            "нативный диалог — согласие пользователя, permission не нужен"
+        );
+    }
+
+    #[test]
+    fn show_message_requires_statusbar() {
+        assert_eq!(required_permission("show_message"), Some("ui:statusbar"));
+        let err = check_permission(&[], "show_message").unwrap_err();
+        assert_eq!(err.code, "permission_denied");
+        assert_eq!(err.permission.as_deref(), Some("ui:statusbar"));
+        assert!(check_permission(&["ui:statusbar".to_string()], "show_message").is_ok());
     }
 
     #[test]

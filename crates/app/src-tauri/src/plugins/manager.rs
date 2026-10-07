@@ -10,15 +10,15 @@ use std::time::Duration;
 
 use plugin_proto::envelope::PluginError;
 use plugin_proto::limits::{DEADLINE_MS, PROGRESS_TIMEOUT_MS};
-use plugin_proto::manifest::ViewContrib;
+use plugin_proto::manifest::{CommandContrib, ViewContrib};
 use plugin_proto::quarantine::Quarantine;
-use serde::Serialize;
 use serde_json::Value;
 
 use super::settings::SettingsStore;
 use super::supervisor::{Supervisor, SupervisorParams};
 use super::views::PluginViews;
 use super::{HostServices, PluginStatus};
+use crate::{CommandInfo, PluginInfo};
 
 /// Порог карантина: 3 неудачи подряд (ADR-0021 §3).
 pub const QUARANTINE_THRESHOLD: u32 = 3;
@@ -32,6 +32,10 @@ pub struct PluginRuntime {
     /// здесь — для менеджера UI Фазы 5: перерегистрация при перезагрузке).
     #[allow(dead_code)]
     pub views: Vec<ViewContrib>,
+    /// Команды из манифеста (`contributes.commands`): менеджер UI показывает их кнопками,
+    /// `run_plugin_command` публикует `command:invoked` с этим `command_id`.
+    #[allow(dead_code)]
+    pub commands: Vec<CommandContrib>,
     quarantine: Quarantine,
     exe: PathBuf,
     /// Кэш исходника; используется, если [`PluginRuntime::entry_path`] не задан (тесты).
@@ -54,12 +58,14 @@ impl PluginRuntime {
         permissions: Vec<String>,
         services: Arc<dyn HostServices>,
         views: Vec<ViewContrib>,
+        commands: Vec<CommandContrib>,
     ) -> Self {
         Self {
             id: id.into(),
             permissions,
             status: PluginStatus::Stopped,
             views,
+            commands,
             quarantine: Quarantine::new(QUARANTINE_THRESHOLD),
             exe: exe.into(),
             source: source.into(),
@@ -225,16 +231,7 @@ impl PluginRuntime {
     }
 }
 
-/// Проекция плагина для UI менеджера.
-#[derive(Clone, Debug, Serialize)]
-pub struct PluginInfo {
-    pub id: String,
-    pub status: PluginStatus,
-    pub permissions: Vec<String>,
-    pub enabled: bool,
-}
-
-/// Набор плагинов. Фаза 5 обернёт его Tauri-командами.
+/// Набор плагинов. Фаза 5 оборачивает его Tauri-командами.
 ///
 /// **Инвариант блокировок:** host-call'ы берут `Mutex<DocumentStore>` внутри `invoke`;
 /// `std::sync::Mutex` не реентрантный, поэтому вызывать операции менеджера **нельзя** под уже
@@ -260,6 +257,20 @@ impl PluginManager {
                 status: p.status.clone(),
                 permissions: p.permissions.clone(),
                 enabled: p.is_enabled(),
+                commands: p
+                    .commands
+                    .iter()
+                    .map(|c| CommandInfo {
+                        id: c.id.clone(),
+                        title: c.title.clone(),
+                        keybinding: c.keybinding.clone(),
+                    })
+                    .collect(),
+                // F38: единый источник формулировок границы изоляции/доступа.
+                notices: plugin_proto::notices::permission_notices(&p.permissions)
+                    .into_iter()
+                    .map(str::to_string)
+                    .collect(),
             })
             .collect();
         infos.sort_by(|a, b| a.id.cmp(&b.id));
@@ -344,10 +355,14 @@ pub fn load_plugins(
         }
         let enabled = settings.plugin_enabled(&id);
         let contributes = discovered.manifest.contributes.views.clone();
-        // Тир-1 view регистрируются в общем реестре ещё до старта child: фронтенд
-        // узнаёт о представлениях сразу после `plugin-views-changed`.
-        if let Ok(mut views) = views.lock() {
-            views.register(&id, &contributes);
+        let commands = discovered.manifest.contributes.commands.clone();
+        // Тир-1 view регистрируются в общем реестре только для включённых плагинов:
+        // у выключенного (config.json) не должно быть пустой вкладки. `runtime.views`
+        // хранит contributes, чтобы `set_enabled(true)` зарегистрировал их при включении.
+        if enabled {
+            if let Ok(mut views) = views.lock() {
+                views.register(&id, &contributes);
+            }
         }
         let mut runtime = PluginRuntime::new(
             id,
@@ -356,6 +371,7 @@ pub fn load_plugins(
             discovered.manifest.permissions.clone(),
             Arc::clone(&services),
             contributes,
+            commands,
         )
         .with_entry_path(discovered.entry_path);
         runtime.set_enabled(enabled);
