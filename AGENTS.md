@@ -30,8 +30,11 @@ Tauri 2 + vanilla TypeScript/Vite на фронте + чистое Rust-ядро
   единственная проверка — лимит 10 МБ. Подсистема плагинов (H2, `src/plugins/`, только Windows):
   `supervisor.rs` — spawn child `darmark-plugin-host.exe`, Job Object, watchdog (прогресс+дедлайн),
   проверка permissions и обслуживание host-call'ов; `services.rs` — range/delta к `DocumentStore`;
-  `manager.rs` — жизненный цикл, карантин N=3, `list/set_enabled/reload`; `PluginManager`
-  линкует `plugin-proto`, но **не** `plugin-host`/`mlua` (D6/ADR-0021).
+  `scan.rs` — `scan(plugins/)` + валидация манифеста; `settings.rs` — `SettingsStore`
+  (`%APPDATA%/darmark/config.json`: вкл/выкл, согласие на permissions, recent files);
+  `manager.rs` — жизненный цикл, карантин N=3, `load_plugins` (scan+settings→реестр),
+  `list/set_enabled/reload`. `PluginManager` линкует `plugin-proto`, но **не** `plugin-host`/`mlua`
+  (D6/ADR-0021).
 - Задачи только по фронтенду не должны трогать `md-core` и `src-tauri`
 - `crates/plugin-proto/` — продуктовое ядро плагинной системы (H2, TZ-H2): кадры транспорта
   (`frame.rs`), serde-конверт хост↔child (`envelope.rs`), Job Object (`job.rs`), карантин

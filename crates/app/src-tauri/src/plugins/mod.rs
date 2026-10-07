@@ -1,11 +1,14 @@
-//! Плагинная подсистема GUI-хоста (Фаза 2 TZ-H2).
+//! Плагинная подсистема GUI-хоста (TZ-H2).
 //!
 //! GUI-хост (`darmark`) **не** линкует `mlua` (D6/ADR-0021): Lua живёт в отдельном процессе
 //! `darmark-plugin-host.exe`, который [`supervisor::Supervisor`] спавнит как внешний exe.
-//! Здесь же — проверка permissions (до вызова host-функции) и карантин per-plugin.
+//! Здесь же — сканирование/настройки/манифесты, проверка permissions (до вызова host-функции)
+//! и карантин per-plugin.
 
 pub mod manager;
+pub mod scan;
 pub mod services;
+pub mod settings;
 pub mod supervisor;
 
 #[cfg(test)]

@@ -4,7 +4,7 @@
 //! как контракты H2 фиксируются здесь, IPC-обёртки появятся с UI менеджера (Фаза 5).
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -14,6 +14,7 @@ use plugin_proto::quarantine::Quarantine;
 use serde::Serialize;
 use serde_json::Value;
 
+use super::settings::SettingsStore;
 use super::supervisor::{Supervisor, SupervisorParams};
 use super::{HostServices, PluginStatus};
 
@@ -27,7 +28,10 @@ pub struct PluginRuntime {
     pub status: PluginStatus,
     quarantine: Quarantine,
     exe: PathBuf,
+    /// Кэш исходника; используется, если [`PluginRuntime::entry_path`] не задан (тесты).
     source: String,
+    /// Путь к `.lua` на диске: `reload`/`start` перечитывают его, чтобы подхватить правки (§4.7).
+    entry_path: Option<PathBuf>,
     services: Arc<dyn HostServices>,
     supervisor: Option<Supervisor>,
     enabled: bool,
@@ -51,6 +55,7 @@ impl PluginRuntime {
             quarantine: Quarantine::new(QUARANTINE_THRESHOLD),
             exe: exe.into(),
             source: source.into(),
+            entry_path: None,
             services,
             supervisor: None,
             enabled: true,
@@ -64,6 +69,12 @@ impl PluginRuntime {
     pub fn with_watchdog(mut self, progress: Duration, deadline: Duration) -> Self {
         self.progress = progress;
         self.deadline = deadline;
+        self
+    }
+
+    /// Задаёт путь `.lua` на диске: с ним `start`/`reload` читают свежий исходник (§4.7).
+    pub fn with_entry_path(mut self, path: impl Into<PathBuf>) -> Self {
+        self.entry_path = Some(path.into());
         self
     }
 
@@ -89,17 +100,38 @@ impl PluginRuntime {
             ));
         }
 
+        // Свежий исходник с диска — иначе «Перезагрузить» не подхватит правки `.lua` (§2.1 ревью).
+        let source = match &self.entry_path {
+            Some(path) => match super::scan::read_source(path) {
+                Ok(source) => source,
+                Err(message) => {
+                    let error = PluginError::new("load_error", message);
+                    self.quarantine.record_failure();
+                    self.status = if self.quarantine.is_disabled() {
+                        PluginStatus::Quarantined
+                    } else {
+                        PluginStatus::Failed {
+                            message: error.message.clone(),
+                        }
+                    };
+                    return Err(error);
+                }
+            },
+            None => self.source.clone(),
+        };
+
         let mut params = SupervisorParams::new(&self.exe, &self.id, Arc::clone(&self.services))
             .with_permissions(self.permissions.clone())
             .with_mem_bytes(self.mem_bytes);
         params.progress = self.progress;
         params.deadline = self.deadline;
-        let started = Supervisor::start(params, &self.source)
+        let started = Supervisor::start(params, &source)
             .and_then(|mut supervisor| supervisor.activate().map(|_| supervisor));
 
         match started {
             Ok(supervisor) => {
                 self.supervisor = Some(supervisor);
+                self.source = source;
                 self.quarantine.record_success();
                 self.status = PluginStatus::Active;
                 Ok(())
@@ -246,4 +278,51 @@ impl PluginManager {
     pub fn get_mut(&mut self, id: &str) -> Option<&mut PluginRuntime> {
         self.plugins.get_mut(id)
     }
+}
+
+/// Результат загрузки реестра: менеджер + ошибки сканирования (битые манифесты и т.п.).
+pub struct LoadResult {
+    pub manager: PluginManager,
+    pub errors: Vec<super::scan::ScanError>,
+}
+
+/// Сканирует каталог и строит реестр плагинов (**без запуска** процессов).
+///
+/// Permissions берутся из манифеста — их сверяет диспатчер `Supervisor`. Вкл/выкл — из
+/// настроек. Согласие на permissions и автозапуск enabled-плагинов — задача менеджера UI
+/// (Фаза 5).
+pub fn load_plugins(
+    plugins_dir: &Path,
+    exe: &Path,
+    services: Arc<dyn HostServices>,
+    settings: &SettingsStore,
+) -> LoadResult {
+    let report = super::scan::scan_plugins(plugins_dir);
+    let mut manager = PluginManager::default();
+    let mut errors = report.errors;
+    let mut seen = std::collections::HashSet::new();
+    for discovered in report.plugins {
+        let id = discovered.manifest.id.clone();
+        // Дубликаты id не перезаписываем: иначе один плагин бесследно исчезнет, а настройки
+        // по id будут делиться между двумя (§3.3 ревью).
+        if !seen.insert(id.clone()) {
+            errors.push(super::scan::ScanError {
+                dir: discovered.dir,
+                message: format!("дублирующийся id плагина: {id}"),
+            });
+            continue;
+        }
+        let enabled = settings.plugin_enabled(&id);
+        let mut runtime = PluginRuntime::new(
+            id,
+            exe,
+            discovered.source,
+            discovered.manifest.permissions.clone(),
+            Arc::clone(&services),
+        )
+        .with_entry_path(discovered.entry_path);
+        runtime.set_enabled(enabled);
+        manager.register(runtime);
+    }
+    LoadResult { manager, errors }
 }

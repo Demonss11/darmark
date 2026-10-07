@@ -94,6 +94,8 @@ pub enum ManifestError {
     InvalidId(String),
     /// `api_version` новее, чем поддерживает хост.
     ApiVersionTooNew { found: u32, host: u32 },
+    /// `api_version == 0` — бессмысленное значение (§7.2: версия начинается с 1).
+    ApiVersionZero,
     /// `entry` не является безопасным относительным `.lua`-файлом.
     InvalidEntry(String),
     /// Разрешение отсутствует в наборе §8.
@@ -118,6 +120,7 @@ impl std::fmt::Display for ManifestError {
             Self::ApiVersionTooNew { found, host } => {
                 write!(f, "api_version {found} новее поддерживаемого хостом {host}")
             }
+            Self::ApiVersionZero => write!(f, "api_version должен быть ≥ 1"),
             Self::InvalidEntry(entry) => {
                 write!(
                     f,
@@ -163,6 +166,9 @@ impl Manifest {
         }
         if self.version.trim().is_empty() {
             return Err(ManifestError::EmptyField("version"));
+        }
+        if self.api_version == 0 {
+            return Err(ManifestError::ApiVersionZero);
         }
         if self.api_version > HOST_API_VERSION {
             return Err(ManifestError::ApiVersionTooNew {
@@ -249,7 +255,6 @@ fn is_safe_entry(entry: &str) -> bool {
         && entry.ends_with(".lua")
         && !entry.contains('/')
         && !entry.contains('\\')
-        && entry != ".."
         && !entry.contains("..")
         && !entry.contains(':')
 }
@@ -300,6 +305,12 @@ mod tests {
     fn rejects_api_version_too_new() {
         let err = Manifest::from_json(&minimal(json!({"api_version": 2}))).unwrap_err();
         assert_eq!(err, ManifestError::ApiVersionTooNew { found: 2, host: 1 });
+    }
+
+    #[test]
+    fn rejects_api_version_zero() {
+        let err = Manifest::from_json(&minimal(json!({"api_version": 0}))).unwrap_err();
+        assert_eq!(err, ManifestError::ApiVersionZero);
     }
 
     #[test]

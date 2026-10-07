@@ -12,18 +12,41 @@ use serde_json::json;
 
 use crate::state::{DocumentId, DocumentStore};
 
-use super::manager::{PluginManager, PluginRuntime};
+use super::manager::{load_plugins, PluginManager, PluginRuntime};
+use super::scan::scan_plugins;
 use super::services::DocumentServices;
+use super::settings::SettingsStore;
 use super::supervisor::{Supervisor, SupervisorParams};
 
 /// Процессные тесты конкурируют за CPU (chatty/hang крутят цикл) и искажают замеры watchdog,
-/// поэтому выполняем их строго по одному.
+/// поэтому выполняем их строго по одному. Заодно глушим WER-диалоги Windows: иначе `abort`
+/// child'а может висеть до ручного закрытия и «крах» превратится в `timeout`.
 fn serial() -> std::sync::MutexGuard<'static, ()> {
+    suppress_windows_error_dialogs();
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
     LOCK.get_or_init(|| Mutex::new(()))
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
+
+#[cfg(windows)]
+fn suppress_windows_error_dialogs() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        extern "system" {
+            fn SetErrorMode(mode: u32) -> u32;
+        }
+        // SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX — не показывать WER-диалог о
+        // падении потомков (режим наследуется child-процессами).
+        // SAFETY: SetErrorMode не принимает указателей и не может привести к UB.
+        unsafe {
+            SetErrorMode(0x0001 | 0x0002);
+        }
+    });
+}
+
+#[cfg(not(windows))]
+fn suppress_windows_error_dialogs() {}
 
 fn fixture(name: &str) -> String {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -303,4 +326,231 @@ fn manager_lists_and_reloads_plugin() {
         manager.get("edit").unwrap().status,
         super::PluginStatus::Active
     ));
+}
+
+// ─── Фаза 3: манифест, сканирование, настройки ────────────────────────
+
+fn valid_manifest(id: &str, api: u32, perms: &[&str]) -> String {
+    let perms_json = serde_json::to_string(perms).unwrap();
+    format!(
+        r#"{{"id":"{id}","name":"{id}","version":"1.0.0","api_version":{api},"entry":"main.lua","permissions":{perms_json}}}"#
+    )
+}
+
+fn write_plugin(root: &Path, id: &str, manifest: &str, lua: Option<&str>) {
+    let dir = root.join(id);
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(dir.join("plugin.json"), manifest).unwrap();
+    if let Some(lua) = lua {
+        fs::write(dir.join("main.lua"), lua).unwrap();
+    }
+}
+
+#[test]
+fn scan_finds_valid_and_reports_errors() {
+    let dir = tempfile::tempdir().unwrap();
+    write_plugin(
+        dir.path(),
+        "word-count",
+        &valid_manifest("word-count", 1, &["document:read", "ui:statusbar"]),
+        Some("function on_activate(ctx) end"),
+    );
+    write_plugin(
+        dir.path(),
+        "too-new",
+        &valid_manifest("too-new", 2, &[]),
+        Some("--"),
+    );
+    write_plugin(
+        dir.path(),
+        "bad-perm",
+        &valid_manifest("bad-perm", 1, &["quantum:teleport"]),
+        Some("--"),
+    );
+    write_plugin(
+        dir.path(),
+        "no-entry",
+        &valid_manifest("no-entry", 1, &[]),
+        None,
+    );
+
+    let report = scan_plugins(dir.path());
+    assert_eq!(report.plugins.len(), 1, "валиден только word-count");
+    assert_eq!(report.plugins[0].manifest.id, "word-count");
+    assert_eq!(report.errors.len(), 3);
+
+    let messages: Vec<&str> = report.errors.iter().map(|e| e.message.as_str()).collect();
+    assert!(
+        messages.iter().any(|m| m.contains("api_version")),
+        "{messages:?}"
+    );
+    assert!(
+        messages
+            .iter()
+            .any(|m| m.contains("неизвестное разрешение")),
+        "{messages:?}"
+    );
+    assert!(
+        messages.iter().any(|m| m.contains("main.lua")),
+        "{messages:?}"
+    );
+}
+
+#[test]
+fn loader_takes_manifest_permissions_and_settings_state() {
+    let dir = tempfile::tempdir().unwrap();
+    write_plugin(
+        dir.path(),
+        "word-count",
+        &valid_manifest("word-count", 1, &["document:read"]),
+        Some("function on_activate(ctx) end"),
+    );
+
+    let mut settings = SettingsStore::default();
+    settings.set_plugin_enabled("word-count", false);
+
+    let store = store_with_doc("x");
+    let exe = PathBuf::from("darmark-plugin-host.exe");
+    let result = load_plugins(dir.path(), &exe, services(&store), &settings);
+    assert!(result.errors.is_empty());
+    assert!(store
+        .lock()
+        .unwrap()
+        .get(&DocumentId::new("doc-1"))
+        .is_some());
+
+    let list = result.manager.list_plugins();
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0].id, "word-count");
+    assert_eq!(
+        list[0].permissions,
+        vec!["document:read"],
+        "permissions из манифеста"
+    );
+    assert!(!list[0].enabled, "выключен через настройки");
+    assert!(
+        matches!(list[0].status, super::PluginStatus::Stopped),
+        "не запускается автоматически"
+    );
+}
+
+#[test]
+fn loader_defaults_to_enabled() {
+    let dir = tempfile::tempdir().unwrap();
+    write_plugin(
+        dir.path(),
+        "range",
+        &valid_manifest("range", 1, &["document:read"]),
+        Some("function on_activate(ctx) end"),
+    );
+
+    let store = store_with_doc("x");
+    let result = load_plugins(
+        dir.path(),
+        &PathBuf::from("darmark-plugin-host.exe"),
+        services(&store),
+        &SettingsStore::default(),
+    );
+    let list = result.manager.list_plugins();
+    assert!(list[0].enabled, "по умолчанию плагин включён");
+}
+
+#[test]
+fn settings_plugin_enabled_defaults_true() {
+    let mut settings = SettingsStore::default();
+    assert!(settings.plugin_enabled("new-plugin"));
+    settings.set_plugin_enabled("new-plugin", false);
+    assert!(!settings.plugin_enabled("new-plugin"));
+}
+
+#[test]
+fn reload_rereads_lua_from_disk() {
+    let _guard = serial();
+    let dir = tempfile::tempdir().unwrap();
+    let plugin_dir = dir.path().join("edit");
+    fs::create_dir_all(&plugin_dir).unwrap();
+    fs::write(
+        plugin_dir.join("plugin.json"),
+        valid_manifest("edit", 1, &["document:write"]),
+    )
+    .unwrap();
+    fs::write(
+        plugin_dir.join("main.lua"),
+        "function on_activate(ctx) host.apply_edit(\"doc-1\", 0, 0, \"A\") end",
+    )
+    .unwrap();
+
+    let store = store_with_doc("");
+    let result = load_plugins(
+        dir.path(),
+        &child_exe(),
+        services(&store),
+        &SettingsStore::default(),
+    );
+    assert!(
+        result.errors.is_empty(),
+        "ошибки скана: {:?}",
+        result.errors
+    );
+    let mut manager = result.manager;
+    manager.set_plugin_enabled("edit", true).unwrap();
+    assert_eq!(doc_text(&store, "doc-1"), "A");
+
+    // Правка `.lua` на диске + «Перезагрузить» → новая версия без рестарта (§4.7, §2.1 ревью).
+    fs::write(
+        plugin_dir.join("main.lua"),
+        "function on_activate(ctx) host.apply_edit(\"doc-1\", 0, 0, \"B\") end",
+    )
+    .unwrap();
+    manager.reload_plugin("edit").unwrap();
+    assert_eq!(
+        doc_text(&store, "doc-1"),
+        "BA",
+        "reload обязан перечитать файл"
+    );
+}
+
+#[test]
+fn duplicate_ids_are_reported_not_overwritten() {
+    let dir = tempfile::tempdir().unwrap();
+    write_plugin(
+        dir.path(),
+        "dir-a",
+        &valid_manifest("dup", 1, &[]),
+        Some("function on_activate(ctx) end"),
+    );
+    write_plugin(
+        dir.path(),
+        "dir-b",
+        &valid_manifest("dup", 1, &[]),
+        Some("function on_activate(ctx) end"),
+    );
+
+    let store = store_with_doc("x");
+    let result = load_plugins(
+        dir.path(),
+        &PathBuf::from("darmark-plugin-host.exe"),
+        services(&store),
+        &SettingsStore::default(),
+    );
+    assert_eq!(
+        result.manager.list_plugins().len(),
+        1,
+        "дубликат не регистрируется"
+    );
+    assert_eq!(result.errors.len(), 1);
+    assert!(
+        result.errors[0].message.contains("дублирующийся"),
+        "{:?}",
+        result.errors[0].message
+    );
+}
+
+fn doc_text(store: &Arc<Mutex<DocumentStore>>, id: &str) -> String {
+    store
+        .lock()
+        .unwrap()
+        .get(&DocumentId::new(id))
+        .map(|doc| doc.text.clone())
+        .unwrap_or_default()
 }

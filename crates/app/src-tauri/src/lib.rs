@@ -19,7 +19,7 @@ use state::{DocMeta, DocumentId, DocumentSnapshot, DocumentStore, RenderResult};
 
 /// Максимальный размер файла, который разрешено открывать (10 МБ).
 /// Единственная проверка при чтении — защита от чтения гигантских файлов.
-const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024;
+pub(crate) const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024;
 
 /// Чтение файла (UTF-8) без обращения к Tauri — ядро для юнит-тестов.
 ///
@@ -189,7 +189,10 @@ pub fn run() {
         .manage(Mutex::new(DocumentStore::default()))
         .setup(|app| {
             #[cfg(windows)]
-            disable_browser_accelerator_keys(app);
+            {
+                disable_browser_accelerator_keys(app);
+                init_settings_dir();
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -209,6 +212,22 @@ pub fn run() {
 /// По умолчанию WebView2 перехватывает их на уровне движка, и JS-обработчик
 /// `keydown` их не получает: `Ctrl+P` открывал печать вместо переключения
 /// предпросмотра. Обычные клавиши редактирования (Ctrl+C/V/X/A/Z) не затронуты.
+/// Создаёт каталог `%APPDATA%/darmark/` и `config.json` при первом запуске (хвост TZ-H1 п.8).
+///
+/// Загрузку/автозапуск плагинов и подключение менеджера к состоянию делает Фаза 5; здесь важен
+/// лишь факт существования конфига, чтобы `SettingsStore::load` работал предсказуемо.
+#[cfg(windows)]
+fn init_settings_dir() {
+    use plugins::settings::SettingsStore;
+    if let Some(path) = SettingsStore::config_path() {
+        if !path.exists() {
+            if let Err(e) = SettingsStore::default().save(&path) {
+                eprintln!("не создать {}: {e}", path.display());
+            }
+        }
+    }
+}
+
 #[cfg(windows)]
 fn disable_browser_accelerator_keys(app: &tauri::App) {
     use tauri::Manager;

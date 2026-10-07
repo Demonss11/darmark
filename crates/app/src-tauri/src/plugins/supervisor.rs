@@ -6,7 +6,7 @@
 //! линкует `mlua`: плагин — внешний exe.
 
 use std::path::PathBuf;
-use std::process::{Child, ChildStdin, Command, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, TryRecvError};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
@@ -86,7 +86,10 @@ pub struct Supervisor {
     plugin_id: String,
     child: Child,
     job: Job,
-    stdin: Option<ChildStdin>,
+    /// Канал в writer-поток. Отправка неблокирующая: даже если child перестал читать stdin,
+    /// основной поток не виснет, а watchdog продолжает тикать (F27, §3.2 ревью).
+    to_child: Option<mpsc::Sender<ToChild>>,
+    writer: Option<JoinHandle<()>>,
     rx: Receiver<Result<ToHost, PluginError>>,
     reader: Option<JoinHandle<()>>,
     next_id: u32,
@@ -125,6 +128,21 @@ impl Supervisor {
 
         let stdin = child.stdin.take();
         let stdout = child.stdout.take();
+
+        // Writer-поток владеет stdin: основной поток только кладёт кадры в канал. Если child
+        // перестанет читать, заблокируется writer, а не watchdog-цикл; снятие child (Job)
+        // разорвёт пайп и разблокирует writer.
+        let (to_child_tx, to_child_rx) = mpsc::channel::<ToChild>();
+        let writer = stdin.map(|mut stdin| {
+            thread::spawn(move || {
+                while let Ok(msg) = to_child_rx.recv() {
+                    if envelope::write_to_child(&mut stdin, &msg).is_err() {
+                        break;
+                    }
+                }
+            })
+        });
+
         let (tx, rx) = mpsc::channel::<Result<ToHost, PluginError>>();
         let reader = stdout.map(|out| {
             thread::spawn(move || {
@@ -150,7 +168,8 @@ impl Supervisor {
             plugin_id: params.plugin_id,
             child,
             job,
-            stdin,
+            to_child: Some(to_child_tx),
+            writer,
             rx,
             reader,
             next_id: 1,
@@ -202,12 +221,11 @@ impl Supervisor {
     }
 
     fn write_to_child(&mut self, msg: &ToChild) -> Result<(), PluginError> {
-        let stdin = self
-            .stdin
-            .as_mut()
-            .ok_or_else(|| PluginError::crashed("stdin child недоступен"))?;
-        envelope::write_to_child(stdin, msg)
-            .map_err(|e| PluginError::crashed(format!("stdin child: {e}")))
+        self.to_child
+            .as_ref()
+            .ok_or_else(|| PluginError::crashed("канал child недоступен"))?
+            .send(msg.clone())
+            .map_err(|_| PluginError::crashed("child недоступен (writer завершён)"))
     }
 
     /// Ждёт `Event{done|error, id}` для invocation `id`, попутно обслуживая host-call'ы.
@@ -220,18 +238,26 @@ impl Supervisor {
         loop {
             let now = Instant::now();
             if now.duration_since(started) >= self.deadline {
+                // Процесс мог уже умереть (краш), а канал закрыться позже — не выдаём крах
+                // за таймаут (§4.5 ревью).
+                let exited = self.child_exited();
                 self.terminate();
-                return Err(PluginError::timeout(format!(
-                    "дедлайн invocation ({:?}) исчерпан",
-                    self.deadline
-                )));
+                return Err(Self::expired(
+                    exited,
+                    &self.plugin_id,
+                    self.deadline,
+                    "дедлайн invocation",
+                ));
             }
             if now.duration_since(last_progress) >= self.progress {
+                let exited = self.child_exited();
                 self.terminate();
-                return Err(PluginError::timeout(format!(
-                    "нет прогресса плагина ({:?})",
-                    self.progress
-                )));
+                return Err(Self::expired(
+                    exited,
+                    &self.plugin_id,
+                    self.progress,
+                    "нет прогресса плагина",
+                ));
             }
 
             let mut wait = self.progress.saturating_sub(last_progress.elapsed());
@@ -290,11 +316,7 @@ impl Supervisor {
 
     /// Проверяет permission и исполняет host-call.
     fn serve_host_call(&self, method: &str, args: &Value) -> Result<Value, PluginError> {
-        if let Some(required) = required_permission(method) {
-            if !self.permissions.iter().any(|p| p == required) {
-                return Err(PluginError::permission_denied(required));
-            }
-        }
+        check_permission(&self.permissions, method)?;
         self.services.handle(method, args.clone())
     }
 
@@ -302,6 +324,21 @@ impl Supervisor {
     pub fn terminate(&mut self) {
         self.job.terminate(1);
         let _ = self.child.kill();
+    }
+
+    /// Завершился ли child — по объекту процесса, а не по каналу stdio (канал может закрыться
+    /// позже, особенно на Windows после `abort`).
+    fn child_exited(&mut self) -> bool {
+        matches!(self.child.try_wait(), Ok(Some(_)))
+    }
+
+    /// Исход исчерпания бюджета: процесс уже мёртв → `crashed`, иначе `timeout`.
+    fn expired(exited: bool, plugin_id: &str, budget: Duration, what: &str) -> PluginError {
+        if exited {
+            PluginError::crashed(format!("{plugin_id}: child завершился"))
+        } else {
+            PluginError::timeout(format!("{what} ({budget:?}) исчерпан"))
+        }
     }
 
     /// Путной путь child-бинарника рядом с текущим exe (продукт), с override для dev.
@@ -349,13 +386,54 @@ pub fn required_permission(method: &str) -> Option<&'static str> {
     }
 }
 
+/// Проверяет, что у плагина есть разрешение на host-call. Отказ — значение
+/// [`PluginError::permission_denied`], а не паника.
+pub fn check_permission(permissions: &[String], method: &str) -> Result<(), PluginError> {
+    if let Some(required) = required_permission(method) {
+        if !permissions.iter().any(|p| p == required) {
+            return Err(PluginError::permission_denied(required));
+        }
+    }
+    Ok(())
+}
+
 impl Drop for Supervisor {
     fn drop(&mut self) {
+        // Закрываем канал в writer, чтобы поток завершился; снятие Job разблокирует возможную
+        // зависшую запись в пайп.
+        self.to_child.take();
         self.job.terminate(1);
-        self.stdin.take();
         let _ = self.child.wait();
+        if let Some(writer) = self.writer.take() {
+            let _ = writer.join();
+        }
         if let Some(reader) = self.reader.take() {
             let _ = reader.join();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn permission_denied_for_write_without_grant() {
+        let err = check_permission(&["document:read".to_string()], "apply_edit").unwrap_err();
+        assert_eq!(err.code, "permission_denied");
+        assert_eq!(err.permission.as_deref(), Some("document:write"));
+    }
+
+    #[test]
+    fn granted_permission_allows_call() {
+        assert!(check_permission(&["document:write".to_string()], "apply_edit").is_ok());
+        // host-call без требуемого permission (настройки) проходит без проверки.
+        assert!(check_permission(&[], "get_setting").is_ok());
+    }
+
+    #[test]
+    fn read_calls_require_document_read() {
+        let err = check_permission(&[], "get_document_range").unwrap_err();
+        assert_eq!(err.permission.as_deref(), Some("document:read"));
     }
 }

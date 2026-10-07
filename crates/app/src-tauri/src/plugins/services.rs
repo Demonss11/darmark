@@ -10,12 +10,13 @@ use plugin_proto::envelope::PluginError;
 use serde_json::{json, Value};
 
 use crate::state::{DocumentId, DocumentStore};
+use crate::MAX_FILE_SIZE;
 
 use super::HostServices;
 
-/// `filesystem`-лимит документа (совпадает с проверкой открытия файла): страховка от
-/// `get_document_text` на гигантском документе.
-const MAX_DOCUMENT_BYTES: u64 = 10 * 1024 * 1024;
+/// Потолок одного окна `get_document_range`: основной путь чтения — небольшие окна; гигантский
+/// `len` раздул бы `Reply` и мог бы заблокировать запись в stdin child (§3.2 ревью).
+const MAX_RANGE_BYTES: usize = plugin_proto::frame::MAX_EVENT_FRAME_BYTES;
 
 /// Документные host-функции поверх общего [`DocumentStore`].
 ///
@@ -53,7 +54,8 @@ impl HostServices for DocumentServices {
             "get_document_range" => {
                 let id = doc_id(&args)?;
                 let start = usize_arg(&args, "start")?;
-                let len = usize_arg(&args, "len")?;
+                // Окно не больше потолка: защита от раздутого Reply (F27, §3.2 ревью).
+                let len = usize_arg(&args, "len")?.min(MAX_RANGE_BYTES);
                 let doc = store.get(&id).ok_or_else(|| unknown(&id))?;
                 if start > doc.text.len() || !doc.text.is_char_boundary(start) {
                     return Err(PluginError::new(
@@ -72,10 +74,10 @@ impl HostServices for DocumentServices {
             "get_document_text" => {
                 let id = doc_id(&args)?;
                 let doc = store.get(&id).ok_or_else(|| unknown(&id))?;
-                if doc.text.len() as u64 > MAX_DOCUMENT_BYTES {
+                if doc.text.len() as u64 > MAX_FILE_SIZE {
                     return Err(PluginError::new(
                         "too_large",
-                        format!("документ больше {} МБ", MAX_DOCUMENT_BYTES / (1024 * 1024)),
+                        format!("документ больше {} МБ", MAX_FILE_SIZE / (1024 * 1024)),
                     ));
                 }
                 Ok(json!(&doc.text))
@@ -98,7 +100,7 @@ impl HostServices for DocumentServices {
             }
             // Уведомление в статусбар/меню — UI-часть в Фазе 5; здесь принимаем и игнорируем.
             "show_message" => Ok(Value::Null),
-            // Настройки плагина (§12) — `SettingsStore` появится в Фазе 3.
+            // Настройки плагина (§12) скоупируются по plugin_id; наполнение — Фаза 5.
             "get_setting" | "set_setting" => Ok(Value::Null),
             other => Err(PluginError::protocol(format!(
                 "неизвестный host-call: {other}"
