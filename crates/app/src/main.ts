@@ -77,16 +77,6 @@ const store = createDocStore({
 
 const status = createStatusBar({ store, editor, appName: APP_NAME });
 
-// 2.5. Плагинные тир-1 view (H2, Фаза 4): вкладки в шапке панели предпросмотра
-//      и контейнер `#plugin-view`. Список приходит из Rust, событие
-//      `plugin-views-changed` перестраивает вкладки. Дефолт — виден `#preview`.
-const pluginViews = createPluginViews({
-  switchEl: document.getElementById("view-switch") as HTMLElement,
-  containerEl: document.getElementById("plugin-view") as HTMLElement,
-  previewEl: preview,
-  status: (msg) => status.flash(msg),
-});
-
 // 3. Реестр представлений: тир-1 preview встроен на хосте (D2).
 const registry = createViewRegistry();
 registry.registerHtml(previewViewProvider);
@@ -113,6 +103,18 @@ const previewView = registry.createHtmlView<PreviewView, PreviewViewOptions>(
     onIndexed: () => link.onIndexChanged(),
   }
 );
+
+// 4. Плагинные тир-1 view (Фаза 4, IDEA-003): каждый плагин-вью — `HtmlViewProvider`
+//    в общем реестре; нативный preview остаётся дефолтным. Контейнер `#plugin-view`
+//    показывается при выборе плагинной вкладки в `.view-switch`.
+const pluginViews = createPluginViews({
+  registry,
+  ctx: makeContext(),
+  switchEl: document.getElementById("view-switch") as HTMLElement,
+  containerEl: document.getElementById("plugin-view") as HTMLElement,
+  previewEl: preview,
+  status: (msg) => status.flash(msg),
+});
 
 // 4. Панели: фиксированные две (редактор + предпросмотр), MAX_PANES = 2.
 const EDITOR_PANE = asPaneId("pane-editor");

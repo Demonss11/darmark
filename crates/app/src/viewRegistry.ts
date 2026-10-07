@@ -66,6 +66,8 @@ export interface DomViewProvider {
 export interface ViewRegistry {
   registerHtml(provider: HtmlViewProvider): void;
   registerDom(provider: DomViewProvider): void;
+  /** Снять провайдер тира 1 (динамические плагинные view). `false` — не был зарегистрирован. */
+  unregisterHtml(kind: ViewKind): boolean;
   /** Провайдер тира 1 по kind или `null`. */
   htmlProvider(kind: ViewKind): HtmlViewProvider | null;
   /** Провайдер тира 2 по kind или `null`. */
@@ -100,6 +102,7 @@ export function createViewRegistry(): ViewRegistry {
     registerDom(provider) {
       dom.set(provider.kind, provider);
     },
+    unregisterHtml: (kind) => html.delete(kind),
     htmlProvider: (kind) => html.get(kind) ?? null,
     domProvider: (kind) => dom.get(kind) ?? null,
     createHtmlView<T extends HtmlView, O>(kind: ViewKind, ctx: ViewContext, opts?: O): T {
