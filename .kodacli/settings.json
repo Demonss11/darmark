@@ -12,16 +12,6 @@
   },
   "skills": {
     "disabled": [
-      "git-commit",
-      "frontend-api-integration-patterns",
-      "senior-discovery-product",
-      "systematic-debugging",
-      "verification-before-completion",
-      "review",
-      "pm",
-      "codebase-design",
-      "writing-style",
-      "senior-system-analyst"
     ]
   }
 }
