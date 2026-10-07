@@ -18,6 +18,10 @@ use super::HostServices;
 const MAX_DOCUMENT_BYTES: u64 = 10 * 1024 * 1024;
 
 /// Документные host-функции поверх общего [`DocumentStore`].
+///
+/// Держит `Arc<Mutex<DocumentStore>>` (а не `&`): host-call обслуживается синхронно в потоке
+/// invocation. Инвариант — `handle` не вызывается, когда блокировка стора уже удержана
+/// вызывающей стороной (§4.2 ревью).
 pub struct DocumentServices {
     store: Arc<Mutex<DocumentStore>>,
 }

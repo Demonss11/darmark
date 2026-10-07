@@ -142,13 +142,36 @@ impl PluginRuntime {
     }
 
     /// Вызов метода активного плагина.
+    ///
+    /// Отказ invocation (краш/дедлайн/прогресс/протокол) снимает child: supervisor
+    /// обнуляется, серия неудач копится, статус уходит из `Active`. Иначе остаётся
+    /// «зомби»-supervisor с мёртвым stdin (§3.2 ревью).
     pub fn invoke(&mut self, method: &str, args: Value) -> Result<Value, PluginError> {
-        match self.supervisor.as_mut() {
+        let result = match self.supervisor.as_mut() {
             Some(supervisor) => supervisor.invoke(method, args),
-            None => Err(PluginError::new(
-                "not_running",
-                format!("{} не запущен", self.id),
-            )),
+            None => {
+                return Err(PluginError::new(
+                    "not_running",
+                    format!("{} не запущен", self.id),
+                ))
+            }
+        };
+
+        match result {
+            Ok(value) => Ok(value),
+            Err(error) => {
+                // `Supervisor` уже снял child; не держим мёртвый процесс.
+                self.supervisor = None;
+                self.quarantine.record_failure();
+                self.status = if self.quarantine.is_disabled() {
+                    PluginStatus::Quarantined
+                } else {
+                    PluginStatus::Failed {
+                        message: error.message.clone(),
+                    }
+                };
+                Err(error)
+            }
         }
     }
 }
@@ -163,6 +186,11 @@ pub struct PluginInfo {
 }
 
 /// Набор плагинов. Фаза 5 обернёт его Tauri-командами.
+///
+/// **Инвариант блокировок:** host-call'ы берут `Mutex<DocumentStore>` внутри `invoke`;
+/// `std::sync::Mutex` не реентрантный, поэтому вызывать операции менеджера **нельзя** под уже
+/// удерживаемой блокировкой стора (иначе дедлок). При IPC-подключении (Фаза 4/5) состояние
+/// станет `Arc<Mutex<DocumentStore>>` (§4.2 ревью).
 #[derive(Default)]
 pub struct PluginManager {
     plugins: HashMap<String, PluginRuntime>,

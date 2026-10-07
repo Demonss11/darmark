@@ -7,7 +7,7 @@
 
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, TryRecvError};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
@@ -25,6 +25,17 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 /// Имя child-бинарника рядом с `darmark.exe`.
 pub const CHILD_EXE_NAME: &str = "darmark-plugin-host.exe";
+
+/// Результат неблокирующего чтения события child'а (см. [`Supervisor::poll_event`]).
+#[derive(Debug)]
+pub enum EventPoll {
+    /// Пришёл кадр.
+    Message(std::result::Result<ToHost, PluginError>),
+    /// Кадров нет.
+    Empty,
+    /// Поток child'а закрыт — процесс умер.
+    Closed,
+}
 
 /// Параметры запуска child-процесса.
 pub struct SupervisorParams {
@@ -267,11 +278,14 @@ impl Supervisor {
     }
 
     /// Публикация события плагином (используется шиной Фазы 4): читает уже пришедшие события
-    /// child'а без ожидания. Возвращает `None`, если кадров нет.
-    ///
-    /// Пока не задействовано UI-частью; оставлено как внутренний API Supervisor'а.
-    pub fn poll_event(&self) -> Option<Result<ToHost, PluginError>> {
-        self.rx.try_recv().ok()
+    /// child'а без ожидания. [`EventPoll::Closed`] сигналит о смерти child — его нельзя спутать
+    /// с «кадров нет» (`Empty`), иначе шина не заметит падение (§4.4 ревью).
+    pub fn poll_event(&self) -> EventPoll {
+        match self.rx.try_recv() {
+            Ok(message) => EventPoll::Message(message),
+            Err(TryRecvError::Empty) => EventPoll::Empty,
+            Err(TryRecvError::Disconnected) => EventPoll::Closed,
+        }
     }
 
     /// Проверяет permission и исполняет host-call.

@@ -341,6 +341,12 @@ md.to_html_mapped(text, opts?)   -> string
 json.encode(value) / json.decode(s)
 ```
 
+> **Контракт ошибок host-функций.** Функции, зависящие от permission, возвращают в Lua два
+> значения `(value, err)`: при успехе `err = nil`, при отказе `value = nil`, а `err` — таблица
+> `{ code, message, permission? }`. `permission_denied` приходит плагину **значением**, а не
+> исключением Lua (§8): обработчик продолжает работу и сам решает, что делать. `host.log`,
+> `md.*`, `json.*` ошибок permission не несут и возвращают одно значение.
+
 ### 6.4. Точки расширения (`contributes`)
 Манифест декларирует, что плагин добавляет:
 ```json

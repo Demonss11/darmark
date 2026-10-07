@@ -51,12 +51,33 @@ fn host_err(e: PluginError) -> mlua::Error {
     mlua::Error::RuntimeError(e.to_string())
 }
 
-/// Приводит JSON-значение к целому (хост может вернуть число или строку-число).
-fn as_int(value: &serde_json::Value) -> i64 {
-    value
-        .as_i64()
-        .or_else(|| value.as_str().and_then(|s| s.trim().parse().ok()))
-        .unwrap_or(0)
+/// Превращает результат host-call в Lua-контракт `(value, err)`:
+/// успех → `(value, nil)`, отказ → `(nil, {code, message, permission?})`.
+///
+/// Permission-отказ приходит плагину **значением**, а не Lua-исключением (§4.4 TZ-H2 / §8
+/// DESIGN_DOC): `on_activate` не прерывается, плагин сам решает, что делать.
+fn defuse(
+    lua: &Lua,
+    result: std::result::Result<serde_json::Value, PluginError>,
+) -> Result<(Value, Value)> {
+    match result {
+        Ok(value) => Ok((json_to_lua(lua, &value)?, Value::Nil)),
+        Err(error) => Ok((Value::Nil, error_to_lua(lua, &error)?)),
+    }
+}
+
+/// Таблица ошибки host-call для Lua: `{ code, message, permission?, data? }`.
+fn error_to_lua(lua: &Lua, error: &PluginError) -> Result<Value> {
+    let table = lua.create_table()?;
+    table.set("code", error.code.clone())?;
+    table.set("message", error.message.clone())?;
+    if let Some(permission) = &error.permission {
+        table.set("permission", permission.clone())?;
+    }
+    if let Some(data) = &error.data {
+        table.set("data", json_conv::json_to_lua(lua, data).map_err(host_err)?)?;
+    }
+    Ok(Value::Table(table))
 }
 
 /// Регистрирует глобальные таблицы `host`, `md`, `json` и переопределяет `print`.
@@ -88,33 +109,30 @@ fn register_host(lua: &Lua, plugin_id: &str, api: Arc<dyn HostApi>) -> Result<()
     let api_show = Arc::clone(&api);
     host.set(
         "show_message",
-        lua.create_function(move |_, text: String| {
-            api_show
-                .call("show_message", json!({ "text": text }))
-                .map_err(host_err)?;
-            Ok(())
+        lua.create_function(move |lua, text: String| {
+            defuse(lua, api_show.call("show_message", json!({ "text": text })))
         })?,
     )?;
 
     let api_len = Arc::clone(&api);
     host.set(
         "get_document_len",
-        lua.create_function(move |_, doc_id: String| {
-            let value = api_len
-                .call("get_document_len", json!({ "doc_id": doc_id }))
-                .map_err(host_err)?;
-            Ok(as_int(&value))
+        lua.create_function(move |lua, doc_id: String| {
+            defuse(
+                lua,
+                api_len.call("get_document_len", json!({ "doc_id": doc_id })),
+            )
         })?,
     )?;
 
     let api_ver = Arc::clone(&api);
     host.set(
         "get_document_version",
-        lua.create_function(move |_, doc_id: String| {
-            let value = api_ver
-                .call("get_document_version", json!({ "doc_id": doc_id }))
-                .map_err(host_err)?;
-            Ok(as_int(&value))
+        lua.create_function(move |lua, doc_id: String| {
+            defuse(
+                lua,
+                api_ver.call("get_document_version", json!({ "doc_id": doc_id })),
+            )
         })?,
     )?;
 
@@ -122,13 +140,13 @@ fn register_host(lua: &Lua, plugin_id: &str, api: Arc<dyn HostApi>) -> Result<()
     host.set(
         "get_document_range",
         lua.create_function(move |lua, (doc_id, start, len): (String, i64, i64)| {
-            let value = api_range
-                .call(
+            defuse(
+                lua,
+                api_range.call(
                     "get_document_range",
                     json!({ "doc_id": doc_id, "start": start, "len": len }),
-                )
-                .map_err(host_err)?;
-            lua.create_string(value.as_str().unwrap_or(""))
+                ),
+            )
         })?,
     )?;
 
@@ -136,10 +154,10 @@ fn register_host(lua: &Lua, plugin_id: &str, api: Arc<dyn HostApi>) -> Result<()
     host.set(
         "get_document_text",
         lua.create_function(move |lua, doc_id: String| {
-            let value = api_text
-                .call("get_document_text", json!({ "doc_id": doc_id }))
-                .map_err(host_err)?;
-            lua.create_string(value.as_str().unwrap_or(""))
+            defuse(
+                lua,
+                api_text.call("get_document_text", json!({ "doc_id": doc_id })),
+            )
         })?,
     )?;
 
@@ -147,14 +165,14 @@ fn register_host(lua: &Lua, plugin_id: &str, api: Arc<dyn HostApi>) -> Result<()
     host.set(
         "apply_edit",
         lua.create_function(
-            move |_, (doc_id, start, stop, text): (String, i64, i64, String)| {
-                let value = api_edit
-                    .call(
+            move |lua, (doc_id, start, stop, text): (String, i64, i64, String)| {
+                defuse(
+                    lua,
+                    api_edit.call(
                         "apply_edit",
                         json!({ "doc_id": doc_id, "start": start, "stop": stop, "text": text }),
-                    )
-                    .map_err(host_err)?;
-                Ok(value.as_bool().unwrap_or(false))
+                    ),
+                )
             },
         )?,
     )?;
@@ -163,27 +181,31 @@ fn register_host(lua: &Lua, plugin_id: &str, api: Arc<dyn HostApi>) -> Result<()
     host.set(
         "get_setting",
         lua.create_function(move |lua, key: String| {
-            let value = api_get_setting
-                .call("get_setting", json!({ "key": key }))
-                .map_err(host_err)?;
-            json_conv::json_to_lua(lua, &value).map_err(host_err)
+            defuse(
+                lua,
+                api_get_setting.call("get_setting", json!({ "key": key })),
+            )
         })?,
     )?;
 
     let api_set_setting = Arc::clone(&api);
     host.set(
         "set_setting",
-        lua.create_function(move |_, (key, value): (String, Value)| {
-            let encoded = json_conv::lua_to_json(&value).map_err(host_err)?;
-            api_set_setting
-                .call("set_setting", json!({ "key": key, "value": encoded }))
-                .map_err(host_err)?;
-            Ok(())
+        lua.create_function(move |lua, (key, value): (String, Value)| {
+            let encoded = match json_conv::lua_to_json(&value) {
+                Ok(encoded) => encoded,
+                Err(error) => return defuse(lua, Err(error)),
+            };
+            defuse(
+                lua,
+                api_set_setting.call("set_setting", json!({ "key": key, "value": encoded })),
+            )
         })?,
     )?;
 
     // Тест/dev-утилита изоляции отказов: аварийно завершает child-процесс.
-    // GUI не страдает — граница процесса (D6/ADR-0021); нужна для фикстуры `crash`.
+    // Только в dev-сборке (не входит в §6.3 DESIGN_DOC и не должна уезжать в релизный child).
+    #[cfg(debug_assertions)]
     host.set(
         "crash",
         lua.create_function(|_, ()| -> Result<()> { std::process::abort() })?,
@@ -476,6 +498,49 @@ mod tests {
         assert!(edited);
         let calls = host.calls.lock().unwrap();
         assert!(calls.iter().any(|(m, _)| m == "apply_edit"));
+    }
+
+    /// Хост, всегда отклоняющий host-call (эмулирует отсутствие permission).
+    struct DenyingHost;
+
+    impl HostApi for DenyingHost {
+        fn call(
+            &self,
+            _method: &str,
+            _args: serde_json::Value,
+        ) -> std::result::Result<serde_json::Value, PluginError> {
+            Err(PluginError::permission_denied("document:write"))
+        }
+
+        fn log(&self, _level: &str, _message: &str) {}
+        fn emit(&self, _kind: &str, _payload: serde_json::Value) {}
+    }
+
+    #[test]
+    fn permission_denied_is_value_not_exception() {
+        let lua = crate::sandbox::create().unwrap();
+        register(&lua, "p", Arc::new(DenyingHost)).unwrap();
+
+        // Callback продолжается: ошибка приходит вторым значением, а не исключением Lua.
+        let (ok, code, permission): (Value, String, String) = lua
+            .load(
+                r#"
+                local ok, err = host.apply_edit("d", 0, 1, "x")
+                return ok, err.code, err.permission
+                "#,
+            )
+            .eval()
+            .unwrap();
+        assert_eq!(ok, Value::Nil);
+        assert_eq!(code, "permission_denied");
+        assert_eq!(permission, "document:write");
+
+        // Обработчик жив: следующий вызов тоже отдаёт значение.
+        let second: String = lua
+            .load(r#"local _, e = host.get_document_range("d", 0, 1); return e.code"#)
+            .eval()
+            .unwrap();
+        assert_eq!(second, "permission_denied");
     }
 
     #[test]

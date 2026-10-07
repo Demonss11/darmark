@@ -3,9 +3,12 @@
 //! Гоняют реальный `darmark-plugin-host.exe`. Если его нет, тест пытается собрать child
 //! (`cargo build -p plugin-host`); это делает `cargo test -p darmark` самодостаточным.
 
-use std::path::PathBuf;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
+
+use serde_json::json;
 
 use crate::state::{DocumentId, DocumentStore};
 
@@ -30,23 +33,67 @@ fn fixture(name: &str) -> String {
     std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("фикстура {}: {e}", path.display()))
 }
 
-/// Путь к child-бинарнику: из текущего exe, иначе — сборка и повторный поиск.
-fn child_exe() -> PathBuf {
-    if let Some(path) = Supervisor::resolve_child_exe() {
-        return path;
-    }
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+fn workspace_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .and_then(|p| p.parent())
         .expect("корень workspace")
-        .to_path_buf();
-    let status = std::process::Command::new(env!("CARGO"))
-        .args(["build", "-p", "plugin-host"])
-        .current_dir(&root)
-        .status()
-        .expect("запуск cargo build -p plugin-host");
-    assert!(status.success(), "не удалось собрать plugin-host");
+        .to_path_buf()
+}
+
+/// Путь к child-бинарнику. Пересобирает его, если он отсутствует или **старше** исходников
+/// `plugin-host`/`plugin-proto`/`md-core` — иначе тесты молча гоняли бы устаревший exe (§4.3).
+fn child_exe() -> PathBuf {
+    if let Ok(path) = std::env::var("DARMARK_PLUGIN_HOST_EXE") {
+        return PathBuf::from(path);
+    }
+    let root = workspace_root();
+    let stale = match Supervisor::resolve_child_exe() {
+        Some(path) => !is_fresh(&path, &root),
+        None => true,
+    };
+    if stale {
+        let status = std::process::Command::new(env!("CARGO"))
+            .args(["build", "-p", "plugin-host"])
+            .current_dir(&root)
+            .status()
+            .expect("запуск cargo build -p plugin-host");
+        assert!(status.success(), "не удалось собрать plugin-host");
+    }
     Supervisor::resolve_child_exe().expect("child exe после сборки")
+}
+
+/// mtime child'а не старее самого нового исходника его зависимости.
+fn is_fresh(exe: &Path, root: &Path) -> bool {
+    let Ok(exe_time) = fs::metadata(exe).and_then(|m| m.modified()) else {
+        return false;
+    };
+    let sources = [
+        root.join("crates/plugin-host"),
+        root.join("crates/plugin-proto"),
+        root.join("crates/md-core"),
+    ];
+    match sources.iter().filter_map(|dir| newest_mtime(dir)).max() {
+        Some(newest) => exe_time >= newest,
+        None => false,
+    }
+}
+
+fn newest_mtime(dir: &Path) -> Option<SystemTime> {
+    let mut newest = None;
+    for entry in fs::read_dir(dir).ok()?.flatten() {
+        let path = entry.path();
+        let Ok(meta) = entry.metadata() else { continue };
+        let time = if meta.is_dir() {
+            newest_mtime(&path)
+        } else {
+            meta.modified().ok()
+        };
+        if let Some(time) = time {
+            newest = Some(newest.map_or(time, |current: SystemTime| current.max(time)));
+        }
+    }
+    newest
 }
 
 /// Стор с одним документом `doc-1` (id плагины адресуют строкой).
@@ -142,17 +189,48 @@ fn chatty_is_killed_by_deadline() {
 }
 
 #[test]
-fn permission_denied_without_document_write() {
+fn permission_denied_is_handled_as_value() {
     let _guard = serial();
-    // edit.lua зовёт apply_edit, но document:write не выдан → значение-ошибка, не крах.
+    // edit-denied.lua сам проверяет, что отказ пришёл значением ({code,permission}),
+    // а on_activate не прервался (иначе Lua-assert упал бы и activate вернул ошибку).
     let store = store_with_doc("# A");
-    let mut supervisor = sup("edit", "edit.lua", &[], &store);
+    let mut supervisor = sup("edit-denied", "edit-denied.lua", &[], &store);
 
-    let err = supervisor
+    supervisor
         .activate()
-        .expect_err("без permission должен быть отказ");
-    assert_eq!(err.code, "lua_error", "host-функция вернула ошибку в Lua");
+        .expect("on_activate обязан завершиться без исключения");
     assert_eq!(doc_rev(&store), 0, "правка не должна примениться");
+}
+
+#[test]
+fn invocation_failure_clears_supervisor() {
+    let _guard = serial();
+    let store = store_with_doc("x");
+    let mut runtime = PluginRuntime::new(
+        "event-hang",
+        child_exe(),
+        fixture("event-hang.lua"),
+        Vec::new(),
+        services(&store),
+    )
+    .with_watchdog(Duration::from_millis(300), Duration::from_secs(30));
+
+    runtime.start().expect("активация успешна");
+    assert!(matches!(runtime.status, super::PluginStatus::Active));
+
+    let err = runtime
+        .invoke("event", json!({ "name": "x", "payload": null }))
+        .expect_err("зависание в on_event");
+    assert_eq!(err.code, "timeout");
+    assert!(
+        !matches!(runtime.status, super::PluginStatus::Active),
+        "после отказа invocation статус не Active"
+    );
+
+    let again = runtime
+        .invoke("event", json!({}))
+        .expect_err("supervisor уже снят");
+    assert_eq!(again.code, "not_running");
 }
 
 #[test]
