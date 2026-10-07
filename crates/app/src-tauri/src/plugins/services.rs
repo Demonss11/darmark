@@ -179,7 +179,7 @@ impl DocumentServices {
         if let Some(sink) = &self.status_sink {
             sink(plugin_id, text);
         }
-        Ok(Value::Null)
+        Ok(json!(true))
     }
 }
 
@@ -268,8 +268,13 @@ impl HostServices for DocumentServices {
                 }
                 Ok(json!(true))
             }
-            // Настройки плагина (§12) скоупируются по plugin_id; наполнение — Фаза 5.
-            "get_setting" | "set_setting" => Ok(Value::Null),
+            // Настройки плагина (§12) в H2 не реализованы: скоуп по plugin_id и хранилище —
+            // отдельная задача. Отвечаем явной ошибкой, а не тихим `nil` (чтобы автор плагина
+            // не считал вызов успешным). Задокументировано в docs/PLUGIN_API.md/PLUGIN_GUIDE.md.
+            "get_setting" | "set_setting" => Err(PluginError::new(
+                "not_implemented",
+                "настройки плагина (get_setting/set_setting) не реализованы в H2",
+            )),
             other => Err(PluginError::protocol(format!(
                 "неизвестный host-call: {other}"
             ))),

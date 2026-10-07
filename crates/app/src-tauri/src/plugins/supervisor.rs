@@ -292,7 +292,9 @@ impl Supervisor {
                         }
                     }
                 }
-                Ok(Ok(ToHost::Log { .. })) => {
+                Ok(Ok(ToHost::Log { level, message })) => {
+                    // Лог плагина (host.log/print) иначе терялся бы в GUI — выводим в stderr хоста.
+                    eprintln!("[plugin {level}] {message}");
                     last_progress = Instant::now();
                 }
                 Ok(Err(protocol)) => {

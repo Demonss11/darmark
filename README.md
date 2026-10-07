@@ -9,6 +9,9 @@
 crates/
 ├── md-core/          # ЧИСТОЕ ЯДРО: markdown → HTML (pulldown-cmark). Без Tauri/GUI.
 │   └── src/lib.rs    #   to_html()/to_html_with()/to_html_mapped() + санитайзер + тесты
+├── plugin-proto/     # плагинное ядро: кадры, serde-конверт, Job Object, карантин, манифест, notices.
+│                     # Без Tauri и без mlua — линкуется и в GUI-хост, и в child.
+├── plugin-host/      # child-бинарник darmark-plugin-host.exe: Lua 5.5 (mlua), песочница, host.*
 └── app/
     ├── src/          # Фронтенд (vanilla TS + Vite)
     │   ├── main.ts        # композиционный корень: собирает домен, передаёт оболочке
@@ -17,6 +20,8 @@ crates/
     │   ├── renderIndex.ts # единый индекс рендера на ревизию (байты↔UTF-16, блоки)
     │   ├── viewRegistry.ts# реестр тир-1/тир-2 провайдеров + ViewContext
     │   ├── previewView.ts # тир-1 предпросмотр (единственный `preview.innerHTML`)
+    │   ├── pluginViews.ts # плагинные тир-1 view (HtmlViewProvider) + обратная маршрутизация
+    │   ├── pluginManager.ts # менеджер плагинов в sidebar (вкл/выкл/перезагрузить/разрешения)
     │   ├── layout.ts      # дерево Pane/Split (MAX_PANES = 2)
     │   ├── paneHost.ts    # монтирование панелей в DOM
     │   ├── linkController.ts # владелец inspector + scrollsync
@@ -24,6 +29,7 @@ crates/
     │   ├── statusBar.ts / fileActions.ts / shell.ts / sampleDocument.ts
     │   └── ids.ts / tauri.ts / style.css
     └── src-tauri/    # Tauri-шелл: DocumentStore (state.rs) + команды + error.rs
+                      #   plugins/ — Supervisor, EventBus, PluginViews, SettingsStore, permissions
 ```
 
 Несущие принципы (нормативная спецификация — `docs/DESIGN_DOC.md`):
@@ -94,9 +100,9 @@ Shell (`src-tauri`) — тонкая IPC-прослойка: команды до
    Никакого отдельного `cargo build` делать не нужно — это часть шага выше.
 
    Результат:
-   - **портативный exe** (без установщика): `src-tauri/target/release/darmark.exe`
+   - **портативный exe** (без установщика): `target/release/darmark.exe` (корень workspace)
      — единый файл, внутри и Rust-логика, и HTML/CSS/JS фронта; ничего рядом лежать не должно;
-   - **установщик**: `src-tauri/target/release/bundle/nsis/darmark_0.1.0_x64-setup.exe`.
+   - **установщик**: `target/release/bundle/nsis/darmark_0.1.0_x64-setup.exe`.
    Профиль release в корневом `Cargo.toml`: `opt-level="s"`, LTO, strip, panic=abort — ради минимального размера.
 
 > Важно: обычный `cargo build` / `cargo run` НЕ собирает единый exe с фронтом —
@@ -120,7 +126,9 @@ cargo test -p darmark         # тесты DocumentStore + IPC Tauri-шелла
 ```
 
 CI (`.github/workflows/ci.yml`, windows-latest): `rustfmt` + `clippy -D warnings` + `cargo test`
-(`md-core`, `darmark`) + `npm run build`, отдельным job — **size-gate** (release-exe ≤ 6 МБ, D6/§14).
+(`md-core`, `darmark`, `plugin-proto`, `plugin-host`) + `npm run build`; отдельные jobs — проверка,
+что `cargo tree -p darmark` **не содержит `mlua`** (D6/ADR-0021), **size-gate** GUI (release-exe
+≤ 6 МБ, D6/§14) и **child size-gate** (≤ 1,5 МиБ) с выкладкой артефакта `darmark-plugin-host.exe`.
 
 ## GUI E2E: Cucumber + WebdriverIO (Tauri WebDriver)
 
@@ -167,6 +175,44 @@ npm run test:e2e -- --spec e2e/features/tables.feature   # только один
 
 Переопределить путь к бинарнику: переменная окружения `DARMARK_APP_BINARY`.
 
+
+## Плагины (H2)
+
+Пользовательские Lua-плагины без пересборки приложения: положил плагин в
+`%APPDATA%/darmark/plugins/<id>/`, правишь `.lua` — «Перезагрузить» — работает новая версия.
+Плагин исполняется в **отдельном процессе** (`darmark-plugin-host.exe`, Lua 5.5 через `mlua`);
+GUI-хост `mlua` не линкует (D6/ADR-0021). Архитектура — `docs/adr/0023-plugin-runtime.md`,
+API плагинов — `docs/PLUGIN_API.md`, пошаговое руководство — `docs/PLUGIN_GUIDE.md`.
+
+Каталог плагина: `plugin.json` (манифест) + `.lua` (вход, `entry`). Манифест объявляет
+`permissions` (`document:read/write`, `view:create/modify`, `ui:statusbar`) и `contributes`
+(`views`/`commands`/`statusbar`/`toolbar`/`settings`). Хост проверяет разрешение **до** вызова и
+возвращает `permission_denied` значением, а не исключением. Эталонные плагины в репозитории —
+`plugins/{word-count,export-html,format-selection}`.
+
+Возможности H2: тир-1 представления (`HtmlViewProvider`; HTML приходит `host.set_view_content`,
+санитизируется `md-core` с allowlist `data-p-*`), обратная маршрутизация кликов
+`data-p-<plugin_id>-action/-payload` → `on_action`; события `document:changed/opened/closed`
+(notify-only + pull, коалесинг по `rev`); команды через `command:invoked`; `host.export_html`
+(нативный диалог, без `filesystem:write`); настройки плагина. Менеджер плагинов — в боковой
+панели: вкл/выкл, «Перезагрузить», разрешения + предупреждения (F38), статус
+`active/failed/quarantined` (карантин после 3 падений подряд).
+
+**Куда класть:** `%APPDATA%/darmark/plugins/<id>/` (каталог переопределяется `DARMARK_PLUGINS_DIR`).
+
+**Отладка (dev/debug-сборка):**
+
+```
+darmark-plugin-host --self-test plugins/word-count/main.lua   # песочница без GUI
+darmark --debug-plugin plugins/word-count                     # запуск плагина без %APPDATA%
+```
+
+`--debug-plugin` запускает child с **унаследованным** stdio тем же конвертом (§7.1 DESIGN_DOC):
+host-call'ы плагина обслуживает разработчик. В релизе `darmark` — GUI-подсистема, поэтому
+dev-режим рассчитан на debug-сборку (`cargo run -p darmark -- --debug-plugin …`).
+
+**Размер:** GUI-хост ≤ 6 МБ (size-gate, D6/§14); child — отдельный бюджет ≤ 1,5 МиБ
+(фактически ≈0,9 МиБ).
 
 ## Безопасность и модель угроз
 

@@ -1,4 +1,4 @@
-//! Child-процесс плагинного хоста darmark (Фаза 1 TZ-H2).
+//! Child-процесс плагинного хоста darmark (Фазы 1 и 6 TZ-H2).
 //!
 //! По умолчанию работает как stdio-хост: читает кадры `ToChild` (host → child) из stdin,
 //! шлёт `ToHost` (child → host) в stdout. Host-call'ы плагина (`host.get_document_*`,
@@ -6,6 +6,13 @@
 //! ожидание `ToChild::Reply` (аргумент/ответ передаются только как дельта/окно, §4.2 TZ-H2).
 //!
 //! Режим `--self-test <path>` — dev-проверка песочницы без GUI-хоста.
+//!
+//! Режим `--serve-plugin <path>` (Фаза 6, §7.1 «Dev»): `<path>` — каталог плагина
+//! (`plugin.json` + entry) **или** отдельный `.lua`-файл. Child читает манифест (если каталог)
+//! и исходник, делает `load` + `on_activate`, затем входит в **тот же** stdio-цикл конверта,
+//! что и без аргументов. stdio здесь **назначено разработчиком** (обычно унаследовано от
+//! `darmark --debug-plugin <path>`): host-call'ы плагина обслуживает разработчик-хост, а не GUI.
+//! Ошибка загрузки/активации → сообщение в stderr и ненулевой код.
 //!
 //! GUI-хост (`src-tauri`) **не** линкует этот крейт: child спавнится как внешний exe (D6/ADR-0021).
 
@@ -19,6 +26,7 @@ use std::sync::{Arc, Mutex};
 
 use mlua::{Function, Table};
 use plugin_proto::envelope::{self, PluginError, ToChild, ToHost};
+use plugin_proto::manifest::Manifest;
 use plugin_proto::MAX_PLUGIN_SOURCE_BYTES;
 use serde_json::{json, Value};
 
@@ -212,25 +220,25 @@ fn handle_invoke(
     }
 }
 
-fn run_stdio() -> ExitCode {
-    let io = Arc::new(Mutex::new(ChildIo {
+/// stdio-endpoint процесса: назначенные stdin/stdout (в dev-режиме их держит разработчик).
+fn stdio_io() -> Arc<Mutex<ChildIo>> {
+    Arc::new(Mutex::new(ChildIo {
         reader: Box::new(std::io::stdin()),
         writer: Box::new(std::io::stdout()),
         next_id: 1,
-    }));
-    let host: Arc<dyn HostApi> = Arc::new(RpcHost {
-        io: Arc::clone(&io),
-    });
+    }))
+}
 
-    let lua = match sandbox::create() {
-        Ok(lua) => lua,
-        Err(e) => {
-            eprintln!("[child] не создать Lua-состояние: {e}");
-            return ExitCode::FAILURE;
-        }
-    };
-
-    let mut loaded: Option<Loaded> = None;
+/// Штатный stdio-цикл конверта `ToChild` ↔ `ToHost`.
+///
+/// Общий для двух режимов: без аргументов (`loaded = None` — хост сам пришлёт `load`/`activate`)
+/// и `--serve-plugin` (`loaded = Some` — плагин уже загружен и активирован).
+fn run_loop(
+    io: Arc<Mutex<ChildIo>>,
+    host: Arc<dyn HostApi>,
+    lua: mlua::Lua,
+    mut loaded: Option<Loaded>,
+) -> ExitCode {
     loop {
         let frame = {
             let mut guard = io.lock().unwrap();
@@ -261,6 +269,23 @@ fn run_stdio() -> ExitCode {
             }
         }
     }
+}
+
+fn run_stdio() -> ExitCode {
+    let io = stdio_io();
+    let host: Arc<dyn HostApi> = Arc::new(RpcHost {
+        io: Arc::clone(&io),
+    });
+
+    let lua = match sandbox::create() {
+        Ok(lua) => lua,
+        Err(e) => {
+            eprintln!("[child] не создать Lua-состояние: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    run_loop(io, host, lua, None)
 }
 
 // ─── self-test (dev) ────────────────────────────────────────────────────
@@ -336,21 +361,107 @@ fn load_and_activate(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
+// ─── dev-режим `--serve-plugin` (Фаза 6) ────────────────────────────────
+
+/// Разбирает `<path>` для `--serve-plugin`: каталог плагина (с `plugin.json`) или `.lua`-файл.
+///
+/// Возвращает `(plugin_id, source)`. Для каталога манифест валидируется
+/// ([`Manifest::from_json`]) **до** чтения `.lua`; `entry` безопасен (его проверяет сам манифест).
+fn read_plugin_manifest_source(path: &Path) -> Result<(String, String), String> {
+    if path.is_dir() {
+        let manifest_path = path.join("plugin.json");
+        let bytes = std::fs::read(&manifest_path)
+            .map_err(|e| format!("не читается {}: {e}", manifest_path.display()))?;
+        let manifest =
+            Manifest::from_json(&bytes).map_err(|e| format!("{}: {e}", manifest_path.display()))?;
+        // `manifest.entry` — безопасное имя `.lua` (валидировано манифестом).
+        let entry_path = path.join(&manifest.entry);
+        let source = read_plugin_source(&entry_path)?;
+        Ok((manifest.id, source))
+    } else if path.is_file() {
+        let source = read_plugin_source(path)?;
+        Ok((plugin_id_of(path), source))
+    } else {
+        Err(format!(
+            "{}: ожидается каталог плагина с plugin.json или .lua-файл",
+            path.display()
+        ))
+    }
+}
+
+/// `--serve-plugin <path>`: загрузка + активация плагина с диска и вход в штатный stdio-цикл.
+///
+/// Назначенный stdio обслуживает разработчик-хост: host-call'ы плагина (`get_document_*`,
+/// `apply_edit`, …) уходят в stdin/stdout этого процесса, а не в GUI (§7.1 «Dev»).
+fn serve_plugin(path: &Path) -> ExitCode {
+    let io = stdio_io();
+    let host: Arc<dyn HostApi> = Arc::new(RpcHost {
+        io: Arc::clone(&io),
+    });
+
+    let (plugin_id, source) = match read_plugin_manifest_source(path) {
+        Ok(pair) => pair,
+        Err(message) => {
+            eprintln!("[child] {message}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    let lua = match sandbox::create() {
+        Ok(lua) => lua,
+        Err(e) => {
+            eprintln!("[child] не создать Lua-состояние: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    // Единый диспатч с обычным циклом: `load` регистрирует `host.*` и исполняет исходник,
+    // `activate` вызывает `on_activate`. Их host-call'ы уже идут в назначенный stdio.
+    let mut loaded: Option<Loaded> = None;
+    let load = handle_invoke(
+        &lua,
+        &host,
+        &mut loaded,
+        "load",
+        &json!({ "source": source, "plugin_id": plugin_id.clone() }),
+    );
+    if let Err(error) = load {
+        eprintln!("[child] {plugin_id}: загрузка не удалась: {error}");
+        return ExitCode::FAILURE;
+    }
+    if let Err(error) = handle_invoke(&lua, &host, &mut loaded, "activate", &Value::Null) {
+        eprintln!("[child] {plugin_id}: активация не удалась: {error}");
+        return ExitCode::FAILURE;
+    }
+    eprintln!("[child] {plugin_id}: on_activate вызван, dev-режим serve-plugin");
+
+    run_loop(io, host, lua, loaded)
+}
+
 // ─── точка входа ────────────────────────────────────────────────────────
 
 enum Mode {
     Stdio,
     SelfTest(PathBuf),
+    ServePlugin(PathBuf),
 }
 
 fn parse_mode() -> Result<Mode, String> {
     let mut args = std::env::args().skip(1);
     let mut self_test = None;
+    let mut serve_plugin = None;
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--self-test" | "--plugin" => {
                 let path = args.next().ok_or_else(|| format!("{arg} требует путь"))?;
                 self_test = Some(PathBuf::from(path));
+            }
+            "--serve-plugin" => {
+                let path = args
+                    .next()
+                    .filter(|p| !p.starts_with('-'))
+                    .ok_or_else(|| "--serve-plugin требует путь".to_string())?;
+                serve_plugin = Some(PathBuf::from(path));
             }
             "--help" | "-h" => {
                 print_usage();
@@ -359,16 +470,22 @@ fn parse_mode() -> Result<Mode, String> {
             other => return Err(format!("неизвестный аргумент: {other}")),
         }
     }
-    Ok(match self_test {
-        Some(path) => Mode::SelfTest(path),
-        None => Mode::Stdio,
+    Ok(match (serve_plugin, self_test) {
+        (Some(path), _) => Mode::ServePlugin(path),
+        (None, Some(path)) => Mode::SelfTest(path),
+        (None, None) => Mode::Stdio,
     })
 }
 
 fn print_usage() {
     eprintln!("darmark-plugin-host — child-хост Lua-плагинов darmark");
-    eprintln!("  (без аргументов)     stdio-режим: конверт хост ↔ child");
-    eprintln!("  --self-test <path>   загрузить и активировать плагин (лог в stderr)");
+    eprintln!("  (без аргументов)       stdio-режим: конверт хост ↔ child");
+    eprintln!("  --self-test <path>     загрузить и активировать плагин (лог в stderr)");
+    eprintln!(
+        "  --serve-plugin <path>  каталог плагина (plugin.json) или .lua-файл: load + on_activate,\n\
+         \x20                        затем штатный stdio-цикл конверта. stdio назначает разработчик:\n\
+         \x20                        host-call'ы плагина обслуживает dev-хост (см. darmark --debug-plugin)"
+    );
 }
 
 fn main() -> ExitCode {
@@ -381,6 +498,7 @@ fn main() -> ExitCode {
                 ExitCode::FAILURE
             }
         },
+        Ok(Mode::ServePlugin(path)) => serve_plugin(&path),
         Err(message) => {
             eprintln!("[child] ошибка аргументов: {message}");
             print_usage();
@@ -415,6 +533,33 @@ mod tests {
     fn plugin_id_from_stem_for_self_test() {
         assert_eq!(plugin_id_of(Path::new("word-count/main.lua")), "main");
         assert_eq!(plugin_id_of(Path::new("word-count.lua")), "word-count");
+    }
+
+    #[test]
+    fn serve_plugin_reads_manifest_directory() {
+        let (id, source) =
+            read_plugin_manifest_source(&fixture("serve-dir")).expect("каталог плагина");
+        assert_eq!(id, "serve-dir", "id берётся из манифеста");
+        assert!(
+            source.contains("on_activate"),
+            "исходник прочитан: {source}"
+        );
+    }
+
+    #[test]
+    fn serve_plugin_reads_lua_file() {
+        let (id, source) = read_plugin_manifest_source(&fixture("hello.lua")).expect(".lua-файл");
+        assert_eq!(id, "hello", "id — из имени файла");
+        assert!(source.contains("on_activate"));
+    }
+
+    #[test]
+    fn serve_plugin_missing_path_is_error() {
+        let err = read_plugin_manifest_source(&fixture("нет-такого")).unwrap_err();
+        assert!(
+            err.contains("plugin.json") || err.contains(".lua"),
+            "err: {err}"
+        );
     }
 
     /// Готовит child-состояние с загруженным плагином из `source`.

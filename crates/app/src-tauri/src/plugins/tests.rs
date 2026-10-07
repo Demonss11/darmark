@@ -792,7 +792,7 @@ fn show_message_calls_status_sink() {
             json!({ "text": "Слова: 5", "_plugin_id": "word-count" }),
         )
         .unwrap();
-    assert!(result.is_null());
+    assert_eq!(result, json!(true), "успех show_message — значение true");
     assert_eq!(
         *seen.lock().unwrap(),
         vec![("word-count".to_string(), "Слова: 5".to_string())]
@@ -807,6 +807,19 @@ fn show_message_without_plugin_id_is_rejected() {
         .handle("show_message", json!({ "text": "x" }))
         .unwrap_err();
     assert_eq!(err.code, "bad_args");
+}
+
+#[test]
+fn settings_functions_are_not_implemented() {
+    let store = store_with_doc("x");
+    let services = DocumentServices::new(store);
+    for method in ["get_setting", "set_setting"] {
+        let err = services.handle(method, json!({ "key": "k" })).unwrap_err();
+        assert_eq!(
+            err.code, "not_implemented",
+            "host-call {method} в H2 не реализован"
+        );
+    }
 }
 
 #[test]

@@ -46,6 +46,20 @@ jobs:
           npm ci
           npm run build
 
+      # Dev-режим Фазы 6: `--debug-plugin` прогоняет плагин без %APPDATA% тем же конвертом.
+      # child-exe резолвится рядом с debug-бинарником darmark (target/debug).
+      - name: build debug binaries (для --debug-plugin)
+        run: |
+          cargo build -p plugin-host
+          cargo build -p darmark
+
+      - name: debug-plugin smoke (runs fixture, stdin closed → exit 0)
+        shell: pwsh
+        run: |
+          cmd /c "target\debug\darmark.exe --debug-plugin plugins\word-count < NUL"
+          if ($LASTEXITCODE -ne 0) { throw "--debug-plugin вернул ненулевой код: $LASTEXITCODE" }
+          "--debug-plugin: plugins\word-count прогнан (exit 0)"
+
   plugin-checks:
     name: plugins · fmt · clippy · tests · mlua-guard
     runs-on: windows-latest
@@ -66,6 +80,26 @@ jobs:
 
       - name: tests
         run: cargo test -p plugin-proto -p plugin-host
+
+      # Артефакт child для дистрибутива + отдельный бюджет размера (Фаза 6).
+      - name: build child release
+        run: cargo build -p plugin-host --release
+
+      - name: child size-gate (≤ 1.5 МиБ)
+        shell: pwsh
+        run: |
+          $exe = "target/release/darmark-plugin-host.exe"
+          $limit = 1536 * 1024   # 1.5 МиБ (референс F3/F20; фактически ≈0.9 МиБ)
+          if (-not (Test-Path $exe)) { throw "не найден $exe — сборка child не дала бинарник" }
+          $size = (Get-Item $exe).Length
+          "{0} = {1} байт ({2:N2} МиБ); лимит {3} байт ({4:N2} МиБ)" -f $exe, $size, ($size/1MB), $limit, ($limit/1MB)
+          if ($size -gt $limit) { throw "child превышает лимит 1.5 МиБ: $size > $limit" }
+
+      - name: upload child artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: darmark-plugin-host
+          path: target/release/darmark-plugin-host.exe
 
       # D6/ADR-0021: GUI-хост не должен линковать mlua — Lua живёт только в child-бинарнике.
       - name: mlua must not leak into GUI host
