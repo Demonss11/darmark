@@ -135,7 +135,7 @@
 - **Исправлено (приоритет-1, коммит `8f04857`):**
   1. **B1** — `input` тумблеров получили `role="switch"` + `aria-label` («Синхронная прокрутка» / «Предпросмотр»), декоративные `svg` — `aria-hidden="true" focusable="false"`; добавлено `label.tbtn:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }`.
   2. **M2** — rail-кнопкам добавлены `aria-label` («Файлы» / «Плагины» / «Журнал»).
-  3. **M8** — добавлено `#editor:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }`.
+  3. **M8** — добавлено `#editor:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }`. **Отменено** (см. BUG-007): рамка оказалась навязчивой (редактор почти всегда в фокусе), убрана по замечанию пользователя.
 - **Исправлено (вторая итерация, коммит см. ниже):**
   - **M1** — в `style.css` добавлен `@media (prefers-reduced-motion: reduce)`, гасящий `animation`/`transition` и `scroll-behavior` (в т.ч. анимацию `width` sidebar).
   - **M3** — сам `th` сохраняет нативную роль `columnheader`; сортировка вынесена в кнопку `.col-sort-btn` (доступное имя «Сортировать по столбцу «…»», Enter/Space «из коробки», inline-разметка заголовка сохранена); `apply()` выставляет `aria-sort` (`ascending`/`descending`/`none`); воронка `.col-filter-btn` получила `aria-label` и `aria-expanded`. Заголовок с интерактивом (ссылка/контрол) не оборачивается в `<button>` (без невалидной вложенности) — кнопка сортировки ставится рядом значком «↕».
@@ -145,8 +145,26 @@
   - **M7** — `#editor` → `aria-label="Редактор Markdown"`.
   - **M9** — `--fg-mute` `#5f6478` → `#8a90a4` (контраст ≥4.5:1 на `--bg-0`/`--bg-1`/`--bg-2`/`--bg-3`).
   - **minor/nit** — `aria-hidden="true"` у декоративных `svg` (плюс `focusable="false"`), `.stat-dot`, `#tab-dirty`; `<meta name="color-scheme" content="dark">` + `theme-color` + `color-scheme: dark` в `:root`; skip-link «Перейти к содержимому» к `main#main-content` + визуально скрытый `h1`; `font-variant-numeric: tabular-nums` и `max-width`/ellipsis у `#stat-msg` в статусбаре; заглушки «Команды»/«Журнал» остаются рабочими (по клику сообщают «скоро»), «скоро» вынесено в `title` — `aria-disabled`/приглушение не ставим, чтобы не разойтись с реальной интерактивностью и не уронить контраст; активная панель следует за фокусом при Tab (`focusin` в `shell.ts`); `type="button"` у icon-кнопок; удалены мёртвые токены (`--teal`, `--r-md`, `--r-lg`, `--pc`, `--w-infopanel`, `--popover`, `--pop-border`, `--shadow-sm`, `--shadow-lg`).
-- **Тесты:** E2E `crates/app/e2e/features/a11y.feature` расширена до 10 сценариев (B1/M2/M8 + M1/M3/M4/M5/M6/M7: `aria-sort` при сортировке, метки поиска, `role="status"` статусбара, `aria-label` редактора, `aria-expanded`/Escape/возврат фокуса воронки, наличие `@media (prefers-reduced-motion)` в стилях). `clickHeader` кликает вложенную `.col-sort-btn`. Полный E2E — **11 passed, 11 total** (a11y-спек — 39 passing).
+- **Тесты:** E2E `crates/app/e2e/features/a11y.feature` расширена до 10 сценариев (B1/M2/M8 + M1/M3/M4/M5/M6/M7: `aria-sort` при сортировке, метки поиска, `role="status"` статусбара, `aria-label` редактора, `aria-expanded`/Escape/возврат фокуса воронки, наличие `@media (prefers-reduced-motion)` в стилях). `clickHeader` кликает вложенную `.col-sort-btn`. Полный E2E — **11 passed, 11 total** (a11y-спек — 39 passing). Сценарий M8 (фокус-ринг редактора) удалён позже — см. BUG-007.
 - **Осталось из ревью:**
   - **nit (осознанно отложено):** анимация `width` у `.sidebar` — не композитор-френдли (правился бы только `transform`/`opacity`), но layout-значима; для пользователей `prefers-reduced-motion` уже гасится медиазапросом. Отдельная правка не в этой итерации.
   - **закрыто без правки:** `cursor` у core-вкладки — `.vtab` уже `cursor: default`, дополнительный селектор не нужен.
 - **Коммит:** `8f04857` (первая итерация), `18e7ca5` (вторая итерация). Ветка `ui/ux-11.1-style-tokens`.
+
+### BUG-007 — Ручная проверка после BUG-006: рамка редактора, белый угол, favicon и set_title
+
+- **Статус:** fixed
+- **Severity:** P1 (шумные ошибки в консоли + заметный визуальный дефект)
+- **Область:** `crates/app/src/style.css`, `crates/app/src/statusBar.ts`, `crates/app/index.html`, `crates/app/public/favicon.ico`, `crates/app/src-tauri/capabilities/default.json`.
+- **Симптом (замечено при ручном запуске `npx tauri dev`):**
+  1. `#editor` обведён фиолетовой рамкой — focus-ring из M8 (`#editor:focus-visible`); редактор почти всегда в фокусе, поэтому рамка постоянная и навязчивая.
+  2. В правом нижнем углу редактора — белый квадрат: неоформленный стык скроллбаров `::-webkit-scrollbar-corner` на тёмной теме.
+  3. `GET /favicon.ico 404` — значка нет в раздаче.
+  4. `Uncaught (in promise) window.set_title not allowed … core:window:allow-set-title` — в capability не было разрешения на `set_title`.
+- **Исправлено:**
+  1. Убрано правило `#editor:focus-visible`; индикатор фокуса редактора — каретка (**M8 отменён осознанно**, см. BUG-006).
+  2. Добавлено `::-webkit-scrollbar-corner { background: transparent; }`.
+  3. Добавлен `crates/app/public/favicon.ico` (копия `src-tauri/icons/icon.ico`) и `<link rel="icon" href="/favicon.ico">`; Vite отдаёт из `public/`.
+  4. В `capabilities/default.json` добавлено `core:window:allow-set-title`; `updateTitle` гасит возможный reject (`.catch`), чтобы не плодить unhandled rejection.
+- **Тесты:** E2E `a11y.feature` — сценарий «У редактора виден фокус-ринг» удалён; остальные зелёные. Полный E2E — **11 passed, 11 total**.
+- **Открытые вопросы:** нет.

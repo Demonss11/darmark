@@ -43,7 +43,11 @@ export function createStatusBar(opts: {
   function updateTitle(): void {
     const s = store.state();
     const name = s.path ? baseName(s.path) : "безымянный";
-    void getCurrentWindow().setTitle(`${s.dirty ? "● " : ""}${name} — ${appName}`);
+    // Заголовок окна — не критично: если команда недоступна/упала, не плодим
+    // unhandled rejection (разрешение core:window:allow-set-title — в capabilities).
+    getCurrentWindow()
+      .setTitle(`${s.dirty ? "● " : ""}${name} — ${appName}`)
+      .catch((e) => console.warn("set_title:", e));
     fileLabel.textContent = name + (s.dirty ? " ●" : "");
   }
 

@@ -105,6 +105,9 @@ body {
   background-clip: padding-box;
 }
 ::-webkit-scrollbar-thumb:hover { background: #3a3d52; background-clip: padding-box; }
+/* Угол между скроллбарами редактора/предпросмотра: без явного фона WebView
+   рисует светлый квадрат на тёмной теме. */
+::-webkit-scrollbar-corner { background: transparent; }
 
 :focus { outline: none; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 4px; }
@@ -487,9 +490,8 @@ label.tbtn:focus-within { outline: 2px solid var(--accent); outline-offset: 1px;
   overflow-y: auto;
 }
 
-/* #editor глушил `outline` id-селектором — возвращаем фокус-ринг при клавиатурном
-   фокусе (M8). `outline-offset: -2px` рисует его внутри, не задевая скроллбар. */
-#editor:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* #editor — основная область ввода и почти всегда в фокусе, поэтому постоянный
+   focus-ring (M8) выглядел навязчиво и убран; индикатор фокуса здесь — каретка. */
 
 #preview { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; padding: 10px 34px 80px; }
 
