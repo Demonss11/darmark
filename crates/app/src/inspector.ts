@@ -260,30 +260,44 @@ export function createInspector(opts: {
     scrollIntoViewIfNeeded(block.el);
   }
 
+  // Снимает закрепление и гасит подсветку/бэнды. Общее для повторного клика по
+  // закреплённому блоку, клика по пустой области и клика по интерактивному
+  // элементу (BUG-003).
+  function releasePin() {
+    pinned = false;
+    lastHover = null;
+    lastHoverShift = false;
+    clearBlockHighlight();
+  }
+
   function onClickCapture(e: MouseEvent) {
     if (!active) return;
     const targetEl = e.target as Element | null;
     const interactive = !!targetEl?.closest?.(INTERACTIVE_SELECTOR);
-    // BUG-003: закрепление снимает клик по любой области предпросмотра — в том
-    // числе по интерактивному элементу (сортировка `th`, ссылка): ему событие
-    // отдаём, подсветку гасим. При неинтерактивном клике событие поглощаем,
-    // чтобы выделение не «перескочило» на другой блок вместо снятия.
-    if (pinned) {
-      pinned = false;
-      lastHover = null;
-      lastHoverShift = false;
-      clearBlockHighlight();
-      if (!interactive) {
-        e.preventDefault();
-        e.stopPropagation();
-        restoreSavedFocus();
-      }
+    if (interactive) {
+      // Клик по кнопке/ссылке/`th`/меню снимает закрепление, но событие отдаём
+      // дальше (сортировка, переход) — BUG-003.
+      if (pinned) releasePin();
       return;
     }
-    if (interactive) return; // дать tables.ts/ссылкам работать
-    if (!blocks || !maps) return; // индекс устарел (правка до рендера) — закреплять нечего
     const target = resolveTarget(targetEl, e.shiftKey);
+    if (pinned) {
+      // Закреплено: клик по ДРУГОМУ блоку переносит закрепление; повторный клик
+      // по тому же блоку или клик по пустой области снимает его (BUG-003).
+      e.preventDefault();
+      e.stopPropagation();
+      if (!target || target.el === activeBlockEl) {
+        releasePin();
+        restoreSavedFocus();
+        return;
+      }
+      applyTarget(target, true, true);
+      lastHover = null;
+      lastHoverShift = false;
+      return;
+    }
     if (!target) return;
+    if (!blocks || !maps) return; // индекс устарел (правка до рендера) — закреплять нечего
     e.preventDefault();
     e.stopPropagation();
     // force: клик должен вернуть выделение и фокус в редактор, даже если блок
