@@ -21,11 +21,18 @@ import {
   type PluginInfo,
   type PluginStatus,
 } from "./tauri";
+import { ownerPluginId } from "./pluginTarget";
 
 /** Публичный фасад контроллера менеджера плагинов. */
 export interface PluginManager {
   /** Перечитать список плагинов и перерисовать панель. */
   refresh(): Promise<void>;
+  /**
+   * `Ctrl+R`: перезагрузить плагин-владельца открытого `.lua`-документа, иначе —
+   * все включённые плагины (fallback). Нет включённых — no-op с сообщением.
+   * Ошибки IPC пробрасываются наружу (обрабатывает вызывающий).
+   */
+  reloadForDocument(path: string | null): Promise<void>;
   /** Снять слушатель события `plugins-changed`. */
   dispose(): void;
 }
@@ -35,6 +42,8 @@ export interface PluginManagerOptions {
   root: HTMLElement;
   /** Сообщение в статусбар (ошибки IPC/действий). */
   status(msg: string): void;
+  /** Свежий снимок плагинов после успешного `list_plugins` (для статусбара). */
+  onPlugins?(list: PluginInfo[]): void;
 }
 
 /** Человекочитаемая подпись статуса для бейджа. */
@@ -57,10 +66,14 @@ function el(tag: string, className?: string): HTMLElement {
 }
 
 export function createPluginManager(opts: PluginManagerOptions): PluginManager {
-  const { root, status } = opts;
+  const { root, status, onPlugins } = opts;
   let disposed = false;
   // Защита от гонок: ответ устаревшего `list_plugins` не перетирает свежий.
   let refreshSeq = 0;
+  // Последний успешный снимок — источник списка включённых для `Ctrl+R`.
+  let lastList: PluginInfo[] = [];
+  // Идущая перезагрузка: конкурентные Ctrl+R переиспользуют её (см. reloadForDocument).
+  let reloading: Promise<void> | null = null;
 
   function renderBadge(info: PluginInfo): HTMLElement {
     const badge = el("span", `pl-badge ${info.status.state}`);
@@ -226,7 +239,45 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     }
     // Ответ устарел (пришёл refresh новее) или контроллер уже освобождён.
     if (disposed || seq !== refreshSeq) return;
+    lastList = list;
     render(list);
+    onPlugins?.(list);
+  }
+
+  /**
+   * `Ctrl+R`: владелец открытого `.lua` (`<plugins>/<id>/<entry>.lua`) —
+   * перезагружаем только его; иначе — все включённые (fallback). Reload не
+   * разрушителен: карантин и согласие сохраняются.
+   */
+  async function reloadForDocument(path: string | null): Promise<void> {
+    // Защита от конкурентных нажатий Ctrl+R: пока идёт перезагрузка, повторный
+    // вызов переиспользует тот же промис (иначе child-процессы рестартуют дважды).
+    if (reloading) return reloading;
+    reloading = doReload(path).finally(() => {
+      reloading = null;
+    });
+    return reloading;
+  }
+
+  async function doReload(path: string | null): Promise<void> {
+    // Снимок может быть пуст — refresh ещё не прошёл (например, старт приложения).
+    const source = lastList.length > 0 ? lastList : await listPlugins();
+    const enabled = source.filter((info) => info.enabled);
+    if (enabled.length === 0) {
+      status("Плагины: нет включённых");
+      return;
+    }
+    const ids = enabled.map((info) => info.id);
+    const owner = ownerPluginId(path, ids);
+    if (owner) {
+      await reloadPlugin(owner);
+      status(`Плагин ${owner}: перезагружен`);
+    } else {
+      // Последовательно: не плодим одновременные перезапуски child-процессов.
+      for (const id of ids) await reloadPlugin(id);
+      status(`Плагины: перезагружено (${ids.length})`);
+    }
+    await refresh();
   }
 
   async function handleToggle(input: HTMLInputElement): Promise<void> {
@@ -351,6 +402,7 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
 
   return {
     refresh,
+    reloadForDocument,
 
     dispose(): void {
       disposed = true;

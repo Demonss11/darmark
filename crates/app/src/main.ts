@@ -21,6 +21,7 @@ import { applyLayout, LayoutError, type LayoutNode, type Pane } from "./layout";
 import { createStatusBar } from "./statusBar";
 import { createPluginViews } from "./pluginViews";
 import { createPluginManager } from "./pluginManager";
+import { createPluginStatusBar } from "./pluginStatusBar";
 import { createFileActions } from "./fileActions";
 import { createShell } from "./shell";
 import { createSidebar } from "./sidebar";
@@ -30,7 +31,7 @@ import { START_TEXT } from "./sampleDocument";
 import { createPalette, type CommandProvider, type PaletteCommand } from "./palette";
 import { toast } from "./toast";
 import { errorMessage, listPlugins, runPluginCommand } from "./tauri";
-import type { RenderResult } from "./tauri";
+import type { PluginInfo, RenderResult } from "./tauri";
 import "./style.css";
 
 const APP_NAME = "darmark";
@@ -111,6 +112,8 @@ const previewView = registry.createHtmlView<PreviewView, PreviewViewOptions>(
 // 4. Плагинные тир-1 view (Фаза 4, IDEA-003): каждый плагин-вью — `HtmlViewProvider`
 //    в общем реестре; нативный preview остаётся дефолтным. Контейнер `#plugin-view`
 //    показывается при выборе плагинной вкладки в `.view-switch`.
+// Снимок плагинов для статусбара: обновляется менеджером, читается при смене view.
+let lastPlugins: PluginInfo[] = [];
 const pluginViews = createPluginViews({
   registry,
   ctx: makeContext(),
@@ -118,6 +121,25 @@ const pluginViews = createPluginViews({
   containerEl: document.getElementById("plugin-view") as HTMLElement,
   previewEl: preview,
   status: (msg) => status.flash(msg),
+  // Появилось/пропало представление — перерисуем статусбар (его интерактивность
+  // зависит от наличия view, а события `plugins-changed`/`plugin-views-changed`
+  // приходят независимо — см. ревью пункта 5).
+  onViewsChanged: () => pluginStatus.render(lastPlugins),
+});
+
+// Per-plugin элементы статусбара (§11.1 п.5): показывают включённые плагины с
+// правом `ui:statusbar`. Клик — открыть представление плагина, «+N» — панель.
+const pluginStatus = createPluginStatusBar({
+  root: document.getElementById("plugin-status") as HTMLElement,
+  hasView: (id) => pluginViews.hasView(id),
+  onActivate: (id) => {
+    // Панель предпросмотра могла быть скрыта (Ctrl+P): показываем её через чекбокс,
+    // чтобы состояние было согласовано, и уже затем открываем представление.
+    const chk = document.getElementById("chk-preview") as HTMLInputElement | null;
+    if (chk && !chk.checked) chk.click();
+    pluginViews.openPlugin(id);
+  },
+  onShowPanel: () => sidebar.setPanel("plugins"),
 });
 
 // Менеджер плагинов (Фаза 5): список/статусы/вкл-выкл/перезагрузка в панели
@@ -126,11 +148,18 @@ const pluginViews = createPluginViews({
 const pluginManager = createPluginManager({
   root: document.getElementById("plugin-manager") as HTMLElement,
   status: (msg) => status.flash(msg),
+  onPlugins: (list) => {
+    lastPlugins = list;
+    pluginStatus.render(list);
+  },
 });
 
-// Сообщения плагинов (`host.show_message`) — в статусбар с указанием источника.
+// Сообщения плагинов (`host.show_message`) — в per-plugin элемент статусбара
+// (§11.1 п.5). Если элемент скрыт (плагин свёрнут в «+N»), показываем текст в
+// #stat-msg, чтобы сообщение не потерялось визуально.
 void listen<{ plugin_id: string; text: string }>("plugin-message", (event) => {
-  status.flash(`${event.payload.plugin_id}: ${event.payload.text}`);
+  const { plugin_id, text } = event.payload;
+  if (!pluginStatus.setMessage(plugin_id, text)) status.flash(`${plugin_id}: ${text}`);
 }).catch(() => null);
 
 // Внешняя правка документа плагином: событие несёт лишь id/rev, текст тянем
@@ -264,6 +293,10 @@ createShell({
         .getElementById("palette-trigger")
         ?.setAttribute("aria-expanded", String(palette.isOpen()));
     },
+    reloadPlugins: () =>
+      void pluginManager
+        .reloadForDocument(store.state().path)
+        .catch((e) => status.flash(`Плагины: ${errorMessage(e)}`)),
     flash: (m) => status.flash(m),
   },
   format,

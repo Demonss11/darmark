@@ -6,6 +6,7 @@
 // Ответы устаревших запросов отбрасываются по счётчику сессий (seq-гейт).
 
 import { openDialog, type Dialog } from "./dialog";
+import { pluginColor } from "./pluginColor";
 import { errorMessage } from "./tauri";
 
 export interface PaletteCommand {
@@ -39,13 +40,6 @@ export interface PaletteController {
   close(): void;
   toggle(): void;
   isOpen(): boolean;
-}
-
-/** Детерминированный цвет плагина (`--pc`) из его id. */
-function pluginColor(id: string): string {
-  let hue = 0;
-  for (let i = 0; i < id.length; i++) hue = (hue * 31 + id.charCodeAt(i)) % 360;
-  return `hsl(${hue} 65% 62%)`;
 }
 
 /** Подпись источника: `darmark` для ядра, id плагина — для плагина. */

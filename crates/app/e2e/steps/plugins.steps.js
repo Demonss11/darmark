@@ -323,3 +323,77 @@ Then("в тулбаре нет полосы плагинов", async () => {
     throw new Error(`Полоса плагинов вернулась (BUG-004): ${JSON.stringify(info)}`);
   }
 });
+
+// ---------- Reload-хоткей Ctrl+R и per-plugin статусбар (§11.1 п.5) ----------
+
+/// Синтетический keydown в window — тот же путь, что у реальной клавиатуры
+/// (shell.ts слушает window). Спека задаёт сочетание как "Ctrl+R"/"Ctrl+Shift+R".
+When("я нажимаю хоткей {string}", async (spec) => {
+  await browser.execute((keys) => {
+    const parts = keys.split("+");
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: parts[parts.length - 1].toLowerCase(),
+        ctrlKey: parts.includes("Ctrl"),
+        shiftKey: parts.includes("Shift"),
+        bubbles: true,
+        cancelable: true,
+      })
+    );
+  }, spec);
+  await browser.pause(50);
+});
+
+/// Сентинел страницы: если бы WebView перезагрузил страницу, переменная исчезла бы.
+When("я ставлю сентинел страницы {string}", async (value) => {
+  await browser.execute((v) => {
+    window.__ctrlrSentinel = v;
+  }, value);
+});
+
+Then("сентинел страницы равен {string}", async (value) => {
+  const got = await browser.execute(() => window.__ctrlrSentinel);
+  if (got !== value) {
+    throw new Error(`Страница перезагрузилась (сентинел ${JSON.stringify(got)} ≠ ${value})`);
+  }
+});
+
+/// Элемент плагина в статусбаре: включён и получил право ui:statusbar.
+Then("в статусбаре есть плагин {string} с цветом", async (pluginId) => {
+  await browser.waitUntil(
+    async () =>
+      browser.execute((id) => {
+        const el = document.querySelector(`#plugin-status .ps-item[data-plugin="${id}"]`);
+        if (!el) return false;
+        const pc = getComputedStyle(el).getPropertyValue("--pc").trim();
+        return pc.length > 0;
+      }, pluginId),
+    { timeout: 10000, timeoutMsg: `В статусбаре нет плагина ${pluginId} с цветом --pc` }
+  );
+});
+
+Then("в статусбаре нет плагина {string}", async (pluginId) => {
+  await browser.waitUntil(
+    async () =>
+      browser.execute(
+        (id) => !document.querySelector(`#plugin-status .ps-item[data-plugin="${id}"]`),
+        pluginId
+      ),
+    { timeout: 10000, timeoutMsg: `В статусбаре остался плагин ${pluginId}` }
+  );
+});
+
+/// Сообщение плагина отображается в его элементе (host.show_message → plugin-message).
+Then("в статусбаре плагин {string} показывает {string}", async (pluginId, text) => {
+  await browser.waitUntil(
+    async () =>
+      browser.execute(
+        (id, t) =>
+          document.querySelector(`#plugin-status .ps-item[data-plugin="${id}"] .ps-text`)
+            ?.textContent === t,
+        pluginId,
+        text
+      ),
+    { timeout: 3500, timeoutMsg: `В статусбаре плагин ${pluginId} не показал ${text}` }
+  );
+});

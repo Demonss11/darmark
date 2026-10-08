@@ -46,7 +46,7 @@ function preparePlugins() {
       plugins: {
         "e2e-view": {
           enabled: true,
-          granted_permissions: ["view:create", "view:modify"],
+          granted_permissions: ["view:create", "view:modify", "ui:statusbar"],
         },
         "e2e-edit": {
           enabled: true,

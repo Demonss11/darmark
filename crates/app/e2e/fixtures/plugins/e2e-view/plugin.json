@@ -4,8 +4,9 @@
   "version": "1.0.0",
   "api_version": 1,
   "entry": "main.lua",
-  "permissions": ["view:create", "view:modify"],
+  "permissions": ["view:create", "view:modify", "ui:statusbar"],
   "contributes": {
-    "views": [{ "kind": "e2e-view", "title": "E2E View", "tier": 1 }]
+    "views": [{ "kind": "e2e-view", "title": "E2E View", "tier": 1 }],
+    "commands": [{ "id": "e2e-view.say", "title": "Показать сообщение" }]
   }
 }

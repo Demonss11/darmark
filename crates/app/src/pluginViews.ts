@@ -22,6 +22,13 @@ import type { HtmlView, HtmlViewProvider, Json, ViewContext, ViewRegistry } from
 export interface PluginViews {
   /** Запросить список представлений и перестроить вкладки/контейнер. */
   refresh(): Promise<void>;
+  /**
+   * Показать первое представление плагина (по `plugin_id`). Возвращает `false`,
+   * если у плагина нет ни одного зарегистрированного представления (no-op).
+   */
+  openPlugin(pluginId: string): boolean;
+  /** Есть ли у плагина зарегистрированное тир-1 представление. */
+  hasView(pluginId: string): boolean;
   /** Снять слушатели и очистить вкладки/контейнер. */
   dispose(): void;
 }
@@ -47,6 +54,8 @@ export interface PluginViewsOptions {
   previewEl: HTMLElement;
   /** Сообщение в статусбар (ошибки IPC/действия). */
   status(msg: string): void;
+  /** Список представлений обновился (после `render`) — для зависимых панелей. */
+  onViewsChanged?(): void;
 }
 
 interface PluginViewRuntime {
@@ -236,6 +245,7 @@ export function createPluginViews(opts: PluginViewsOptions): PluginViews {
     } else {
       showPreview();
     }
+    opts.onViewsChanged?.();
   }
 
   async function refresh(): Promise<void> {
@@ -264,6 +274,23 @@ export function createPluginViews(opts: PluginViewsOptions): PluginViews {
 
   return {
     refresh,
+
+    openPlugin(pluginId: string): boolean {
+      for (const runtime of runtimes.values()) {
+        if (runtime.info.plugin_id === pluginId) {
+          showPlugin(runtime.info.view_id);
+          return true;
+        }
+      }
+      return false;
+    },
+
+    hasView(pluginId: string): boolean {
+      for (const runtime of runtimes.values()) {
+        if (runtime.info.plugin_id === pluginId) return true;
+      }
+      return false;
+    },
 
     dispose(): void {
       disposed = true;

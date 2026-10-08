@@ -24,6 +24,8 @@ export interface ShellCommands {
   isDirty(): boolean;
   /** Открыть/закрыть палитру команд (Ctrl+K). */
   palette(): void;
+  /** Ctrl+R: перезагрузить плагин-владелец открытого `.lua` или все включённые. */
+  reloadPlugins(): void;
   /** Кратковременное сообщение в статусбар. */
   flash(msg: string): void;
 }
@@ -125,6 +127,10 @@ export function createShell(opts: ShellOptions): void {
     // Ctrl+Shift+K — вставка ссылки; должен проверяться ДО Ctrl+K (палитра).
     else if (k === "k" && e.shiftKey) { e.preventDefault(); opts.format.link(); }
     else if (k === "k") { e.preventDefault(); commands.palette(); }
+    // Ctrl+R — перезагрузка плагинов; страницу WebView перезагружать нельзя,
+    // поэтому всегда гасим дефолт (в т.ч. для Ctrl+Shift+R — hard reload).
+    else if (k === "r" && (e.shiftKey || e.altKey)) { e.preventDefault(); }
+    else if (k === "r") { e.preventDefault(); commands.reloadPlugins(); }
   });
 
   // Закрытие окна: при несохранённых изменениях спрашиваем подтверждение;
