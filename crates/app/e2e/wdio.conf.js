@@ -84,6 +84,18 @@ function cleanupPlugins() {
 // darmark.exe / msedgedriver.exe / tauri-driver.exe. Они держат exe (блокируют
 // следующую release-сборку) и мешают чисто поднять новый сеанс. Чистим на
 // границах прогона (onPrepare/onComplete), не трогая активный сеанс.
+// @wdio/tauri-service складывает скачанный msedgedriver в новый случайный
+// подкаталог `%TEMP%/msedgedriver/<hash>` на каждый прогон и не убирает его —
+// каталог копит сотни копий. Чистим после прогона.
+function cleanupEdgeDriverCache() {
+  const dir = path.join(os.tmpdir(), "msedgedriver");
+  try {
+    fs.rmSync(dir, { recursive: true, force: true });
+  } catch (e) {
+    console.warn("[e2e] не очистить кэш msedgedriver:", String(e));
+  }
+}
+
 function killStrayProcesses() {
   if (process.platform !== "win32") return;
   for (const image of ["darmark.exe", "msedgedriver.exe", "tauri-driver.exe"]) {
@@ -112,6 +124,8 @@ export const config = {
   // совместимый по мажору драйвер в PATH (например, ~/.cargo/bin).
   onPrepare: () => {
     killStrayProcesses();
+    // Кэш драйвера чистим здесь (в onComplete файлы ещё держит драйвер → EPERM).
+    cleanupEdgeDriverCache();
     preparePlugins();
   },
   // Убирает временные каталоги (плагины, конфиг) и процессы после прогона
