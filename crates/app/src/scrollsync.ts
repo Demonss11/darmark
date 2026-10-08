@@ -151,6 +151,19 @@ export function createScrollSync(opts: {
     const mp = maps!;
     const bl = blocks!;
     const topLine = clamp(Math.floor(editor.scrollTop / lineH), 0, ls.length - 1);
+    // Верхняя логическая строка 0 (0 ≤ editor.scrollTop < lineH): предпросмотр
+    // ставим в естественное начало (0), а не выравниваем блок по верхнему padding.
+    // У первого блока нет соседа сверху, а его верхний margin (зазор для эвристики
+    // «верхний блок») не нужно «съедать» прокруткой — иначе панели сдвигаются вниз
+    // (BUG-005). Известное ограничение: для документов, где первый блок начинается
+    // не с байта 0 (ведущие пустые строки/ссылочные определения), прямая и обратная
+    // синхронизация тут взаимно не обратимы.
+    if (topLine === 0) {
+      schedule(() => {
+        if (enabled) writeScrollTop(preview, 0);
+      });
+      return;
+    }
     const bytePos = unitsToBytes(mp, ls[topLine]!);
     const block = findBlockContaining(bl, bytePos) ?? nextBlockAfter(bl, bytePos);
     if (!block) {

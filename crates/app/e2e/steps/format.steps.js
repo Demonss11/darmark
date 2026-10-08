@@ -27,6 +27,39 @@ async function applyFormat(action) {
 When("я применяю формат «Жирный»", () => applyFormat("bold"));
 When("я применяю формат «Ссылка»", () => applyFormat("link"));
 
+// Путь хоткея: синтетический Ctrl+B в window — тот же обработчик shell.ts, что и
+// у реальной клавиатуры (в отличие от клика по кнопке редактор при этом в фокусе).
+When("я применяю «Жирный» через Ctrl+B", async () => {
+  await browser.execute(() => {
+    document.getElementById("editor").focus();
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "b", ctrlKey: true, bubbles: true, cancelable: true })
+    );
+  });
+});
+
+// Скролл панелей: программный сброс в начало и проверка, что формат его не сдвинул
+// (проверяются оба контейнера: #editor и #preview — BUG-005 сдвигал предпросмотр).
+When("редактор прокручен в начало", async () => {
+  await browser.execute(() => {
+    const ed = document.getElementById("editor");
+    ed.focus();
+    ed.scrollTop = 0;
+  });
+});
+
+Then("скролл панелей остаётся в начале", async () => {
+  // Ждём дебаунс рендера (`update_document` через 120 мс) и синхронизацию скролла.
+  await browser.pause(400);
+  const s = await browser.execute(() => ({
+    editor: Math.round(document.getElementById("editor").scrollTop),
+    preview: Math.round(document.getElementById("preview").scrollTop),
+  }));
+  if (s.editor > 1 || s.preview > 1) {
+    throw new Error(`Скролл уехал вниз: ${JSON.stringify(s)}`);
+  }
+});
+
 Then("значение редактора равно {string}", async (expected) => {
   const value = await editorValue();
   if (value !== expected) {
