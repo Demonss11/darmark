@@ -281,6 +281,18 @@ export function createPalette(opts: PaletteOptions): PaletteController {
     // Слушаем клавиатуру на панели, а не только на input: если фокус окажется
     // на другом элементе палитры, Ctrl+K/стрелки всё равно отработают.
     content.addEventListener("keydown", onKeydown, { signal });
+    // Наведение мыши переносит активный пункт: подсветка (`aria-selected`) следует
+    // за курсором, и Enter выполняет наведённую команду, а не первую.
+    list.addEventListener(
+      "mouseover",
+      (e) => {
+        const item = (e.target as Element | null)?.closest<HTMLElement>(".palette-item");
+        if (!item) return;
+        const index = Number(item.dataset.index ?? "-1");
+        if (index >= 0 && index !== activeIndex) setActive(index);
+      },
+      { signal }
+    );
     list.addEventListener("click", onListClick, { signal });
 
     dialog = openDialog({

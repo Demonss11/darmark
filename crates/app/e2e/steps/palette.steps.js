@@ -193,6 +193,20 @@ Then("активный пункт палитры {string}", async (title) => {
   }
 });
 
+/// Наводит «мышь» на пункт палитры по заголовку (событие mouseover, как у курсора).
+When("я навожу мышь на пункт палитры {string}", async (title) => {
+  const ok = await browser.execute((t) => {
+    const item = Array.from(document.querySelectorAll(".palette-item")).find(
+      (el) => el.querySelector(".palette-title")?.textContent?.trim() === t
+    );
+    if (!item) return false;
+    item.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    return true;
+  }, title);
+  if (!ok) throw new Error(`Пункт палитры ${JSON.stringify(title)} не найден`);
+  await browser.pause(30);
+});
+
 /// aria-activedescendant поля обязан указывать на текущий активный пункт:
 /// иначе скринридер не свяжет ввод со списком.
 Then("у поля палитры aria-activedescendant указывает на активный пункт", async () => {
