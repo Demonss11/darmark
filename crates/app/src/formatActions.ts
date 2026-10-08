@@ -83,11 +83,18 @@ export function createFormatActions(host: HTMLTextAreaElement): FormatActions {
   function link(): void {
     const { selectionStart: s, selectionEnd: e, value } = host;
     const selected = value.slice(s, e);
-    const text = selected || "текст";
-    const inserted = `[${text}](url)`;
-    const next = value.slice(0, s) + inserted + value.slice(e);
-    const urlStart = s + 1 + text.length + 2;
-    commit(next, urlStart, urlStart + 3);
+    // Те же правила, что в `wrap`: краевые whitespace остаются СНАРУЖИ ссылки,
+    // в текст ссылки идёт только непробельное ядро (или плейсхолдер).
+    const lead = selected.length - selected.trimStart().length;
+    const trail = selected.length - selected.trimEnd().length;
+    const core = selected.slice(lead, selected.length - trail);
+    const text = core || "текст";
+    // Для пустого/whitespace-выделения пробелы не сохраняем — вставляем плейсхолдер.
+    const prefix = core ? selected.slice(0, lead) : "";
+    const suffix = core ? selected.slice(selected.length - trail) : "";
+    const inserted = `${prefix}[${text}](url)${suffix}`;
+    const urlStart = s + prefix.length + 1 + text.length + 2;
+    commit(value.slice(0, s) + inserted + value.slice(e), urlStart, urlStart + 3);
   }
 
   return { bold, italic, code, heading, link };

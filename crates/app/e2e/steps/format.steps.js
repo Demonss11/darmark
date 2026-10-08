@@ -13,15 +13,19 @@ function editorValue() {
   return browser.execute(() => document.getElementById("editor").value);
 }
 
-When("я применяю формат «Жирный»", async () => {
-  const ok = await browser.execute(() => {
-    const btn = document.querySelector('#format-group button[data-action="bold"]');
+/// Программный клик по кнопке формата: не зависит от доставки клавиатуры.
+async function applyFormat(action) {
+  const ok = await browser.execute((a) => {
+    const btn = document.querySelector(`#format-group button[data-action="${a}"]`);
     if (!btn) return false;
     btn.click();
     return true;
-  });
-  if (!ok) throw new Error("Не найдена кнопка форматирования «Жирный»");
-});
+  }, action);
+  if (!ok) throw new Error(`Не найдена кнопка форматирования "${action}"`);
+}
+
+When("я применяю формат «Жирный»", () => applyFormat("bold"));
+When("я применяю формат «Ссылка»", () => applyFormat("link"));
 
 Then("значение редактора равно {string}", async (expected) => {
   const value = await editorValue();
