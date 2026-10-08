@@ -90,6 +90,13 @@ export function createInspector(opts: {
   // блочной (он ищет `.md-block`, а не `tr/th/td`).
   let programmaticSel = { start: -1, end: -1 };
 
+  // BUG-003: закрепление выделения. Клик по блоку фиксирует подсветку и
+  // выделение редактора — они переживают уход курсора (`mouseout`), наведение и
+  // движение каретки. Повторный клик снимает закрепление. Сбрасываем закрепление
+  // при перестройке индекса (правка/перерендер) и выходе из режима: байтовые
+  // смещения блока после правки недействительны.
+  let pinned = false;
+
   // Состояние textarea и фокуса до включения режима (восстанавливаем на выходе).
   let savedSelection = { start: 0, end: 0 };
   let savedScrollTop = 0;
@@ -187,7 +194,7 @@ export function createInspector(opts: {
   // ---------- слушатели ----------
 
   function onMouseOver(e: MouseEvent) {
-    if (!active) return;
+    if (!active || pinned) return; // закреплённую подсветку наведение не меняет
     const el = e.target as Element | null;
     lastHover = el;
     lastHoverShift = e.shiftKey;
@@ -198,6 +205,7 @@ export function createInspector(opts: {
 
   function onMouseOut(e: MouseEvent) {
     if (!active) return;
+    if (pinned) return; // закрепление переживает уход курсора (BUG-003)
     const rel = e.relatedTarget as Node | null;
     if (rel && preview.contains(rel)) return; // всё ещё внутри preview
     lastHover = null;
@@ -211,7 +219,7 @@ export function createInspector(opts: {
    * нестабилен, поэтому состояние выводим из типа события.
    */
   function onShiftKey(e: KeyboardEvent) {
-    if (!active || e.key !== "Shift") return;
+    if (!active || pinned || e.key !== "Shift") return;
     if (!lastHover || !lastHover.isConnected) return;
     const shift = e.type !== "keyup";
     if (shift === lastHoverShift) return; // реального переключения не было
@@ -222,7 +230,7 @@ export function createInspector(opts: {
   }
 
   function onEditorSelection() {
-    if (!active || !blocks || !maps) return;
+    if (!active || pinned || !blocks || !maps) return;
     if (document.activeElement !== editor) return;
     // Асинхронный `selectionchange` от программного выделения инспектора не
     // должен перебивать гранулярную подсветку ячейки/строки/столбца.
@@ -255,7 +263,25 @@ export function createInspector(opts: {
   function onClickCapture(e: MouseEvent) {
     if (!active) return;
     const targetEl = e.target as Element | null;
-    if (targetEl?.closest?.(INTERACTIVE_SELECTOR)) return; // дать tables.ts/ссылкам работать
+    const interactive = !!targetEl?.closest?.(INTERACTIVE_SELECTOR);
+    // BUG-003: закрепление снимает клик по любой области предпросмотра — в том
+    // числе по интерактивному элементу (сортировка `th`, ссылка): ему событие
+    // отдаём, подсветку гасим. При неинтерактивном клике событие поглощаем,
+    // чтобы выделение не «перескочило» на другой блок вместо снятия.
+    if (pinned) {
+      pinned = false;
+      lastHover = null;
+      lastHoverShift = false;
+      clearBlockHighlight();
+      if (!interactive) {
+        e.preventDefault();
+        e.stopPropagation();
+        restoreSavedFocus();
+      }
+      return;
+    }
+    if (interactive) return; // дать tables.ts/ссылкам работать
+    if (!blocks || !maps) return; // индекс устарел (правка до рендера) — закреплять нечего
     const target = resolveTarget(targetEl, e.shiftKey);
     if (!target) return;
     e.preventDefault();
@@ -263,6 +289,11 @@ export function createInspector(opts: {
     // force: клик должен вернуть выделение и фокус в редактор, даже если блок
     // уже подсвечен (иначе focus уходит в предпросмотр, а выделение «гаснет»).
     applyTarget(target, true, true);
+    pinned = true;
+    // Курсор мог «устареть» за время закрепления — пересчёт по Shift после
+    // снятия не должен опираться на блок, который мы запинили.
+    lastHover = null;
+    lastHoverShift = false;
   }
 
   // ---------- API ----------
@@ -291,6 +322,7 @@ export function createInspector(opts: {
   function disable(): void {
     if (!active) return;
     active = false;
+    pinned = false;
     clearBlockHighlight();
     blocks = null;
     maps = null;
@@ -311,6 +343,7 @@ export function createInspector(opts: {
   }
 
   function onIndexChanged(): void {
+    pinned = false; // индекс перестроен: закреплённые смещения устарели
     clearBlockHighlight();
     blocks = null;
     maps = null;
