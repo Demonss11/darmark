@@ -131,6 +131,11 @@ export function runPluginCommand(commandId: string): Promise<void> {
   return invoke<void>("run_plugin_command", { commandId });
 }
 
+/** Dev-only: открыть DevTools WebView2 (в release-сборке — no-op). */
+export function openDevtools(): Promise<void> {
+  return invoke<void>("open_devtools");
+}
+
 /** Достаёт человекочитаемое сообщение из ошибки IPC `{ code, message }` или `Error`. */
 export function errorMessage(e: unknown): string {
   if (e && typeof e === "object" && "message" in e) {

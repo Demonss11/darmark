@@ -8,6 +8,7 @@ import { confirm } from "@tauri-apps/plugin-dialog";
 import type { PaneId } from "./ids";
 import type { FormatActions } from "./formatActions";
 import type { Sidebar } from "./sidebar";
+import { openDevtools } from "./tauri";
 
 export interface ShellCommands {
   newFile(): void;
@@ -99,6 +100,14 @@ export function createShell(opts: ShellOptions): void {
     else if (k === "s" && e.shiftKey) { e.preventDefault(); commands.saveAs(); }
     else if (k === "s") { e.preventDefault(); commands.saveFile(); }
     else if (k === "p") { e.preventDefault(); chkPreview.click(); }
+    // Dev-only: DevTools. WebView2 по настройке глушит свои акселераторы
+    // DevTools (F12 / Ctrl+Shift+C) — см. disable_browser_accelerator_keys в Rust,
+    // поэтому даём явный вход на стандартном Chromium-хоткее Ctrl+Shift+I.
+    // В prod-сборке ветка вырезается (`import.meta.env.DEV`).
+    else if (import.meta.env.DEV && k === "i" && e.shiftKey) {
+      e.preventDefault();
+      void openDevtools().catch((err) => console.error("open_devtools:", err));
+    }
     else if (k === "i") { e.preventDefault(); commands.toggleInspector(); }
     else if (k === "b") { e.preventDefault(); opts.format.bold(); }
     else if (k === "k") { e.preventDefault(); commands.palette(); }

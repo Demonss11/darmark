@@ -443,6 +443,24 @@ fn run_plugin_command(
     }
 }
 
+/// Dev-only: открыть DevTools WebView2 программно.
+///
+/// Акселераторы браузера отключены настройкой WebView2 (см.
+/// `disable_browser_accelerator_keys`), поэтому DevTools-хоткеи (F12 / Ctrl+Shift+C)
+/// не работают — даём свой вход (Ctrl+Shift+I) с фронтенда. Метод доступен в
+/// debug-сборке; в release — no-op, чтобы не тянуть фичу `devtools` и не растить бюджет D6.
+#[tauri::command]
+fn open_devtools(window: tauri::WebviewWindow) {
+    #[cfg(debug_assertions)]
+    {
+        window.open_devtools();
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        let _ = window;
+    }
+}
+
 /// Ошибка «плагинная подсистема доступна только на Windows» (не-Windows заглушки).
 #[cfg(not(windows))]
 fn plugin_unavailable() -> CommandError {
@@ -558,7 +576,8 @@ pub fn run() {
             list_plugins,
             set_plugin_enabled,
             reload_plugin,
-            run_plugin_command
+            run_plugin_command,
+            open_devtools
         ])
         .run(tauri::generate_context!())
         .expect("error while running darmark");
