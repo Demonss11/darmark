@@ -138,4 +138,4 @@
 - **Осталось из ревью (вне этой итерации):**
   - **major:** M1 `prefers-reduced-motion`; M3 семантика таблиц (`aria-sort`, вынос сортировки в кнопку, `aria-label`/`aria-expanded` воронки фильтра); M4 метки поисковых полей таблиц; M5 popup-фильтр (role/Escape/возврат фокуса); M6 `role="status"`/`aria-live` для статусбара; M7 `aria-label` редактору; M9 контраст `--fg-mute` (≈3.1:1).
   - **minor/nit:** `aria-hidden` декоративных `svg`/`.stat-dot`/`#tab-dirty`; `color-scheme`/`theme-color`; skip-link/`h1`; `tabular-nums` в статусбаре; `aria-disabled` для заглушек (палитра/журнал); активная панель по Tab; флип popup у нижней границы; мёртвые токены; `type="button"`; анимация `width` у sidebar; `cursor` на core-вкладке.
-- **Коммит:** см. ветку `ui/ux-11.1-style-tokens`.
+- **Коммит:** `8f04857` (ветка `ui/ux-11.1-style-tokens`).
