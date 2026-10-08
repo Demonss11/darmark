@@ -26,14 +26,31 @@ export function createFormatActions(host: HTMLTextAreaElement): FormatActions {
   function wrap(marker: string): void {
     const { selectionStart: s, selectionEnd: e, value } = host;
     const selected = value.slice(s, e);
-    const next = value.slice(0, s) + marker + selected + marker + value.slice(e);
-    if (selected) {
-      // Выделяем текст внутри маркеров, чтобы правку можно было продолжить.
-      commit(next, s + marker.length, s + marker.length + selected.length);
-    } else {
+    if (!selected) {
       // Пустое выделение — курсор между маркерами.
-      commit(next, s + marker.length, s + marker.length);
+      commit(value.slice(0, s) + marker + marker + value.slice(e), s + marker.length, s + marker.length);
+      return;
     }
+    // Краевые whitespace-символы (пробелы, табы, `\n`/`\r`, NBSP) оставляем
+    // СНАРУЖИ маркеров: мышью в выделение часто попадает замыкающий пробел,
+    // а `**слово **` ломает форматирование.
+    const lead = selected.length - selected.trimStart().length;
+    const trail = selected.length - selected.trimEnd().length;
+    const core = selected.slice(lead, selected.length - trail);
+    if (!core) {
+      // Выделение из одних whitespace — оборачиваем как есть (нет ядра).
+      commit(
+        value.slice(0, s) + marker + selected + marker + value.slice(e),
+        s + marker.length,
+        s + marker.length + selected.length
+      );
+      return;
+    }
+    // Пробелы по краям сохраняются вне маркеров; ядро выделяется для продолжения.
+    const insert =
+      selected.slice(0, lead) + marker + core + marker + selected.slice(selected.length - trail);
+    const coreStart = s + lead + marker.length;
+    commit(value.slice(0, s) + insert + value.slice(e), coreStart, coreStart + core.length);
   }
 
   function bold(): void {
