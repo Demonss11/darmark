@@ -80,6 +80,14 @@ export function createShell(opts: ShellOptions): void {
   // Активная панель (фокус) — для визуализации Pane/View.
   editor.addEventListener("focus", () => commands.setActivePane(opts.editorPane));
   preview.addEventListener("mousedown", () => commands.setActivePane(opts.previewPane));
+  // Активная панель следует и за клавиатурным фокусом (Tab): любой сфокусированный
+  // элемент внутри панели подсвечивает её, а не только клик/фокус редактора.
+  document.addEventListener("focusin", (e) => {
+    const pane = (e.target as Element | null)?.closest?.(".pane") as HTMLElement | null;
+    const id = pane?.dataset.pane;
+    if (id === opts.editorPane) commands.setActivePane(opts.editorPane);
+    else if (id === opts.previewPane) commands.setActivePane(opts.previewPane);
+  });
 
   chkPreview.addEventListener("change", () => commands.setPreviewVisible(chkPreview.checked));
   chkSync.addEventListener("change", () => commands.setSyncEnabled(chkSync.checked));

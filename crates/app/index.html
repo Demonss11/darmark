@@ -3,9 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#0d0e12" />
     <title>darmark</title>
   </head>
   <body>
+    <a class="skip-link" href="#main-content">Перейти к содержимому</a>
     <div id="app">
       <!-- ============ ТУЛБАР ============ -->
       <header id="toolbar" class="toolbar">
@@ -16,28 +19,28 @@
 
         <!-- файловые команды (иконки, id заморожены) -->
         <div class="file-actions">
-          <button class="tbtn" id="btn-new" title="Новый файл (Ctrl+N)" aria-label="Новый файл">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <button type="button" class="tbtn" id="btn-new" title="Новый файл (Ctrl+N)" aria-label="Новый файл">
+            <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
               <polyline points="14 2 14 8 20 8" />
               <line x1="12" y1="12" x2="12" y2="18" />
               <line x1="9" y1="15" x2="15" y2="15" />
             </svg>
           </button>
-          <button class="tbtn" id="btn-open" title="Открыть (Ctrl+O)" aria-label="Открыть">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <button type="button" class="tbtn" id="btn-open" title="Открыть (Ctrl+O)" aria-label="Открыть">
+            <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
             </svg>
           </button>
-          <button class="tbtn" id="btn-save" title="Сохранить (Ctrl+S)" aria-label="Сохранить">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <button type="button" class="tbtn" id="btn-save" title="Сохранить (Ctrl+S)" aria-label="Сохранить">
+            <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
               <polyline points="17 21 17 13 7 13 7 21" />
               <polyline points="7 3 7 8 15 8" />
             </svg>
           </button>
-          <button class="tbtn" id="btn-save-as" title="Сохранить как… (Ctrl+Shift+S)" aria-label="Сохранить как">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <button type="button" class="tbtn" id="btn-save-as" title="Сохранить как… (Ctrl+Shift+S)" aria-label="Сохранить как">
+            <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
               <polyline points="17 21 17 13 7 13 7 21" />
               <polyline points="7 3 7 8 15 8" />
@@ -56,32 +59,32 @@
 
         <!-- форматирование (icon-only) -->
         <div class="format-group" id="format-group">
-          <button class="tbtn" data-action="bold" title="Жирный (Ctrl+B)" aria-label="Жирный">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4">
+          <button type="button" class="tbtn" data-action="bold" title="Жирный (Ctrl+B)" aria-label="Жирный">
+            <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4">
               <path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z" />
               <path d="M6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z" />
             </svg>
           </button>
-          <button class="tbtn" data-action="italic" title="Курсив" aria-label="Курсив">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <button type="button" class="tbtn" data-action="italic" title="Курсив" aria-label="Курсив">
+            <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
               <line x1="19" y1="4" x2="10" y2="4" />
               <line x1="14" y1="20" x2="5" y2="20" />
               <line x1="15" y1="4" x2="9" y2="20" />
             </svg>
           </button>
-          <button class="tbtn" data-action="code" title="Код" aria-label="Код">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <button type="button" class="tbtn" data-action="code" title="Код" aria-label="Код">
+            <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
               <polyline points="16 18 22 12 16 6" />
               <polyline points="8 6 2 12 8 18" />
             </svg>
           </button>
-          <button class="tbtn" data-action="heading" title="Заголовок" aria-label="Заголовок">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <button type="button" class="tbtn" data-action="heading" title="Заголовок" aria-label="Заголовок">
+            <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M6 4v16M18 4v16M6 12h12" />
             </svg>
           </button>
-          <button class="tbtn" data-action="link" title="Ссылка" aria-label="Ссылка">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <button type="button" class="tbtn" data-action="link" title="Ссылка" aria-label="Ссылка">
+            <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
               <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
             </svg>
@@ -91,8 +94,8 @@
         <div class="div-v"></div>
 
         <!-- палитра команд: ЗАГЛУШКА -->
-        <button class="palette-trigger" id="palette-trigger" type="button" title="Палитра команд (Ctrl+K)">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+        <button class="palette-trigger" id="palette-trigger" type="button" title="Палитра команд (Ctrl+K) — скоро">
+          <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
             <polyline points="4 17 10 11 4 5" />
             <line x1="12" y1="19" x2="20" y2="19" />
           </svg>
@@ -136,8 +139,8 @@
         <div class="div-v"></div>
 
         <!-- наш инспектор (не путать с дровером idea5) -->
-        <button class="tbtn" id="btn-inspect" title="Инспектор (Ctrl+I)" aria-label="Инспектор">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+        <button type="button" class="tbtn" id="btn-inspect" title="Инспектор (Ctrl+I)" aria-label="Инспектор">
+          <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
             <circle cx="11" cy="11" r="8" />
             <line x1="21" y1="21" x2="16.65" y2="16.65" />
           </svg>
@@ -148,21 +151,21 @@
       <div class="workspace">
         <!-- rail -->
         <nav class="rail">
-          <button class="rail-btn active" id="rail-explorer" title="Файлы" aria-label="Файлы" aria-pressed="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <button type="button" class="rail-btn active" id="rail-explorer" title="Файлы" aria-label="Файлы" aria-pressed="true">
+            <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
               <polyline points="14 2 14 8 20 8" />
             </svg>
           </button>
-          <button class="rail-btn" id="rail-plugins" title="Плагины" aria-label="Плагины">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <button type="button" class="rail-btn" id="rail-plugins" title="Плагины" aria-label="Плагины">
+            <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z" />
               <line x1="16" y1="8" x2="2" y2="22" />
             </svg>
           </button>
           <div class="spacer"></div>
-          <button class="rail-btn" id="rail-logs" title="Журнал — скоро" aria-label="Журнал">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <button type="button" class="rail-btn" id="rail-logs" title="Журнал — скоро" aria-label="Журнал">
+            <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
               <polyline points="4 17 10 11 4 5" />
               <line x1="12" y1="19" x2="20" y2="19" />
             </svg>
@@ -187,12 +190,14 @@
         </aside>
 
         <!-- main -->
-        <main class="main">
+        <main class="main" id="main-content" tabindex="-1">
+          <!-- Видимого заголовка в UI нет — даём скринридерам точку входа в main. -->
+          <h1 class="visually-hidden">darmark — редактор Markdown</h1>
           <div class="tabrow">
             <div class="tab-strip" id="tab-strip">
               <div class="tab active" id="tab-current">
                 <span class="name" id="tab-name">безымянный</span>
-                <span class="dirty" id="tab-dirty" hidden></span>
+                <span class="dirty" id="tab-dirty" hidden aria-hidden="true"></span>
               </div>
             </div>
           </div>
@@ -212,6 +217,7 @@
                   id="editor"
                   spellcheck="false"
                   wrap="off"
+                  aria-label="Редактор Markdown"
                   placeholder="# Начните печатать markdown…"
                 ></textarea>
               </div>
@@ -242,13 +248,13 @@
 
       <!-- ============ СТАТУСБАР ============ -->
       <footer id="statusbar" class="statusbar">
-        <span class="stat"><span class="stat-dot"></span><span id="stat-state">Готов</span></span>
-        <span class="stat" id="stat-msg"></span>
+        <span class="stat"><span class="stat-dot" aria-hidden="true"></span><span id="stat-state">Готов</span></span>
+        <span class="stat" id="stat-msg" role="status" aria-live="polite"></span>
         <span class="spacer"></span>
         <span class="stat" id="stat-block">—</span>
         <span class="stat" id="stat-pos">Стр 1, Кол 1</span>
         <span class="stat" id="stat-size">0 симв.</span>
-        <span class="stat accent" id="stat-inspect" hidden>Режим инспектора</span>
+        <span class="stat accent" id="stat-inspect" hidden role="status" aria-live="polite"></span>
       </footer>
     </div>
     <script type="module" src="/src/main.ts"></script>

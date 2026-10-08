@@ -63,7 +63,9 @@ export async function clickHeader(name) {
       document.querySelectorAll(".table-enhanced thead th")
     ).find((t) => t.textContent.includes(col));
     if (!th) return false;
-    th.click();
+    // Сортировка — на кнопке внутри th (сам th сохраняет роль columnheader).
+    const btn = th.querySelector(".col-sort-btn");
+    (btn ?? th).click();
     return true;
   }, name);
   if (!ok) throw new Error(`Не найден заголовок столбца: ${name}`);

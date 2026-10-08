@@ -323,6 +323,9 @@ export function createInspector(opts: {
     savedScrollTop = editor.scrollTop;
     savedFocus = document.activeElement as HTMLElement | null;
     statusEl.hidden = false;
+    // Live-region объявляет только мутацию содержимого: показываем и заполняем
+    // текст одновременно (M6).
+    statusEl.textContent = "Режим инспектора";
     preview.addEventListener("mouseover", onMouseOver);
     preview.addEventListener("mouseout", onMouseOut);
     preview.addEventListener("click", onClickCapture, true);
@@ -344,6 +347,7 @@ export function createInspector(opts: {
     lastHoverShift = false;
     programmaticSel = { start: -1, end: -1 };
     statusEl.hidden = true;
+    statusEl.textContent = ""; // сброс, чтобы следующее включение снова объявилось (M6)
     preview.removeEventListener("mouseover", onMouseOver);
     preview.removeEventListener("mouseout", onMouseOut);
     preview.removeEventListener("click", onClickCapture, true);

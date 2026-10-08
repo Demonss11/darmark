@@ -160,11 +160,16 @@ function apply(entry: TableEntry) {
     for (const r of entry.baseOrder) tbody.appendChild(r);
   }
 
-  // 3. индикаторы состояний в заголовках
+  // 3. индикаторы состояний в заголовках (+ aria-sort для скринридеров, M3)
   headers.forEach((th, i) => {
-    th.classList.toggle("sorted-asc", st.sortCol === i && st.sortDir === 1);
-    th.classList.toggle("sorted-desc", st.sortCol === i && st.sortDir === -1);
+    const dir = st.sortCol === i ? st.sortDir : 0;
+    th.classList.toggle("sorted-asc", dir === 1);
+    th.classList.toggle("sorted-desc", dir === -1);
     th.classList.toggle("filtered", !!st.colFilters.get(i));
+    th.setAttribute(
+      "aria-sort",
+      dir === 1 ? "ascending" : dir === -1 ? "descending" : "none",
+    );
   });
 
   // 4. счётчик строк в панели инструментов
@@ -192,6 +197,10 @@ function makeTools(entryRef: { current: TableEntry | null }): HTMLElement {
   search.type = "search";
   search.className = "table-search";
   search.placeholder = "Поиск по таблице…";
+  // Доступное имя + отключение автозаполнения: поле вне формы, иначе WebView
+  // может предлагать сохранённые значения (M4).
+  search.setAttribute("aria-label", "Поиск по таблице");
+  search.autocomplete = "off";
   search.addEventListener("input", () => {
     const e = entryRef.current!;
     e.state.global = search.value;
@@ -235,16 +244,28 @@ interface MenuController {
 
 function createMenuController(): MenuController {
   let openMenu: HTMLElement | null = null;
+  let openAnchor: HTMLElement | null = null;
   let outsideHandler: ((e: MouseEvent) => void) | null = null;
+  let escapeHandler: ((e: KeyboardEvent) => void) | null = null;
   let anchorSeq = 0;
 
-  function closeMenu() {
+  // restoreFocus — только для Escape: клик снаружи/скролл не должны перехватывать
+  // фокус у пользователя, а Escape обязан вернуть его на воронку (M5).
+  function closeMenu(restoreFocus = false) {
+    const anchor = openAnchor;
     openMenu?.remove();
     openMenu = null;
+    openAnchor = null;
+    anchor?.setAttribute("aria-expanded", "false");
     if (outsideHandler) {
       document.removeEventListener("mousedown", outsideHandler, true);
       outsideHandler = null;
     }
+    if (escapeHandler) {
+      document.removeEventListener("keydown", escapeHandler, true);
+      escapeHandler = null;
+    }
+    if (restoreFocus && anchor?.isConnected) anchor.focus({ preventScroll: true });
   }
 
   function syncFromCheckboxes(menu: HTMLElement, entry: TableEntry, col: number) {
@@ -266,6 +287,11 @@ function createMenuController(): MenuController {
 
     const menu = document.createElement("div");
     menu.className = "col-filter-menu";
+    // role=dialog + aria-label: немодальный поповер (клик снаружи закрывает).
+    // aria-modal НЕ ставим — фокус не запирается, фон не инертен; ложная
+    // модальность путала бы скринридеры (M5).
+    menu.setAttribute("role", "dialog");
+    menu.setAttribute("aria-label", anchor.getAttribute("aria-label") ?? "Фильтр по столбцу");
     menu.setAttribute("data-anchor", anchor.getAttribute("data-anchor-id") ?? "");
 
     // уникальные значения колонки с количеством повторов
@@ -282,7 +308,9 @@ function createMenuController(): MenuController {
 
     const mini = document.createElement("input");
     mini.type = "search";
+    mini.setAttribute("aria-label", "Поиск значения");
     mini.placeholder = "Найти значение…";
+    mini.autocomplete = "off";
     mini.addEventListener("input", () => {
       const q = mini.value.toLowerCase();
       for (const item of menu.querySelectorAll<HTMLElement>(".col-filter-item")) {
@@ -342,14 +370,32 @@ function createMenuController(): MenuController {
     const w = 260;
     menu.style.position = "fixed";
     menu.style.left = Math.max(4, Math.min(rect.left, window.innerWidth - w - 8)) + "px";
-    menu.style.top = Math.min(rect.bottom + 2, window.innerHeight - 20) + "px";
+    // Флип у нижней границы окна: если поповер не помещается вниз — раскрываем вверх.
+    const below = rect.bottom + 2;
+    menu.style.top =
+      (below + menu.offsetHeight > window.innerHeight - 8
+        ? Math.max(8, rect.top - menu.offsetHeight - 2)
+        : below) + "px";
     openMenu = menu;
+    openAnchor = anchor;
+    anchor.setAttribute("aria-expanded", "true");
     mini.focus();
 
     outsideHandler = (e: MouseEvent) => {
       if (!menu.contains(e.target as Node) && e.target !== anchor) closeMenu();
     };
     document.addEventListener("mousedown", outsideHandler, true);
+
+    // Escape закрывает поповер и возвращает фокус на воронку (M5). Слушаем в
+    // capture и глушим событие, чтобы оно не ушло в глобальный обработчик shell
+    // (иначе Escape заодно переключил бы режим инспектора).
+    escapeHandler = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopPropagation();
+      closeMenu(true);
+    };
+    document.addEventListener("keydown", escapeHandler, true);
   }
 
   return { close: closeMenu, open: openFilterMenu, nextAnchorId: () => ++anchorSeq };
@@ -394,14 +440,32 @@ function enhance(table: HTMLTableElement, menu: MenuController) {
 
   // клик по заголовку: без сортировки → ↑ → ↓ → без сортировки
   headers.forEach((th, i) => {
-    th.tabIndex = 0;
-    th.setAttribute("role", "button");
+    // th сохраняет нативную роль columnheader: роль не подменяем, а сортировку
+    // вешаем на вложенную кнопку — интерактив обязан быть настоящей кнопкой
+    // (Enter/Space и доступное имя «из коробки», M3).
+    const thLabel = th.textContent?.trim() ?? "";
+    const sortBtn = document.createElement("button");
+    sortBtn.type = "button";
+    sortBtn.className = "col-sort-btn";
+    if (th.querySelector("a, button, input, select, textarea, label")) {
+      // Заголовок со ссылкой/контролом: не вкладываем интерактив в <button> —
+      // это невалидный DOM и делает ссылку недостижимой с клавиатуры. Ставим
+      // кнопку сортировки рядом с содержимым отдельным значком.
+      sortBtn.textContent = "↕";
+      th.appendChild(sortBtn);
+    } else {
+      while (th.firstChild) sortBtn.appendChild(th.firstChild); // сохраняем inline-разметку
+      th.appendChild(sortBtn);
+    }
+    sortBtn.setAttribute("aria-label", `Сортировать по столбцу «${thLabel}»`);
 
     const funnel = document.createElement("button");
     funnel.type = "button";
     funnel.className = "col-filter-btn";
     funnel.textContent = "▾";
     funnel.title = "Фильтр по столбцу";
+    funnel.setAttribute("aria-label", `Фильтр по столбцу «${thLabel}»`);
+    funnel.setAttribute("aria-expanded", "false");
     funnel.setAttribute("data-anchor-id", String(menu.nextAnchorId()));
     funnel.addEventListener("click", (ev) => {
       ev.stopPropagation();
@@ -415,10 +479,7 @@ function enhance(table: HTMLTableElement, menu: MenuController) {
       else { state.sortCol = null; state.sortDir = 1; }
       apply(entry);
     };
-    th.addEventListener("click", toggle);
-    th.addEventListener("keydown", (ev) => {
-      if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); toggle(); }
-    });
+    sortBtn.addEventListener("click", toggle);
   });
 
   apply(entry);
@@ -441,6 +502,9 @@ export function createTablesController(root: HTMLElement): TablesController {
   root.addEventListener("scroll", onScroll, { passive: true });
   return {
     enhance() {
+      // Перерисовка предпросмотра заменяет DOM таблиц целиком — открытый поповер
+      // фильтра привязан к прежней воронке, поэтому закрываем его (M5).
+      menu.close();
       // YAML-шапка (md-core::frontmatter) — это метаданные, а не датасет:
       // сортировка/поиск/фильтры там неуместны, поэтому таблицы с классом
       // `md-frontmatter` (включая вложенные) не украшаем.

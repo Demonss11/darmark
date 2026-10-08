@@ -65,3 +65,80 @@ Then("у элемента {string} виден фокус-ринг", async (selec
     );
   }
 });
+
+// ---------- Регрессии M1/M3/M4/M5/M6/M7 ----------
+
+Then(
+  "у элемента {string} атрибут {string} равен {string}",
+  async (selector, attr, expected) => {
+    const actual = await browser.execute(
+      (s, a) => document.querySelector(s)?.getAttribute(a) ?? null,
+      selector,
+      attr
+    );
+    if (actual !== expected) {
+      throw new Error(
+        `У ${selector} ${attr}=${JSON.stringify(actual)}, ожидалось ${JSON.stringify(expected)}`
+      );
+    }
+  }
+);
+
+// M3: aria-sort на самом th (подпись столбца — по видимому тексту).
+Then(
+  "у заголовка {string} значение aria-sort равно {string}",
+  async (name, expected) => {
+    const actual = await browser.execute((col) => {
+      const th = Array.from(
+        document.querySelectorAll(".table-enhanced thead th")
+      ).find((t) => t.textContent.includes(col));
+      return th?.getAttribute("aria-sort") ?? null;
+    }, name);
+    if (actual !== expected) {
+      throw new Error(
+        `У заголовка ${JSON.stringify(name)} aria-sort=${JSON.stringify(actual)}, ожидалось ${JSON.stringify(expected)}`
+      );
+    }
+  }
+);
+
+// M5: Escape в открытом поповере фильтра.
+When("я нажимаю Escape", async () => {
+  await browser.execute(() => {
+    document.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Escape", bubbles: true })
+    );
+  });
+  await browser.pause(30);
+});
+
+// M5: фокус вернулся на воронку (кнопка `.col-filter-btn`).
+Then("фокус вернулся на воронку фильтра", async () => {
+  const onFunnel = await browser.execute(() => {
+    const el = document.activeElement;
+    return !!el && el.classList.contains("col-filter-btn");
+  });
+  if (!onFunnel) throw new Error("Фокус не вернулся на воронку фильтра");
+});
+
+// M1: не эмулируем медиафичу (WebDriver этого не умеет), но проверяем, что
+// правило prefers-reduced-motion реально присутствует в подключённых стилях.
+Then("в таблицах стилей есть медиазапрос prefers-reduced-motion", async () => {
+  const found = await browser.execute(() => {
+    for (const sheet of Array.from(document.styleSheets)) {
+      let rules;
+      try {
+        rules = sheet.cssRules;
+      } catch {
+        continue; // недоступный (кросс-доменный) sheet
+      }
+      for (const rule of Array.from(rules ?? [])) {
+        if (rule.media && /prefers-reduced-motion/i.test(rule.media.mediaText)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  });
+  if (!found) throw new Error("В стилях нет @media (prefers-reduced-motion)");
+});

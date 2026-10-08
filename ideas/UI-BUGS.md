@@ -120,22 +120,33 @@
 - **Тесты:** `crates/app/e2e/features/format.feature` — сценарии «в начале длинного файла … не сдвигает скролл» (кнопка с реалистичным снятием фокуса, `Ctrl+B` с курсором, `Ctrl+B`, кнопка+C инспектор) проверяют, что `#editor` и `#preview` остаются в начале; полный E2E 9/9.
 - **Открытые вопросы:** нет.
 
-### BUG-006 — UI-ревью: доступность базовых контролов (B1/M2/M8)
+### BUG-006 — UI-ревью: доступность базовых контролов (B1/M2/M3/M4/M5/M6/M7/M8/M9)
 
-- **Статус:** fixed (приоритет-1 из ревью; остальные находки — в «Осталось»)
+- **Статус:** fixed (обе итерации; остался только необязательный nit по анимации sidebar)
 - **Severity:** P1 (B1 — блокер клавиатурной навигации)
-- **Область:** `crates/app/index.html`, `crates/app/src/style.css`.
+- **Область:** `crates/app/index.html`, `crates/app/src/style.css`, `crates/app/src/tables.ts`,
+  `crates/app/src/shell.ts`, `crates/app/src/inspector.ts`, `crates/app/e2e/**`.
 - **Источник:** UI-ревью по Web Interface Guidelines (скилл `web-design-guidelines`), read-only.
 - **Симптом (по ревью):**
   - **B1** — тумблеры `#toggle-sync`/`#toggle-preview`: скрытый `input` (`0×0`, `opacity:0`) без доступного имени; фокус при Tab не виден (у `label.tbtn` нет `:focus-within`).
   - **M2** — icon-only кнопки rail (`#rail-explorer`/`-plugins`/`-logs`) имели только `title`.
   - **M8** — `#editor { outline: none }` (id-селектор) глушил глобальный `:focus-visible` — у редактора не было фокус-ринга.
-- **Исправлено:**
+  - **M1** — нет `prefers-reduced-motion`; **M3** — `th` терял роль `columnheader` (`role="button"`), воронка вложена в `role=button`, не было `aria-sort`; **M4** — поисковые поля таблиц без меток; **M5** — popup-фильтр без `role`, не закрывался по Escape и не возвращал фокус; **M6** — статусбар не объявлялся скринридеру; **M7** — `#editor` без доступного имени; **M9** — `--fg-mute` ≈3.1:1.
+- **Исправлено (приоритет-1, коммит `8f04857`):**
   1. **B1** — `input` тумблеров получили `role="switch"` + `aria-label` («Синхронная прокрутка» / «Предпросмотр»), декоративные `svg` — `aria-hidden="true" focusable="false"`; добавлено `label.tbtn:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }`.
   2. **M2** — rail-кнопкам добавлены `aria-label` («Файлы» / «Плагины» / «Журнал»).
   3. **M8** — добавлено `#editor:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }`.
-- **Тесты:** E2E `crates/app/e2e/features/a11y.feature` (4 сценария: роль/имя тумблеров, фокус-ринг тумблера, имена rail, фокус-ринг редактора). Полный E2E — **11 passed, 11 total**.
-- **Осталось из ревью (вне этой итерации):**
-  - **major:** M1 `prefers-reduced-motion`; M3 семантика таблиц (`aria-sort`, вынос сортировки в кнопку, `aria-label`/`aria-expanded` воронки фильтра); M4 метки поисковых полей таблиц; M5 popup-фильтр (role/Escape/возврат фокуса); M6 `role="status"`/`aria-live` для статусбара; M7 `aria-label` редактору; M9 контраст `--fg-mute` (≈3.1:1).
-  - **minor/nit:** `aria-hidden` декоративных `svg`/`.stat-dot`/`#tab-dirty`; `color-scheme`/`theme-color`; skip-link/`h1`; `tabular-nums` в статусбаре; `aria-disabled` для заглушек (палитра/журнал); активная панель по Tab; флип popup у нижней границы; мёртвые токены; `type="button"`; анимация `width` у sidebar; `cursor` на core-вкладке.
-- **Коммит:** `8f04857` (ветка `ui/ux-11.1-style-tokens`).
+- **Исправлено (вторая итерация, коммит см. ниже):**
+  - **M1** — в `style.css` добавлен `@media (prefers-reduced-motion: reduce)`, гасящий `animation`/`transition` и `scroll-behavior` (в т.ч. анимацию `width` sidebar).
+  - **M3** — сам `th` сохраняет нативную роль `columnheader`; сортировка вынесена в кнопку `.col-sort-btn` (доступное имя «Сортировать по столбцу «…»», Enter/Space «из коробки», inline-разметка заголовка сохранена); `apply()` выставляет `aria-sort` (`ascending`/`descending`/`none`); воронка `.col-filter-btn` получила `aria-label` и `aria-expanded`. Заголовок с интерактивом (ссылка/контрол) не оборачивается в `<button>` (без невалидной вложенности) — кнопка сортировки ставится рядом значком «↕».
+  - **M4** — у поиска по таблице и мини-поиска фильтра — `aria-label` + `autocomplete="off"`.
+  - **M5** — popup-фильтр: `role="dialog"` + `aria-label` (без `aria-modal`: фокус не запирается, фон не инертен — ложная модальность не заявляется); закрытие по Escape (capture-слушатель, событие не уходит в shell), возврат фокуса на воронку; `aria-expanded` воронки отражает состояние; флип поповера у нижней границы окна; поповер закрывается при перерисовке предпросмотра (не остаётся «осиротевшим»).
+  - **M6** — `#stat-msg` → `role="status"` + `aria-live="polite"`; `#stat-inspect` → `role="status"` + `aria-live="polite"`, текст выставляется/сбрасывается в `enable`/`disable` (live-region объявляет именно мутацию содержимого).
+  - **M7** — `#editor` → `aria-label="Редактор Markdown"`.
+  - **M9** — `--fg-mute` `#5f6478` → `#8a90a4` (контраст ≥4.5:1 на `--bg-0`/`--bg-1`/`--bg-2`/`--bg-3`).
+  - **minor/nit** — `aria-hidden="true"` у декоративных `svg` (плюс `focusable="false"`), `.stat-dot`, `#tab-dirty`; `<meta name="color-scheme" content="dark">` + `theme-color` + `color-scheme: dark` в `:root`; skip-link «Перейти к содержимому» к `main#main-content` + визуально скрытый `h1`; `font-variant-numeric: tabular-nums` и `max-width`/ellipsis у `#stat-msg` в статусбаре; заглушки «Команды»/«Журнал» остаются рабочими (по клику сообщают «скоро»), «скоро» вынесено в `title` — `aria-disabled`/приглушение не ставим, чтобы не разойтись с реальной интерактивностью и не уронить контраст; активная панель следует за фокусом при Tab (`focusin` в `shell.ts`); `type="button"` у icon-кнопок; удалены мёртвые токены (`--teal`, `--r-md`, `--r-lg`, `--pc`, `--w-infopanel`, `--popover`, `--pop-border`, `--shadow-sm`, `--shadow-lg`).
+- **Тесты:** E2E `crates/app/e2e/features/a11y.feature` расширена до 10 сценариев (B1/M2/M8 + M1/M3/M4/M5/M6/M7: `aria-sort` при сортировке, метки поиска, `role="status"` статусбара, `aria-label` редактора, `aria-expanded`/Escape/возврат фокуса воронки, наличие `@media (prefers-reduced-motion)` в стилях). `clickHeader` кликает вложенную `.col-sort-btn`. Полный E2E — **11 passed, 11 total** (a11y-спек — 39 passing).
+- **Осталось из ревью:**
+  - **nit (осознанно отложено):** анимация `width` у `.sidebar` — не композитор-френдли (правился бы только `transform`/`opacity`), но layout-значима; для пользователей `prefers-reduced-motion` уже гасится медиазапросом. Отдельная правка не в этой итерации.
+  - **закрыто без правки:** `cursor` у core-вкладки — `.vtab` уже `cursor: default`, дополнительный селектор не нужен.
+- **Коммит:** `8f04857` (первая итерация); вторая итерация — коммит см. ниже. Ветка `ui/ux-11.1-style-tokens`.

@@ -2,6 +2,7 @@
    Токены — из ideas/front_idea5.html; скроллерами остаются сами #editor/#preview. */
 
 :root {
+  color-scheme: dark; /* тёмные нативные контролы/скроллбары (Web Interface Guidelines) */
   /* поверхности и текст */
   --bg-0: #0d0e12;
   --bg-1: #141519;
@@ -11,7 +12,8 @@
   --line-soft: #1c1e26;
   --fg: #e6e7ee;
   --fg-dim: #9297a8;
-  --fg-mute: #5f6478;
+  /* M9: поднято для контраста ≥4.5:1 на --bg-0/--bg-1/--bg-2/--bg-3. */
+  --fg-mute: #8a90a4;
   --head: #ffffff;
   --body: #ced0db;
   --accent: #7c5cff;
@@ -20,7 +22,6 @@
   --green: #4ade80;
   --amber: #fbbf24;
   --red: #f87171;
-  --teal: #2dd4bf;
   --gutter: #0f1014;
 
   /* метрики оболочки */
@@ -30,23 +31,15 @@
   --w-rail: 44px;
   --w-sidebar: 224px;
   --r-sm: 5px;
-  --r-md: 7px;
 
   /* геометрия редактора — общая для #editor и #gutter, иначе номера «поедут» */
   --ed-fs: 13.5px;
   --ed-lh: 23px;
   --ed-pad-y: 16px;
 
-  /* токены §11.1 (idea7): акцент-rgb, код, поповеры/тени, крупный радиус, панель */
+  /* токены §11.1 (idea7): акцент-rgb и цвет инлайн-кода */
   --accent-rgb: 124, 92, 255;
   --code-fg: #e9b3ff;
-  --popover: #1a1b22;
-  --pop-border: #2a2c36;
-  --shadow-lg: 0 20px 60px rgba(0, 0, 0, 0.55);
-  --shadow-sm: 0 6px 18px rgba(0, 0, 0, 0.35);
-  --r-lg: 10px;
-  --pc: var(--accent);
-  --w-infopanel: 320px;
 }
 
 * { box-sizing: border-box; }
@@ -54,6 +47,46 @@ html, body { height: 100%; margin: 0; overflow: hidden; }
 [hidden] { display: none !important; }
 .spacer { flex: 1; }
 svg { display: block; }
+
+/* ==== Утилиты доступности: skip-link и визуально скрытый текст ==== */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+.skip-link {
+  position: absolute;
+  left: 8px;
+  top: -40px;
+  z-index: 100;
+  padding: 6px 12px;
+  border-radius: var(--r-sm);
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  text-decoration: none;
+  transition: top 0.12s;
+}
+.skip-link:focus { top: 6px; }
+
+/* M1: уважаем prefers-reduced-motion — гасим анимации/переходы для тех, кому
+   движение мешает. `scroll-behavior` тоже отключаем. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
 
 body {
   background: var(--bg-0);
@@ -474,6 +507,7 @@ label.tbtn:focus-within { outline: 2px solid var(--accent); outline-offset: 1px;
   background: var(--bg-1);
   border-top: 1px solid var(--line-soft);
   font-size: 11px;
+  font-variant-numeric: tabular-nums; /* цифры позиции/размера не «пляшут» */
   flex-shrink: 0;
 }
 .stat {
@@ -488,7 +522,12 @@ label.tbtn:focus-within { outline: 2px solid var(--accent); outline-offset: 1px;
 }
 .stat.accent { color: var(--accent); font-weight: 600; }
 .stat-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
-#stat-msg { color: var(--accent); }
+#stat-msg {
+  color: var(--accent);
+  max-width: 360px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 /* ===================== РЕЖИМ ИНСПЕКТОРА ===================== */
 /* outline, а не border — не сдвигает layout и не конфликтует с таблицами */
@@ -663,21 +702,32 @@ label.tbtn:focus-within { outline: 2px solid var(--accent); outline-offset: 1px;
 .table-reset:not(:disabled):hover { color: var(--fg); border-color: var(--fg-mute); }
 .table-reset:disabled { opacity: 0.45; cursor: default; }
 
-/* кликабельные заголовки-сортировщики */
+/* кликабельные заголовки-сортировщики: интерактив — вложенная кнопка, сам th
+   остаётся columnheader (M3). */
 .table-enhanced thead th {
   position: sticky;
   top: 0;
   z-index: 1;
-  cursor: pointer;
   user-select: none;
   white-space: nowrap;
 }
 .table-enhanced thead th:hover { color: var(--accent); }
-.table-enhanced thead th:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .table-enhanced thead th::after { content: ""; margin-left: 6px; font-size: 10px; opacity: 0.5; }
 .table-enhanced thead th.sorted-asc::after { content: "▲"; opacity: 1; color: var(--accent); }
 .table-enhanced thead th.sorted-desc::after { content: "▼"; opacity: 1; color: var(--accent); }
 .table-enhanced thead th.filtered { color: var(--accent); }
+/* Сортировка — кнопка, замаскированная под текст заголовка. */
+.col-sort-btn {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.col-sort-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
 .col-filter-btn {
   margin-left: 6px;
