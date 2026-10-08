@@ -234,3 +234,18 @@ Then("текст редактора содержит {string}", async (fragment)
     { timeout: 10000, timeoutMsg: `В редакторе не появилось: ${fragment}` }
   );
 });
+
+// ---------- BUG-004: полосы плагинов в тулбаре быть не должно ----------
+//
+// Ранее `#plugin-strip` наполнялся кнопками-монограммами и разрастался с числом
+// плагинов. Полосу удалили (плагинные view доступны вкладками `#view-switch`).
+// Тест — защита от повторного появления.
+Then("в тулбаре нет полосы плагинов", async () => {
+  const info = await browser.execute(() => ({
+    strip: document.getElementById("plugin-strip") !== null,
+    pbtn: document.querySelectorAll("#toolbar .pbtn").length,
+  }));
+  if (info.strip || info.pbtn > 0) {
+    throw new Error(`Полоса плагинов вернулась (BUG-004): ${JSON.stringify(info)}`);
+  }
+});
