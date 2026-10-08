@@ -235,6 +235,80 @@ Then("текст редактора содержит {string}", async (fragment)
   );
 });
 
+// ---------- Согласие на разрешения (§11.1 п.4) ----------
+
+/// Ставит чекбокс согласия `input.pl-grant[data-permission=...]` в нужное
+/// состояние (клик только при расхождении). Смена прав у включённого плагина
+/// перезапускает child, поэтому ждём, пока перерисованный чекбокс подтвердит
+/// новое состояние и станет снова активным.
+async function setPluginGrant(pluginId, permission, granted) {
+  await openPluginsPanel();
+  const ok = await browser.execute(
+    (id, perm, want) => {
+      const item = document.querySelector(
+        `#plugin-manager .pl-item[data-plugin="${id}"]`
+      );
+      const cb = item?.querySelector(`input.pl-grant[data-permission="${perm}"]`);
+      if (!cb) return false;
+      if (cb.checked !== want) cb.click();
+      return true;
+    },
+    pluginId,
+    permission,
+    granted
+  );
+  if (!ok) throw new Error(`В менеджере нет разрешения ${permission} у плагина ${pluginId}`);
+  await browser.waitUntil(
+    async () =>
+      browser.execute(
+        (id, perm, want) => {
+          const item = document.querySelector(
+            `#plugin-manager .pl-item[data-plugin="${id}"]`
+          );
+          const cb = item?.querySelector(`input.pl-grant[data-permission="${perm}"]`);
+          return !!cb && !cb.disabled && cb.checked === want;
+        },
+        pluginId,
+        permission,
+        granted
+      ),
+    {
+      timeout: 15000,
+      timeoutMsg: `Разрешение ${permission} плагина ${pluginId} не переключилось`,
+    }
+  );
+}
+
+When("я выдаю разрешение {string} {string}", async (pluginId, permission) => {
+  await setPluginGrant(pluginId, permission, true);
+});
+
+When("я снимаю разрешение {string} {string}", async (pluginId, permission) => {
+  await setPluginGrant(pluginId, permission, false);
+});
+
+/// Негативная проверка гейта: дожидаемся конца IPC-пути команды (кнопки команд
+/// снова активны после `refresh`), затем короткая страховка на асинхронную
+/// обработку события плагином — и убеждаемся, что запрещённая правка НЕ дошла.
+Then("текст редактора не содержит {string}", async (fragment) => {
+  await browser.waitUntil(
+    async () =>
+      browser.execute(() => {
+        const buttons = Array.from(
+          document.querySelectorAll("#plugin-manager .pl-cmd")
+        );
+        return buttons.length > 0 && buttons.every((b) => !b.disabled);
+      }),
+    { timeout: 5000, timeoutMsg: "Кнопки команд не вернулись в активное состояние" }
+  );
+  await browser.pause(300);
+  const has = await browser.execute(
+    (f) => (document.getElementById("editor")?.value ?? "").includes(f),
+    fragment
+  );
+  if (has) throw new Error(`В редакторе неожиданно появилось: ${fragment}`);
+});
+
 // ---------- BUG-004: полосы плагинов в тулбаре быть не должно ----------
 //
 // Ранее `#plugin-strip` наполнялся кнопками-монограммами и разрастался с числом

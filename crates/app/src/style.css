@@ -196,8 +196,10 @@ body {
 /* тумблеры: залиты, когда включены */
 .tbtn:has(> input:checked) { color: var(--accent); background: var(--accent-soft); }
 .toggle-input { position: absolute; width: 0; height: 0; opacity: 0; pointer-events: none; }
-/* Фокус на скрытом input тумблера невидим сам по себе — показываем его на обёртке (B1). */
-label.tbtn:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* Фокус на скрытом input невидим сам по себе — показываем его на обёртке (B1).
+   Только клавиатурный фокус (`:focus-visible`): иначе после клика по тумблеру
+   рамка остаётся висеть до клика вне него (BUG-008). */
+label.tbtn:has(> input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 .format-group { display: flex; align-items: center; gap: 0; opacity: 0.55; transition: opacity 0.18s; }
 .format-group:focus-within { opacity: 1; }
@@ -330,15 +332,51 @@ label.tbtn:focus-within { outline: 2px solid var(--accent); outline-offset: 1px;
 .pl-badge.failed { color: var(--red); border-color: rgba(248, 113, 113, 0.35); background: rgba(248, 113, 113, 0.1); }
 .pl-badge.quarantined { color: var(--amber); border-color: rgba(251, 191, 36, 0.35); background: rgba(251, 191, 36, 0.1); }
 .pl-badge.stopped { color: var(--fg-mute); }
-.pl-perms { display: flex; flex-wrap: wrap; gap: 4px; }
+/* Согласие на права плагина (§11.1 п.4): инлайн-секция, не read-only chips.
+   Состояние права дублируется словом (`.pl-perm-state`), не только цветом. */
+.pl-perms { display: flex; flex-direction: column; gap: 4px; }
+.pl-perms-head { display: flex; align-items: center; gap: 6px; }
+.pl-perms-title { flex: 1; min-width: 0; font-size: 11px; color: var(--fg-mute); }
+.pl-perms-bulk { display: flex; gap: 4px; flex-shrink: 0; }
+.pl-perms-bulk button {
+  padding: 2px 7px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-3);
+  color: var(--fg-dim);
+  font: inherit;
+  font-size: 10.5px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.pl-perms-bulk button:hover:not(:disabled) { background: var(--bg-2); color: var(--fg); }
+.pl-perms-bulk button:disabled { opacity: 0.45; cursor: default; }
 .pl-perm {
-  padding: 1px 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 6px;
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
   background: var(--bg-3);
   color: var(--fg-dim);
   font-size: 10.5px;
+  cursor: pointer;
 }
+.pl-grant { margin: 0; flex-shrink: 0; accent-color: var(--accent); cursor: pointer; }
+.pl-grant:disabled { cursor: default; }
+.pl-perm-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pl-perm-state { flex-shrink: 0; color: var(--fg-mute); }
+/* Выданное право — зелёное состояние + слово «выдано»; акцент не как мелкий текст. */
+.pl-perm:has(> input.pl-grant:checked) .pl-perm-name { color: var(--fg); }
+.pl-perm:has(> input.pl-grant:checked) .pl-perm-state { color: var(--green); }
+.pl-consent-hint { color: var(--amber); font-size: 11px; line-height: 1.35; }
 .pl-notice { color: var(--amber); font-size: 11px; line-height: 1.35; }
 .pl-actions {
   display: flex;

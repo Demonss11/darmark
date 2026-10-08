@@ -13,12 +13,13 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use plugin_proto::envelope::PluginError;
+use plugin_proto::manifest::ViewContrib;
 use serde_json::{json, Value};
 
 use crate::{PluginInfo, PluginViewInfo};
 
 use super::bus::EventBus;
-use super::manager::PluginManager;
+use super::manager::{effective_permissions, PluginManager};
 use super::services::PendingChanged;
 use super::settings::SettingsStore;
 use super::views::PluginViews;
@@ -314,10 +315,79 @@ impl PluginHost {
     /// Неудачная перезагрузка (синтаксис и т.п.) снимает view плагина: иначе остаётся
     /// «зомби»-вкладка со старым HTML при статусе «ошибка».
     pub fn reload(&self, id: &str) -> Result<(), PluginError> {
+        // Для включённого плагина гарантируем contributed view в реестре ДО старта
+        // child: предыдущий сбой мог снять view, а `on_activate` пишет HTML через
+        // `set_view_content` — иначе `unknown_view` и потерянный контент.
+        if let Some((true, contributes)) = self.enabled_views(id) {
+            let mut views = lock(&self.views);
+            views.remove_plugin(id);
+            views.register(id, &contributes);
+        }
         let result = lock(&self.manager).reload_plugin(id);
         if result.is_err() {
             lock(&self.views).remove_plugin(id);
         }
+        self.pump();
+        (self.notify)();
+        result
+    }
+
+    /// Состояние плагина: `(enabled, contributes.views)`, если он зарегистрирован.
+    fn enabled_views(&self, id: &str) -> Option<(bool, Vec<ViewContrib>)> {
+        lock(&self.manager)
+            .get(id)
+            .map(|runtime| (runtime.is_enabled(), runtime.views.clone()))
+    }
+
+    /// `set_plugin_permissions`: согласие пользователя как **реальный** гейт прав
+    /// (§8/§12, §11.1 п.4).
+    ///
+    /// Пересечение запрашиваемых манифестом прав и выданных пользователем
+    /// (`manifest ∩ granted`, deny-by-default) сохраняется в `config.json` **до**
+    /// применения — согласие фиксируется даже при сбое перезапуска. Включённый плагин
+    /// перезапускается, чтобы новый набор вступил в силу (права захватываются при
+    /// [`super::manager::PluginRuntime::start`]); выключенный — только запоминает набор (`reload` на
+    /// выключенном = `start` ранним выходом). Карантин `reload` не сбрасывает.
+    ///
+    /// Сбой перезапуска снимает view плагина: иначе останется «зомби»-вкладка при
+    /// статусе «ошибка» — как у [`Self::reload`].
+    pub fn set_permissions(&self, id: &str, granted: Vec<String>) -> Result<(), PluginError> {
+        // Запрашиваемые права + проверка существования: unknown id → ошибка, ничего не пишем.
+        let (requested, enabled, contributes) = {
+            let manager = lock(&self.manager);
+            let runtime = manager
+                .get(id)
+                .ok_or_else(|| PluginError::new("unknown_plugin", format!("нет плагина {id}")))?;
+            (
+                runtime.permissions.clone(),
+                runtime.is_enabled(),
+                runtime.views.clone(),
+            )
+        };
+        let effective = effective_permissions(&requested, &granted);
+
+        // Персист пересечения до применения: согласие переживает сбой reload.
+        if let Some(path) = &self.config_path {
+            let mut settings = lock(&self.settings);
+            settings.set_granted_permissions(id, effective.clone());
+            if let Err(e) = settings.save(path) {
+                eprintln!("не сохранить config.json: {e}");
+            }
+        }
+
+        // Применение: enabled → reload (права захватываются при start), иначе no-op.
+        // View гарантируем ДО перезапуска (как в [`Self::reload`]), иначе «восставший»
+        // после сбоя плагин не сможет наполнить свою вкладку в `on_activate`.
+        if enabled {
+            let mut views = lock(&self.views);
+            views.remove_plugin(id);
+            views.register(id, &contributes);
+        }
+        let result = lock(&self.manager).set_plugin_permissions(id, effective);
+        if result.is_err() {
+            lock(&self.views).remove_plugin(id);
+        }
+
         self.pump();
         (self.notify)();
         result

@@ -66,6 +66,56 @@ Then("у элемента {string} виден фокус-ринг", async (selec
   }
 });
 
+Then("у элемента {string} нет фокус-ринга", async (selector) => {
+  const info = await browser.execute((s) => {
+    const el = document.querySelector(s);
+    if (!el) return null;
+    const cs = getComputedStyle(el);
+    return {
+      width: parseFloat(cs.outlineWidth) || 0,
+      style: cs.outlineStyle,
+    };
+  }, selector);
+  if (!info) throw new Error(`Элемент ${selector} не найден`);
+  if (info.style !== "none" && info.width > 0) {
+    throw new Error(
+      `У ${selector} остался фокус-ринг (outline: ${info.style} ${info.width}px)`
+    );
+  }
+});
+
+// Переключение тумблера как кликом мыши: рамка не должна оставаться.
+// Скрытый input (`pointer-events: none`, нулевая геометрия) нативным WebDriver
+// кликнуть нельзя, поэтому кликаем по видимой обёртке label реальным указателем —
+// это и переключает input, и переводит браузер в «мышиную» модальность
+// (синтетические события и программный `.focus()` модальность не меняют).
+When("я переключаю тумблер {string}", async (selector) => {
+  // Детерминированный старт: снимаем фокус (предыдущий сценарий мог оставить
+  // `:focus-visible`), чтобы pointer-клик задал «мышиную» модальность.
+  await browser.execute(() => {
+    const active = document.activeElement;
+    if (active && typeof active.blur === "function") active.blur();
+  });
+  const labelId = await browser.execute((s) => {
+    const input = document.querySelector(s);
+    if (!input) return null;
+    const label = input.closest("label");
+    if (!label) return null;
+    if (!label.id) label.id = "e2e-toggle-label";
+    return label.id;
+  }, selector);
+  if (!labelId) throw new Error(`Тумблер ${selector} не найден`);
+  await browser.$(`#${labelId}`).click();
+  await browser.pause(50);
+});
+
+// Настоящее сочетание клавиш (не синтетическое событие): только оно переводит
+// браузер в «клавиатурную» модальность и включает `:focus-visible`.
+When("я нажимаю Shift+Tab", async () => {
+  await browser.keys(["\uE008", "\uE004"]);
+  await browser.pause(50);
+});
+
 // ---------- Регрессии M1/M3/M4/M5/M6/M7 ----------
 
 Then(

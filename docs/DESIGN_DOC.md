@@ -459,6 +459,8 @@ scan(plugins_dir) -> validate(manifest) -> load(src) -> on_activate(ctx)
 
 Проверка — **на стороне хоста, до вызова**. Плагин без `document:write` получает `error { code = "permission_denied", permission = "document:write" }`, а не исключение Lua.
 
+**Согласие (H2):** пользователь выдаёт подмножество декларированных прав (`granted`), эффективный набор = `manifest ∩ granted` (deny-by-default). Согласие хранится в `%APPDATA%/darmark/config.json`; смена набора у запущенного плагина применяется перезапуском child-процесса.
+
 ---
 
 ## 9. События

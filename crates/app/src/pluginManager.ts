@@ -1,9 +1,10 @@
 // pluginManager.ts — менеджер плагинов в панели `#panel-plugins` (H2, Фаза 5).
 //
 // Контроллер показывает снимок плагинов из Rust-хоста (команда `list_plugins`):
-// статус, тумблер вкл/выкл, «Перезагрузить», разрешения + notices (F38) и кнопки
-// команд плагина. Тело панели собирается DOM-узлами и `textContent` — строки из
-// манифеста/хоста не проходят через `innerHTML` (защита от инъекции).
+// статус, тумблер вкл/выкл, «Перезагрузить», инлайн-согласие на permissions
+// (§11.1 п.4), notices (F38) и кнопки команд плагина. Тело панели собирается
+// DOM-узлами и `textContent` — строки из манифеста/хоста не проходят через
+// `innerHTML` (защита от инъекции).
 //
 // Состав/статусы меняются и по инициативе хоста: событие `plugins-changed` (без
 // payload) заставляет перечитать снимок. Обработчики — делегированные на корне,
@@ -16,6 +17,7 @@ import {
   reloadPlugin,
   runPluginCommand,
   setPluginEnabled,
+  setPluginPermissions,
   type PluginInfo,
   type PluginStatus,
 } from "./tauri";
@@ -68,7 +70,73 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     return badge;
   }
 
-  /** Один плагин: голова (тумблер/имя/бейдж), разрешения, notices, действия. */
+  /**
+   * Инлайн-секция согласия: по чекбоксу на каждое запрошенное право. `checked` —
+   * право реально выдано (`granted_permissions`), состояние дублируется словом
+   * (не только цветом). Согласие — реальный гейт эффективных прав
+   * (`manifest ∩ granted`, deny-by-default, §11.1 п.4). `null`, если плагин
+   * ничего не запрашивает.
+   */
+  function renderConsent(info: PluginInfo): HTMLElement | null {
+    const requested = info.permissions;
+    if (requested.length === 0) return null;
+    const granted = new Set(info.granted_permissions);
+    const grantedCount = requested.filter((permission) => granted.has(permission)).length;
+
+    const section = el("div", "pl-perms");
+
+    const head = el("div", "pl-perms-head");
+    const title = el("span", "pl-perms-title");
+    title.textContent = `Доступ: ${grantedCount} из ${requested.length}`;
+
+    const bulk = el("div", "pl-perms-bulk");
+    const grantAll = document.createElement("button");
+    grantAll.type = "button";
+    grantAll.className = "pl-grant-all";
+    grantAll.dataset.grant = "all";
+    grantAll.textContent = "Выдать все";
+    grantAll.disabled = grantedCount === requested.length;
+    const grantNone = document.createElement("button");
+    grantNone.type = "button";
+    grantNone.className = "pl-grant-none";
+    grantNone.dataset.grant = "none";
+    grantNone.textContent = "Снять все";
+    grantNone.disabled = grantedCount === 0;
+    bulk.append(grantAll, grantNone);
+    head.append(title, bulk);
+    section.append(head);
+
+    for (const permission of requested) {
+      const row = el("label", "pl-perm");
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.className = "pl-grant";
+      checkbox.dataset.permission = permission;
+      checkbox.checked = granted.has(permission);
+      checkbox.setAttribute(
+        "aria-label",
+        `${checkbox.checked ? "Снять" : "Выдать"} разрешение ${permission}`
+      );
+      const name = el("span", "pl-perm-name");
+      name.textContent = permission;
+      const state = el("span", "pl-perm-state");
+      state.textContent = checkbox.checked ? "выдано" : "отклонено";
+      row.append(checkbox, name, state);
+      section.append(row);
+    }
+
+    // Подсказка, когда часть запрошенных прав отклонена (deny-by-default не очевиден).
+    const missing = requested.filter((permission) => !granted.has(permission));
+    if (missing.length > 0) {
+      const hint = el("div", "pl-consent-hint");
+      hint.textContent = `Не выдано: ${missing.join(", ")}. Плагин не сможет их использовать.`;
+      section.append(hint);
+    }
+
+    return section;
+  }
+
+  /** Один плагин: голова (тумблер/имя/бейдж), согласие, notices, действия. */
   function renderItem(info: PluginInfo): HTMLElement {
     const item = el("div", "pl-item");
     item.dataset.plugin = info.id;
@@ -92,20 +160,12 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
 
     const children: HTMLElement[] = [head];
 
-    // Разрешения манифеста — chips.
-    const permissions = info.permissions ?? [];
-    if (permissions.length > 0) {
-      const perms = el("div", "pl-perms");
-      for (const permission of permissions) {
-        const chip = el("span", "pl-perm");
-        chip.textContent = permission;
-        perms.append(chip);
-      }
-      children.push(perms);
-    }
+    // Инлайн-секция согласия: запросы манифеста + фактически выданные права.
+    const consent = renderConsent(info);
+    if (consent) children.push(consent);
 
     // F38: формулировки границы изоляции/доступа к документу.
-    const notices = info.notices ?? [];
+    const notices = info.notices;
     for (const notice of notices) {
       const node = el("div", "pl-notice");
       node.textContent = notice;
@@ -127,7 +187,7 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     reload.disabled = !info.enabled;
     actions.append(reload);
 
-    for (const command of info.commands ?? []) {
+    for (const command of info.commands) {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "pl-cmd";
@@ -181,6 +241,55 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     await refresh();
   }
 
+  /** Дизейблит контролы согласия плагина на время IPC (защита от повторного клика). */
+  function setConsentBusy(item: HTMLElement, busy: boolean): void {
+    for (const cb of item.querySelectorAll<HTMLInputElement>("input.pl-grant")) {
+      cb.disabled = busy;
+    }
+    for (const btn of item.querySelectorAll<HTMLButtonElement>(".pl-perms-bulk button")) {
+      btn.disabled = busy;
+    }
+  }
+
+  /** Собирает **весь** набор отмеченных прав `.pl-item` и фиксирует согласие. */
+  async function handleGrant(input: HTMLInputElement): Promise<void> {
+    const item = input.closest<HTMLElement>(".pl-item");
+    const id = item?.dataset.plugin;
+    if (!item || !id) return;
+    const granted = Array.from(item.querySelectorAll<HTMLInputElement>("input.pl-grant"))
+      .filter((cb) => cb.checked)
+      .map((cb) => cb.dataset.permission)
+      .filter((permission): permission is string => !!permission);
+    setConsentBusy(item, true);
+    try {
+      await setPluginPermissions(id, granted);
+    } catch (e) {
+      status(`Плагин ${id}: ${errorMessage(e)}`);
+    }
+    await refresh();
+  }
+
+  /** Групповые кнопки «Выдать все»/«Снять все» для согласия плагина. */
+  async function handleGrantBulk(btn: HTMLButtonElement): Promise<void> {
+    const item = btn.closest<HTMLElement>(".pl-item");
+    const id = item?.dataset.plugin;
+    const mode = btn.dataset.grant;
+    if (!item || !id || !mode) return;
+    const granted =
+      mode === "all"
+        ? Array.from(item.querySelectorAll<HTMLInputElement>("input.pl-grant"))
+            .map((cb) => cb.dataset.permission)
+            .filter((permission): permission is string => !!permission)
+        : [];
+    setConsentBusy(item, true);
+    try {
+      await setPluginPermissions(id, granted);
+    } catch (e) {
+      status(`Плагин ${id}: ${errorMessage(e)}`);
+    }
+    await refresh();
+  }
+
   async function handleReload(btn: HTMLButtonElement): Promise<void> {
     const id = btn.closest<HTMLElement>(".pl-item")?.dataset.plugin;
     if (!id) return;
@@ -208,8 +317,12 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
 
   function onChange(e: Event): void {
     const input = e.target as HTMLInputElement | null;
-    if (!input || !input.classList.contains("pl-enabled")) return;
-    void handleToggle(input);
+    if (!input) return;
+    if (input.classList.contains("pl-enabled")) {
+      void handleToggle(input);
+      return;
+    }
+    if (input.classList.contains("pl-grant")) void handleGrant(input);
   }
 
   function onClick(e: MouseEvent): void {
@@ -220,7 +333,12 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
       return;
     }
     const command = target?.closest<HTMLButtonElement>(".pl-cmd");
-    if (command) void handleCommand(command);
+    if (command) {
+      void handleCommand(command);
+      return;
+    }
+    const bulk = target?.closest<HTMLButtonElement>(".pl-perms-bulk button");
+    if (bulk) void handleGrantBulk(bulk);
   }
 
   root.addEventListener("change", onChange);

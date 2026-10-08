@@ -38,7 +38,24 @@ function preparePlugins() {
   try {
     // Изолируем конфиг: иначе `init_settings_dir` создаст/прочитает реальный
     // %APPDATA%/darmark/config.json, и выключенный там `e2e-view` уронит спек.
-    process.env.DARMARK_CONFIG_PATH = path.join(tempDir("darmark-e2e-config-"), "config.json");
+    // Фикстуры теперь должны нести и согласие на permissions (deny-by-default):
+    // без seed плагины окажутся без прав, и `plugins.feature` упадёт.
+    const configPath = path.join(tempDir("darmark-e2e-config-"), "config.json");
+    process.env.DARMARK_CONFIG_PATH = configPath;
+    const seed = {
+      plugins: {
+        "e2e-view": {
+          enabled: true,
+          granted_permissions: ["view:create", "view:modify"],
+        },
+        "e2e-edit": {
+          enabled: true,
+          granted_permissions: ["document:read", "document:write"],
+        },
+      },
+      recent_files: [],
+    };
+    fs.writeFileSync(configPath, JSON.stringify(seed, null, 2), "utf8");
 
     const fixtures = path.join(here, "fixtures", "plugins");
     if (fs.existsSync(fixtures)) {

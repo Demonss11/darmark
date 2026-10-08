@@ -23,10 +23,28 @@ use crate::{CommandInfo, PluginInfo};
 /// Порог карантина: 3 неудачи подряд (ADR-0021 §3).
 pub const QUARANTINE_THRESHOLD: u32 = 3;
 
+/// Эффективные права плагина: пересечение запрашиваемых манифестом (`manifest`) и выданных
+/// пользователем (`granted`) — deny-by-default, §8/§12.
+///
+/// Порядок — как в манифесте (детерминирован), дубли не плодятся. «Мусор» в `granted`
+/// (разрешение, которого нет в манифесте) отсекается: подпись пользователя не расширяет
+/// декларацию плагина. Чистая функция — без зависимостей от процессов/IO, потому и тестируема.
+pub fn effective_permissions(manifest: &[String], granted: &[String]) -> Vec<String> {
+    manifest
+        .iter()
+        .filter(|permission| granted.iter().any(|grant| grant == *permission))
+        .cloned()
+        .collect()
+}
+
 /// Один плагин и его child-процесс.
 pub struct PluginRuntime {
     pub id: String,
+    /// Запрашиваемые плагином права из манифеста (а не фактические — их даёт [`Self::effective`]).
     pub permissions: Vec<String>,
+    /// Согласованные пользователем права (подмножество `permissions`, §8/§12, Фаза 5).
+    /// Пусто — согласие не выдано; при старте child получает [`Self::effective`] (deny-by-default).
+    granted: Vec<String>,
     pub status: PluginStatus,
     /// Тир-1 view из манифеста (регистрируются в общем [`PluginViews`] при загрузке;
     /// здесь — для менеджера UI Фазы 5: перерегистрация при перезагрузке).
@@ -63,6 +81,7 @@ impl PluginRuntime {
         Self {
             id: id.into(),
             permissions,
+            granted: Vec::new(),
             status: PluginStatus::Stopped,
             views,
             commands,
@@ -90,6 +109,31 @@ impl PluginRuntime {
     pub fn with_entry_path(mut self, path: impl Into<PathBuf>) -> Self {
         self.entry_path = Some(path.into());
         self
+    }
+
+    /// Задаёт согласованные пользователем права (обычно из [`SettingsStore`]).
+    pub fn with_granted(mut self, granted: Vec<String>) -> Self {
+        self.granted = granted;
+        self
+    }
+
+    /// Согласованные пользователем права (может содержать мусор из конфига — его отсекает
+    /// [`Self::effective`] при старте).
+    pub fn granted(&self) -> &[String] {
+        &self.granted
+    }
+
+    /// Обновляет согласованные права. Ортогонально [`Self::is_enabled`]: пустой набор
+    /// не мешает старту — плагин поднимается с нулём прав (гейт срабатывает на host-call).
+    pub fn set_granted(&mut self, granted: Vec<String>) {
+        self.granted = granted;
+    }
+
+    /// Эффективные права: `manifest ∩ granted` (deny-by-default). Именно они уходят в
+    /// разрешения child'а при старте, поэтому неподтверждённое манифестом разрешение
+    /// до child'а не доходит.
+    pub fn effective(&self) -> Vec<String> {
+        effective_permissions(&self.permissions, &self.granted)
     }
 
     pub fn is_enabled(&self) -> bool {
@@ -135,7 +179,7 @@ impl PluginRuntime {
         };
 
         let mut params = SupervisorParams::new(&self.exe, &self.id, Arc::clone(&self.services))
-            .with_permissions(self.permissions.clone())
+            .with_permissions(self.effective())
             .with_mem_bytes(self.mem_bytes);
         params.progress = self.progress;
         params.deadline = self.deadline;
@@ -256,6 +300,7 @@ impl PluginManager {
                 id: p.id.clone(),
                 status: p.status.clone(),
                 permissions: p.permissions.clone(),
+                granted_permissions: p.granted().to_vec(),
                 enabled: p.is_enabled(),
                 commands: p
                     .commands
@@ -299,6 +344,30 @@ impl PluginManager {
         plugin.reload()
     }
 
+    /// `set_plugin_permissions`: фиксирует согласие пользователя на права плагина.
+    ///
+    /// Пересечение с манифестом (`manifest ∩ granted`) — deny-by-default: выданное
+    /// пользователем разрешение, которого нет в декларации, отсекается ещё до записи.
+    /// Включённый плагин перезапускается, чтобы новый набор вступил в силу (права
+    /// захватываются при [`PluginRuntime::start`]); выключенный — только запоминает набор.
+    /// `reload` **не** снимает карантин: плагин в нём вернёт `quarantined`.
+    pub fn set_plugin_permissions(
+        &mut self,
+        id: &str,
+        granted: Vec<String>,
+    ) -> Result<(), PluginError> {
+        let plugin = self
+            .plugins
+            .get_mut(id)
+            .ok_or_else(|| PluginError::new("unknown_plugin", format!("нет плагина {id}")))?;
+        let effective = effective_permissions(&plugin.permissions, &granted);
+        plugin.set_granted(effective);
+        if plugin.is_enabled() {
+            plugin.reload()?;
+        }
+        Ok(())
+    }
+
     pub fn get(&self, id: &str) -> Option<&PluginRuntime> {
         self.plugins.get(id)
     }
@@ -328,9 +397,10 @@ pub struct LoadResult {
 
 /// Сканирует каталог и строит реестр плагинов (**без запуска** процессов).
 ///
-/// Permissions берутся из манифеста — их сверяет диспатчер `Supervisor`. Вкл/выкл — из
-/// настроек. Согласие на permissions и автозапуск enabled-плагинов — задача менеджера UI
-/// (Фаза 5).
+/// Запрашиваемые права берутся из манифеста, согласованные — из [`SettingsStore`]
+/// (deny-by-default: нет записи — нет прав). Вкл/выкл — тоже из настроек. Фактический
+/// набор (`manifest ∩ granted`) вычисляет [`PluginRuntime::effective`] и передаёт child'у
+/// при старте; автозапуск enabled-плагинов — `PluginHost::start_enabled`.
 pub fn load_plugins(
     plugins_dir: &Path,
     exe: &Path,
@@ -354,6 +424,12 @@ pub fn load_plugins(
             continue;
         }
         let enabled = settings.plugin_enabled(&id);
+        // Пересекаем уже при загрузке: `PluginInfo.granted_permissions` — всегда
+        // подмножество манифеста, даже если в config.json остался устаревший набор.
+        let granted = effective_permissions(
+            &discovered.manifest.permissions,
+            &settings.granted_permissions(&id),
+        );
         let contributes = discovered.manifest.contributes.views.clone();
         let commands = discovered.manifest.contributes.commands.clone();
         // Тир-1 view регистрируются в общем реестре только для включённых плагинов:
@@ -373,7 +449,8 @@ pub fn load_plugins(
             contributes,
             commands,
         )
-        .with_entry_path(discovered.entry_path);
+        .with_entry_path(discovered.entry_path)
+        .with_granted(granted);
         runtime.set_enabled(enabled);
         manager.register(runtime);
     }

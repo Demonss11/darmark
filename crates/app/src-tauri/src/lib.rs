@@ -120,7 +120,11 @@ pub struct CommandInfo {
 pub struct PluginInfo {
     pub id: String,
     pub status: PluginStatus,
+    /// Запрашиваемые плагином права из манифеста (декларация).
     pub permissions: Vec<String>,
+    /// Согласованные пользователем права фактически (подмножество `permissions`, Ф5).
+    /// Пусто — согласие не выдано (deny-by-default).
+    pub granted_permissions: Vec<String>,
     pub enabled: bool,
     pub commands: Vec<CommandInfo>,
     /// Формулировки границы изоляции/доступа к документу (F38).
@@ -424,6 +428,30 @@ fn reload_plugin(id: String, state: tauri::State<'_, PluginState>) -> Result<(),
     }
 }
 
+/// Фиксирует согласие пользователя на права плагина (consent как реальный гейт, §11.1 п.4).
+///
+/// Сохраняется только `manifest ∩ granted` (deny-by-default); активный плагин
+/// перезапускается, чтобы новый набор прав вступил в силу.
+#[tauri::command(async)]
+fn set_plugin_permissions(
+    id: String,
+    granted: Vec<String>,
+    state: tauri::State<'_, PluginState>,
+) -> Result<(), CommandError> {
+    #[cfg(windows)]
+    {
+        state
+            .host
+            .set_permissions(&id, granted)
+            .map_err(|error| CommandError::new(error::ErrorCode::Plugin, error.message))
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (id, granted, state);
+        Err(plugin_unavailable())
+    }
+}
+
 /// Исполняет команду плагина: публикует `command:invoked{command_id, doc_id}` в шину.
 ///
 /// `doc_id` — текущий документ: у плагина нет собственного доступа к «активному»
@@ -585,6 +613,7 @@ pub fn run() {
             plugin_view_action,
             list_plugins,
             set_plugin_enabled,
+            set_plugin_permissions,
             reload_plugin,
             run_plugin_command,
             open_devtools

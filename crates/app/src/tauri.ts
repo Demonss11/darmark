@@ -109,7 +109,10 @@ export interface PluginCommandInfo {
 export interface PluginInfo {
   id: string;
   status: PluginStatus;
+  /** Запрашиваемые плагином права из манифеста (декларация). */
   permissions: string[];
+  /** Согласованные пользователем права (подмножество `permissions`, deny-by-default). */
+  granted_permissions: string[];
   enabled: boolean;
   commands: PluginCommandInfo[];
   notices: string[];
@@ -123,6 +126,11 @@ export function listPlugins(): Promise<PluginInfo[]> {
 /** Включает/выключает плагин; включение снимает карантин (§4.7). */
 export function setPluginEnabled(id: string, enabled: boolean): Promise<void> {
   return invoke<void>("set_plugin_enabled", { id, enabled });
+}
+
+/** Фиксирует согласие пользователя на права плагина; активный перезапускается (§11.1 п.4). */
+export function setPluginPermissions(id: string, granted: string[]): Promise<void> {
+  return invoke<void>("set_plugin_permissions", { id, granted });
 }
 
 /** Перезагружает плагин с диска без рестарта приложения (§4.7). */
