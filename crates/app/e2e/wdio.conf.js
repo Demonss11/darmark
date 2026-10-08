@@ -80,15 +80,43 @@ function cleanupPlugins() {
   tempDirs.length = 0;
 }
 
+// «Осиротевшие» процессы прогона: при сбое/прерывании на Windows остаются
+// darmark.exe / msedgedriver.exe / tauri-driver.exe. Они держат exe (блокируют
+// следующую release-сборку) и мешают чисто поднять новый сеанс. Чистим на
+// границах прогона (onPrepare/onComplete), не трогая активный сеанс.
+function killStrayProcesses() {
+  if (process.platform !== "win32") return;
+  for (const image of ["darmark.exe", "msedgedriver.exe", "tauri-driver.exe"]) {
+    try {
+      execFileSync("taskkill", ["/IM", image, "/F", "/T"], { stdio: "ignore" });
+    } catch {
+      // процесса нет — это норма
+    }
+  }
+}
+
 export const config = {
   runner: "local",
   specs: [path.join(here, "features", "**", "*.feature")],
   maxInstances: 1,
 
   // Готовит env для плагинных спеков до старта приложения (см. preparePlugins).
-  onPrepare: () => preparePlugins(),
-  // Убирает временные каталоги (плагины, конфиг) после прогона.
-  onComplete: () => cleanupPlugins(),
+  // Перед стартом убираем «осиротевшие» процессы прошлых прогонов.
+  onPrepare: () => {
+    killStrayProcesses();
+    preparePlugins();
+  },
+  // Убирает временные каталоги (плагины, конфиг) и процессы после прогона
+  // (иначе darmark.exe держит release-бинарник и мешает следующей сборке).
+  onComplete: () => {
+    cleanupPlugins();
+    killStrayProcesses();
+  },
+  // Небольшая пауза перед каждым сеансом: даёт ОС освободить ресурсы после
+  // предыдущего спека (снижает флейк старта приложения в длинных прогонах).
+  beforeSession: async () => {
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  },
 
   services: [
     [
@@ -100,7 +128,9 @@ export const config = {
         autoDownloadEdgeDriver: true, // Windows: подбор msedgedriver под WebView2
         tauriDriverPort: 4444,
         logLevel: "warn",
-        startTimeout: 60_000,
+        // Запас на медленный старт приложения/драйвера в длинных прогонах
+        // (по умолчанию 60с; флейк старта фиксировался на поздних спеках).
+        startTimeout: 120_000,
       },
     ],
   ],
@@ -123,7 +153,8 @@ export const config = {
 
   cucumberOpts: {
     import: [path.join(here, "steps", "**", "*.js")],
-    timeout: 60_000,
+    // С запасом: старт сеанса на поздних спеках мог занимать около минуты.
+    timeout: 120_000,
     strict: true,
     // Нативные диалоги/системный браузер через WebDriver не автоматизируются —
     // такие сценарии помечаем @manual и по умолчанию пропускаем.

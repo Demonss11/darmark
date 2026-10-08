@@ -4,8 +4,10 @@ import { $, browser } from "@wdio/globals";
 import { waitPreviewContains } from "./helpers.js";
 
 Given("приложение darmark запущено", async () => {
-  await $("#editor").waitForExist({ timeout: 30_000 });
-  await $("#preview").waitForExist({ timeout: 30_000 });
+  // Таймауты с запасом: на поздних спеках длинного прогона приложение/вебвью
+  // стартует медленнее (см. startTimeout в wdio.conf.js).
+  await $("#editor").waitForExist({ timeout: 45_000 });
+  await $("#preview").waitForExist({ timeout: 45_000 });
 });
 
 Then("поле редактора содержит непустой документ", async () => {
