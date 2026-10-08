@@ -1,13 +1,14 @@
 // shell.ts — привязка оболочки к DOM: кнопки тулбара, горячие клавиши, тумблеры
-// предпросмотра/синхронизации, формат-группа и палитра (заглушка), заглушка
-// журнала, фокус активной панели, закрытие окна. Логики домена здесь нет — только
-// вызовы команд из main.ts.
+// предпросмотра/синхронизации, формат-группа и палитра, заглушка журнала, фокус
+// активной панели, закрытие окна. Логики домена здесь нет — только вызовы команд
+// из main.ts. Хоткеи глушатся, пока открыт модальный диалог (dialog.ts).
 
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import type { PaneId } from "./ids";
 import type { FormatActions } from "./formatActions";
 import type { Sidebar } from "./sidebar";
+import { isModalOpen } from "./dialog";
 import { openDevtools } from "./tauri";
 
 export interface ShellCommands {
@@ -21,7 +22,7 @@ export interface ShellCommands {
   setSyncEnabled(on: boolean): void;
   setActivePane(paneId: PaneId): void;
   isDirty(): boolean;
-  /** Палитра команд — заглушка (H2). */
+  /** Открыть/закрыть палитру команд (Ctrl+K). */
   palette(): void;
   /** Кратковременное сообщение в статусбар. */
   flash(msg: string): void;
@@ -69,7 +70,7 @@ export function createShell(opts: ShellOptions): void {
     if (fn) btn.addEventListener("click", fn);
   }
 
-  // Палитра команд — заглушка (H2).
+  // Палитра команд открывается по кнопке и Ctrl+K (обработчик в shell keydown).
   byId<HTMLButtonElement>("palette-trigger").addEventListener("click", commands.palette);
   byId<HTMLButtonElement>("rail-logs").addEventListener("click", () => commands.flash("Журнал — скоро"));
 
@@ -93,6 +94,9 @@ export function createShell(opts: ShellOptions): void {
   chkSync.addEventListener("change", () => commands.setSyncEnabled(chkSync.checked));
 
   window.addEventListener("keydown", (e: KeyboardEvent) => {
+    // Пока открыт модальный диалог (палитра), хоткеи оболочки не срабатывают:
+    // управление (в т.ч. Escape) остаётся за dialog.ts.
+    if (isModalOpen()) return;
     // Esc выходит из режима инспектора (кроме случая открытого меню фильтра).
     if (e.key === "Escape" && opts.inspectorActive()) {
       if (!document.querySelector(".col-filter-menu")) {
@@ -118,6 +122,8 @@ export function createShell(opts: ShellOptions): void {
     }
     else if (k === "i") { e.preventDefault(); commands.toggleInspector(); }
     else if (k === "b") { e.preventDefault(); opts.format.bold(); }
+    // Ctrl+Shift+K — вставка ссылки; должен проверяться ДО Ctrl+K (палитра).
+    else if (k === "k" && e.shiftKey) { e.preventDefault(); opts.format.link(); }
     else if (k === "k") { e.preventDefault(); commands.palette(); }
   });
 

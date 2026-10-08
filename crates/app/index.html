@@ -84,7 +84,7 @@
               <path d="M6 4v16M18 4v16M6 12h12" />
             </svg>
           </button>
-          <button type="button" class="tbtn" data-action="link" title="Ссылка" aria-label="Ссылка">
+          <button type="button" class="tbtn" data-action="link" title="Ссылка (Ctrl+Shift+K)" aria-label="Ссылка">
             <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
               <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
@@ -94,8 +94,8 @@
 
         <div class="div-v"></div>
 
-        <!-- палитра команд: ЗАГЛУШКА -->
-        <button class="palette-trigger" id="palette-trigger" type="button" title="Палитра команд (Ctrl+K) — скоро">
+        <!-- палитра команд (Ctrl+K) -->
+        <button class="palette-trigger" id="palette-trigger" type="button" title="Палитра команд (Ctrl+K)" aria-haspopup="dialog" aria-expanded="false">
           <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
             <polyline points="4 17 10 11 4 5" />
             <line x1="12" y1="19" x2="20" y2="19" />
@@ -258,6 +258,10 @@
         <span class="stat accent" id="stat-inspect" hidden role="status" aria-live="polite"></span>
       </footer>
     </div>
+    <!-- Модальные диалоги и тост-хост: прямые дети body, чтобы `inert` на #app
+         не глушил их (dialog.ts открывает оверлеи в #modal-root). -->
+    <div id="modal-root" class="modal-root"></div>
+    <div id="toast-host" class="toast-host" aria-live="polite" aria-atomic="false"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

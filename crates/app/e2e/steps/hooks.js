@@ -23,6 +23,19 @@ Before(async () => {
 // слушатели — гасим его после каждого сценария, чтобы не влиять на остальные.
 // Заодно возвращаем дефолтные состояния тумблеров и обнуляем прокрутку панелей.
 After(async () => {
+  // R1: сначала закрываем модальные диалоги (палитра). Пока открыт диалог,
+  // `#app` инертен, и последующие сбросы (клики по #btn-inspect и т.п.) могли бы
+  // сломаться. Синтетический Escape по window закрывает верхний диалог; повторяем
+  // на весь стек. Затем чистим тосты, чтобы они не «переезжали» между сценариями.
+  await browser.execute(() => {
+    for (let i = 0; i < 5; i++) {
+      if (!document.querySelector(".dialog-backdrop")) break;
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })
+      );
+    }
+    document.getElementById("toast-host")?.replaceChildren();
+  });
   await setInspectorActive(false);
   await setPreviewVisible(true);
   await setSyncEnabled(true);

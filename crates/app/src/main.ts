@@ -27,7 +27,9 @@ import { createSidebar } from "./sidebar";
 import { createGutter } from "./gutter";
 import { createFormatActions } from "./formatActions";
 import { START_TEXT } from "./sampleDocument";
-import { errorMessage } from "./tauri";
+import { createPalette, type CommandProvider, type PaletteCommand } from "./palette";
+import { toast } from "./toast";
+import { errorMessage, listPlugins, runPluginCommand } from "./tauri";
 import type { RenderResult } from "./tauri";
 import "./style.css";
 
@@ -199,7 +201,51 @@ const files = createFileActions({
   focusEditor: () => editorView.focus(),
 });
 
-// 7. Оболочка: тулбар, хоткеи, тумблеры, фокус панелей, закрытие окна.
+// 7. Палитра команд (Ctrl+K): core-команды + провайдер плагинных команд.
+//    Палитра построена на dialog.ts; ошибка провайдера уходит в тост.
+const coreCommands: PaletteCommand[] = [
+  { id: "file.new", title: "Новый файл", group: "Файл", origin: "core", hotkey: "Ctrl+N", run: () => void files.newFile() },
+  { id: "file.open", title: "Открыть файл", group: "Файл", origin: "core", hotkey: "Ctrl+O", run: () => void files.openFile() },
+  { id: "file.save", title: "Сохранить", group: "Файл", origin: "core", hotkey: "Ctrl+S", run: () => void files.saveFile() },
+  { id: "file.save-as", title: "Сохранить как", group: "Файл", origin: "core", hotkey: "Ctrl+Shift+S", run: () => void files.saveAs() },
+  { id: "view.toggle-preview", title: "Показать/скрыть предпросмотр", group: "Вид", origin: "core", hotkey: "Ctrl+P", run: () => (document.getElementById("chk-preview") as HTMLInputElement).click() },
+  { id: "view.toggle-sync", title: "Синхронная прокрутка", group: "Вид", origin: "core", run: () => (document.getElementById("chk-sync") as HTMLInputElement).click() },
+  { id: "view.toggle-inspector", title: "Инспектор", group: "Вид", origin: "core", hotkey: "Ctrl+I", run: () => toggleInspector() },
+  { id: "format.bold", title: "Жирный", group: "Формат", origin: "core", hotkey: "Ctrl+B", run: () => format.bold() },
+  { id: "format.italic", title: "Курсив", group: "Формат", origin: "core", run: () => format.italic() },
+  { id: "format.code", title: "Код", group: "Формат", origin: "core", run: () => format.code() },
+  { id: "format.heading", title: "Заголовок", group: "Формат", origin: "core", run: () => format.heading() },
+  { id: "format.link", title: "Ссылка", group: "Формат", origin: "core", hotkey: "Ctrl+Shift+K", run: () => format.link() },
+];
+
+// Плагинные команды: только у включённых плагинов; origin = `plugin:<id>`.
+const pluginCommandProvider: CommandProvider = {
+  async list(): Promise<PaletteCommand[]> {
+    const plugins = await listPlugins();
+    const commands: PaletteCommand[] = [];
+    for (const plugin of plugins) {
+      if (!plugin.enabled) continue;
+      for (const command of plugin.commands ?? []) {
+        commands.push({
+          id: `plugin:${plugin.id}:${command.id}`,
+          title: command.title,
+          group: "Плагины",
+          origin: `plugin:${plugin.id}`,
+          ...(command.keybinding ? { hotkey: command.keybinding } : {}),
+          run: () => runPluginCommand(command.id),
+        });
+      }
+    }
+    return commands;
+  },
+};
+
+const palette = createPalette({
+  providers: [{ list: () => coreCommands }, pluginCommandProvider],
+  onError: (message) => toast(message, { kind: "error" }),
+});
+
+// 8. Оболочка: тулбар, хоткеи, тумблеры, фокус панелей, закрытие окна.
 createShell({
   commands: {
     newFile: () => void files.newFile(),
@@ -211,7 +257,13 @@ createShell({
     setSyncEnabled: (on) => link.setSyncEnabled(on),
     setActivePane: (p) => paneHost.setActive(p),
     isDirty: () => store.state().dirty,
-    palette: () => status.flash("Палитра — скоро"),
+    palette: () => {
+      palette.toggle();
+      // a11y: отражаем состояние палитры на её триггере.
+      document
+        .getElementById("palette-trigger")
+        ?.setAttribute("aria-expanded", String(palette.isOpen()));
+    },
     flash: (m) => status.flash(m),
   },
   format,
@@ -223,7 +275,7 @@ createShell({
   preview,
 });
 
-// 8. Стартовый документ (создаётся в Rust-сторе: id/путь/текст ведёт хост).
+// 9. Стартовый документ (создаётся в Rust-сторе: id/путь/текст ведёт хост).
 async function bootstrap(): Promise<void> {
   try {
     await store.newDocument(START_TEXT);
