@@ -15,7 +15,7 @@ use crate::state::{DocumentId, DocumentStore};
 use super::host::PluginHost;
 use super::manager::{load_plugins, PluginManager, PluginRuntime};
 use super::scan::scan_plugins;
-use super::services::{DocumentServices, Exporter, StatusSink};
+use super::services::{DocumentServices, DocumentSink, Exporter, StatusSink};
 use super::settings::SettingsStore;
 use super::supervisor::{Supervisor, SupervisorParams};
 use super::HostServices;
@@ -1006,6 +1006,204 @@ fn run_plugin_command_delivers_doc_id_and_edits() {
         "command:invoked дошёл с doc_id и применился"
     );
     assert_eq!(doc_rev(&store), 1);
+}
+
+/// Собирает `DocumentServices` с записью `show_message` в общий журнал: позволяет
+/// проверить, какие события дошли до плагина-наблюдателя (BUG-002).
+fn services_with_status_log(
+    store: &Arc<Mutex<DocumentStore>>,
+    views: &Arc<Mutex<super::views::PluginViews>>,
+    pending: &Arc<Mutex<Vec<(String, u64)>>>,
+    seen: &Arc<Mutex<Vec<(String, String)>>>,
+) -> Arc<dyn HostServices> {
+    let notify: Arc<dyn Fn() + Send + Sync> = Arc::new(|| {});
+    let seen_for = Arc::clone(seen);
+    let sink: StatusSink = Arc::new(move |plugin_id: &str, text: &str| {
+        seen_for
+            .lock()
+            .unwrap()
+            .push((plugin_id.to_string(), text.to_string()));
+    });
+    Arc::new(
+        DocumentServices::new(Arc::clone(store))
+            .with_views(Arc::clone(views))
+            .with_notify(notify)
+            .with_pending_changed(Arc::clone(pending))
+            .with_status_sink(sink),
+    )
+}
+
+/// BUG-002: `command:invoked` — широковещательное событие, его получают все активные
+/// плагины, а не только владелец команды. Фильтрация по `command_id` — обязанность
+/// плагина. Правка (`apply_edit`) чужого плагина порождает `document:changed`, который
+/// тоже доставляется всем активным плагинам — отсюда «видимый эффект» word-count.
+#[test]
+fn command_invoked_is_broadcast_and_edit_notifies_other_plugin() {
+    let _guard = serial();
+    let store = store_with_doc("");
+    let views = views();
+    let pending: Arc<Mutex<Vec<(String, u64)>>> = Arc::new(Mutex::new(Vec::new()));
+    let seen = Arc::new(Mutex::new(Vec::<(String, String)>::new()));
+    let services = services_with_status_log(&store, &views, &pending, &seen);
+
+    let mut manager = PluginManager::default();
+    // Владелец команды: по `test.command` правит документ.
+    let mut commander = PluginRuntime::new(
+        "commander",
+        child_exe(),
+        fixture("command-edit.lua"),
+        vec!["document:write".to_string()],
+        Arc::clone(&services),
+        Vec::new(),
+        Vec::new(),
+    );
+    commander.start().expect("активация commander");
+    manager.register(commander);
+    // Наблюдатель: команд не имеет, но подписан на оба события.
+    let mut observer = PluginRuntime::new(
+        "observer",
+        child_exe(),
+        fixture("event-observer.lua"),
+        vec!["ui:statusbar".to_string()],
+        Arc::clone(&services),
+        Vec::new(),
+        Vec::new(),
+    );
+    observer.start().expect("активация observer");
+    manager.register(observer);
+
+    let host = PluginHost::new(manager, views, services, Arc::new(|| {}), pending);
+    host.run_plugin_command("test.command", Some("doc-1"));
+
+    let messages = seen.lock().unwrap().clone();
+    assert!(
+        messages
+            .iter()
+            .any(|(id, text)| id == "observer" && text == "cmd:test.command"),
+        "command:invoked обязан дойти до плагина без такой команды (broadcast): {messages:?}"
+    );
+    assert!(
+        messages
+            .iter()
+            .any(|(id, text)| id == "observer" && text == "changed:1"),
+        "apply_edit чужого плагина порождает document:changed для остальных: {messages:?}"
+    );
+    assert_eq!(
+        doc_text(&store, "doc-1"),
+        "C",
+        "команда применена своим плагином"
+    );
+}
+
+/// BUG-002 (контроль): выключенный плагин не получает события шины, хотя активный
+/// сосед по той же команде продолжает работать. Подтверждает, что «эффект третьего»
+/// даёт именно активный подписчик, а не доставка выключенному.
+#[test]
+fn disabled_plugin_does_not_receive_bus_events() {
+    let _guard = serial();
+    let store = store_with_doc("");
+    let views = views();
+    let pending: Arc<Mutex<Vec<(String, u64)>>> = Arc::new(Mutex::new(Vec::new()));
+    let seen = Arc::new(Mutex::new(Vec::<(String, String)>::new()));
+    let services = services_with_status_log(&store, &views, &pending, &seen);
+
+    let mut manager = PluginManager::default();
+    let mut commander = PluginRuntime::new(
+        "commander",
+        child_exe(),
+        fixture("command-edit.lua"),
+        vec!["document:write".to_string()],
+        Arc::clone(&services),
+        Vec::new(),
+        Vec::new(),
+    );
+    commander.start().expect("активация commander");
+    manager.register(commander);
+    // Наблюдатель выключен (не запускается): событий получать не должен.
+    let mut observer = PluginRuntime::new(
+        "observer",
+        child_exe(),
+        fixture("event-observer.lua"),
+        vec!["ui:statusbar".to_string()],
+        Arc::clone(&services),
+        Vec::new(),
+        Vec::new(),
+    );
+    observer.set_enabled(false);
+    manager.register(observer);
+
+    let host = PluginHost::new(manager, views, services, Arc::new(|| {}), pending);
+    host.run_plugin_command("test.command", Some("doc-1"));
+
+    assert!(
+        seen.lock().unwrap().is_empty(),
+        "выключенному плагину события не доставляются: {:?}",
+        seen.lock().unwrap()
+    );
+    assert_eq!(
+        doc_text(&store, "doc-1"),
+        "C",
+        "активный сосед по команде сработал"
+    );
+}
+
+/// BUG-002 (часть A): плагинный `apply_edit` обязан уведомить фронтенд через
+/// `document_sink` ровно один раз — с `(doc_id, rev)` изменившейся ревизии. Эхо-правка
+/// (тот же результат) ревизию не двигает и повторного уведомления не порождает.
+#[test]
+fn plugin_apply_edit_notifies_document_sink_with_doc_and_rev() {
+    let _guard = serial();
+    let store = store_with_doc("");
+    let views = views();
+    let pending: Arc<Mutex<Vec<(String, u64)>>> = Arc::new(Mutex::new(Vec::new()));
+    let notify: Arc<dyn Fn() + Send + Sync> = Arc::new(|| {});
+    let updated = Arc::new(Mutex::new(Vec::<(String, u64)>::new()));
+    let updated_for = Arc::clone(&updated);
+    let sink: DocumentSink = Arc::new(move |doc_id: &str, rev: u64| {
+        updated_for.lock().unwrap().push((doc_id.to_string(), rev));
+    });
+    let services: Arc<dyn HostServices> = Arc::new(
+        DocumentServices::new(Arc::clone(&store))
+            .with_views(Arc::clone(&views))
+            .with_notify(Arc::clone(&notify))
+            .with_pending_changed(Arc::clone(&pending))
+            .with_document_sink(sink),
+    );
+
+    let mut manager = PluginManager::default();
+    let mut runtime = PluginRuntime::new(
+        "cmd",
+        child_exe(),
+        fixture("command-edit.lua"),
+        vec!["document:write".to_string()],
+        Arc::clone(&services),
+        Vec::new(),
+        Vec::new(),
+    );
+    runtime.start().expect("активация");
+    manager.register(runtime);
+    let host = PluginHost::new(manager, views, Arc::clone(&services), notify, pending);
+
+    host.run_plugin_command("test.command", Some("doc-1"));
+
+    assert_eq!(
+        *updated.lock().unwrap(),
+        vec![("doc-1".to_string(), 1)],
+        "плагинный apply_edit обязан уведомить document_sink с (doc_id, rev)"
+    );
+
+    // Эхо-правка тем же результатом rev не двигает → новое уведомление не эмитится.
+    services
+        .handle(
+            "apply_edit",
+            json!({ "doc_id": "doc-1", "start": 0, "stop": 1, "text": "C" }),
+        )
+        .unwrap();
+    assert_eq!(
+        updated.lock().unwrap().len(),
+        1,
+        "эхо не порождает повторного уведомления"
+    );
 }
 
 #[test]

@@ -319,6 +319,15 @@ fn render_document(
         .ok_or_else(|| CommandError::unknown_document(id.as_str()))
 }
 
+/// Возвращает снапшот документа для фронтенда (pull после события `document-updated`).
+#[tauri::command]
+fn document_snapshot(
+    id: DocumentId,
+    store: tauri::State<'_, Arc<Mutex<DocumentStore>>>,
+) -> Option<DocumentSnapshot> {
+    lock_store(&store).get(&id).map(|doc| doc.snapshot())
+}
+
 // ---------- команды плагинных представлений (Фаза 4, контракт с фронтендом) ----------
 
 /// Снимок плагинных тир-1 представлений (пусто, если плагинов нет/не-Windows).
@@ -569,6 +578,7 @@ pub fn run() {
             open_document,
             update_document,
             render_document,
+            document_snapshot,
             save_document,
             close_document,
             plugin_views,
@@ -607,7 +617,7 @@ fn setup_plugins(app: &mut tauri::App) -> Result<(), String> {
 
     use plugins::host::PluginHost;
     use plugins::manager::load_plugins;
-    use plugins::services::{DocumentServices, Exporter, StatusSink};
+    use plugins::services::{DocumentServices, DocumentSink, Exporter, StatusSink};
     use plugins::settings::SettingsStore;
     use plugins::supervisor::Supervisor;
     use plugins::views::PluginViews;
@@ -690,13 +700,27 @@ fn setup_plugins(app: &mut tauri::App) -> Result<(), String> {
         }
     });
 
+    // Внешняя (плагинная) правка: событие `document-updated{doc_id,rev}` для фронтенда.
+    // Фронт по нему тянет снапшот `document_snapshot`. Эмитится только здесь, не в
+    // `update_document` — иначе правка из редактора зациклилась бы через событие.
+    let document_handle = app.handle().clone();
+    let document_sink: DocumentSink = Arc::new(move |doc_id: &str, rev: u64| {
+        if let Err(e) = document_handle.emit(
+            "document-updated",
+            serde_json::json!({ "doc_id": doc_id, "rev": rev }),
+        ) {
+            eprintln!("не эмитить document-updated: {e}");
+        }
+    });
+
     let services: Arc<dyn plugins::HostServices> = Arc::new(
         DocumentServices::new(store)
             .with_views(Arc::clone(&views))
             .with_notify(Arc::clone(&notify))
             .with_pending_changed(Arc::clone(&pending_changed))
             .with_exporter(exporter)
-            .with_status_sink(status_sink),
+            .with_status_sink(status_sink)
+            .with_document_sink(document_sink),
     );
 
     let result = load_plugins(

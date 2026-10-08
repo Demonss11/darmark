@@ -12,6 +12,7 @@ import {
   renderDocument as ipcRender,
   saveDocument as ipcSave,
   closeDocument as ipcClose,
+  documentSnapshot,
   errorMessage,
 } from "./tauri";
 import type { DocumentId } from "./ids";
@@ -57,6 +58,11 @@ export interface DocStore {
   flush(): Promise<void>;
   /** Повторный рендер с текущим `mapped` (первый рендер, переключение инспектора). */
   reload(): void;
+  /**
+   * Внешняя правка документа (событие `document-updated`): pull-снапшот из Rust
+   * и применение к проекции. Устаревшие/чужие события игнорируются.
+   */
+  applyHostUpdate(hostDocId: string, rev: number): void;
 
   newDocument(text?: string): Promise<void>;
   open(path: string): Promise<void>;
@@ -182,6 +188,32 @@ export function createDocStore(opts: DocStoreOptions): DocStore {
     },
 
     reload,
+
+    applyHostUpdate(hostDocId: string, rev: number): void {
+      const id = st.id;
+      if (!id || id !== hostDocId) return; // событие о чужом/неизвестном документе
+      if (rev <= st.rev) return; // устаревшее событие или эхо собственной правки
+      // Внешняя (плагинная) правка перекрывает отложенный push: команду вызвал
+      // пользователь, её результат авторитетнее неотправленного локального ввода.
+      clearTimeout(debounceTimer);
+      void (async () => {
+        try {
+          const snap = await documentSnapshot(id);
+          if (id !== st.id) return; // документ сменился, пока ждали ответ
+          if (!snap || snap.rev < rev) return; // снапшот устарел или документ исчез
+          // Держим `lastRev` на новой ревизии: устаревший ответ IPC (rev < snap.rev)
+          // не должен откатить `st` и перерисовать DOM старым текстом (сброс в -1
+          // эту защиту инвертировал бы).
+          lastRev = snap.rev;
+          // dirty=true: правка пришла от плагина и ещё не записана в файл.
+          st = { id: snap.id, path: snap.path, rev: snap.rev, text: snap.text, dirty: true };
+          notify();
+          reload(); // перерисовать HTML из нового текста (textarea подтянет editorView)
+        } catch (e) {
+          opts.onStatus(`Внешняя правка: ${errorMessage(e)}`);
+        }
+      })();
+    },
 
     async newDocument(text = ""): Promise<void> {
       const previous = st.id;

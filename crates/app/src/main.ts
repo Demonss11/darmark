@@ -131,6 +131,12 @@ void listen<{ plugin_id: string; text: string }>("plugin-message", (event) => {
   status.flash(`${event.payload.plugin_id}: ${event.payload.text}`);
 }).catch(() => null);
 
+// Внешняя правка документа плагином: событие несёт лишь id/rev, текст тянем
+// снапшотом (pull), чтобы не гонять большой документ через событие.
+void listen<{ doc_id: string; rev: number }>("document-updated", (event) => {
+  store.applyHostUpdate(event.payload.doc_id, event.payload.rev);
+}).catch(() => null);
+
 // 4. Панели: фиксированные две (редактор + предпросмотр), MAX_PANES = 2.
 const EDITOR_PANE = asPaneId("pane-editor");
 const PREVIEW_PANE = asPaneId("pane-preview");

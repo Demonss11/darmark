@@ -85,7 +85,10 @@ Then("плагинный маркер равен {string}", async (expected) => 
 // Тумблер вкл/выкл — настоящий `<input class="pl-enabled">` внутри
 // `.pl-item[data-plugin=...]`; его click порождает change → IPC.
 
-When("я открываю панель плагинов", async () => {
+/// Показывает панель плагинов: клик по rail-кнопке, если панель скрыта. Общий
+/// помощник для шага «я открываю панель плагинов» и Given о загрузке плагина без
+/// view (его статус виден только в менеджере).
+async function openPluginsPanel() {
   const visible = await browser.execute(() => {
     const panel = document.getElementById("panel-plugins");
     if (panel && !panel.hidden) return true;
@@ -99,6 +102,10 @@ When("я открываю панель плагинов", async () => {
       { timeout: 5000, timeoutMsg: "Панель плагинов не открылась" }
     );
   }
+}
+
+When("я открываю панель плагинов", async () => {
+  await openPluginsPanel();
 });
 
 Then("в менеджере плагинов есть {string} со статусом {string}", async (pluginId, state) => {
@@ -171,4 +178,59 @@ When("я перезагружаю плагин {string}", async (pluginId) => {
     return true;
   }, pluginId);
   if (!ok) throw new Error(`Кнопка «Перезагрузить» плагина ${pluginId} недоступна`);
+});
+
+// ---------- Плагинная правка документа (BUG-002, часть A) ----------
+//
+// Фикстура e2e-edit объявляет только команду (без тир-1 view), поэтому её
+// загрузка не видна в #view-switch — статус `active` читаем из менеджера.
+
+Given("плагин {string} активен", async (pluginId) => {
+  await openPluginsPanel();
+  await browser.waitUntil(
+    async () =>
+      browser.execute(
+        (id) => {
+          const item = document.querySelector(
+            `#plugin-manager .pl-item[data-plugin="${id}"]`
+          );
+          const badge = item?.querySelector(".pl-badge");
+          return !!badge && badge.classList.contains("active");
+        },
+        pluginId
+      ),
+    { timeout: 15000, timeoutMsg: `Плагин ${pluginId} не активен` }
+  );
+});
+
+/// Клик по кнопке «Выполнить» команды плагина в менеджере
+/// (`.pl-item[data-plugin=...] .pl-cmd[data-command=...]`). Через browser.execute:
+/// панель может быть вне видимой области, нативный WebDriver click нестабилен.
+When("я выполняю команду плагина {string} {string}", async (pluginId, commandId) => {
+  const ok = await browser.execute(
+    (pid, cid) => {
+      const btn = document.querySelector(
+        `#plugin-manager .pl-item[data-plugin="${pid}"] .pl-cmd[data-command="${cid}"]`
+      );
+      if (!btn || btn.disabled) return false;
+      btn.click();
+      return true;
+    },
+    pluginId,
+    commandId
+  );
+  if (!ok) throw new Error(`Команда ${commandId} плагина ${pluginId} недоступна`);
+});
+
+/// Ждём асинхронного пути внешней правки: document-updated → pull
+/// document_snapshot → обновление textarea (#editor). Текст приходит не сразу.
+Then("текст редактора содержит {string}", async (fragment) => {
+  await browser.waitUntil(
+    async () =>
+      browser.execute(
+        (f) => (document.getElementById("editor")?.value ?? "").includes(f),
+        fragment
+      ),
+    { timeout: 10000, timeoutMsg: `В редакторе не появилось: ${fragment}` }
+  );
 });

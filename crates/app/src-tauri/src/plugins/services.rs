@@ -30,6 +30,10 @@ pub type Exporter = Arc<dyn Fn(&str) -> Result<bool, String> + Send + Sync>;
 /// Канал уведомлений статусбара: `(plugin_id, text)`. Эмитит событие `plugin-message`.
 pub type StatusSink = Arc<dyn Fn(&str, &str) + Send + Sync>;
 
+/// Уведомление фронтенда о внешней (плагинной) правке: `(doc_id, rev)`. Эмитит событие
+/// `document-updated`; фронт по нему тянет снапшот командой `document_snapshot`.
+pub type DocumentSink = Arc<dyn Fn(&str, u64) + Send + Sync>;
+
 /// Документные host-функции поверх общего [`DocumentStore`].
 ///
 /// Держит `Arc<Mutex<DocumentStore>>` (а не `&`): host-call обслуживается синхронно в потоке
@@ -52,6 +56,9 @@ pub struct DocumentServices {
     exporter: Option<Exporter>,
     /// Уведомление статусбара (Фаза 5). Без него `show_message` — no-op.
     status_sink: Option<StatusSink>,
+    /// Уведомление фронтенда о внешней правке (`document-updated`). Без него — no-op:
+    /// GUI-путь (без sink) не эмитит событие, чтобы не было петли IPC.
+    document_sink: Option<DocumentSink>,
 }
 
 impl DocumentServices {
@@ -63,6 +70,7 @@ impl DocumentServices {
             pending_changed: None,
             exporter: None,
             status_sink: None,
+            document_sink: None,
         }
     }
 
@@ -93,6 +101,15 @@ impl DocumentServices {
     /// Подключает канал уведомлений статусбара (`plugin-message`, Фаза 5).
     pub fn with_status_sink(mut self, sink: StatusSink) -> Self {
         self.status_sink = Some(sink);
+        self
+    }
+
+    /// Подключает уведомление фронтенда о внешней правке (`document-updated`).
+    ///
+    /// Эмитится только здесь — при плагинном `apply_edit`. Фронтовый `update_document`
+    /// событие не шлёт, иначе получилась бы петля «правка → событие → перерисовка → правка».
+    pub fn with_document_sink(mut self, sink: DocumentSink) -> Self {
+        self.document_sink = Some(sink);
         self
     }
 
@@ -264,6 +281,12 @@ impl HostServices for DocumentServices {
                         if let Ok(mut queue) = pending.lock() {
                             queue.push((id.as_str().to_string(), rev));
                         }
+                    }
+                    // Уведомляем фронтенд: внешняя правка должна дойти до редактора/превью.
+                    // Sink не читает стор повторно — guard уже удерживается, повторный лок
+                    // здесь дал бы дедлок (нереентрантный `Mutex`).
+                    if let Some(sink) = &self.document_sink {
+                        sink(id.as_str(), rev);
                     }
                 }
                 Ok(json!(true))

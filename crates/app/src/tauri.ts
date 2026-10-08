@@ -62,6 +62,11 @@ export function closeDocument(id: DocumentId): Promise<void> {
   return invoke<void>("close_document", { id });
 }
 
+/** Снапшот документа (pull после события `document-updated`); null, если документ неизвестен. */
+export function documentSnapshot(id: DocumentId): Promise<DocumentSnapshot | null> {
+  return invoke<DocumentSnapshot | null>("document_snapshot", { id });
+}
+
 /** Описание плагинного тир-1 представления (IPC-команда `plugin_views`, §4.6 TZ-H2). */
 export interface PluginViewInfo {
   view_id: string;
