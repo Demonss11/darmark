@@ -168,3 +168,4 @@
   4. В `capabilities/default.json` добавлено `core:window:allow-set-title`; `updateTitle` гасит возможный reject (`.catch`), чтобы не плодить unhandled rejection.
 - **Тесты:** E2E `a11y.feature` — сценарий «У редактора виден фокус-ринг» удалён; остальные зелёные. Полный E2E — **11 passed, 11 total**.
 - **Открытые вопросы:** нет.
+- **Коммит:** `fdee22f`.
