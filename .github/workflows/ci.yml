@@ -1,0 +1,151 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  checks:
+    name: fmt · clippy · tests · frontend
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: crates/app/package-lock.json
+
+      # Прототипные крейты (lua-*) исключены намеренно: у них свои правила/зависимости.
+      - name: rustfmt
+        run: cargo fmt -p md-core -p darmark -- --check
+
+      - name: clippy
+        run: cargo clippy -p md-core -p darmark --all-targets -- -D warnings
+
+      # Тесты darmark включают Supervisor, который гоняет child-бинарник из target/debug.
+      - name: build plugin-host (для тестов Supervisor)
+        run: cargo build -p plugin-host
+
+      - name: tests
+        run: cargo test -p md-core -p darmark
+
+      - name: frontend build
+        working-directory: crates/app
+        run: |
+          npm ci
+          npm run build
+
+      # Dev-режим Фазы 6: `--debug-plugin` прогоняет плагин без %APPDATA% тем же конвертом.
+      # child-exe резолвится рядом с debug-бинарником darmark (target/debug).
+      - name: build debug binaries (для --debug-plugin)
+        run: |
+          cargo build -p plugin-host
+          cargo build -p darmark
+
+      - name: debug-plugin smoke (runs fixture, stdin closed → exit 0)
+        shell: pwsh
+        run: |
+          cmd /c "target\debug\darmark.exe --debug-plugin plugins\word-count < NUL"
+          if ($LASTEXITCODE -ne 0) { throw "--debug-plugin вернул ненулевой код: $LASTEXITCODE" }
+          "--debug-plugin: plugins\word-count прогнан (exit 0)"
+
+  plugin-checks:
+    name: plugins · fmt · clippy · tests · mlua-guard
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: rustfmt
+        run: cargo fmt -p plugin-proto -p plugin-host -- --check
+
+      - name: clippy
+        run: cargo clippy -p plugin-proto -p plugin-host --all-targets -- -D warnings
+
+      - name: tests
+        run: cargo test -p plugin-proto -p plugin-host
+
+      # Артефакт child для дистрибутива + отдельный бюджет размера (Фаза 6).
+      - name: build child release
+        run: cargo build -p plugin-host --release
+
+      - name: child size-gate (≤ 1.5 МиБ)
+        shell: pwsh
+        run: |
+          $exe = "target/release/darmark-plugin-host.exe"
+          $limit = 1536 * 1024   # 1.5 МиБ (референс F3/F20; фактически ≈0.9 МиБ)
+          if (-not (Test-Path $exe)) { throw "не найден $exe — сборка child не дала бинарник" }
+          $size = (Get-Item $exe).Length
+          "{0} = {1} байт ({2:N2} МиБ); лимит {3} байт ({4:N2} МиБ)" -f $exe, $size, ($size/1MB), $limit, ($limit/1MB)
+          if ($size -gt $limit) { throw "child превышает лимит 1.5 МиБ: $size > $limit" }
+
+      - name: upload child artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: darmark-plugin-host
+          path: target/release/darmark-plugin-host.exe
+
+      # D6/ADR-0021: GUI-хост не должен линковать mlua — Lua живёт только в child-бинарнике.
+      - name: mlua must not leak into GUI host
+        shell: pwsh
+        run: |
+          $tree = cargo tree -p darmark
+          $leak = $tree | Select-String -Pattern 'mlua'
+          if ($leak) {
+            $leak | ForEach-Object { Write-Host $_ }
+            throw "mlua просочился в darmark (D6/ADR-0021): GUI-хост обязан оставаться без Lua-рантайма"
+          }
+          "cargo tree -p darmark не содержит mlua"
+
+  size-gate:
+    name: size-gate (exe ≤ 6 МБ, D6/§14)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: crates/app/package-lock.json
+
+      - name: install frontend deps
+        working-directory: crates/app
+        run: npm ci
+
+      # `tauri build` сам вызывает `npm run build` (beforeBuildCommand) и встраивает
+      # dist/ в exe; `--no-bundle` пропускает NSIS-упаковку (нам нужен только размер).
+      - name: build release (no bundle)
+        working-directory: crates/app
+        run: npx tauri build --no-bundle
+
+      # Лимит базы D6: GUI-хост без mlua (Lua-рантайм — в отдельном child-бинарнике, H2).
+      - name: check size
+        shell: pwsh
+        run: |
+          $exe = "target/release/darmark.exe"
+          $limit = 6 * 1024 * 1024
+          if (-not (Test-Path $exe)) { throw "не найден $exe — сборка не дала ожидаемый бинарник" }
+          $size = (Get-Item $exe).Length
+          "{0} = {1} байт ({2:N2} МиБ); лимит {3} байт (6 МиБ)" -f $exe, $size, ($size / 1MB), $limit
+          if ($size -gt $limit) { throw "darmark.exe превышает лимит 6 МБ (D6/§14): $size > $limit" }

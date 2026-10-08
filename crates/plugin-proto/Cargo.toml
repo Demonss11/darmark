@@ -1,0 +1,12 @@
+[package]
+name = "plugin-proto"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Транспорт/конверт/Job/карантин/манифест плагинной системы darmark (без mlua, без Tauri)"
+
+[dependencies]
+# serde-конверт хост ↔ child (§7.1 DESIGN_DOC). mlua здесь НЕ бывает: крейт линкуется
+# и в GUI-хост (D6/ADR-0021), который обязан оставаться без Lua-рантайма.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

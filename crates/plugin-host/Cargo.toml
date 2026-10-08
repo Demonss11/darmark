@@ -1,0 +1,20 @@
+[package]
+name = "plugin-host"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Child-процесс плагинного хоста darmark: Lua 5.5 в отдельном процессе (содержит mlua)"
+
+# Бинарник кладётся рядом с darmark.exe и спавнится как внешний процесс (Phase 2).
+# GUI-хост НЕ линкует этот крейт — иначе mlua протёк бы в darmark (D6/ADR-0021).
+[[bin]]
+name = "darmark-plugin-host"
+path = "src/main.rs"
+
+[dependencies]
+plugin-proto = { path = "../plugin-proto" }
+# md.* в child работают нативно (md-core линкуется в child, не в GUI-хост).
+md-core = { path = "../md-core" }
+serde_json = "1"
+# Только 5.5 и только vendored: версия зафиксирована (D13), как в прототипе.
+mlua = { version = "0.12", default-features = false, features = ["lua55", "vendored"] }

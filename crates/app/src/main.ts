@@ -1,326 +1,239 @@
-// mdedit — лёгкий редактор/вьюер Markdown в духе Notepad++.
-// Состояние документа + рендер предпросмотра через Rust (crate md-core).
+// darmark — лёгкий редактор/вьюер Markdown в духе Notepad++.
+//
+// Композиционный корень (Фаза 6): собирает домен (docStore, RenderIndex,
+// реестр view, панели) и передаёт его оболочке. Сам корень логики не содержит.
+//
+// Поток данных: редактор (тир-2 view) → docStore (проекция Rust-стора, D5) →
+// RenderIndex → previewView (тир-1 view, единственное `preview.innerHTML`).
+// Панели — дерево layout (MAX_PANES = 2). Ядро Markdown — `md-core` (Rust).
 
-import { confirm, open, save } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { getCurrentWindow } from "@tauri-apps/api/window";
-import { renderMarkdown, readFile, writeFile } from "./tauri";
-import { enhanceTables, attachMenuAutoClose } from "./tables";
-import { createInspector } from "./inspector";
-import { resolveLocalImages } from "./images";
-import { createScrollSync } from "./scrollsync";
+import { listen } from "@tauri-apps/api/event";
+import { createDocStore } from "./docStore";
+import { createRenderIndex } from "./renderIndex";
+import { createViewRegistry, type ViewContext } from "./viewRegistry";
+import { asPaneId, asViewId, newPaneId, newViewId } from "./ids";
+import { createEditorView } from "./editorView";
+import { previewViewProvider, type PreviewView, type PreviewViewOptions } from "./previewView";
+import { createLinkController } from "./linkController";
+import { createPaneHost } from "./paneHost";
+import { applyLayout, LayoutError, type LayoutNode, type Pane } from "./layout";
+import { createStatusBar } from "./statusBar";
+import { createPluginViews } from "./pluginViews";
+import { createPluginManager } from "./pluginManager";
+import { createFileActions } from "./fileActions";
+import { createShell } from "./shell";
+import { createSidebar } from "./sidebar";
+import { createGutter } from "./gutter";
+import { createFormatActions } from "./formatActions";
+import { START_TEXT } from "./sampleDocument";
+import { errorMessage } from "./tauri";
+import type { RenderResult } from "./tauri";
 import "./style.css";
 
-const MD_FILTER = {
-  name: "Markdown",
-  extensions: ["md", "markdown", "mdown", "mkd", "txt"],
-};
+const APP_NAME = "darmark";
 
 const editor = document.getElementById("editor") as HTMLTextAreaElement;
 const preview = document.getElementById("preview") as HTMLElement;
-const fileLabel = document.getElementById("file-label") as HTMLElement;
-const statPos = document.getElementById("stat-pos") as HTMLElement;
-const statSize = document.getElementById("stat-size") as HTMLElement;
-const statMsg = document.getElementById("stat-msg") as HTMLElement;
+const panesEl = document.getElementById("panes") as HTMLElement;
 const statInspect = document.getElementById("stat-inspect") as HTMLElement;
 const btnInspect = document.getElementById("btn-inspect") as HTMLButtonElement;
-const chkPreview = document.getElementById("chk-preview") as HTMLInputElement;
-const chkSync = document.getElementById("chk-sync") as HTMLInputElement;
+const gutterEl = document.getElementById("gutter") as HTMLElement;
+const sidebarEl = document.getElementById("sidebar") as HTMLElement;
+const tabName = document.getElementById("tab-name") as HTMLElement;
+const tabDirty = document.getElementById("tab-dirty") as HTMLElement;
 
-const scrollSync = createScrollSync({ editor, preview });
-
-const inspector = createInspector({
-  editor,
-  preview,
-  statusEl: statInspect,
-  // Программный scrollIntoView инспектора не должен тянуть редактор.
-  beforeScrollIntoView: () => scrollSync.suspend(),
-});
-
-let currentPath: string | null = null;
-let dirty = false;
-let renderSeq = 0; // защита от «гонки» асинхронных рендеров
-let lastRenderedHtml = ""; // чтобы не перетирать DOM (и состояние таблиц) без изменений
-
-// ---------- предпросмотр (debounce, чтобы не спамить IPC на каждое нажатие) ----------
-
-let debounceTimer = 0;
-function scheduleRender() {
-  clearTimeout(debounceTimer);
-  debounceTimer = window.setTimeout(doRender, 120);
-}
-
-// Сброс состояния рендера при смене документа (P1.1): гасим отложенный рендер
-// и делаем неактуальными уже запущенные, чтобы старый ввод не «эхнул» в новый файл.
-function resetRenderState() {
-  clearTimeout(debounceTimer);
-  renderSeq++;
-  lastRenderedHtml = "";
-  scrollSync.onRendered(); // анкоры предыдущего документа устарели — fallback на пропорцию
-}
-
-async function doRender() {
-  const seq = ++renderSeq;
-  // Фиксируем текст, ушедший в рендер: по нему посчитаны data-md-смещения,
-  // поэтому карту инспектора нужно строить именно по нему (см. T-9/T-14).
-  const source = editor.value;
-  try {
-    const html = await renderMarkdown(source, inspector.isActive());
-    if (seq !== renderSeq) return; // более новый рендер уже в полёте
-    // Если HTML не изменился — не трогаем DOM: иначе сбрасывались бы
-    // сортировка, фильтры и фокус в предпросмотре на каждом дебаунсе.
-    if (html !== lastRenderedHtml) {
-      lastRenderedHtml = html;
-      preview.innerHTML = html;
-      try {
-        enhanceTables(preview); // Excel-подобные сортировка/фильтры для всех <table>
-      } catch (e) {
-        // Украшение таблиц упало — оставляем читаемый HTML без улучшений (P1.2).
-        flash(`Таблицы: ${String(e)}`);
-      }
-    }
-    // Локальные картинки: относительные src → asset-URL (идемпотентно, DOM
-    // мог не пересоздаваться, если HTML совпал).
-    resolveLocalImages(preview, currentPath);
-    // Переиндексация нужна всегда: после изменения текста карта устарела, даже
-    // если разметка визуально не поменялась (совпадающий HTML — не повод).
-    inspector.onRendered(source);
-    // Высоты предпросмотра могли измениться — выравниваем прокрутку (если включена).
-    // Аргумент — текст рендера: по нему строятся анкорные карты sync.
-    scrollSync.onRendered(source);
-  } catch (e) {
-    if (seq === renderSeq) {
-      lastRenderedHtml = "";
-      preview.textContent = `Ошибка рендера: ${String(e)}`;
-    }
-  }
-}
-
-function toggleInspector() {
-  if (inspector.isActive()) inspector.disable();
-  else inspector.enable();
-  btnInspect.classList.toggle("active", inspector.isActive());
-  // HTML с обёртками .md-block отличается от обычного — принудительно перерисовываем.
-  lastRenderedHtml = "";
-  void doRender();
-}
-
-attachMenuAutoClose(preview); // закрытие меню фильтров при прокрутке предпросмотра
-
-// Внешние ссылки открываем системным браузером через плагин opener (P0.2).
-// window.open в WebView не гарантирует внешнее открытие и обходит CSP,
-// поэтому используем отдельный нативный плагин.
-preview.addEventListener("click", (e) => {
-  const anchor = (e.target as HTMLElement).closest("a");
-  if (!anchor) return;
-  const href = anchor.getAttribute("href") ?? "";
-  if (/^https?:/i.test(href)) {
-    e.preventDefault();
-    void openUrl(href).catch((err) => flash(`Ссылка: ${String(err)}`));
-  }
-});
-
-// ---------- статусная строка / заголовок ----------
-
-function updateStatus() {
-  const pos = editor.selectionStart ?? 0;
-  const before = editor.value.slice(0, pos);
-  const line = before.split("\n").length;
-  const col = pos - (before.lastIndexOf("\n") + 1) + 1;
-  statPos.textContent = `Стр ${line}, Кол ${col}`;
-  statSize.textContent = `${[...editor.value].length} симв.`;
-}
-
+/** Имя файла из пути (для таба-заглушки). */
 function baseName(p: string): string {
   const i = Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\"));
   return i >= 0 ? p.slice(i + 1) : p;
 }
 
-function updateTitle() {
-  const name = currentPath ? baseName(currentPath) : "безымянный";
-  void getCurrentWindow().setTitle(`${dirty ? "● " : ""}${name} — mdedit`);
-  fileLabel.textContent = name + (dirty ? " ●" : "");
+// Rail + сворачиваемый sidebar (explorer по умолчанию, plugins — заглушка H2).
+const sidebar = createSidebar({
+  sidebar: sidebarEl,
+  panels: {
+    explorer: document.getElementById("panel-explorer") as HTMLElement,
+    plugins: document.getElementById("panel-plugins") as HTMLElement,
+  },
+  rail: {
+    explorer: document.getElementById("rail-explorer") as HTMLElement,
+    plugins: document.getElementById("rail-plugins") as HTMLElement,
+  },
+});
+const gutter = createGutter(editor, gutterEl);
+const format = createFormatActions(editor);
+
+// 1. Общий индекс рендера + связка inspector/scrollsync.
+const renderIndex = createRenderIndex();
+const link = createLinkController({ editor, preview, index: renderIndex, statusEl: statInspect });
+const inspector = link.inspector;
+
+// 2. Стор документов. Колбэки ссылаются на status/previewView, объявленные ниже:
+//    они вызываются позже, поэтому такой порядок безопасен.
+const store = createDocStore({
+  renderMapped: () => inspector.isActive(),
+  onRender: (res: RenderResult, source: string) => previewView.applyRender(res, source),
+  onStatus: (msg) => status.flash(msg),
+});
+
+const status = createStatusBar({ store, editor, appName: APP_NAME });
+
+// 3. Реестр представлений: тир-1 preview встроен на хосте (D2).
+const registry = createViewRegistry();
+registry.registerHtml(previewViewProvider);
+
+function makeContext(): ViewContext {
+  return {
+    paneId: newPaneId(),
+    viewId: newViewId("preview"),
+    document: () => store.snapshot(),
+    edit: (text) => store.setText(text),
+    render: (text, mapped) => store.renderText(text, mapped),
+    status: (msg) => status.flash(msg),
+    openExternal: (url) => void openUrl(url).catch((e) => status.flash(`Ссылка: ${String(e)}`)),
+    onDocument: (cb) => store.onDocument(cb),
+  };
 }
 
-function flash(msg: string) {
-  statMsg.textContent = msg;
-  window.setTimeout(() => {
-    if (statMsg.textContent === msg) statMsg.textContent = "";
-  }, 4000);
-}
-
-// ---------- команды файла ----------
-
-async function newFile() {
-  if (dirty && !(await confirm("Несохранённые изменения будут потеряны. Продолжить?", { title: "mdedit", kind: "warning" }))) {
-    return;
+const previewView = registry.createHtmlView<PreviewView, PreviewViewOptions>(
+  "preview",
+  makeContext(),
+  {
+    previewEl: preview,
+    index: renderIndex,
+    onIndexed: () => link.onIndexChanged(),
   }
-  currentPath = null;
-  dirty = false;
-  editor.value = "";
-  resetRenderState();
-  preview.innerHTML = "";
-  inspector.onRendered(editor.value); // сбрасываем устаревшие диапазоны
-  updateTitle();
-  updateStatus();
-  editor.focus();
+);
+
+// 4. Плагинные тир-1 view (Фаза 4, IDEA-003): каждый плагин-вью — `HtmlViewProvider`
+//    в общем реестре; нативный preview остаётся дефолтным. Контейнер `#plugin-view`
+//    показывается при выборе плагинной вкладки в `.view-switch`.
+const pluginViews = createPluginViews({
+  registry,
+  ctx: makeContext(),
+  switchEl: document.getElementById("view-switch") as HTMLElement,
+  containerEl: document.getElementById("plugin-view") as HTMLElement,
+  previewEl: preview,
+  status: (msg) => status.flash(msg),
+});
+
+// Менеджер плагинов (Фаза 5): список/статусы/вкл-выкл/перезагрузка в панели
+//    `#panel-plugins`. Данные — из Rust-хоста (`list_plugins`), изменения приходят
+//    событием `plugins-changed`. Ошибка IPC глушится в контроллере.
+const pluginManager = createPluginManager({
+  root: document.getElementById("plugin-manager") as HTMLElement,
+  status: (msg) => status.flash(msg),
+});
+
+// Сообщения плагинов (`host.show_message`) — в статусбар с указанием источника.
+void listen<{ plugin_id: string; text: string }>("plugin-message", (event) => {
+  status.flash(`${event.payload.plugin_id}: ${event.payload.text}`);
+}).catch(() => null);
+
+// 4. Панели: фиксированные две (редактор + предпросмотр), MAX_PANES = 2.
+const EDITOR_PANE = asPaneId("pane-editor");
+const PREVIEW_PANE = asPaneId("pane-preview");
+const EDITOR_VIEW = asViewId("editor");
+const PREVIEW_VIEW = asViewId("preview");
+const editorPane: Pane = { kind: "pane", id: EDITOR_PANE, views: [EDITOR_VIEW], active: EDITOR_VIEW };
+const previewPane: Pane = { kind: "pane", id: PREVIEW_PANE, views: [PREVIEW_VIEW], active: PREVIEW_VIEW };
+
+let layout: LayoutNode = {
+  kind: "split",
+  id: "root",
+  dir: "row",
+  children: [editorPane, previewPane],
+};
+const paneHost = createPaneHost(panesEl);
+paneHost.mount(layout);
+
+// chk-preview переключает ВИДИМОСТЬ вторичной панели (idea5): `#preview` остаётся
+// в DOM, поэтому скрытие/показ не требует пересоздания вида (AC-9).
+function setPreviewVisible(on: boolean): void {
+  const next = on
+    ? applyLayout(layout, { t: "splitPane", target: EDITOR_PANE, dir: "row", pane: previewPane })
+    : applyLayout(layout, { t: "closePane", pane: PREVIEW_PANE });
+  if (!(next instanceof LayoutError)) layout = next;
+  paneHost.mount(layout);
 }
 
-async function openFile() {
-  if (dirty && !(await confirm("Несохранённые изменения будут потеряны. Продолжить?", { title: "mdedit", kind: "warning" }))) {
-    return;
+// 5. Редактор (тир-2 view) + реакция на проекцию стора.
+const editorView = createEditorView(editor, store, () => {
+  status.updateStatus();
+  inspector.onEditorActivity();
+});
+
+let prevText = "";
+store.subscribe((s) => {
+  if (s.text !== prevText) {
+    prevText = s.text;
+    previewView.invalidate(); // индекс устарел до нового рендера
   }
-  const selected = await open({
-    multiple: false,
-    filters: [MD_FILTER],
-    defaultPath: currentPath ?? undefined,
-  });
-  if (typeof selected !== "string") return; // отмена
-  resetRenderState();
+  gutter.update(); // номера строк следуют за текстом редактора
+  tabName.textContent = s.path ? baseName(s.path) : "безымянный";
+  tabDirty.hidden = !s.dirty;
+  status.updateTitle();
+  status.updateStatus();
+});
+
+// 6. Инспектор и файловые команды.
+function toggleInspector(): void {
+  if (inspector.isActive()) inspector.disable();
+  else inspector.enable();
+  btnInspect.classList.toggle("active", inspector.isActive());
+  previewView.setMapped(inspector.isActive()); // смена mapped меняет HTML
+  store.reload();
+}
+
+const files = createFileActions({
+  store,
+  status: (m) => status.flash(m),
+  onPathChanged: () => previewView.refreshImages(),
+  focusEditor: () => editorView.focus(),
+});
+
+// 7. Оболочка: тулбар, хоткеи, тумблеры, фокус панелей, закрытие окна.
+createShell({
+  commands: {
+    newFile: () => void files.newFile(),
+    openFile: () => void files.openFile(),
+    saveFile: () => void files.saveFile(),
+    saveAs: () => void files.saveAs(),
+    toggleInspector,
+    setPreviewVisible,
+    setSyncEnabled: (on) => link.setSyncEnabled(on),
+    setActivePane: (p) => paneHost.setActive(p),
+    isDirty: () => store.state().dirty,
+    palette: () => status.flash("Палитра — скоро"),
+    flash: (m) => status.flash(m),
+  },
+  format,
+  sidebar,
+  inspectorActive: () => inspector.isActive(),
+  editorPane: EDITOR_PANE,
+  previewPane: PREVIEW_PANE,
+  editor,
+  preview,
+});
+
+// 8. Стартовый документ (создаётся в Rust-сторе: id/путь/текст ведёт хост).
+async function bootstrap(): Promise<void> {
   try {
-    editor.value = await readFile(selected);
-    currentPath = selected;
-    dirty = false;
-    updateTitle();
-    void doRender();
-    updateStatus();
+    await store.newDocument(START_TEXT);
   } catch (e) {
-    flash(`Не открылось: ${String(e)}`);
+    status.flash(`Запуск: ${errorMessage(e)}`);
   }
+  const chkPreview = document.getElementById("chk-preview") as HTMLInputElement;
+  setPreviewVisible(chkPreview.checked);
+  status.updateStatus();
+  status.updateTitle();
+  // Плагинные view — после документа и тумблеров, чтобы их вкладки не влияли
+  // на стартовое состояние предпросмотра (ошибка IPC глушится в контроллере).
+  await pluginViews.refresh();
+  // Менеджер плагинов — после view: панель может быть скрыта, DOM всё равно готов.
+  await pluginManager.refresh();
+  editorView.focus();
 }
 
-async function saveFile() {
-  if (!currentPath) return saveAs();
-  try {
-    await writeFile(currentPath, editor.value);
-    dirty = false;
-    updateTitle();
-    flash("Сохранено");
-  } catch (e) {
-    flash(`Не сохранилось: ${String(e)}`);
-  }
-}
-
-async function saveAs() {
-  const selected = await save({
-    defaultPath: currentPath ?? "untitled.md",
-    filters: [MD_FILTER],
-  });
-  if (typeof selected !== "string") return;
-  try {
-    await writeFile(selected, editor.value);
-    currentPath = selected;
-    dirty = false;
-    updateTitle();
-    // Новый каталог — относительные картинки нужно перерезолвить от него.
-    resolveLocalImages(preview, currentPath);
-    flash("Сохранено");
-  } catch (e) {
-    flash(`Не сохранилось: ${String(e)}`);
-  }
-}
-
-// ---------- события ----------
-
-document.getElementById("btn-new")!.addEventListener("click", () => void newFile());
-document.getElementById("btn-open")!.addEventListener("click", () => void openFile());
-document.getElementById("btn-save")!.addEventListener("click", () => void saveFile());
-document.getElementById("btn-save-as")!.addEventListener("click", () => void saveAs());
-btnInspect.addEventListener("click", toggleInspector);
-
-editor.addEventListener("input", () => {
-  dirty = true;
-  updateTitle();
-  updateStatus();
-  inspector.onRendered(); // сбрасываем подсветку — диапазоны устарели
-  scrollSync.onRendered(); // анкоры sync устарели до перерендера — fallback на пропорцию
-  scheduleRender();
-});
-for (const ev of ["keyup", "click", "select"]) {
-  editor.addEventListener(ev, () => {
-    updateStatus();
-    inspector.onEditorActivity(); // переиспользуем единый хук (T-11)
-  });
-}
-
-chkPreview.addEventListener("change", () => {
-  preview.style.display = chkPreview.checked ? "" : "none";
-});
-
-chkSync.addEventListener("change", () => {
-  scrollSync.setEnabled(chkSync.checked);
-});
-
-window.addEventListener("keydown", (e: KeyboardEvent) => {
-  // Esc выходит из режима инспектора (кроме случая открытого меню фильтра).
-  if (e.key === "Escape" && inspector.isActive()) {
-    if (!document.querySelector(".col-filter-menu")) {
-      e.preventDefault();
-      toggleInspector();
-    }
-    return;
-  }
-  if (!(e.ctrlKey || e.metaKey)) return;
-  const k = e.key.toLowerCase();
-  if (k === "n" && !e.shiftKey) { e.preventDefault(); void newFile(); }
-  else if (k === "o") { e.preventDefault(); void openFile(); }
-  else if (k === "s" && e.shiftKey) { e.preventDefault(); void saveAs(); }
-  else if (k === "s") { e.preventDefault(); void saveFile(); }
-  else if (k === "p") { e.preventDefault(); chkPreview.click(); }
-  else if (k === "i") { e.preventDefault(); toggleInspector(); }
-});
-
-// закрытие окна с несохранёнными изменениями — штатный вопрос Windows-диалога
-// Закрытие окна. При несохранённых изменениях спрашиваем подтверждение;
-// если пользователь согласен — закрываем окошко через destroy().
-// Сам onCloseRequested из @tauri-apps/api/window автоматически вызывает
-// destroy(), пока обработчик не выставил preventDefault.
-const appWindow = getCurrentWindow();
-
-appWindow
-  .onCloseRequested(async (event) => {
-    if (!dirty) return; // подтверждать нечего — окно закроется само
-    event.preventDefault();
-    const ok = await confirm("Закрыть приложение с несохранёнными изменениями?", {
-      title: "mdedit",
-      kind: "warning",
-    });
-    if (ok) {
-      dirty = false;
-      await appWindow.destroy();
-    }
-  })
-  .catch((e) => console.error("onCloseRequested:", e));
-
-// стартовый документ — сразу видно, что таблицы рендерятся
-editor.value = [
-  "# Добро пожаловать в mdedit",
-  "",
-  "Лёгкий редактор Markdown. Слева — исходник, справа — HTML-предпросмотр,",
-  "который собирает `md-core` (CommonMark + GFM).",
-  "",
-  "## Таблицы (GFM)",
-  "",
-  "Кликните по заголовку столбца — сортировка ↑/↓; воронка ▾ — фильтр по значениям,",
-  "поле над таблицей — поиск. Типы данных определяются автоматически.",
-  "",
-  "| Файл | Размер | Строк | Изменён |",
-  "|------|-------:|------:|-----------|",
-  "| README.md | 2 КБ | 48 | 01.10.2026 |",
-  "| Cargo.toml | 1 КБ | 21 | 28.09.2026 |",
-  "| main.rs | 3,5 КБ | 102 | 03.10.2026 |",
-  "| style.css | 4 КБ | 150 | 30.09.2026 |",
-  "",
-  "## Прочее",
-  "- [x] открыть файл",
-  "- [x] сохранить файл",
-  "- [ ] вкладки",
-  "",
-  "~~Зачёркнутый текст~~ и **жирный**, `код`, ссылки: [Tauri](https://tauri.app).",
-  "",
-  "> Цитаты тоже работают.",
-].join("\n");
-void doRender();
-updateStatus();
-updateTitle();
-editor.focus();
+void bootstrap();

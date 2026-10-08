@@ -221,129 +221,143 @@ function makeTools(entryRef: { current: TableEntry | null }): HTMLElement {
 }
 
 // ---------- выпадающий фильтр значений колонки (в духе Excel) ----------
+//
+// Состояние меню (открытый список, mousedown-слушатель, счётчик якорей) живёт
+// в ЭКЗЕМПЛЯРЕ контроллера (Фаза 5), а не в модуле: у каждого preview свой
+// `openMenu`/`outsideHandler`/`anchorSeq`, `dispose()` убирает меню из
+// `document.body` и слушатель скролла (§5.6). Раньше это были модульные синглтоны.
 
-let openMenu: HTMLElement | null = null;
-let outsideHandler: ((e: MouseEvent) => void) | null = null;
-
-function closeMenu() {
-  openMenu?.remove();
-  openMenu = null;
-  if (outsideHandler) {
-    document.removeEventListener("mousedown", outsideHandler, true);
-    outsideHandler = null;
-  }
+interface MenuController {
+  close(): void;
+  open(anchor: HTMLElement, table: HTMLTableElement, col: number, entry: TableEntry): void;
+  nextAnchorId(): number;
 }
 
-function syncFromCheckboxes(menu: HTMLElement, entry: TableEntry, col: number) {
-  const items = Array.from(menu.querySelectorAll<HTMLElement>(".col-filter-item"));
-  const checked = items.filter((el) => (el.querySelector("input") as HTMLInputElement).checked);
-  if (items.length === 0 || checked.length === items.length) {
-    entry.state.colFilters.delete(col); // все значения выбраны = фильтр снят
-  } else {
-    entry.state.colFilters.set(col, new Set(checked.map((el) => el.dataset.value ?? "")));
-  }
-  apply(entry);
-}
+function createMenuController(): MenuController {
+  let openMenu: HTMLElement | null = null;
+  let outsideHandler: ((e: MouseEvent) => void) | null = null;
+  let anchorSeq = 0;
 
-function openFilterMenu(anchor: HTMLElement, table: HTMLTableElement, col: number, entry: TableEntry) {
-  const wasOpenForSame =
-    openMenu?.dataset.anchor === anchor.getAttribute("data-anchor-id");
-  closeMenu();
-  if (wasOpenForSame) return; // повторный клик по той же воронке — закрыть
-
-  const menu = document.createElement("div");
-  menu.className = "col-filter-menu";
-  menu.setAttribute("data-anchor", anchor.getAttribute("data-anchor-id") ?? "");
-
-  // уникальные значения колонки с количеством повторов
-  const uniq = new Map<string, number>();
-  for (const r of bodyRows(table)) {
-    const v = cellText(r.cells[col]).trim();
-    if (v) uniq.set(v, (uniq.get(v) ?? 0) + 1);
-  }
-  const allValues = [...uniq.keys()];
-  const kind = detectColumnKind(allValues);
-  allValues.sort((a, b) => compareCells(a, b, kind));
-
-  const active = entry.state.colFilters.get(col);
-
-  const mini = document.createElement("input");
-  mini.type = "search";
-  mini.placeholder = "Найти значение…";
-  mini.addEventListener("input", () => {
-    const q = mini.value.toLowerCase();
-    for (const item of menu.querySelectorAll<HTMLElement>(".col-filter-item")) {
-      item.hidden = !(item.dataset.value ?? "").toLowerCase().includes(q);
+  function closeMenu() {
+    openMenu?.remove();
+    openMenu = null;
+    if (outsideHandler) {
+      document.removeEventListener("mousedown", outsideHandler, true);
+      outsideHandler = null;
     }
-  });
-
-  const list = document.createElement("div");
-  list.className = "col-filter-list";
-  for (const v of allValues) {
-    const label = document.createElement("label");
-    label.className = "col-filter-item";
-    label.dataset.value = v;
-    const cb = document.createElement("input");
-    cb.type = "checkbox";
-    cb.checked = !active || active.has(v);
-    cb.addEventListener("change", () => syncFromCheckboxes(menu, entry, col));
-    const span = document.createElement("span");
-    span.textContent = v;
-    const cnt = document.createElement("em");
-    cnt.textContent = String(uniq.get(v));
-    label.append(cb, span, cnt);
-    list.appendChild(label);
-  }
-  if (allValues.length === 0) {
-    const empty = document.createElement("div");
-    empty.className = "col-filter-empty";
-    empty.textContent = "Нет данных";
-    list.appendChild(empty);
   }
 
-  const footer = document.createElement("div");
-  footer.className = "col-filter-footer";
-  const mkBtn = (text: string, fn: () => void) => {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.textContent = text;
-    b.addEventListener("click", fn);
-    return b;
-  };
-  const setAll = (on: boolean) => {
-    for (const cb of menu.querySelectorAll<HTMLInputElement>(".col-filter-item input")) {
-      const item = cb.closest(".col-filter-item") as HTMLElement;
-      if (!item.hidden) cb.checked = on; // как в Excel: влияет только на видимые
+  function syncFromCheckboxes(menu: HTMLElement, entry: TableEntry, col: number) {
+    const items = Array.from(menu.querySelectorAll<HTMLElement>(".col-filter-item"));
+    const checked = items.filter((el) => (el.querySelector("input") as HTMLInputElement).checked);
+    if (items.length === 0 || checked.length === items.length) {
+      entry.state.colFilters.delete(col); // все значения выбраны = фильтр снят
+    } else {
+      entry.state.colFilters.set(col, new Set(checked.map((el) => el.dataset.value ?? "")));
     }
-    syncFromCheckboxes(menu, entry, col);
-  };
-  footer.append(
-    mkBtn("Все", () => setAll(true)),
-    mkBtn("Ничего", () => setAll(false)),
-  );
+    apply(entry);
+  }
 
-  menu.append(mini, list, footer);
-  document.body.appendChild(menu);
+  function openFilterMenu(anchor: HTMLElement, table: HTMLTableElement, col: number, entry: TableEntry) {
+    const wasOpenForSame =
+      openMenu?.dataset.anchor === anchor.getAttribute("data-anchor-id");
+    closeMenu();
+    if (wasOpenForSame) return; // повторный клик по той же воронке — закрыть
 
-  const rect = anchor.getBoundingClientRect();
-  const w = 260;
-  menu.style.position = "fixed";
-  menu.style.left = Math.max(4, Math.min(rect.left, window.innerWidth - w - 8)) + "px";
-  menu.style.top = Math.min(rect.bottom + 2, window.innerHeight - 20) + "px";
-  openMenu = menu;
-  mini.focus();
+    const menu = document.createElement("div");
+    menu.className = "col-filter-menu";
+    menu.setAttribute("data-anchor", anchor.getAttribute("data-anchor-id") ?? "");
 
-  outsideHandler = (e: MouseEvent) => {
-    if (!menu.contains(e.target as Node) && e.target !== anchor) closeMenu();
-  };
-  document.addEventListener("mousedown", outsideHandler, true);
+    // уникальные значения колонки с количеством повторов
+    const uniq = new Map<string, number>();
+    for (const r of bodyRows(table)) {
+      const v = cellText(r.cells[col]).trim();
+      if (v) uniq.set(v, (uniq.get(v) ?? 0) + 1);
+    }
+    const allValues = [...uniq.keys()];
+    const kind = detectColumnKind(allValues);
+    allValues.sort((a, b) => compareCells(a, b, kind));
+
+    const active = entry.state.colFilters.get(col);
+
+    const mini = document.createElement("input");
+    mini.type = "search";
+    mini.placeholder = "Найти значение…";
+    mini.addEventListener("input", () => {
+      const q = mini.value.toLowerCase();
+      for (const item of menu.querySelectorAll<HTMLElement>(".col-filter-item")) {
+        item.hidden = !(item.dataset.value ?? "").toLowerCase().includes(q);
+      }
+    });
+
+    const list = document.createElement("div");
+    list.className = "col-filter-list";
+    for (const v of allValues) {
+      const label = document.createElement("label");
+      label.className = "col-filter-item";
+      label.dataset.value = v;
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = !active || active.has(v);
+      cb.addEventListener("change", () => syncFromCheckboxes(menu, entry, col));
+      const span = document.createElement("span");
+      span.textContent = v;
+      const cnt = document.createElement("em");
+      cnt.textContent = String(uniq.get(v));
+      label.append(cb, span, cnt);
+      list.appendChild(label);
+    }
+    if (allValues.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "col-filter-empty";
+      empty.textContent = "Нет данных";
+      list.appendChild(empty);
+    }
+
+    const footer = document.createElement("div");
+    footer.className = "col-filter-footer";
+    const mkBtn = (text: string, fn: () => void) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = text;
+      b.addEventListener("click", fn);
+      return b;
+    };
+    const setAll = (on: boolean) => {
+      for (const cb of menu.querySelectorAll<HTMLInputElement>(".col-filter-item input")) {
+        const item = cb.closest(".col-filter-item") as HTMLElement;
+        if (!item.hidden) cb.checked = on; // как в Excel: влияет только на видимые
+      }
+      syncFromCheckboxes(menu, entry, col);
+    };
+    footer.append(
+      mkBtn("Все", () => setAll(true)),
+      mkBtn("Ничего", () => setAll(false)),
+    );
+
+    menu.append(mini, list, footer);
+    document.body.appendChild(menu);
+
+    const rect = anchor.getBoundingClientRect();
+    const w = 260;
+    menu.style.position = "fixed";
+    menu.style.left = Math.max(4, Math.min(rect.left, window.innerWidth - w - 8)) + "px";
+    menu.style.top = Math.min(rect.bottom + 2, window.innerHeight - 20) + "px";
+    openMenu = menu;
+    mini.focus();
+
+    outsideHandler = (e: MouseEvent) => {
+      if (!menu.contains(e.target as Node) && e.target !== anchor) closeMenu();
+    };
+    document.addEventListener("mousedown", outsideHandler, true);
+  }
+
+  return { close: closeMenu, open: openFilterMenu, nextAnchorId: () => ++anchorSeq };
 }
 
 // ---------- украшение одной таблицы ----------
 
-let anchorSeq = 0;
-
-function enhance(table: HTMLTableElement) {
+function enhance(table: HTMLTableElement, menu: MenuController) {
   if (registry.has(table)) return;
 
   const headers = headerCells(table);
@@ -388,10 +402,10 @@ function enhance(table: HTMLTableElement) {
     funnel.className = "col-filter-btn";
     funnel.textContent = "▾";
     funnel.title = "Фильтр по столбцу";
-    funnel.setAttribute("data-anchor-id", String(++anchorSeq));
+    funnel.setAttribute("data-anchor-id", String(menu.nextAnchorId()));
     funnel.addEventListener("click", (ev) => {
       ev.stopPropagation();
-      openFilterMenu(funnel, table, i, entry);
+      menu.open(funnel, table, i, entry);
     });
     th.appendChild(funnel);
 
@@ -410,13 +424,36 @@ function enhance(table: HTMLTableElement) {
   apply(entry);
 }
 
-// закрыть меню при прокрутке предпросмотра (позиция fixed иначе «отъедет»)
-export function attachMenuAutoClose(scroller: HTMLElement) {
-  scroller.addEventListener("scroll", closeMenu, { passive: true });
+// ---------- публичный API: экземпляр-контроллер (§5.6) ----------
+
+export interface TablesController {
+  /** Украсить все таблицы под корнем (идемпотентно: registry по элементу). */
+  enhance(): void;
+  /** Закрыть меню фильтра и снять слушатель скролла — без висячих узлов в body. */
+  dispose(): void;
 }
 
-// ---------- публичный API ----------
-
-export function enhanceTables(root: ParentNode) {
-  for (const table of root.querySelectorAll<HTMLTableElement>("table")) enhance(table);
+export function createTablesController(root: HTMLElement): TablesController {
+  const menu = createMenuController();
+  // Меню фильтра — position:fixed; при прокрутке предпросмотра «отъезжает»,
+  // поэтому закрываем его на scroll (один слушатель на контроллер).
+  const onScroll = () => menu.close();
+  root.addEventListener("scroll", onScroll, { passive: true });
+  return {
+    enhance() {
+      // YAML-шапка (md-core::frontmatter) — это метаданные, а не датасет:
+      // сортировка/поиск/фильтры там неуместны, поэтому таблицы с классом
+      // `md-frontmatter` (включая вложенные) не украшаем.
+      for (const table of root.querySelectorAll<HTMLTableElement>(
+        "table:not(.md-frontmatter)",
+      )) {
+        enhance(table, menu);
+      }
+    },
+    dispose() {
+      menu.close();
+      root.removeEventListener("scroll", onScroll);
+    },
+  };
 }
+

@@ -7,8 +7,11 @@
 //! - Task lists (`- [ ]` / `- [x]`)
 //! - Footnotes (`[^1]`)
 //! - Heading IDs (`# Title {#custom-id}`)
+//! - YAML-шапка (`--- … ---` в начале документа) → HTML-таблица «ключ → значение»
 
 use pulldown_cmark::{html, Event, Options, Parser, Tag, TagEnd};
+
+mod frontmatter;
 
 /// Все расширения, включённые по умолчанию в приложении.
 pub const DEFAULT_OPTIONS: Options = Options::empty()
@@ -27,11 +30,76 @@ pub fn to_html(markdown: &str) -> String {
 }
 
 /// То же, но с произвольным набором опций (для тестов и будущего harness).
+///
+/// Ведущая YAML-шапка (`---…---` в начале документа) отрисовывается в
+/// HTML-таблицу через [`frontmatter`], остальной текст — обычным парсером.
+/// Detection свой, а не `Options::ENABLE_YAML_STYLE_METADATA_BLOCKS`: опция
+/// pulldown распознаёт metadata-блок в любом месте столбца 0 и тогда обычные
+/// пары `---` съедали бы содержимое; нам нужна только шапка в начале.
 pub fn to_html_with(markdown: &str, options: Options) -> String {
-    let parser = Parser::new_ext(markdown, options);
+    let (front, rest) = match split_frontmatter(markdown) {
+        Some((yaml, rest_start)) => (
+            Some(frontmatter::render_frontmatter(yaml)),
+            &markdown[rest_start..],
+        ),
+        None => (None, markdown),
+    };
     let mut out = String::with_capacity(markdown.len() + 64);
-    html::push_html(&mut out, parser);
+    if let Some(front) = front {
+        out.push_str(&front);
+    }
+    html::push_html(&mut out, Parser::new_ext(rest, options));
     sanitize_html(&out)
+}
+
+/// Санитизирует произвольный HTML-фрагмент **той же** политикой белых списков,
+/// что и [`to_html`].
+///
+/// Публичный вход для плагинных тир-1 view (§11.1 DESIGN_DOC): HTML, присланный
+/// плагином через `host.set_view_content`, обязан пройти ровно ту же санитизацию,
+/// что и предпросмотр. Расширенный allowlist `data-p-*` (D7/§11.2) действует и здесь.
+pub fn sanitize_fragment(html: &str) -> String {
+    sanitize_html(html)
+}
+
+/// Определяет ведущую YAML-шапку Markdown-документа.
+///
+/// Шапкой считается **только блок в начале документа**: первая строка — ровно
+/// `---` (после необязательного BOM), закрытие — строка `---` или `...`.
+/// Возвращает `(тело между делимитрами, байтовое смещение начала остального
+/// текста)`. `None` — шапки нет (тогда ведущий `---` остаётся обычным `<hr>`).
+fn split_frontmatter(markdown: &str) -> Option<(&str, usize)> {
+    let (text, bom) = match markdown.strip_prefix('\u{FEFF}') {
+        Some(rest) => (rest, markdown.len() - rest.len()),
+        None => (markdown, 0),
+    };
+
+    // Первая строка должна быть ровно `---`.
+    let first_nl = text.find('\n')?;
+    if text[..first_nl].trim_end_matches('\r').trim_end() != "---" {
+        return None;
+    }
+
+    let body_start = first_nl + 1;
+    let mut pos = body_start;
+    loop {
+        let line_end = text[pos..].find('\n').map(|i| pos + i);
+        let raw_line = match line_end {
+            Some(end) => &text[pos..end],
+            None => &text[pos..],
+        };
+        let line = raw_line.trim_end_matches('\r').trim_end();
+        if line == "---" || line == "..." {
+            let body = &text[body_start..pos];
+            let content_start = match line_end {
+                Some(end) => end + 1,
+                None => text.len(),
+            };
+            return Some((body, bom + content_start));
+        }
+        let end = line_end?;
+        pos = end + 1;
+    }
 }
 
 /// Рендерит markdown с пометкой топ-блоков: каждый блок оборачивается в
@@ -62,6 +130,26 @@ pub fn to_html_with(markdown: &str, options: Options) -> String {
 /// строки — без завершающего `\n`/`\r`. Инъекция выполняется **после**
 /// санитайзера, иначе `data-*` был бы срезан.
 pub fn to_html_mapped(markdown: &str) -> String {
+    let mut result = String::with_capacity(markdown.len() + 64);
+    match split_frontmatter(markdown) {
+        Some((yaml, rest_start)) => {
+            // Шапка — отдельный top-блок: инспектор подсвечивает её целиком.
+            let end = trim_end_ws(markdown, 0, rest_start);
+            result.push_str("<div class=\"md-block\" data-md=\"0,");
+            result.push_str(&end.to_string());
+            result.push_str("\">");
+            result.push_str(&sanitize_html(&frontmatter::render_frontmatter(yaml)));
+            result.push_str("</div>");
+            result.push_str(&map_body(&markdown[rest_start..], rest_start));
+        }
+        None => result.push_str(&map_body(markdown, 0)),
+    }
+    result
+}
+
+/// Размечает топ-блоки `body`, прибавляя `base` к байтовым смещениям — сдвиг
+/// остатка документа после вырезанной YAML-шапки.
+fn map_body(body: &str, base: usize) -> String {
     // Группы событий по топ-блокам: (start, end, события блока, структурные
     // диапазоны таблиц). Структурные диапазоны собираем на этапе обхода, пока
     // доступны байтовые смещения `OffsetIter` — в `Event` их уже нет.
@@ -72,9 +160,9 @@ pub fn to_html_mapped(markdown: &str) -> String {
     let mut depth: usize = 0;
     let mut in_head = false;
 
-    for (event, range) in Parser::new_ext(markdown, DEFAULT_OPTIONS).into_offset_iter() {
+    for (event, range) in Parser::new_ext(body, DEFAULT_OPTIONS).into_offset_iter() {
         collect_struct_range(
-            markdown,
+            body,
             &event,
             range.start,
             range.end,
@@ -124,23 +212,23 @@ pub fn to_html_mapped(markdown: &str) -> String {
         let start = block.0;
         let end = block.1;
         if start > prev_end {
-            if let Some(non_ws) = first_non_ws(markdown, prev_end, start) {
+            if let Some(non_ws) = first_non_ws(body, prev_end, start) {
                 block.0 = non_ws;
             }
         }
         prev_end = end;
     }
     if let Some(last) = blocks.last_mut() {
-        if let Some(end) = last_non_ws_end(markdown, last.1, markdown.len()) {
+        if let Some(end) = last_non_ws_end(body, last.1, body.len()) {
             last.1 = end;
         }
     }
 
-    let mut result = String::with_capacity(markdown.len() + 64);
+    let mut result = String::with_capacity(body.len() + 64);
     for (start, end, events, struct_ranges) in blocks {
         // Хвостовые пробелы/пустые строки не относятся к блоку: подсветка в
         // редакторе не должна захватывать «воздух» между абзацами.
-        let end = trim_end_ws(markdown, start, end);
+        let end = trim_end_ws(body, start, end);
         if end <= start {
             continue;
         }
@@ -150,7 +238,15 @@ pub fn to_html_mapped(markdown: &str) -> String {
         // Санитайзер срезал бы `data-*`, поэтому вложенную разметку таблицы
         // добавляем строго после него.
         if !struct_ranges.is_empty() {
-            sanitized = inject_structural_data_md(&sanitized, &struct_ranges);
+            let shifted: Vec<StructRange> = struct_ranges
+                .into_iter()
+                .map(|r| StructRange {
+                    tag: r.tag,
+                    start: r.start + base,
+                    end: r.end + base,
+                })
+                .collect();
+            sanitized = inject_structural_data_md(&sanitized, &shifted);
         }
         // HTML-комментарий/опасный контейнер непуст по исходнику, но после
         // санитайзера остаётся лишь пробельный хвост — обёртку не создаём
@@ -160,9 +256,9 @@ pub fn to_html_mapped(markdown: &str) -> String {
             continue;
         }
         result.push_str("<div class=\"md-block\" data-md=\"");
-        result.push_str(&start.to_string());
+        result.push_str(&(start + base).to_string());
         result.push(',');
-        result.push_str(&end.to_string());
+        result.push_str(&(end + base).to_string());
         result.push_str("\">");
         result.push_str(&sanitized);
         result.push_str("</div>");
@@ -527,7 +623,27 @@ fn tag_attrs(tag: &str) -> &'static [&'static str] {
 }
 
 fn is_allowed_attr(tag: &str, attr: &str) -> bool {
-    GLOBAL_ATTRS.contains(&attr) || tag_attrs(tag).contains(&attr)
+    GLOBAL_ATTRS.contains(&attr) || tag_attrs(tag).contains(&attr) || is_plugin_data_attr(attr)
+}
+
+/// Атрибут плагина `data-p-<pluginid>-<suffix>` — единственный класс `data-*`,
+/// переживающий санитизацию (D7/§11.2, обратная маршрутизация §9.4).
+///
+/// `pluginid` — `[a-z0-9_-]+`, `suffix` — непустой. Прочие `data-*` срезаются как
+/// раньше: расширение allowlist не открывает произвольные data-атрибуты.
+fn is_plugin_data_attr(attr: &str) -> bool {
+    let Some(rest) = attr.strip_prefix("data-p-") else {
+        return false;
+    };
+    // Разделитель pluginid↔suffix — первый `-`; pluginid непуст, suffix непуст.
+    let Some((plugin_id, suffix)) = rest.split_once('-') else {
+        return false;
+    };
+    !plugin_id.is_empty()
+        && !suffix.is_empty()
+        && rest
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_')
 }
 
 fn is_url_attr(attr: &str) -> bool {
@@ -1861,6 +1977,160 @@ mod tests {
                 md.is_char_boundary(*s) && md.is_char_boundary(*e),
                 "граница {tag} {s}..{e} не на символе"
             );
+        }
+    }
+
+    // ─── YAML-шапка: таблица-таблиц (frontmatter.rs) ───────────────────
+
+    #[test]
+    fn frontmatter_becomes_table_before_content() {
+        let md = "---\ntitle: Док\ntags:\n  - a\n  - b\n---\n\n# H";
+        let html = to_html(md);
+        assert!(html.contains("<table class=\"md-frontmatter\">"), "{html}");
+        assert!(html.contains("<th class=\"fm-key\">title</th>"), "{html}");
+        assert!(html.contains("<li>a</li>"), "{html}");
+        assert!(html.contains("<h1"), "{html}");
+        // Делимитры шапки не превратились в <hr>.
+        assert!(!html.contains("<hr"), "{html}");
+    }
+
+    #[test]
+    fn lone_thematic_break_is_not_frontmatter() {
+        // Без закрывающего `---` это обычный `<hr>`, а не metadata-блок.
+        let html = to_html("---\n\ntext");
+        assert!(html.contains("<hr"), "{html}");
+        assert!(!html.contains("md-frontmatter"), "{html}");
+    }
+
+    #[test]
+    fn frontmatter_later_is_not_metadata() {
+        let html = to_html("text\n\n---\na: 1\n---");
+        assert!(!html.contains("md-frontmatter"), "{html}");
+    }
+
+    #[test]
+    fn frontmatter_values_are_sanitized() {
+        let md = "---\nx: <img src=x onerror=alert(1)>\n---";
+        let html = to_html(md);
+        assert!(
+            !html.contains("<img"),
+            "значение не должно стать HTML: {html}"
+        );
+        assert!(html.contains("&lt;img"), "{html}");
+    }
+
+    #[test]
+    fn frontmatter_crlf_and_cyrillic() {
+        let md = "---\r\nназвание: Привет\r\nтеги:\r\n  - 🚀\r\n---\r\n\r\n# H\r\n";
+        let html = to_html(md);
+        assert!(html.contains("название"), "{html}");
+        assert!(html.contains("Привет"), "{html}");
+        assert!(html.contains("🚀"), "{html}");
+        assert!(html.contains("<h1"), "{html}");
+    }
+
+    #[test]
+    fn frontmatter_mapped_matches_to_html() {
+        for md in [
+            "---\ntitle: T\ntags:\n  - a\n  - b\n---\n\n# H\n\ntext",
+            "---\nauthor:\n  name: Иван\n  email: i@e.com\n---\n\npara",
+            "---\n---\n\nempty",
+            "---\nx: <b>жирный</b> & «кавычки»\n---",
+            "---\nmeta: {x: 1, y: 2}\ntags: [a, b]\n---\n\nend",
+        ] {
+            let mapped = to_html_mapped(md);
+            let plain = to_html(md);
+            let content = strip_all_data_md(&strip_mapped_wrappers(&mapped));
+            assert_eq!(content, plain, "несовпадение для входа {md:?}");
+        }
+    }
+
+    #[test]
+    fn frontmatter_mapped_block_range_covers_frontmatter() {
+        let md = "---\ntitle: T\n---\n\n# H";
+        let html = to_html_mapped(md);
+        let ranges = mapped_ranges(md);
+        assert_eq!(ranges.len(), 2, "ranges: {ranges:?}");
+        let (s, e) = ranges[0];
+        assert_eq!(&md[s..e], "---\ntitle: T\n---", "ranges: {ranges:?}");
+        assert!(html.contains("md-block"));
+    }
+
+    #[test]
+    fn frontmatter_shifts_table_structural_offsets() {
+        // Таблица после шапки: её `data-md` должны указывать в оригинальный
+        // markdown, а не в остаток после вырезанной шапки.
+        let md = "---\na: 1\n---\n\n| A | B |\n|---|---|\n| x | y |";
+        let html = to_html_mapped(md);
+        let cells: Vec<String> = table_ranges(&html)
+            .into_iter()
+            .filter(|(t, ..)| t == "th" || t == "td")
+            .map(|(_, s, e)| md[s..e].to_string())
+            .collect();
+        assert_eq!(cells, vec!["A", "B", "x", "y"], "html: {html}");
+    }
+
+    // ─── Фаза 4: публичный вход санитизации + allowlist data-p-* (D7/§11.2) ─
+
+    #[test]
+    fn sanitize_fragment_matches_to_html_policy() {
+        // Публичный вход не меняет политику: тот же тег-allowlist и XSS-срез.
+        let html = sanitize_fragment(r#"<img src="x" onerror="alert(1)">"#);
+        assert!(!html.contains("onerror"), "html: {html}");
+        assert!(!sanitize_fragment("<script>x</script>").contains("<script"));
+    }
+
+    #[test]
+    fn plugin_data_attr_survives_sanitize_fragment() {
+        let html = sanitize_fragment(r#"<span data-p-word-count-action="inc">x</span>"#);
+        assert!(
+            html.contains(r#"data-p-word-count-action="inc""#),
+            "атрибут плагина срезан: {html}"
+        );
+    }
+
+    #[test]
+    fn plugin_data_attr_survives_to_html() {
+        // Тот же allowlist действует и на пути предпросмотра.
+        let html = to_html(r#"<div data-p-word-count-action="inc">x</div>"#);
+        assert!(
+            html.contains(r#"data-p-word-count-action="inc""#),
+            "атрибут плагина срезан: {html}"
+        );
+    }
+
+    #[test]
+    fn generic_data_attr_is_still_stripped() {
+        let html = sanitize_fragment(r#"<span data-foo="bar">x</span>"#);
+        assert!(!html.contains("data-foo"), "html: {html}");
+    }
+
+    #[test]
+    fn plugin_data_attr_value_with_quote_is_escaped() {
+        // Значение с `"` не должно «разорвать» атрибут и создать новый.
+        let html = sanitize_fragment(r#"<span data-p-p-action="a&quot;b">x</span>"#);
+        assert!(
+            html.contains(r#"data-p-p-action="a&quot;b""#),
+            "кавычка не заэкранирована: {html}"
+        );
+        assert!(!html.contains("a\"b"), "атрибут порвался: {html}");
+    }
+
+    #[test]
+    fn plugin_data_attr_does_not_open_xss() {
+        let html = sanitize_fragment(r#"<span data-p-p-action="x" onerror="alert(1)">y</span>"#);
+        assert!(html.contains("data-p-p-action"), "html: {html}");
+        assert!(!html.contains("onerror"), "html: {html}");
+        let html = sanitize_fragment(r#"<a href="javascript:alert(1)" data-p-p-action="x">y</a>"#);
+        assert!(!html.to_lowercase().contains("javascript:"), "html: {html}");
+    }
+
+    #[test]
+    fn malformed_plugin_data_attr_is_stripped() {
+        // Нет суффикса / пустой pluginid / пустой суффикс — не плагинный атрибут.
+        for attr in ["data-p-", "data-p--action", "data-p-foo-"] {
+            let html = sanitize_fragment(&format!(r#"<span {attr}="v">x</span>"#));
+            assert!(!html.contains("data-p-"), "{attr} не срезан: {html}");
         }
     }
 }

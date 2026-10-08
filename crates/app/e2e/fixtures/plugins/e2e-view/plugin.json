@@ -1,0 +1,11 @@
+{
+  "id": "e2e-view",
+  "name": "E2E View",
+  "version": "1.0.0",
+  "api_version": 1,
+  "entry": "main.lua",
+  "permissions": ["view:create", "view:modify"],
+  "contributes": {
+    "views": [{ "kind": "e2e-view", "title": "E2E View", "tier": 1 }]
+  }
+}
