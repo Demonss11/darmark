@@ -32,7 +32,6 @@
 │    .file-chip → #file-label
 │    .spacer
 │    #format-group: B · I · ` · H · link                             (работает)
-│    .div-v · #plugin-strip (пусто)                                  ← заглушка H2
 │    .div-v · #palette-trigger «Команды · Ctrl+K»                    ← заглушка
 │    .div-v · #toggle-sync (chk-sync) · #toggle-preview (chk-preview) (работают)
 │    .div-v · #btn-inspect                                           (наш режим подсветки)
@@ -79,7 +78,7 @@
 
 | Поверхность | Сейчас | План |
 |---|---|---|
-| `#plugin-strip` (тулбар) | пусто | H2: кнопки-плагины |
+| `#plugin-strip` (тулбар) | удалён | Не возвращать (`BUG-004`); ограниченный доступ — `IDEA-005` |
 | Панель «Плагины» `#panel-plugins` | `hidden`, «скоро» | H2: карточки/права/управление |
 | `#rail-logs` / журнал и события | «Журнал — скоро» | H2: нижняя панель |
 | `#palette-trigger` | «Палитра — скоро» | H2: палитра команд |

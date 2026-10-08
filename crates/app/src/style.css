@@ -155,8 +155,6 @@ body {
 .format-group { display: flex; align-items: center; gap: 0; opacity: 0.55; transition: opacity 0.18s; }
 .format-group:focus-within { opacity: 1; }
 
-.plugin-strip { display: flex; align-items: center; gap: 1px; }
-
 .palette-trigger {
   display: inline-flex;
   align-items: center;
