@@ -16,9 +16,16 @@ export interface FormatActions {
 export function createFormatActions(host: HTMLTextAreaElement): FormatActions {
   /** Применить новое значение и выделение, уведомив стор событием `input`. */
   function commit(value: string, selStart: number, selEnd: number): void {
+    // Присвоение `value`/`focus()` могут прокрутить редактор к каретке (особенно
+    // если он был не в фокусе — путь клика по кнопке тулбара). Формат-команда не
+    // должна менять прокрутку: сохраняем и возвращаем позицию.
+    const top = host.scrollTop;
+    const left = host.scrollLeft;
     host.value = value;
-    host.focus();
+    host.focus({ preventScroll: true });
     host.setSelectionRange(selStart, selEnd);
+    host.scrollTop = top;
+    host.scrollLeft = left;
     host.dispatchEvent(new Event("input"));
   }
 

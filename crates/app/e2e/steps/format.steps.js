@@ -13,11 +13,16 @@ function editorValue() {
   return browser.execute(() => document.getElementById("editor").value);
 }
 
-/// Программный клик по кнопке формата: не зависит от доставки клавиатуры.
+/// Клик по кнопке формата с имитацией реального нажатия мышью: фокус уходит с
+/// редактора на кнопку. `btn.click()` без смены фокуса не воспроизводит поведение
+/// пользователя (именно фокус-путь может давать побочный скролл).
 async function applyFormat(action) {
   const ok = await browser.execute((a) => {
+    const editor = document.getElementById("editor");
+    editor.blur(); // реальный клик по тулбару снимает фокус с редактора
     const btn = document.querySelector(`#format-group button[data-action="${a}"]`);
     if (!btn) return false;
+    btn.focus();
     btn.click();
     return true;
   }, action);
