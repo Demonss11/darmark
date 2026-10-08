@@ -119,3 +119,23 @@
   2. `alignEditorToPreview` при верхней логической строке (`topLine === 0`) ставит предпросмотр в `scrollTop = 0`; остальное выравнивание сохранено (попытка вычитать `margin` блока ломала эвристику «верхний блок», т.к. зазор `.md-block` намеренно больше `padding-top`).
 - **Тесты:** `crates/app/e2e/features/format.feature` — сценарии «в начале длинного файла … не сдвигает скролл» (кнопка с реалистичным снятием фокуса, `Ctrl+B` с курсором, `Ctrl+B`, кнопка+C инспектор) проверяют, что `#editor` и `#preview` остаются в начале; полный E2E 9/9.
 - **Открытые вопросы:** нет.
+
+### BUG-006 — UI-ревью: доступность базовых контролов (B1/M2/M8)
+
+- **Статус:** fixed (приоритет-1 из ревью; остальные находки — в «Осталось»)
+- **Severity:** P1 (B1 — блокер клавиатурной навигации)
+- **Область:** `crates/app/index.html`, `crates/app/src/style.css`.
+- **Источник:** UI-ревью по Web Interface Guidelines (скилл `web-design-guidelines`), read-only.
+- **Симптом (по ревью):**
+  - **B1** — тумблеры `#toggle-sync`/`#toggle-preview`: скрытый `input` (`0×0`, `opacity:0`) без доступного имени; фокус при Tab не виден (у `label.tbtn` нет `:focus-within`).
+  - **M2** — icon-only кнопки rail (`#rail-explorer`/`-plugins`/`-logs`) имели только `title`.
+  - **M8** — `#editor { outline: none }` (id-селектор) глушил глобальный `:focus-visible` — у редактора не было фокус-ринга.
+- **Исправлено:**
+  1. **B1** — `input` тумблеров получили `role="switch"` + `aria-label` («Синхронная прокрутка» / «Предпросмотр»), декоративные `svg` — `aria-hidden="true" focusable="false"`; добавлено `label.tbtn:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }`.
+  2. **M2** — rail-кнопкам добавлены `aria-label` («Файлы» / «Плагины» / «Журнал»).
+  3. **M8** — добавлено `#editor:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }`.
+- **Тесты:** E2E `crates/app/e2e/features/a11y.feature` (4 сценария: роль/имя тумблеров, фокус-ринг тумблера, имена rail, фокус-ринг редактора). Полный E2E — **11 passed, 11 total**.
+- **Осталось из ревью (вне этой итерации):**
+  - **major:** M1 `prefers-reduced-motion`; M3 семантика таблиц (`aria-sort`, вынос сортировки в кнопку, `aria-label`/`aria-expanded` воронки фильтра); M4 метки поисковых полей таблиц; M5 popup-фильтр (role/Escape/возврат фокуса); M6 `role="status"`/`aria-live` для статусбара; M7 `aria-label` редактору; M9 контраст `--fg-mute` (≈3.1:1).
+  - **minor/nit:** `aria-hidden` декоративных `svg`/`.stat-dot`/`#tab-dirty`; `color-scheme`/`theme-color`; skip-link/`h1`; `tabular-nums` в статусбаре; `aria-disabled` для заглушек (палитра/журнал); активная панель по Tab; флип popup у нижней границы; мёртвые токены; `type="button"`; анимация `width` у sidebar; `cursor` на core-вкладке.
+- **Коммит:** см. ветку `ui/ux-11.1-style-tokens`.
