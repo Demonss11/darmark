@@ -36,6 +36,17 @@
   --ed-fs: 13.5px;
   --ed-lh: 23px;
   --ed-pad-y: 16px;
+
+  /* токены §11.1 (idea7): акцент-rgb, код, поповеры/тени, крупный радиус, панель */
+  --accent-rgb: 124, 92, 255;
+  --code-fg: #e9b3ff;
+  --popover: #1a1b22;
+  --pop-border: #2a2c36;
+  --shadow-lg: 0 20px 60px rgba(0, 0, 0, 0.55);
+  --shadow-sm: 0 6px 18px rgba(0, 0, 0, 0.35);
+  --r-lg: 10px;
+  --pc: var(--accent);
+  --w-infopanel: 320px;
 }
 
 * { box-sizing: border-box; }
@@ -51,7 +62,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-::selection { background: rgba(124, 92, 255, 0.32); color: #fff; }
+::selection { background: rgba(var(--accent-rgb), 0.32); color: #fff; }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
@@ -96,10 +107,11 @@ body {
   width: 19px;
   height: 19px;
   border-radius: 5px;
+  border: 1.4px solid var(--accent);
+  color: var(--accent);
+  font-family: "Cascadia Code", ui-monospace, monospace;
   font-weight: 800;
   font-size: 11px;
-  color: #fff;
-  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
 }
 
 .file-actions { display: inline-flex; align-items: center; gap: 0; }
@@ -159,7 +171,7 @@ body {
   font-size: 11.5px;
   cursor: pointer;
   flex-shrink: 0;
-  transition: all 0.12s;
+  transition: border-color 0.12s, color 0.12s;
 }
 .palette-trigger:hover { color: var(--fg-dim); border-color: var(--fg-mute); }
 .palette-trigger svg { width: 12px; height: 12px; }
@@ -230,10 +242,8 @@ body {
   flex-shrink: 0;
 }
 .side-title {
-  font-size: 10.5px;
+  font-size: 11.5px;
   font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   color: var(--fg-mute);
 }
 .side-panel { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
@@ -269,8 +279,6 @@ body {
   color: var(--fg-mute);
   font-size: 10px;
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
   white-space: nowrap;
 }
 .pl-badge.active { color: var(--green); border-color: rgba(74, 222, 128, 0.35); background: rgba(74, 222, 128, 0.1); }
@@ -468,7 +476,7 @@ body {
   white-space: nowrap;
 }
 .stat.accent { color: var(--accent); font-weight: 600; }
-.stat-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 6px rgba(74, 222, 128, 0.5); }
+.stat-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
 #stat-msg { color: var(--accent); }
 
 /* ===================== РЕЖИМ ИНСПЕКТОРА ===================== */
@@ -505,7 +513,7 @@ body {
 .markdown-body code {
   font-family: "Cascadia Code", ui-monospace, Consolas, monospace;
   background: var(--bg-3);
-  color: #e9b3ff;
+  color: var(--code-fg);
   padding: 2px 6px;
   border-radius: 4px;
   font-size: 12.5px;
