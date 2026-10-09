@@ -36,10 +36,8 @@
 │    .div-v · #btn-inspect                                           (режим подсветки)
 ├─ .workspace
 │    nav.rail
-│      #rail-explorer (active) · #rail-plugins (active)
-│      .spacer · #rail-logs («Журнал — скоро»)
+│      #rail-plugins (active) · .spacer · #rail-logs («Журнал — скоро»)
 │    aside#sidebar (сворачивается)
-│      #panel-explorer: «Файлы» + #tree («скоро»)
 │      #panel-plugins: панель плагинов (H2)                          (работает)
 │    main.main
 │      .tabrow > #tab-strip → один таб #tab-current (#tab-name/#tab-dirty)  ← заглушка

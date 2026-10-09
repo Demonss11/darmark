@@ -77,7 +77,6 @@ export function createShell(opts: ShellOptions): void {
   byId<HTMLButtonElement>("rail-logs").addEventListener("click", () => commands.flash("Журнал — скоро"));
 
   // Rail ↔ sidebar: повторный клик по активной панели сворачивает sidebar.
-  byId<HTMLButtonElement>("rail-explorer").addEventListener("click", () => opts.sidebar.toggle("explorer"));
   byId<HTMLButtonElement>("rail-plugins").addEventListener("click", () => opts.sidebar.toggle("plugins"));
 
   // Активная панель (фокус) — для визуализации Pane/View.

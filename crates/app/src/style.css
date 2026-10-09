@@ -301,7 +301,7 @@ label.tbtn:has(> input:focus-visible) { outline: 2px solid var(--accent); outlin
 .side-count { color: var(--fg-mute); font-weight: 500; font-size: 11px; }
 .side-count.warn { color: var(--amber); }
 .side-panel { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
-.tree, .pl-panel { flex: 1; overflow-y: auto; padding: 2px 0 10px; }
+.pl-panel { flex: 1; overflow-y: auto; padding: 2px 0 10px; }
 .side-empty { padding: 10px 12px; color: var(--fg-mute); font-size: 12px; }
 
 /* ===== Менеджер плагинов (H2, Фаза 5) ===== */

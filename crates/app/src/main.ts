@@ -52,15 +52,13 @@ function baseName(p: string): string {
   return i >= 0 ? p.slice(i + 1) : p;
 }
 
-// Rail + сворачиваемый sidebar (explorer по умолчанию, plugins — заглушка H2).
+// Rail + сворачиваемый sidebar (plugins по умолчанию).
 const sidebar = createSidebar({
   sidebar: sidebarEl,
   panels: {
-    explorer: document.getElementById("panel-explorer") as HTMLElement,
     plugins: document.getElementById("panel-plugins") as HTMLElement,
   },
   rail: {
-    explorer: document.getElementById("rail-explorer") as HTMLElement,
     plugins: document.getElementById("rail-plugins") as HTMLElement,
   },
 });

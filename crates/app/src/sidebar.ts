@@ -1,10 +1,10 @@
-// sidebar.ts — rail + сворачиваемый sidebar (UI-каркас idea5).
+// sidebar.ts — rail + сворачиваемый sidebar.
 //
 // Модуль владеет только видимостью: какой контент-панели показан и свёрнут ли
 // весь sidebar. Rail-кнопки (кроме журнала-заглушки) кликают сюда; повторный
 // клик по активной панели сворачивает sidebar. Домен/файлы здесь не живут.
 
-export type SidebarPanel = "explorer" | "plugins";
+export type SidebarPanel = "plugins";
 
 export interface Sidebar {
   /** Переключить содержимое панели (sidebar раскрывается). */
@@ -25,7 +25,7 @@ export function createSidebar(opts: {
 }): Sidebar {
   const { sidebar, panels, rail } = opts;
 
-  let current: SidebarPanel = "explorer";
+  let current: SidebarPanel = "plugins";
   let open = true;
 
   function render(): void {
