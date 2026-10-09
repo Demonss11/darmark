@@ -123,17 +123,26 @@
 
 **Файлы:** `crates/app/index.html`, `crates/app/src/main.ts`, `crates/app/src/pluginManager.ts`.
 
-- [ ] `index.html` (~185): в `.side-head` панели плагинов добавить
+- [x] `index.html` (~185): в `.side-head` панели плагинов добавлен
       `<span class="side-count" id="side-count"></span>` внутри `.side-title`.
-      Кнопки `reload-all`/`install` из референса НЕ добавлять (в продукте нет IPC install).
-- [ ] `main.ts` `onPlugins` (~151-154): функция `updatePluginCount(list)` — число плагинов,
-      либо `«N с проблемой»` + класс `warn` (при `failed`/`quarantined`); вызывать из
-      `onPlugins` (композиционный корень владеет chrome панели).
-- [ ] `pluginManager.ts` empty-ветка (~328-333): вместо строки — `.pl-empty-title` +
-      `.pl-empty-hint` с путём `%APPDATA%/darmark/plugins/<id>/` (путь подтверждён в
-      `src-tauri/src/lib.rs:625,628`; сборка узлов через `textContent`, не `innerHTML`).
+      Кнопки `reload-all`/`install` из референса НЕ добавлены (в продукте нет IPC install);
+      `aria-live` не ставим (по референсу — узел вне open-панели не анонсируется).
+- [x] `main.ts` `onPlugins` (~151-154): функция `updatePluginCount(list)` + `problemSuffix(n)`
+      — число плагинов, либо `«N с проблемой/с проблемами»` (склонение, 11-14 → «с проблемами»)
+      + класс `warn` (при `failed`/`quarantined`); вызывается из `onPlugins` — единственный
+      путь снимка (bootstrap/refresh/plugins-changed); null-защита `#side-count`.
+- [x] `pluginManager.ts` empty-ветка: `.pl-empty-title` «Плагины не найдены» +
+      `.pl-empty-hint` с путём `%APPDATA%/darmark/plugins/<id>/` и упоминанием
+      `plugin.json + main.lua` (осознанное отклонение от `manifest.json` в референсе —
+      фактическое имя манифеста `plugin.json`, `docs/PLUGIN_GUIDE.md:18`); сборка узлов
+      через `textContent`, не `innerHTML`.
 
-**Проверка фазы:** `npm run build`; счётчик и пустое состояние — визуально.
+**Проверка фазы:** `npm.cmd run build` — зелёно ✅.
+**Ревью `@code-reviewer`:** 0 critical/high/medium; 2 LOW (`aria-live` внутри скрытой панели —
+исправлено: атрибут убран по референсу; расхождение склонения с acceptance-строкой TZ —
+исправлено: TZ приведён к «с проблемой/с проблемами»), 1 INFO (e2e-сценарий С4 — Фаза 4;
+пустое состояние — `@manual`, в E2E недостижимо). Отклонение `manifest.json` → `plugin.json`
+признано ревью корректным (проверено по GUIDE и фикстурам).
 
 ---
 
@@ -255,7 +264,7 @@
 - [ ] Тело всегда в DOM (`display:none` при свёрнутом, без `hidden`).
 - [ ] Статус — точка+слов; классы и `STATUS_LABELS` сохранены.
 - [ ] Согласие без рамок; «Доступ: N из M» не растрёпан при 4 правах; hover осветляет.
-- [ ] Счётчик: число или `N с проблемой` (амбер); пустое состояние — с путём к каталогу.
+- [ ] Счётчик: число или `N с проблемой/с проблемами` (амбер); пустое состояние — с путём к каталогу.
 - [ ] Кнопки команд: `textContent = command.title`, `aria-label = «Выполнить: <title>»`.
 - [ ] a11y: Tab-обход, `Escape` + возврат фокуса, reduced-motion.
 - [ ] `git diff --name-only` не содержит `crates/md-core/**`, `**/src-tauri/**`,

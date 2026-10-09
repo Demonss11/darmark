@@ -398,7 +398,18 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     }
     if (list.length === 0) {
       const empty = el("div", "side-empty pl-empty");
-      empty.textContent = "Плагины не найдены";
+      const title = el("div", "pl-empty-title");
+      title.textContent = "Плагины не найдены";
+      const hint = el("div", "pl-empty-hint");
+      // Статические строки (путь/состав папки) — textContent, без innerHTML.
+      hint.append("Положите плагин в ");
+      const code = document.createElement("code");
+      code.textContent = "%APPDATA%/darmark/plugins/<id>/";
+      hint.append(code);
+      // Каталог пересканируется при старте (на лету H2 не подхватывает) — честно
+      // просим перезапуск, а не несуществующую кнопку «Перезагрузить все».
+      hint.append(" (plugin.json + main.lua) и перезапустите darmark.");
+      empty.append(title, hint);
       root.replaceChildren(empty);
       return;
     }

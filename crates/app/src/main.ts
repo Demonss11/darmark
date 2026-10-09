@@ -142,6 +142,36 @@ const pluginStatus = createPluginStatusBar({
   onShowPanel: () => sidebar.setPanel("plugins"),
 });
 
+// Склонение «с проблемой/с проблемами» в счётчике панели: 1-4 (кроме 11-14) —
+// «с проблемой», иначе «с проблемами». UI-строка — русский.
+function problemSuffix(n: number): string {
+  const mod100 = n % 100;
+  const unit = n % 10;
+  return unit >= 1 && unit <= 4 && (mod100 < 11 || mod100 > 14)
+    ? "с проблемой"
+    : "с проблемами";
+}
+
+/**
+ * Счётчик плагинов в шапке панели (`#side-count`): число загруженных, либо
+ * «N с проблемой» (+ амбер-класс) при `failed`/`quarantined`. Пустой каталог —
+ * «0», как в референсе. Панель/узел может отсутствовать — молча выходим.
+ */
+function updatePluginCount(list: PluginInfo[]): void {
+  const countEl = document.getElementById("side-count");
+  if (!countEl) return;
+  const problems = list.filter(
+    (info) => info.status.state === "failed" || info.status.state === "quarantined"
+  ).length;
+  if (problems > 0) {
+    countEl.textContent = `${problems} ${problemSuffix(problems)}`;
+    countEl.classList.add("warn");
+    return;
+  }
+  countEl.textContent = String(list.length);
+  countEl.classList.remove("warn");
+}
+
 // Менеджер плагинов (Фаза 5): список/статусы/вкл-выкл/перезагрузка в панели
 //    `#panel-plugins`. Данные — из Rust-хоста (`list_plugins`), изменения приходят
 //    событием `plugins-changed`. Ошибка IPC глушится в контроллере.
@@ -151,6 +181,8 @@ const pluginManager = createPluginManager({
   onPlugins: (list) => {
     lastPlugins = list;
     pluginStatus.render(list);
+    // Счётчик в шапке панели владеет chrome-ом композиционный корень, не контроллер.
+    updatePluginCount(list);
   },
 });
 
