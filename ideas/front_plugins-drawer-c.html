@@ -1,0 +1,1051 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="color-scheme" content="dark" />
+<meta name="theme-color" content="#0d0e12" />
+<!-- front_plugins-drawer-c · улучшенный вариант C: триггер в тулбаре + правый дровер.
+     Токены — канонические (crates/app/src/style.css / front_idea7.html).
+     Демонстрирует все состояния: normal / empty / loading / loaderror / quarantine / crashed.
+     Интерактив: дровер, тумблеры, аккордеоны, инфо-поповер, Esc/клик вне, focus-trap. -->
+<title>darmark — вариант C-v2 · триггер в тулбаре + правый дровер</title>
+<style>
+/* ===================== TOKENS (canonical, = crates/app/src/style.css) ===================== */
+:root {
+  color-scheme: dark;
+  --bg-0:#0d0e12; --bg-1:#141519; --bg-2:#191a20; --bg-3:#1f2028;
+  --line:#24262f; --line-soft:#1c1e26;
+  --fg:#e6e7ee; --fg-dim:#9297a8; --fg-mute:#5f6478;
+  --head:#ffffff; --body:#ced0db;
+  --accent:#7c5cff; --accent-2:#5b8cff; --accent-soft:rgba(124,92,255,.12);
+  --accent-rgb:124,92,255;
+  --green:#4ade80; --amber:#fbbf24; --red:#f87171; --teal:#2dd4bf;
+  --gutter:#0f1014;
+  --code-fg:#e9b3ff;
+
+  /* дроверы/поповеры */
+  --popover:#1a1b22; --pop-border:#2a2c36;
+  --shadow-lg:0 20px 60px rgba(0,0,0,.55);
+  --shadow-sm:0 6px 18px rgba(0,0,0,.35);
+
+  /* метрики */
+  --h-toolbar:36px; --h-status:24px;
+  --w-drawer:440px;
+  --r-sm:5px; --r-md:7px; --r-lg:10px;
+
+  /* цвет плагина: переопределяется inline через style="--pc:…" */
+  --pc:var(--accent);
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; overflow: hidden; }
+[hidden] { display: none !important; }
+.spacer { flex: 1; }
+svg { display: block; }
+.sr-only {
+  position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden;
+  clip:rect(0 0 0 0); white-space:nowrap; border:0;
+}
+
+body {
+  background: var(--bg-0);
+  color: var(--fg);
+  font: 13px/1.4 -apple-system, "Segoe UI", system-ui, Roboto, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection { background: rgba(var(--accent-rgb),.32); color: #fff; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background:#272935; border-radius:8px; border:3px solid transparent; background-clip:padding-box; }
+::-webkit-scrollbar-thumb:hover { background:#3a3d52; background-clip:padding-box; }
+
+:focus { outline: none; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 4px; }
+
+#app { display: flex; flex-direction: column; height: 100vh; }
+
+/* ===================== SWITCHER (сценарии состояний) ===================== */
+.switcher {
+  display: flex; align-items: center; gap: 8px; padding: 10px 12px;
+  background: var(--bg-1); border-bottom: 1px solid var(--line-soft); flex-shrink: 0;
+}
+.switcher-label { font-size: 11.5px; color: var(--fg-mute); margin-right: 2px; }
+.seg {
+  display: inline-flex; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--bg-0); overflow: hidden; flex-shrink: 0;
+}
+.seg-btn {
+  padding: 5px 12px; border: none; background: transparent; color: var(--fg-dim);
+  font: inherit; font-size: 12px; cursor: pointer; transition: background .12s, color .12s;
+}
+.seg-btn:hover { background: var(--bg-3); color: var(--fg); }
+.seg-btn.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.seg-btn + .seg-btn { border-left: 1px solid var(--line); }
+
+/* ===================== ANNOTATION ===================== */
+.annotation {
+  display: flex; gap: 14px; align-items: flex-start; padding: 10px 14px;
+  background: var(--bg-2); border-bottom: 1px solid var(--line-soft); flex-shrink: 0;
+  font-size: 12px; line-height: 1.5;
+}
+.annotation-title { font-weight: 700; color: var(--head); white-space: nowrap; }
+.annotation-body { color: var(--fg-dim); }
+.annotation-body b { color: var(--fg); font-weight: 600; }
+.annotation-body .plus { color: var(--green); }
+.annotation-body .minus { color: var(--amber); }
+.annotation-body .risk { color: var(--red); }
+
+/* ===================== TOOLBAR ===================== */
+.toolbar {
+  display: flex; align-items: center; gap: 2px; height: var(--h-toolbar);
+  padding: 0 8px; background: var(--bg-1); border-bottom: 1px solid var(--line-soft);
+  flex-shrink: 0; user-select: none;
+}
+.brand {
+  display: inline-flex; align-items: center; gap: 7px; margin-right: 6px;
+  padding: 0 4px 0 2px; font-weight: 600; font-size: 12.5px; color: var(--head);
+}
+.brand-mark {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 19px; height: 19px; border-radius: 5px;
+  border: 1.4px solid var(--accent); color: var(--accent);
+  font-family: "Cascadia Code", ui-monospace, monospace; font-weight: 800; font-size: 11px;
+}
+.file-actions { display: inline-flex; align-items: center; gap: 0; }
+.file-chip {
+  display: inline-flex; align-items: center; gap: 7px; max-width: 220px; min-width: 0;
+  padding: 3px 9px; border-radius: var(--r-sm); color: var(--fg-dim); font-size: 12px;
+}
+.file-chip .fname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); }
+
+.tbtn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; padding: 0; border: none; border-radius: var(--r-sm);
+  background: transparent; color: var(--fg-dim); cursor: pointer; flex-shrink: 0;
+  transition: background .12s, color .12s;
+}
+.tbtn:hover { background: var(--bg-3); color: var(--fg); }
+.tbtn.active, .tbtn[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+.tbtn svg { width: 15px; height: 15px; }
+.tbtn-sm { width: 24px; height: 24px; }
+.tbtn-sm svg { width: 13px; height: 13px; }
+
+.format-group { display: flex; align-items: center; gap: 0; opacity: .55; transition: opacity .18s; }
+.format-group:focus-within { opacity: 1; }
+
+.div-v { width: 1px; height: 16px; margin: 0 6px; background: var(--line); opacity: .75; flex-shrink: 0; }
+
+.palette-trigger {
+  display: inline-flex; align-items: center; gap: 7px; height: 24px; padding: 0 10px 0 9px;
+  border: 1px solid var(--line); border-radius: 6px; background: var(--bg-3); color: var(--fg-mute);
+  font: inherit; font-size: 11.5px; cursor: pointer; flex-shrink: 0;
+  transition: border-color .12s, color .12s;
+}
+.palette-trigger:hover { color: var(--fg-dim); border-color: var(--fg-mute); }
+.palette-trigger svg { width: 12px; height: 12px; }
+.palette-trigger kbd {
+  font-family: inherit; font-size: 10px; padding: 1px 5px; border: 1px solid var(--line);
+  border-radius: 4px; background: var(--bg-1); color: var(--fg-mute);
+}
+
+/* ===================== ТРИГГЕР ПЛАГИНОВ (icon + счётчик + точка проблемы) ===================== */
+.ipbtn {
+  position: relative; display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; padding: 0; border: none; border-radius: var(--r-sm);
+  background: transparent; color: var(--fg-dim); cursor: pointer; flex-shrink: 0;
+  transition: background .12s, color .12s;
+}
+.ipbtn:hover { background: var(--bg-3); color: var(--fg); }
+.ipbtn.active { background: var(--accent-soft); color: var(--accent); }
+.ipbtn svg { width: 15px; height: 15px; }
+.ipbtn .cnt {
+  position: absolute; top: 1px; right: 1px; min-width: 13px; height: 13px; padding: 0 3px;
+  border-radius: 7px; background: var(--pc); color: #fff; font-size: 9px; font-weight: 700;
+  display: inline-flex; align-items: center; justify-content: center; border: 2px solid var(--bg-1);
+}
+.ipbtn .pdot {
+  position: absolute; bottom: 2px; left: 3px; width: 5px; height: 5px; border-radius: 50%;
+  background: var(--pc);
+}
+/* состояние «есть проблема»: точка красная/янтарная, бейдж проблемный */
+.ipbtn.has-problem .pdot { background: var(--red); animation: pulse 2s ease-in-out infinite; }
+.ipbtn.has-problem .cnt { background: var(--amber); color: #1a1400; }
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .4; }
+}
+
+/* ===================== WORKSPACE ===================== */
+.workspace { display: flex; flex: 1; min-height: 0; }
+
+.main { flex: 1; display: flex; flex-direction: column; min-width: 0; background: var(--bg-0); }
+.panes { flex: 1; display: flex; min-height: 0; overflow: hidden; }
+.pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: var(--bg-0); }
+.pane-editor { width: 50%; }
+.pane-preview { flex: 1; }
+
+.pane-head {
+  display: flex; align-items: center; height: 32px; padding: 0 8px 0 4px; gap: 2px;
+  background: var(--bg-0); border-bottom: 1px solid var(--line-soft); flex-shrink: 0;
+}
+.pane-path { font-size: 11px; color: var(--fg-mute); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pane-head-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; padding-left: 6px; flex-shrink: 0; }
+.pane-metric { font-size: 11px; color: var(--fg-mute); font-variant-numeric: tabular-nums; }
+
+.editor-wrap { flex: 1; display: flex; min-height: 0; overflow: hidden; }
+.line-numbers {
+  min-width: 44px; padding: 16px 8px 16px 12px; background: var(--gutter);
+  border-right: 1px solid var(--line-soft); color: var(--fg-mute);
+  font-family: "Cascadia Code", "JetBrains Mono", ui-monospace, Consolas, monospace;
+  font-size: 13.5px; line-height: 23px; text-align: right; white-space: pre;
+  overflow: hidden; user-select: none;
+}
+#editor {
+  flex: 1; min-width: 0; padding: 16px 20px; border: none; outline: none; resize: none;
+  background: var(--bg-0); color: var(--fg); caret-color: var(--accent);
+  font-family: "Cascadia Code", "JetBrains Mono", ui-monospace, Consolas, monospace;
+  font-size: 13.5px; line-height: 23px; tab-size: 2; white-space: pre;
+  overflow-x: auto; overflow-y: auto;
+}
+
+#preview { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; padding: 12px 34px 80px; }
+.markdown-body { max-width: 860px; color: var(--body); line-height: 1.7; word-wrap: break-word; }
+.markdown-body h1 { font-size: 26px; color: var(--head); margin: 0 0 14px; padding-bottom: .2em; border-bottom: 1px solid var(--line); letter-spacing: -.01em; }
+.markdown-body h2 { font-size: 19px; color: var(--head); margin: 24px 0 10px; padding-bottom: .2em; border-bottom: 1px solid var(--line); letter-spacing: -.01em; }
+.markdown-body p { margin: 0 0 10px; }
+.markdown-body code {
+  font-family: "Cascadia Code", ui-monospace, Consolas, monospace; background: var(--bg-3);
+  color: var(--code-fg); padding: 2px 6px; border-radius: 4px; font-size: 12.5px;
+}
+
+/* ===================== STATUS BAR ===================== */
+.statusbar {
+  display: flex; align-items: center; gap: 1px; height: var(--h-status); padding: 0 6px;
+  background: var(--bg-1); border-top: 1px solid var(--line-soft); font-size: 11px; flex-shrink: 0;
+}
+.stat {
+  display: inline-flex; align-items: center; gap: 6px; height: 100%; padding: 0 9px;
+  border-radius: 4px; color: var(--fg-mute); white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+.stat.clickable { cursor: pointer; border: none; background: transparent; font: inherit; font-size: 11px; }
+.stat.clickable:hover { background: var(--bg-3); color: var(--fg-dim); }
+.stat-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+.plugin-status { display: flex; align-items: center; height: 100%; }
+.ps-item { display: inline-flex; align-items: center; gap: 6px; height: 100%; padding: 0 9px; border: none; background: transparent; color: var(--fg-mute); font: inherit; font-size: 11px; cursor: pointer; }
+.ps-item:hover { background: var(--bg-3); color: var(--fg-dim); }
+.ps-item .pdot { width: 6px; height: 6px; border-radius: 50%; background: var(--pc); flex-shrink: 0; }
+
+/* ===================== BACKDROP ===================== */
+.drawer-backdrop {
+  position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,.42);
+  opacity: 0; pointer-events: none; transition: opacity .18s;
+}
+.drawer-backdrop.open { opacity: 1; pointer-events: auto; }
+
+/* ===================== DRAWER (вариант C-v2) ===================== */
+.drawer {
+  position: fixed; top: 0; right: 0; bottom: 0; width: var(--w-drawer); z-index: 70;
+  display: flex; flex-direction: column; background: var(--popover); border-left: 1px solid var(--pop-border);
+  transform: translateX(100%); transition: transform .22s cubic-bezier(.2,.9,.3,1); box-shadow: var(--shadow-lg);
+}
+.drawer.open { transform: none; }
+.drawer-head {
+  display: flex; align-items: center; gap: 6px; padding: 10px 10px 8px 14px;
+  border-bottom: 1px solid var(--line-soft); flex-shrink: 0;
+}
+.drawer-head .side-title { flex: 1; font-size: 12.5px; color: var(--fg); font-weight: 600; }
+.drawer-head .drawer-count { font-size: 11px; color: var(--fg-mute); font-variant-numeric: tabular-nums; }
+.drawer-body { flex: 1; overflow-y: auto; padding: 2px 0 24px; }
+
+/* ===================== PLUGIN MANAGER (карточки) ===================== */
+.pl-item {
+  position: relative; display: flex; flex-direction: column; gap: 6px;
+  padding: 9px 12px 11px; border-bottom: 1px solid var(--line-soft);
+}
+.pl-item::before {
+  content: ""; position: absolute; left: 0; top: 9px; bottom: 11px; width: 2px;
+  border-radius: 2px; background: var(--pc); opacity: .8;
+}
+.pl-item-head {
+  display: flex; align-items: center; gap: 8px; width: 100%; padding: 0; border: none;
+  background: transparent; color: inherit; cursor: pointer; text-align: left; font: inherit;
+}
+.pl-item-head:hover { opacity: .9; }
+.pl-monogram {
+  width: 22px; height: 22px; border-radius: 5px; flex-shrink: 0;
+  border: 1.4px solid var(--pc); color: var(--pc);
+  display: inline-flex; align-items: center; justify-content: center;
+  font-family: "Cascadia Code", ui-monospace, monospace; font-size: 11px; font-weight: 700;
+}
+.pl-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; color: var(--fg); }
+.pl-sub { font-size: 10.5px; color: var(--fg-mute); }
+.pl-badge {
+  flex-shrink: 0; padding: 1px 7px; border: 1px solid var(--line); border-radius: 999px;
+  background: var(--bg-2); color: var(--fg-mute); font-size: 10px; font-weight: 600; white-space: nowrap;
+}
+.pl-badge.active { color: var(--green); border-color: rgba(74,222,128,.35); background: rgba(74,222,128,.1); }
+.pl-badge.failed, .pl-badge.crashed { color: var(--red); border-color: rgba(248,113,113,.35); background: rgba(248,113,113,.1); }
+.pl-badge.quarantined { color: var(--amber); border-color: rgba(251,191,36,.35); background: rgba(251,191,36,.1); }
+.pl-badge.off { color: var(--fg-mute); }
+.pl-desc { font-size: 11.5px; color: var(--fg-mute); line-height: 1.5; }
+.pl-notice { color: var(--amber); font-size: 11px; line-height: 1.35; }
+.pl-crash { font-size: 11px; color: var(--red); font-family: "Cascadia Code", ui-monospace, monospace; white-space: pre-wrap; }
+.pl-perms { display: flex; flex-wrap: wrap; gap: 4px; }
+.pl-perm {
+  padding: 1px 6px; border: 1px solid var(--line); border-radius: var(--r-sm);
+  background: var(--bg-3); color: var(--fg-dim);
+  font-family: "Cascadia Code", ui-monospace, monospace; font-size: 10.5px;
+}
+.pl-perm.optional { border-style: dashed; cursor: pointer; }
+.pl-perm.optional:hover { color: var(--amber); border-color: var(--amber); }
+.pl-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.pl-actions button {
+  padding: 3px 9px; border: 1px solid var(--line); border-radius: var(--r-sm);
+  background: var(--bg-3); color: var(--fg-dim); font: inherit; font-size: 11.5px; cursor: pointer;
+  transition: background .12s, color .12s;
+}
+.pl-actions button:hover { background: var(--bg-2); color: var(--fg); }
+.pl-toggle { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.pl-toggle input { margin: 0; accent-color: var(--accent); cursor: pointer; }
+
+/* аккордеон-тело карточки */
+.pl-item-body {
+  display: none; flex-direction: column; gap: 6px; padding: 8px 0 4px 30px;
+  border-top: 1px solid var(--line-soft); margin-top: 4px;
+}
+.pl-item.expanded .pl-item-body { display: flex; }
+.pl-item-body .pl-section-title { font-size: 10.5px; font-weight: 600; color: var(--fg-mute); text-transform: uppercase; letter-spacing: .04em; }
+
+/* инфо-поповер */
+.info-btn {
+  width: 20px; height: 20px; border: 1px solid var(--line); border-radius: 50%;
+  background: var(--bg-3); color: var(--fg-mute); font: inherit; font-size: 10px; font-weight: 700;
+  cursor: pointer; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+  transition: background .12s, color .12s;
+}
+.info-btn:hover { background: var(--bg-2); color: var(--fg); }
+.info-pop {
+  position: absolute; z-index: 80; width: 260px; border: 1px solid var(--pop-border);
+  border-radius: var(--r-lg); background: var(--popover); box-shadow: var(--shadow-lg);
+  padding: 10px 12px; font-size: 11.5px;
+}
+.info-pop .ip-row { display: flex; justify-content: space-between; gap: 10px; padding: 2px 0; }
+.info-pop .ip-k { color: var(--fg-mute); }
+.info-pop .ip-v { color: var(--fg); font-family: "Cascadia Code", ui-monospace, monospace; font-size: 10.5px; text-align: right; }
+
+/* ===================== СОСТОЯНИЯ ДРОВЕРА ===================== */
+.drawer-state {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 12px; padding: 48px 24px; text-align: center; color: var(--fg-mute); font-size: 12.5px;
+}
+.drawer-state .state-icon { width: 40px; height: 40px; border-radius: 10px; background: var(--bg-3); display: inline-flex; align-items: center; justify-content: center; color: var(--fg-mute); }
+.drawer-state .state-icon svg { width: 20px; height: 20px; }
+.drawer-state .state-title { font-size: 13px; font-weight: 600; color: var(--fg); }
+.drawer-state .state-desc { font-size: 11.5px; line-height: 1.5; max-width: 280px; }
+.drawer-state .state-action {
+  padding: 6px 14px; border: 1px solid var(--line); border-radius: var(--r-sm);
+  background: var(--bg-3); color: var(--fg-dim); font: inherit; font-size: 12px; cursor: pointer;
+  transition: background .12s, color .12s;
+}
+.drawer-state .state-action:hover { background: var(--bg-2); color: var(--fg); }
+
+/* скелетон загрузки */
+.skeleton-item {
+  padding: 12px; border-bottom: 1px solid var(--line-soft);
+}
+.skeleton-line {
+  height: 12px; border-radius: 4px; background: linear-gradient(90deg, var(--bg-2) 25%, var(--bg-3) 50%, var(--bg-2) 75%);
+  background-size: 200% 100%; animation: shimmer 1.4s ease-in-out infinite; margin-bottom: 8px;
+}
+.skeleton-line:last-child { margin-bottom: 0; }
+.skeleton-line.w60 { width: 60%; }
+.skeleton-line.w40 { width: 40%; }
+.skeleton-line.w80 { width: 80%; }
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ===================== УЗКОЕ ОКНО ===================== */
+@media (max-width: 900px) {
+  .drawer { width: 100vw; border-left: none; }
+  .pane-editor { width: 100%; }
+  .pane-preview { display: none; }
+}
+
+/* ===================== REDUCED MOTION ===================== */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
+</style>
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ================= SWITCHER (сценарии) ================= -->
+  <div class="switcher" role="tablist" aria-label="Сценарий состояния дровера">
+    <span class="switcher-label">Сценарий:</span>
+    <div class="seg">
+      <button class="seg-btn active" data-scenario="normal" role="tab" aria-selected="true">Обычный</button>
+      <button class="seg-btn" data-scenario="empty" role="tab" aria-selected="false">Пусто</button>
+      <button class="seg-btn" data-scenario="loading" role="tab" aria-selected="false">Загрузка</button>
+      <button class="seg-btn" data-scenario="loaderror" role="tab" aria-selected="false">Ошибка загрузки</button>
+      <button class="seg-btn" data-scenario="quarantine" role="tab" aria-selected="false">Карантин</button>
+      <button class="seg-btn" data-scenario="crashed" role="tab" aria-selected="false">Сбой</button>
+    </div>
+  </div>
+
+  <!-- ================= ANNOTATION ================= -->
+  <div class="annotation" aria-live="polite">
+    <span class="annotation-title" id="ann-title">C-v2 · Триггер в тулбаре + правый дровер</span>
+    <span class="annotation-body" id="ann-body"></span>
+  </div>
+
+  <!-- ================= TOOLBAR ================= -->
+  <header id="toolbar" class="toolbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">d</span>
+      <span>darmark</span>
+    </div>
+
+    <div class="file-actions">
+      <button class="tbtn" title="Новый файл (Ctrl+N)" aria-label="Новый файл">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="12" x2="12" y2="18"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+      </button>
+      <button class="tbtn" title="Открыть (Ctrl+O)" aria-label="Открыть">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+      </button>
+      <button class="tbtn" title="Сохранить (Ctrl+S)" aria-label="Сохранить">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+      </button>
+      <div class="file-chip" title="Текущий документ">
+        <span class="fname">readme.md</span>
+      </div>
+    </div>
+
+    <div class="spacer"></div>
+
+    <!-- формат-группа (декоративно) -->
+    <div class="format-group">
+      <button class="tbtn" title="Жирный" aria-label="Жирный">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/><path d="M6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/></svg>
+      </button>
+      <button class="tbtn" title="Курсив" aria-label="Курсив">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><line x1="19" y1="4" x2="10" y2="4"/><line x1="14" y1="20" x2="5" y2="20"/><line x1="15" y1="4" x2="9" y2="20"/></svg>
+      </button>
+      <button class="tbtn" title="Код" aria-label="Код">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+      </button>
+    </div>
+
+    <div class="div-v"></div>
+
+    <button class="palette-trigger" id="palette-trigger" type="button" title="Палитра команд (Ctrl+K)" aria-label="Палитра команд">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+      <span>Команды</span>
+      <kbd>Ctrl+K</kbd>
+    </button>
+
+    <!-- ТРИГГЕР ПЛАГИНОВ: icon + счётчик активных + точка проблемы -->
+    <button class="ipbtn" id="tb-plugins" aria-haspopup="dialog" aria-expanded="false" aria-controls="drawer" aria-label="Плагины">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z"/><line x1="16" y1="8" x2="2" y2="22"/></svg>
+      <span class="cnt" id="tb-plugins-cnt">0</span>
+      <span class="pdot" id="tb-plugins-dot" aria-hidden="true"></span>
+    </button>
+
+    <div class="div-v"></div>
+
+    <button class="tbtn" title="Синхронная прокрутка" aria-label="Синхронная прокрутка" aria-pressed="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+    </button>
+    <button class="tbtn" title="Инспектор" aria-label="Инспектор" aria-pressed="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    </button>
+  </header>
+
+  <!-- ================= WORKSPACE ================= -->
+  <div class="workspace" id="workspace">
+
+    <!-- Основная область: редактор + превью (rail и sidebar убраны) -->
+    <main class="main">
+      <div class="panes" id="panes">
+        <section class="pane pane-editor" id="pane-a">
+          <div class="pane-head">
+            <span class="pane-path">readme.md</span>
+            <div class="pane-head-actions">
+              <span class="pane-metric">rev 1</span>
+            </div>
+          </div>
+          <div class="editor-wrap">
+            <div class="line-numbers" aria-hidden="true">1
+2
+3
+4
+5
+6</div>
+            <textarea id="editor" spellcheck="false" wrap="off" aria-label="Редактор Markdown" readonly># darmark
+Лёгкий Markdown-редактор.
+
+Плагины — в правом дровере.</textarea>
+          </div>
+        </section>
+
+        <section class="pane pane-preview" id="pane-b">
+          <div class="pane-head">
+            <div class="pane-head-actions">
+              <span class="pane-metric">— мс</span>
+            </div>
+          </div>
+          <article id="preview" class="markdown-body">
+            <h1>darmark</h1>
+            <p>Лёгкий Markdown-редактор. Плагины — в правом дровере.</p>
+          </article>
+        </section>
+      </div>
+    </main>
+
+  </div>
+
+  <!-- ================= STATUS BAR ================= -->
+  <footer id="statusbar" class="statusbar" aria-live="polite">
+    <span class="stat"><span class="stat-dot" aria-hidden="true"></span><span>Готов</span></span>
+    <!-- Журнал: перенос из rail-logs в статус-бар -->
+    <button class="stat clickable" id="sb-logs" title="Журнал и события (Ctrl+`)" aria-label="Журнал и события">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+      <span>Журнал</span>
+      <span class="badge" id="log-badge" hidden>0</span>
+    </button>
+    <span class="plugin-status" id="plugin-status"></span>
+    <span class="spacer"></span>
+    <span class="stat">Стр 1, Кол 1</span>
+    <span class="stat">0 симв.</span>
+  </footer>
+</div>
+
+<!-- ================= BACKDROP ================= -->
+<div class="drawer-backdrop" id="backdrop"></div>
+
+<!-- ================= DRAWER (плагины) ================= -->
+<aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title" hidden>
+  <div class="drawer-head">
+    <span class="side-title" id="drawer-title">Плагины</span>
+    <span class="drawer-count" id="drawer-count"></span>
+    <button class="tbtn tbtn-sm" id="drawer-reload-all" title="Перезагрузить все" aria-label="Перезагрузить все плагины">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><polyline points="23 4 23 9 18 9"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+    </button>
+    <button class="tbtn tbtn-sm" id="drawer-install" title="Установить плагин" aria-label="Установить плагин">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    </button>
+    <button class="tbtn tbtn-sm" id="drawer-close" title="Закрыть (Esc)" aria-label="Закрыть">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+  <div class="drawer-body" id="drawer-body">
+    <div id="plugin-manager"></div>
+  </div>
+</aside>
+
+<!-- ================= INFO POPOVER ================= -->
+<div class="info-pop" id="info-pop" role="dialog" aria-label="Информация о плагине" hidden></div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ===================== ДАННЫЕ ПЛАГИНОВ ===================== */
+  var PLUGINS = [
+    {
+      id: "export", name: "Export to PDF", monogram: "Э", color: "#5b8cff",
+      state: "active", stateLabel: "Активен", version: "1.2.0", host: "0.5.2",
+      desc: "Экспорт документа в PDF через headless-рендер.",
+      perms: ["fs:read", "fs:write"], notice: null, crash: null,
+      path: "plugins/export-pdf/plugin.lua", sandbox: "D17"
+    },
+    {
+      id: "wordcnt", name: "Word Counter", monogram: "С", color: "#2dd4bf",
+      state: "active", stateLabel: "Активен", version: "2.0.1", host: "0.5.2",
+      desc: "Подсчёт слов, символов и времени чтения в статус-баре.",
+      perms: ["doc:read"], notice: null, crash: null,
+      path: "plugins/word-counter/plugin.lua", sandbox: "D17"
+    },
+    {
+      id: "spell", name: "Spell Check", monogram: "П", color: "#fbbf24",
+      state: "failed", stateLabel: "Ошибка", version: "0.9.3", host: "0.5.2",
+      desc: "Проверка орфографии на русском и английском.",
+      perms: ["doc:read", "net:dns"], notice: "Требуется разрешение net:dns для проверки орфографии.",
+      crash: "error: attempt to index nil value (global 'dict')\n  at spell-check.lua:42\n  at hook:on_render",
+      path: "plugins/spell-check/plugin.lua", sandbox: "D17"
+    }
+  ];
+
+  var QUARANTINE_PLUGIN = {
+    id: "oldexport", name: "Old Export", monogram: "O", color: "#f87171",
+    state: "quarantined", stateLabel: "Карантин", version: "0.4.0", host: "0.4.0",
+    desc: "Устаревший экспорт. Несовместим с текущей версией host.",
+    perms: ["fs:read", "fs:write", "fs:exec"],
+    notice: "Плагин помещён в карантин: версия host 0.4.0 несовместима с 0.5.2. Обновите плагин или откатите host.",
+    crash: null,
+    path: "plugins/old-export/plugin.lua", sandbox: "D17"
+  };
+
+  var CRASHED_PLUGIN = {
+    id: "autosave", name: "Auto Save", monogram: "A", color: "#f87171",
+    state: "crashed", stateLabel: "Сбой", version: "1.0.0", host: "0.5.2",
+    desc: "Автосохранение каждые 30 секунд.",
+    perms: ["fs:write"], notice: null,
+    crash: "error: write failed (access denied)\n  at autosave.lua:18\n  at timer:on_tick",
+    path: "plugins/auto-save/plugin.lua", sandbox: "D17"
+  };
+
+  var state = {
+    scenario: "normal",
+    drawerOpen: false,
+    infoPopOpen: false,
+    lastFocus: null
+  };
+
+  /* ===================== ХЕЛПЕРЫ ===================== */
+  function $(id) { return document.getElementById(id); }
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+
+  /* ===================== РЕНДЕР ТРИГГЕРА ===================== */
+  function renderTrigger() {
+    var plugins = getCurrentPlugins();
+    var active = plugins.filter(function (p) { return p.state === "active"; }).length;
+    var problems = plugins.filter(function (p) {
+      return p.state === "failed" || p.state === "quarantined" || p.state === "crashed";
+    }).length;
+
+    var cnt = $("tb-plugins-cnt");
+    var dot = $("tb-plugins-dot");
+    var btn = $("tb-plugins");
+
+    cnt.textContent = active;
+    btn.classList.toggle("has-problem", problems > 0);
+    btn.setAttribute("aria-label", "Плагины, активных: " + active + (problems > 0 ? ", с проблемами: " + problems : ""));
+  }
+
+  /* ===================== РЕНДЕР СТАТУС-БАРА ===================== */
+  function renderStatusBar() {
+    var plugins = getCurrentPlugins();
+    var ps = $("plugin-status");
+    ps.innerHTML = "";
+    plugins.forEach(function (p) {
+      var s = el("button", "ps-item");
+      s.type = "button";
+      s.setAttribute("aria-label", p.name + " — " + p.stateLabel);
+      s.title = p.name + " — " + p.stateLabel;
+      var dot = el("span", "pdot");
+      dot.style.setProperty("--pc", p.color);
+      s.appendChild(dot);
+      s.appendChild(document.createTextNode(p.name));
+      ps.appendChild(s);
+    });
+  }
+
+  /* ===================== ДАННЫЕ ПО СЦЕНАРИЮ ===================== */
+  function getCurrentPlugins() {
+    switch (state.scenario) {
+      case "quarantine": return [QUARANTINE_PLUGIN];
+      case "crashed": return [CRASHED_PLUGIN];
+      default: return PLUGINS;
+    }
+  }
+
+  /* ===================== РЕНДЕР ДРОВЕРА ===================== */
+  function renderDrawer() {
+    var body = $("drawer-body");
+    var mgr = $("plugin-manager");
+    mgr.innerHTML = "";
+
+    var count = $("drawer-count");
+    var plugins = getCurrentPlugins();
+
+    // Счётчик в заголовке
+    if (state.scenario === "empty" || state.scenario === "loading" || state.scenario === "loaderror") {
+      count.textContent = "";
+    } else {
+      var active = plugins.filter(function (p) { return p.state === "active"; }).length;
+      count.textContent = active + " акт. · " + plugins.length + " всего";
+    }
+
+    // Состояния
+    if (state.scenario === "empty") {
+      mgr.appendChild(renderEmptyState());
+      return;
+    }
+    if (state.scenario === "loading") {
+      mgr.appendChild(renderLoadingState());
+      return;
+    }
+    if (state.scenario === "loaderror") {
+      mgr.appendChild(renderLoadErrorState());
+      return;
+    }
+
+    // Обычный список
+    plugins.forEach(function (p) {
+      mgr.appendChild(renderPluginItem(p));
+    });
+  }
+
+  function renderEmptyState() {
+    var wrap = el("div", "drawer-state");
+    var icon = el("span", "state-icon");
+    icon.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z"/><line x1="16" y1="8" x2="2" y2="22"/></svg>';
+    wrap.appendChild(icon);
+    wrap.appendChild(el("div", "state-title", "Плагины не найдены"));
+    wrap.appendChild(el("div", "state-desc", "Установите плагин, чтобы расширить возможности редактора."));
+    var btn = el("button", "state-action", "Установить плагин");
+    btn.type = "button";
+    btn.addEventListener("click", function () { /* декоративно */ });
+    wrap.appendChild(btn);
+    return wrap;
+  }
+
+  function renderLoadingState() {
+    var wrap = el("div");
+    for (var i = 0; i < 3; i++) {
+      var item = el("div", "skeleton-item");
+      item.appendChild(el("div", "skeleton-line w60"));
+      item.appendChild(el("div", "skeleton-line w80"));
+      item.appendChild(el("div", "skeleton-line w40"));
+      wrap.appendChild(item);
+    }
+    return wrap;
+  }
+
+  function renderLoadErrorState() {
+    var wrap = el("div", "drawer-state");
+    var icon = el("span", "state-icon");
+    icon.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
+    wrap.appendChild(icon);
+    wrap.appendChild(el("div", "state-title", "Не удалось загрузить плагины"));
+    wrap.appendChild(el("div", "state-desc", "Проверьте подключение к сети и попробуйте снова."));
+    var btn = el("button", "state-action", "Повторить");
+    btn.type = "button";
+    btn.addEventListener("click", function () { setScenario("normal"); });
+    wrap.appendChild(btn);
+    return wrap;
+  }
+
+  /* ===================== РЕНДЕР КАРТОЧКИ ПЛАГИНА ===================== */
+  function renderPluginItem(p) {
+    var item = el("div", "pl-item");
+    item.style.setProperty("--pc", p.color);
+    item.dataset.pluginId = p.id;
+
+    // Head: монограмма + имя + бейдж + info
+    var head = el("button", "pl-item-head");
+    head.type = "button";
+    head.setAttribute("aria-expanded", "false");
+    head.setAttribute("aria-controls", "pl-body-" + p.id);
+
+    var mono = el("span", "pl-monogram", p.monogram);
+    var nm = el("span", "pl-name", p.name);
+    var badge = el("span", "pl-badge " + p.state, p.stateLabel);
+
+    head.appendChild(mono);
+    head.appendChild(nm);
+    head.appendChild(badge);
+
+    // инфо-кнопка
+    var infoBtn = el("button", "info-btn", "i");
+    infoBtn.type = "button";
+    infoBtn.setAttribute("aria-label", "Информация: " + p.name);
+    infoBtn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      toggleInfoPop(p, infoBtn);
+    });
+    head.appendChild(infoBtn);
+
+    head.addEventListener("click", function () {
+      var expanded = item.classList.toggle("expanded");
+      head.setAttribute("aria-expanded", expanded ? "true" : "false");
+    });
+
+    item.appendChild(head);
+
+    // Sub: версия + host
+    item.appendChild(el("div", "pl-sub", "v" + p.version + " · host " + p.host));
+
+    // Desc
+    item.appendChild(el("div", "pl-desc", p.desc));
+
+    // Notice (карантин / permissions)
+    if (p.notice) {
+      item.appendChild(el("div", "pl-notice", p.notice));
+    }
+
+    // Crash
+    if (p.crash) {
+      var crash = el("div", "pl-crash", p.crash);
+      item.appendChild(crash);
+    }
+
+    // Actions: тумблер + reload
+    var actions = el("div", "pl-actions");
+
+    var toggle = el("label", "pl-toggle");
+    var chk = document.createElement("input");
+    chk.type = "checkbox";
+    chk.checked = p.state === "active";
+    chk.setAttribute("aria-label", p.name + " — включить/выключить");
+    chk.addEventListener("change", function () {
+      p.state = chk.checked ? "active" : "off";
+      p.stateLabel = p.state === "active" ? "Активен" : "Выключен";
+      renderAll();
+    });
+    toggle.appendChild(chk);
+    toggle.appendChild(document.createTextNode(p.state === "active" ? "Вкл" : "Выкл"));
+    actions.appendChild(toggle);
+
+    var reload = el("button", null, "Перезагрузить");
+    reload.type = "button";
+    reload.addEventListener("click", function () {
+      // декоративно: перезагрузка
+    });
+    actions.appendChild(reload);
+
+    // Карантин: кнопка «Просмотреть»
+    if (p.state === "quarantined") {
+      var view = el("button", null, "Просмотреть");
+      view.type = "button";
+      view.addEventListener("click", function () {
+        item.classList.add("expanded");
+      });
+      actions.appendChild(view);
+    }
+
+    // Crashed: кнопка «Перезапустить»
+    if (p.state === "crashed") {
+      var restart = el("button", null, "Перезапустить");
+      restart.type = "button";
+      restart.addEventListener("click", function () {
+        p.state = "active";
+        p.stateLabel = "Активен";
+        renderAll();
+      });
+      actions.appendChild(restart);
+    }
+
+    item.appendChild(actions);
+
+    // Body (аккордеон): permissions
+    var bodyAcc = el("div", "pl-item-body");
+    bodyAcc.id = "pl-body-" + p.id;
+
+    if (p.perms && p.perms.length) {
+      var permTitle = el("div", "pl-section-title", "Разрешения");
+      bodyAcc.appendChild(permTitle);
+      var perms = el("div", "pl-perms");
+      p.perms.forEach(function (perm) {
+        var chip = el("span", "pl-perm", perm);
+        if (perm === "net:dns") chip.classList.add("optional");
+        perms.appendChild(chip);
+      });
+      bodyAcc.appendChild(perms);
+    }
+
+    item.appendChild(bodyAcc);
+
+    return item;
+  }
+
+  /* ===================== INFO POPOVER ===================== */
+  function toggleInfoPop(p, anchor) {
+    if (state.infoPopOpen) {
+      closeInfoPop();
+      return;
+    }
+    state.infoPopOpen = true;
+    var pop = $("info-pop");
+    pop.innerHTML = "";
+    pop.appendChild(el("div", "ip-row", "<span class='ip-k'>Путь</span><span class='ip-v'>" + p.path + "</span>"));
+    pop.appendChild(el("div", "ip-row", "<span class='ip-k'>Песочница</span><span class='ip-v'>" + p.sandbox + "</span>"));
+    pop.appendChild(el("div", "ip-row", "<span class='ip-k'>Host</span><span class='ip-v'>" + p.host + "</span>"));
+    pop.appendChild(el("div", "ip-row", "<span class='ip-k'>Версия</span><span class='ip-v'>" + p.version + "</span>"));
+    pop.hidden = false;
+
+    // позиция под кнопкой
+    var r = anchor.getBoundingClientRect();
+    pop.style.top = (r.bottom + 4) + "px";
+    pop.style.left = Math.max(8, Math.min(window.innerWidth - 276, r.left - 200)) + "px";
+  }
+
+  function closeInfoPop() {
+    state.infoPopOpen = false;
+    $("info-pop").hidden = true;
+  }
+
+  /* ===================== FOCUS-TRAP ===================== */
+  function getFocusable(container) {
+    return container.querySelectorAll(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+  }
+
+  function trapFocus(e) {
+    if (!state.drawerOpen) return;
+    var drawer = $("drawer");
+    var focusable = getFocusable(drawer);
+    if (!focusable.length) return;
+    var first = focusable[0];
+    var last = focusable[focusable.length - 1];
+
+    if (e.shiftKey) {
+      if (document.activeElement === first || !drawer.contains(document.activeElement)) {
+        e.preventDefault();
+        last.focus();
+      }
+    } else {
+      if (document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+  }
+
+  /* ===================== ДРОВЕР: ОТКРЫТИЕ / ЗАКРЫТИЕ ===================== */
+  function openDrawer() {
+    if (state.drawerOpen) return;
+    state.lastFocus = document.activeElement;
+    state.drawerOpen = true;
+
+    var drawer = $("drawer");
+    var backdrop = $("backdrop");
+    drawer.hidden = false;
+    backdrop.classList.add("open");
+    // reflow для transition
+    void drawer.offsetWidth;
+    drawer.classList.add("open");
+
+    $("tb-plugins").classList.add("active");
+    $("tb-plugins").setAttribute("aria-expanded", "true");
+
+    // фокус на кнопку закрытия
+    $("drawer-close").focus();
+  }
+
+  function closeDrawer() {
+    if (!state.drawerOpen) return;
+    state.drawerOpen = false;
+    closeInfoPop();
+
+    var drawer = $("drawer");
+    var backdrop = $("backdrop");
+    drawer.classList.remove("open");
+    backdrop.classList.remove("open");
+
+    $("tb-plugins").classList.remove("active");
+    $("tb-plugins").setAttribute("aria-expanded", "false");
+
+    // возврат фокуса
+    if (state.lastFocus && state.lastFocus.focus) {
+      state.lastFocus.focus();
+    }
+
+    // скрыть после transition
+    setTimeout(function () {
+      if (!state.drawerOpen) drawer.hidden = true;
+    }, 220);
+  }
+
+  function toggleDrawer() {
+    if (state.drawerOpen) closeDrawer();
+    else openDrawer();
+  }
+
+  /* ===================== СЦЕНАРИИ ===================== */
+  var ANNOTATIONS = {
+    normal: "<span class='plus'>+</span> Триггер с идентичностью: счётчик активных, точка проблемы. " +
+            "<span class='plus'>+</span> Дровер 440px, overlay, сосуществует с превью. " +
+            "<span class='plus'>+</span> Карточки с тумблером, аккордеоном permissions, инфо-поповером. " +
+            "<span class='plus'>+</span> Журнал перенесён в статус-бар.",
+    empty: "<span class='plus'>+</span> Пустое состояние с призывом к действию. " +
+           "<span class='minus'>−</span> В варианте A пустое состояние не было проработано.",
+    loading: "<span class='plus'>+</span> Скелетон загрузки вместо пустоты. " +
+             "<span class='minus'>−</span> В варианте A состояние загрузки отсутствовало.",
+    loaderror: "<span class='plus'>+</span> Ошибка загрузки с кнопкой «Повторить». " +
+               "<span class='minus'>−</span> В варианте A ошибка загрузки не обрабатывалась.",
+    quarantine: "<span class='plus'>+</span> Карантин: бейдж, notice с причиной, кнопка «Просмотреть». " +
+                "<span class='minus'>−</span> В варианте A карантин не был визуально выделен.",
+    crashed: "<span class='plus'>+</span> Сбой: бейдж, трейсбек, кнопка «Перезапустить». " +
+             "<span class='minus'>−</span> В варианте A сбой плагина не был виден в карточке."
+  };
+
+  function setScenario(s) {
+    state.scenario = s;
+    document.querySelectorAll(".seg-btn").forEach(function (b) {
+      var on = b.dataset.scenario === s;
+      b.classList.toggle("active", on);
+      b.setAttribute("aria-selected", on ? "true" : "false");
+    });
+    $("ann-body").innerHTML = ANNOTATIONS[s];
+    renderAll();
+  }
+
+  /* ===================== РЕНДЕР ВСЕГО ===================== */
+  function renderAll() {
+    renderTrigger();
+    renderStatusBar();
+    renderDrawer();
+  }
+
+  /* ===================== СОБЫТИЯ ===================== */
+  document.querySelectorAll(".seg-btn").forEach(function (b) {
+    b.addEventListener("click", function () { setScenario(b.dataset.scenario); });
+  });
+
+  $("tb-plugins").addEventListener("click", toggleDrawer);
+  $("drawer-close").addEventListener("click", closeDrawer);
+  $("backdrop").addEventListener("click", closeDrawer);
+
+  // Журнал в статус-баре (декоративно)
+  $("sb-logs").addEventListener("click", function () {
+    // в продукте: открыть нижнюю панель журнала
+  });
+
+  // Esc: сначала поповер, потом дровер
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") {
+      if (state.infoPopOpen) {
+        closeInfoPop();
+      } else if (state.drawerOpen) {
+        closeDrawer();
+      }
+    }
+    // Focus-trap
+    if (e.key === "Tab" && state.drawerOpen) {
+      trapFocus(e);
+    }
+  });
+
+  // Клик вне инфо-поповера
+  document.addEventListener("click", function (e) {
+    if (!state.infoPopOpen) return;
+    var pop = $("info-pop");
+    if (!pop.contains(e.target) && !e.target.closest(".info-btn")) {
+      closeInfoPop();
+    }
+  });
+
+  /* ===================== ИНИЦИАЛИЗАЦИЯ ===================== */
+  renderAll();
+  $("ann-body").innerHTML = ANNOTATIONS.normal;
+})();
+</script>
+</body>
+</html>

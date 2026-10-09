@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="color-scheme" content="dark" />
+<meta name="theme-color" content="#0d0e12" />
+<!-- front_plugins-placement · прототип размещения управления плагинами.
+      4 варианта (A / B / C / IDEA-005) с живым переключателем.
+      IDEA-005 = компактный icon-only триггер + попап, панель слева остаётся.
+      A = текущее (база). B = кнопка рядом с «Команды», панель слева.
+      C = триггер в тулбаре + правый дровер, rail убран. -->
+<title>darmark — размещение управления плагинами (A / B / C / IDEA-005)</title>
+<style>
+/* ===================== TOKENS (canonical, = crates/app/src/style.css) ===================== */
+:root {
+  color-scheme: dark;
+  --bg-0:#0d0e12; --bg-1:#141519; --bg-2:#191a20; --bg-3:#1f2028;
+  --line:#24262f; --line-soft:#1c1e26;
+  --fg:#e6e7ee; --fg-dim:#9297a8; --fg-mute:#5f6478;
+  --head:#ffffff; --body:#ced0db;
+  --accent:#7c5cff; --accent-2:#5b8cff; --accent-soft:rgba(124,92,255,.12);
+  --accent-rgb:124,92,255;
+  --green:#4ade80; --amber:#fbbf24; --red:#f87171; --teal:#2dd4bf;
+  --gutter:#0f1014;
+  --code-fg:#e9b3ff;
+
+  /* дроверы/поповеры */
+  --popover:#1a1b22; --pop-border:#2a2c36;
+  --shadow-lg:0 20px 60px rgba(0,0,0,.55);
+  --shadow-sm:0 6px 18px rgba(0,0,0,.35);
+
+  /* метрики */
+  --h-toolbar:36px; --h-status:24px;
+  --w-rail:44px; --w-sidebar:224px; --w-drawer:420px;
+  --r-sm:5px; --r-md:7px; --r-lg:10px;
+
+  /* цвет плагина: переопределяется inline через style="--pc:…" */
+  --pc:var(--accent);
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; overflow: hidden; }
+[hidden] { display: none !important; }
+.spacer { flex: 1; }
+svg { display: block; }
+.sr-only {
+  position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden;
+  clip:rect(0 0 0 0); white-space:nowrap; border:0;
+}
+
+body {
+  background: var(--bg-0);
+  color: var(--fg);
+  font: 13px/1.4 -apple-system, "Segoe UI", system-ui, Roboto, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection { background: rgba(var(--accent-rgb),.32); color: #fff; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background:#272935; border-radius:8px; border:3px solid transparent; background-clip:padding-box; }
+::-webkit-scrollbar-thumb:hover { background:#3a3d52; background-clip:padding-box; }
+
+:focus { outline: none; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 4px; }
+
+#app { display: flex; flex-direction: column; height: 100vh; }
+
+/* ===================== SWITCHER (сегментированный контрол вариантов) ===================== */
+.switcher {
+  display: flex; align-items: center; gap: 8px; padding: 10px 12px;
+  background: var(--bg-1); border-bottom: 1px solid var(--line-soft); flex-shrink: 0;
+}
+.switcher-label { font-size: 11.5px; color: var(--fg-mute); margin-right: 2px; }
+.seg {
+  display: inline-flex; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--bg-0); overflow: hidden; flex-shrink: 0;
+}
+.seg-btn {
+  padding: 5px 12px; border: none; background: transparent; color: var(--fg-dim);
+  font: inherit; font-size: 12px; cursor: pointer; transition: background .12s, color .12s;
+}
+.seg-btn:hover { background: var(--bg-3); color: var(--fg); }
+.seg-btn.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.seg-btn + .seg-btn { border-left: 1px solid var(--line); }
+
+/* ===================== ANNOTATION (плашка с выводами) ===================== */
+.annotation {
+  display: flex; gap: 14px; align-items: flex-start; padding: 10px 14px;
+  background: var(--bg-2); border-bottom: 1px solid var(--line-soft); flex-shrink: 0;
+  font-size: 12px; line-height: 1.5;
+}
+.annotation-title { font-weight: 700; color: var(--head); white-space: nowrap; }
+.annotation-body { color: var(--fg-dim); }
+.annotation-body b { color: var(--fg); font-weight: 600; }
+.annotation-body .plus { color: var(--green); }
+.annotation-body .minus { color: var(--amber); }
+.annotation-body .risk { color: var(--red); }
+.annotation-body .sz { font-family: "Cascadia Code", ui-monospace, monospace; font-size: 11px; padding: 1px 6px; border: 1px solid var(--line); border-radius: 4px; background: var(--bg-3); color: var(--fg-dim); }
+
+/* ===================== TOOLBAR ===================== */
+.toolbar {
+  display: flex; align-items: center; gap: 2px; height: var(--h-toolbar);
+  padding: 0 8px; background: var(--bg-1); border-bottom: 1px solid var(--line-soft);
+  flex-shrink: 0; user-select: none;
+}
+.brand {
+  display: inline-flex; align-items: center; gap: 7px; margin-right: 6px;
+  padding: 0 4px 0 2px; font-weight: 600; font-size: 12.5px; color: var(--head);
+}
+.brand-mark {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 19px; height: 19px; border-radius: 5px;
+  border: 1.4px solid var(--accent); color: var(--accent);
+  font-family: "Cascadia Code", ui-monospace, monospace; font-weight: 800; font-size: 11px;
+}
+.file-actions { display: inline-flex; align-items: center; gap: 0; }
+.file-chip {
+  display: inline-flex; align-items: center; gap: 7px; max-width: 220px; min-width: 0;
+  padding: 3px 9px; border-radius: var(--r-sm); color: var(--fg-dim); font-size: 12px;
+}
+.file-chip .fname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); }
+
+.tbtn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; padding: 0; border: none; border-radius: var(--r-sm);
+  background: transparent; color: var(--fg-dim); cursor: pointer; flex-shrink: 0;
+  transition: background .12s, color .12s;
+}
+.tbtn:hover { background: var(--bg-3); color: var(--fg); }
+.tbtn.active, .tbtn[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+.tbtn svg { width: 15px; height: 15px; }
+.tbtn-sm { width: 24px; height: 24px; }
+.tbtn-sm svg { width: 13px; height: 13px; }
+
+/* текстовая кнопка «Плагины» (вариант B) */
+.tbtn-text {
+  display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px;
+  border: 1px solid var(--line); border-radius: 6px; background: var(--bg-3);
+  color: var(--fg-dim); font: inherit; font-size: 12px; cursor: pointer; flex-shrink: 0;
+  transition: background .12s, color .12s, border-color .12s;
+}
+.tbtn-text:hover { color: var(--fg); border-color: var(--fg-mute); }
+.tbtn-text.active { background: var(--accent-soft); color: var(--accent); border-color: rgba(var(--accent-rgb),.35); }
+.tbtn-text svg { width: 13px; height: 13px; }
+
+/* icon-only триггер «Плагины» (IDEA-005): счётчик активных, точка --pc */
+.ipbtn {
+  position: relative; display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; padding: 0; border: none; border-radius: var(--r-sm);
+  background: transparent; color: var(--fg-dim); cursor: pointer; flex-shrink: 0;
+  transition: background .12s, color .12s;
+}
+.ipbtn:hover { background: var(--bg-3); color: var(--fg); }
+.ipbtn.active { background: var(--accent-soft); color: var(--accent); }
+.ipbtn svg { width: 15px; height: 15px; }
+.ipbtn .cnt {
+  position: absolute; top: 1px; right: 1px; min-width: 13px; height: 13px; padding: 0 3px;
+  border-radius: 7px; background: var(--pc); color: #fff; font-size: 9px; font-weight: 700;
+  display: inline-flex; align-items: center; justify-content: center; border: 2px solid var(--bg-1);
+}
+.ipbtn .pdot {
+  position: absolute; bottom: 2px; left: 3px; width: 5px; height: 5px; border-radius: 50%;
+  background: var(--pc);
+}
+
+.div-v { width: 1px; height: 16px; margin: 0 6px; background: var(--line); opacity: .75; flex-shrink: 0; }
+
+.palette-trigger {
+  display: inline-flex; align-items: center; gap: 7px; height: 24px; padding: 0 10px 0 9px;
+  border: 1px solid var(--line); border-radius: 6px; background: var(--bg-3); color: var(--fg-mute);
+  font: inherit; font-size: 11.5px; cursor: pointer; flex-shrink: 0;
+  transition: border-color .12s, color .12s;
+}
+.palette-trigger:hover { color: var(--fg-dim); border-color: var(--fg-mute); }
+.palette-trigger svg { width: 12px; height: 12px; }
+.palette-trigger kbd {
+  font-family: inherit; font-size: 10px; padding: 1px 5px; border: 1px solid var(--line);
+  border-radius: 4px; background: var(--bg-1); color: var(--fg-mute);
+}
+
+/* ===================== WORKSPACE ===================== */
+.workspace { display: flex; flex: 1; min-height: 0; }
+
+.rail {
+  display: flex; flex-direction: column; align-items: center; gap: 1px; width: var(--w-rail);
+  padding: 6px 0; background: var(--bg-1); border-right: 1px solid var(--line-soft); flex-shrink: 0;
+}
+.rail-btn {
+  position: relative; display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; padding: 0; border: none; border-radius: 8px;
+  background: transparent; color: var(--fg-mute); cursor: pointer;
+  transition: background .12s, color .12s;
+}
+.rail-btn:hover { background: var(--bg-3); color: var(--fg); }
+.rail-btn.active, .rail-btn[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+.rail-btn svg { width: 17px; height: 17px; }
+.rail-btn .badge {
+  position: absolute; top: 2px; right: 2px; min-width: 14px; height: 14px; padding: 0 3px;
+  border-radius: 7px; background: var(--accent); color: #fff; font-size: 9px; font-weight: 700;
+  display: inline-flex; align-items: center; justify-content: center; border: 2px solid var(--bg-1);
+}
+
+.sidebar {
+  width: var(--w-sidebar); display: flex; flex-direction: column; min-height: 0; overflow: hidden;
+  background: var(--bg-1); border-right: 1px solid var(--line-soft); flex-shrink: 0;
+  transition: width .15s ease, opacity .15s;
+}
+.sidebar.collapsed { width: 0; border-right-color: transparent; opacity: 0; }
+.side-head {
+  display: flex; align-items: center; justify-content: space-between; padding: 8px 12px 6px; flex-shrink: 0;
+}
+.side-title { font-size: 11.5px; font-weight: 600; color: var(--fg-mute); }
+.side-panel { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.pl-panel { flex: 1; overflow-y: auto; padding: 2px 0 10px; }
+
+/* ===================== PLUGIN MANAGER ===================== */
+.pl-item {
+  position: relative; display: flex; flex-direction: column; gap: 6px;
+  padding: 9px 12px 11px; border-bottom: 1px solid var(--line-soft);
+}
+.pl-item::before {
+  content: ""; position: absolute; left: 0; top: 9px; bottom: 11px; width: 2px;
+  border-radius: 2px; background: var(--pc); opacity: .8;
+}
+.pl-item-head {
+  display: flex; align-items: center; gap: 8px; width: 100%; padding: 0; border: none;
+  background: transparent; color: inherit; cursor: pointer; text-align: left; font: inherit;
+}
+.pl-item-head:hover { opacity: .9; }
+.pl-monogram {
+  width: 22px; height: 22px; border-radius: 5px; flex-shrink: 0;
+  border: 1.4px solid var(--pc); color: var(--pc);
+  display: inline-flex; align-items: center; justify-content: center;
+  font-family: "Cascadia Code", ui-monospace, monospace; font-size: 11px; font-weight: 700;
+}
+.pl-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; color: var(--fg); }
+.pl-sub { font-size: 10.5px; color: var(--fg-mute); }
+.pl-badge {
+  flex-shrink: 0; padding: 1px 7px; border: 1px solid var(--line); border-radius: 999px;
+  background: var(--bg-2); color: var(--fg-mute); font-size: 10px; font-weight: 600; white-space: nowrap;
+}
+.pl-badge.active { color: var(--green); border-color: rgba(74,222,128,.35); background: rgba(74,222,128,.1); }
+.pl-badge.failed, .pl-badge.stopped { color: var(--red); border-color: rgba(248,113,113,.35); background: rgba(248,113,113,.1); }
+.pl-badge.quarantined { color: var(--amber); border-color: rgba(251,191,36,.35); background: rgba(251,191,36,.1); }
+.pl-badge.off { color: var(--fg-mute); }
+.pl-desc { font-size: 11.5px; color: var(--fg-mute); line-height: 1.5; }
+.pl-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.pl-actions button {
+  padding: 3px 9px; border: 1px solid var(--line); border-radius: var(--r-sm);
+  background: var(--bg-3); color: var(--fg-dim); font: inherit; font-size: 11.5px; cursor: pointer;
+  transition: background .12s, color .12s;
+}
+.pl-actions button:hover { background: var(--bg-2); color: var(--fg); }
+
+/* ===================== MAIN / EDITOR / PREVIEW ===================== */
+.main { flex: 1; display: flex; flex-direction: column; min-width: 0; background: var(--bg-0); }
+.panes { flex: 1; display: flex; min-height: 0; overflow: hidden; }
+.pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: var(--bg-0); }
+.pane-editor { width: 50%; }
+.pane-preview { flex: 1; }
+
+.pane-head {
+  display: flex; align-items: center; height: 32px; padding: 0 8px 0 4px; gap: 2px;
+  background: var(--bg-0); border-bottom: 1px solid var(--line-soft); flex-shrink: 0;
+}
+.pane-path { font-size: 11px; color: var(--fg-mute); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pane-head-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; padding-left: 6px; flex-shrink: 0; }
+.pane-metric { font-size: 11px; color: var(--fg-mute); font-variant-numeric: tabular-nums; }
+
+.editor-wrap { flex: 1; display: flex; min-height: 0; overflow: hidden; }
+.line-numbers {
+  min-width: 44px; padding: 16px 8px 16px 12px; background: var(--gutter);
+  border-right: 1px solid var(--line-soft); color: var(--fg-mute);
+  font-family: "Cascadia Code", "JetBrains Mono", ui-monospace, Consolas, monospace;
+  font-size: 13.5px; line-height: 23px; text-align: right; white-space: pre;
+  overflow: hidden; user-select: none;
+}
+#editor {
+  flex: 1; min-width: 0; padding: 16px 20px; border: none; outline: none; resize: none;
+  background: var(--bg-0); color: var(--fg); caret-color: var(--accent);
+  font-family: "Cascadia Code", "JetBrains Mono", ui-monospace, Consolas, monospace;
+  font-size: 13.5px; line-height: 23px; tab-size: 2; white-space: pre;
+  overflow-x: auto; overflow-y: auto;
+}
+
+#preview { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; padding: 12px 34px 80px; }
+.markdown-body { max-width: 860px; color: var(--body); line-height: 1.7; word-wrap: break-word; }
+.markdown-body h1 { font-size: 26px; color: var(--head); margin: 0 0 14px; padding-bottom: .2em; border-bottom: 1px solid var(--line); letter-spacing: -.01em; }
+.markdown-body h2 { font-size: 19px; color: var(--head); margin: 24px 0 10px; padding-bottom: .2em; border-bottom: 1px solid var(--line); letter-spacing: -.01em; }
+.markdown-body p { margin: 0 0 10px; }
+.markdown-body code {
+  font-family: "Cascadia Code", ui-monospace, Consolas, monospace; background: var(--bg-3);
+  color: var(--code-fg); padding: 2px 6px; border-radius: 4px; font-size: 12.5px;
+}
+
+/* ===================== STATUS BAR ===================== */
+.statusbar {
+  display: flex; align-items: center; gap: 1px; height: var(--h-status); padding: 0 6px;
+  background: var(--bg-1); border-top: 1px solid var(--line-soft); font-size: 11px; flex-shrink: 0;
+}
+.stat {
+  display: inline-flex; align-items: center; gap: 6px; height: 100%; padding: 0 9px;
+  border-radius: 4px; color: var(--fg-mute); white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+.stat-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+
+/* ===================== DRAWER (вариант C) ===================== */
+.drawer {
+  position: fixed; top: 0; right: 0; bottom: 0; width: var(--w-drawer); z-index: 70;
+  display: flex; flex-direction: column; background: var(--popover); border-left: 1px solid var(--pop-border);
+  transform: translateX(100%); transition: transform .22s cubic-bezier(.2,.9,.3,1); box-shadow: var(--shadow-lg);
+}
+.drawer.open { transform: none; }
+.drawer-head {
+  display: flex; align-items: center; gap: 8px; padding: 10px 10px 8px 14px;
+  border-bottom: 1px solid var(--line-soft); flex-shrink: 0;
+}
+.drawer-head .side-title { flex: 1; font-size: 12.5px; color: var(--fg); }
+.drawer-body { flex: 1; overflow-y: auto; padding: 2px 0 24px; }
+
+/* ===================== POPUP (IDEA-005) ===================== */
+.popup {
+  position: fixed; z-index: 120; width: 300px; border: 1px solid var(--pop-border);
+  border-radius: var(--r-lg); background: var(--popover); box-shadow: var(--shadow-lg);
+  animation: pop .14s ease;
+}
+@keyframes pop { from { opacity: 0; transform: translateY(-4px) scale(.98); } to { opacity: 1; transform: none; } }
+.popup-head {
+  display: flex; align-items: center; justify-content: space-between; padding: 9px 12px 7px;
+  border-bottom: 1px solid var(--line-soft); font-size: 11.5px; font-weight: 600; color: var(--fg-mute);
+}
+.popup-list { padding: 5px; }
+.popup-item {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  padding: 8px 10px; border: none; border-radius: 6px; background: transparent; color: var(--fg-dim);
+  font: inherit; font-size: 12px; cursor: pointer; transition: background .1s, color .1s;
+}
+.popup-item:hover { background: var(--accent-soft); color: var(--fg); }
+.popup-item .pl-monogram { width: 20px; height: 20px; font-size: 10px; }
+.popup-item .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.popup-item .st { font-size: 10px; padding: 1px 6px; border: 1px solid var(--line); border-radius: 999px; color: var(--fg-mute); background: var(--bg-2); }
+.popup-item .st.on { color: var(--green); border-color: rgba(74,222,128,.35); background: rgba(74,222,128,.1); }
+.popup-empty { padding: 20px 14px; text-align: center; color: var(--fg-mute); font-size: 12px; }
+
+/* ===================== REDUCED MOTION ===================== */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
+</style>
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ================= SWITCHER ================= -->
+  <div class="switcher" role="tablist" aria-label="Вариант размещения управления плагинами">
+    <span class="switcher-label">Вариант:</span>
+    <div class="seg">
+      <button class="seg-btn active" data-variant="A" role="tab" aria-selected="true">A · Текущее</button>
+      <button class="seg-btn" data-variant="B" role="tab" aria-selected="false">B · Кнопка рядом</button>
+      <button class="seg-btn" data-variant="C" role="tab" aria-selected="false">C · Дровер</button>
+      <button class="seg-btn" data-variant="I5" role="tab" aria-selected="false">IDEA-005 · Иконка + попап</button>
+    </div>
+  </div>
+
+  <!-- ================= ANNOTATION ================= -->
+  <div class="annotation" id="annotation" aria-live="polite">
+    <span class="annotation-title" id="ann-title">A · Текущее (база)</span>
+    <span class="annotation-body" id="ann-body"></span>
+  </div>
+
+  <!-- ================= TOOLBAR ================= -->
+  <header id="toolbar" class="toolbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">d</span>
+      <span>darmark</span>
+    </div>
+
+    <div class="file-actions">
+      <button class="tbtn" title="Новый файл (Ctrl+N)" aria-label="Новый файл">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="12" x2="12" y2="18"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+      </button>
+      <button class="tbtn" title="Открыть (Ctrl+O)" aria-label="Открыть">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+      </button>
+      <button class="tbtn" title="Сохранить (Ctrl+S)" aria-label="Сохранить">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+      </button>
+      <div class="file-chip" title="Текущий документ">
+        <span class="fname">readme.md</span>
+      </div>
+    </div>
+
+    <div class="spacer"></div>
+
+    <!-- формат-группа (декоративно) -->
+    <button class="tbtn" title="Жирный" aria-label="Жирный">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/><path d="M6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/></svg>
+    </button>
+    <button class="tbtn" title="Курсив" aria-label="Курсив">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><line x1="19" y1="4" x2="10" y2="4"/><line x1="14" y1="20" x2="5" y2="20"/><line x1="15" y1="4" x2="9" y2="20"/></svg>
+    </button>
+    <button class="tbtn" title="Код" aria-label="Код">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+    </button>
+
+    <div class="div-v"></div>
+
+    <button class="palette-trigger" id="palette-trigger" type="button" title="Палитра команд (Ctrl+K)" aria-label="Палитра команд">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+      <span>Команды</span>
+      <kbd>Ctrl+K</kbd>
+    </button>
+
+    <!-- B: текстовая кнопка «Плагины» после «Команды» (панель остаётся слева) -->
+    <button class="tbtn-text" id="tb-plugins" aria-expanded="false" aria-controls="sidebar" hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z"/><line x1="16" y1="8" x2="2" y2="22"/></svg>
+      <span>Плагины</span>
+    </button>
+
+    <!-- C: текстовый триггер правого дровера -->
+    <button class="tbtn-text" id="tb-drawer" aria-expanded="false" aria-controls="drawer" aria-haspopup="dialog" hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z"/><line x1="16" y1="8" x2="2" y2="22"/></svg>
+      <span>Плагины</span>
+    </button>
+
+    <!-- IDEA-005: компактный icon-only триггер рядом с палитрой -->
+    <button class="ipbtn" id="tb-ipbtn" aria-expanded="false" aria-controls="ipbtn-popup" aria-haspopup="menu" aria-label="Плагины" hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z"/><line x1="16" y1="8" x2="2" y2="22"/></svg>
+      <span class="cnt" id="ipbtn-cnt">0</span>
+      <span class="pdot" aria-hidden="true"></span>
+    </button>
+
+    <div class="div-v"></div>
+
+    <button class="tbtn" title="Синхронная прокрутка" aria-label="Синхронная прокрутка" aria-pressed="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+    </button>
+    <button class="tbtn" title="Инспектор" aria-label="Инспектор" aria-pressed="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    </button>
+  </header>
+
+  <!-- ================= WORKSPACE ================= -->
+  <div class="workspace" id="workspace">
+
+    <!-- A / B / IDEA-005: rail -->
+    <nav class="rail" id="rail" aria-label="Боковая навигация">
+      <button class="rail-btn active" id="rail-plugins" title="Плагины" aria-pressed="true" aria-controls="panel-plugins">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z"/><line x1="16" y1="8" x2="2" y2="22"/></svg>
+        <span class="badge" id="rail-badge">3</span>
+      </button>
+      <button class="rail-btn" id="rail-logs" title="Журнал — скоро" aria-pressed="false" aria-disabled="true" tabindex="-1">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+      </button>
+    </nav>
+
+    <!-- A / B / IDEA-005: sidebar -->
+    <aside class="sidebar" id="sidebar" aria-label="Панель плагинов">
+      <div class="side-panel" id="panel-plugins">
+        <div class="side-head">
+          <span class="side-title">Плагины</span>
+        </div>
+        <div class="pl-panel">
+          <div id="plugin-manager"></div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Основная область -->
+    <main class="main">
+      <div class="panes" id="panes">
+        <section class="pane pane-editor" id="pane-a">
+          <div class="pane-head">
+            <span class="pane-path">readme.md</span>
+            <div class="pane-head-actions">
+              <span class="pane-metric">rev 1</span>
+            </div>
+          </div>
+          <div class="editor-wrap">
+            <div class="line-numbers" aria-hidden="true">1
+2
+3
+4
+5
+6</div>
+            <textarea id="editor" spellcheck="false" wrap="off" aria-label="Редактор Markdown" readonly># darmark
+Лёгкий Markdown-редактор.
+
+Плагины — в левой панели.</textarea>
+          </div>
+        </section>
+
+        <section class="pane pane-preview" id="pane-b">
+          <div class="pane-head">
+            <div class="pane-head-actions">
+              <span class="pane-metric">— мс</span>
+            </div>
+          </div>
+          <article id="preview" class="markdown-body">
+            <h1>darmark</h1>
+            <p>Лёгкий Markdown-редактор. Плагины — в левой панели.</p>
+          </article>
+        </section>
+      </div>
+    </main>
+
+    <!-- C: правый дровер (немодальный — сосуществует с превью) -->
+    <aside class="drawer" id="drawer" role="dialog" aria-modal="false" aria-labelledby="drawer-title" hidden>
+      <div class="drawer-head">
+        <span class="side-title" id="drawer-title">Плагины</span>
+        <button class="tbtn tbtn-sm" id="drawer-close" title="Закрыть" aria-label="Закрыть">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="drawer-body">
+        <div id="plugin-manager-drawer"></div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- ================= STATUS BAR ================= -->
+  <footer id="statusbar" class="statusbar" aria-live="polite">
+    <span class="stat"><span class="stat-dot" aria-hidden="true"></span><span>Готов</span></span>
+    <span class="plugin-status" id="plugin-status"></span>
+    <span class="spacer"></span>
+    <span class="stat">Стр 1, Кол 1</span>
+    <span class="stat">0 симв.</span>
+  </footer>
+</div>
+
+<!-- ================= POPUP (IDEA-005) ================= -->
+<div class="popup" id="ipbtn-popup" role="menu" aria-label="Список плагинов" hidden>
+  <div class="popup-head">
+    <span>Плагины</span>
+    <span id="popup-cnt">0</span>
+  </div>
+  <div class="popup-list" id="popup-list"></div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ===================== ДАННЫЕ ПЛАГИНОВ ===================== */
+  var PLUGINS = [
+    { id: "export",  name: "Export to PDF",  monogram: "Э", color: "#5b8cff", state: "active",  stateLabel: "Активен" },
+    { id: "wordcnt", name: "Word Counter",  monogram: "С", color: "#2dd4bf", state: "active",  stateLabel: "Активен" },
+    { id: "wordcnt2",name: "Spell Check",    monogram: "П", color: "#fbbf24", state: "failed", stateLabel: "Ошибка" }
+  ];
+
+  var state = {
+    variant: "A",
+    drawerOpen: false,
+    popupOpen: false
+  };
+
+  /* ===================== ХЕЛПЕРЫ ===================== */
+  function $(id) { return document.getElementById(id); }
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+
+  /* ===================== РЕНДЕР ПЛАГИНОВ ===================== */
+  function renderPluginItem(p) {
+    var item = el("div", "pl-item");
+    item.style.setProperty("--pc", p.color);
+
+    var head = el("button", "pl-item-head");
+    head.type = "button";
+    head.setAttribute("aria-label", p.name + " — " + p.stateLabel);
+
+    var mono = el("span", "pl-monogram", p.monogram);
+    var nm = el("span", "pl-name", p.name);
+    var badge = el("span", "pl-badge " + p.state, p.stateLabel);
+
+    head.appendChild(mono);
+    head.appendChild(nm);
+    head.appendChild(badge);
+
+    var sub = el("div", "pl-sub", "v" + (1 + Math.floor(Math.random() * 3)) + "." + Math.floor(Math.random() * 9) + " · host 0." + Math.floor(Math.random() * 5));
+    var desc = el("div", "pl-desc", "Расширение редактора. Логика — Lua 5.5 в песочнице plugin-host.");
+
+    var actions = el("div", "pl-actions");
+    var toggle = el("button", null, p.state === "active" ? "Выключить" : "Включить");
+    toggle.type = "button";
+    toggle.addEventListener("click", function () { togglePlugin(p.id); });
+    actions.appendChild(toggle);
+
+    item.appendChild(head);
+    item.appendChild(sub);
+    item.appendChild(desc);
+    item.appendChild(actions);
+    return item;
+  }
+
+  function renderPopupItem(p) {
+    var item = el("button", "popup-item");
+    item.type = "button";
+    item.setAttribute("role", "menuitem");
+    item.setAttribute("aria-label", p.name + " — " + p.stateLabel);
+
+    var mono = el("span", "pl-monogram", p.monogram);
+    var nm = el("span", "nm", p.name);
+    var st = el("span", "st" + (p.state === "active" ? " on" : ""), p.stateLabel);
+
+    item.appendChild(mono);
+    item.appendChild(nm);
+    item.appendChild(st);
+    return item;
+  }
+
+  function renderPlugins() {
+    var pm = $("plugin-manager");
+    pm.innerHTML = "";
+    PLUGINS.forEach(function (p) { pm.appendChild(renderPluginItem(p)); });
+
+    var pmd = $("plugin-manager-drawer");
+    pmd.innerHTML = "";
+    PLUGINS.forEach(function (p) { pmd.appendChild(renderPluginItem(p)); });
+
+    var list = $("popup-list");
+    list.innerHTML = "";
+    PLUGINS.forEach(function (p) { list.appendChild(renderPopupItem(p)); });
+
+    var active = PLUGINS.filter(function (p) { return p.state === "active"; }).length;
+    $("ipbtn-cnt").textContent = active;
+    $("popup-cnt").textContent = active + " акт.";
+    $("rail-badge").textContent = active;
+
+    var ps = $("plugin-status");
+    ps.innerHTML = "";
+    PLUGINS.forEach(function (p) {
+      var s = el("span", "ps-item");
+      s.setAttribute("aria-label", p.name + " — " + p.stateLabel);
+      var dot = el("span", "pdot");
+      dot.style.setProperty("--pc", p.color);
+      s.appendChild(dot);
+      s.appendChild(document.createTextNode(p.name));
+      ps.appendChild(s);
+    });
+  }
+
+  function togglePlugin(id) {
+    PLUGINS.forEach(function (p) {
+      if (p.id === id) {
+        p.state = p.state === "active" ? "off" : "active";
+        p.stateLabel = p.state === "active" ? "Активен" : "Выключен";
+      }
+    });
+    renderPlugins();
+  }
+
+  /* ===================== АННОТАЦИИ ===================== */
+  var ANNOTATIONS = {
+    A: {
+      title: "A · Текущее (база)",
+      html: "<span class='plus'>+</span> Замороженные контракты целы, discoverability высокая, e2e зелёный. " +
+            "<span class='minus'>−</span> Левый край занят (44px rail + 224px sidebar). " +
+            "<b>Рекомендует PM.</b> Объём: <span class='sz'>S</span> (без изменений)."
+    },
+    B: {
+      title: "B · Кнопка рядом с «Команды»",
+      html: "<span class='minus'>−</span> Смешивает «команду» (транзиентная палитра) и «менеджер» (редкая настройка), дублирует палитру. " +
+            "<span class='risk'>Риск переполнения тулбара ≤1280px.</span> " +
+            "<b>Не рекомендован всеми тремя.</b> Объём: <span class='sz'>S</span>, семантически грязно."
+    },
+    C: {
+      title: "C · Триггер в тулбаре + правый дровер",
+      html: "<span class='plus'>+</span> Нормальная ширина карточек, чистый левый край, «минимум хрома». " +
+            "<span class='minus'>−</span> Ломает замороженные e2e-контракты #rail-plugins/#panel-plugins, PM против (прячет главную фичу). " +
+            "<b>Требует отдельного TZ/ADR.</b> Объём: <span class='sz'>M/L</span>."
+    },
+    I5: {
+      title: "IDEA-005 · Компактный icon-only триггер + попап",
+      html: "<span class='plus'>+</span> Тулбар O(1) при любом числе плагинов, контракты не трогаются, e2e зелёный. " +
+            "<span class='plus'>+</span> Визуально легче «Команды» (без рамки/kbd). " +
+            "<b>Аддитивный компромисс.</b> Объём: <span class='sz'>S</span>."
+    }
+  };
+
+  function setAnnotation(v) {
+    var a = ANNOTATIONS[v];
+    $("ann-title").textContent = a.title;
+    $("ann-body").innerHTML = a.html;
+  }
+
+  /* ===================== ВАРИАНТЫ ===================== */
+  function applyVariant(v) {
+    state.variant = v;
+    closeAllSurfaces();
+
+    // сегменты
+    document.querySelectorAll(".seg-btn").forEach(function (b) {
+      var on = b.dataset.variant === v;
+      b.classList.toggle("active", on);
+      b.setAttribute("aria-selected", on ? "true" : "false");
+    });
+
+    // тулбар
+    $("tb-plugins").hidden = (v !== "B");
+    $("tb-drawer").hidden = (v !== "C");
+    $("tb-ipbtn").hidden = (v !== "I5");
+
+    // rail + sidebar
+    $("rail").hidden = (v === "C");
+    $("sidebar").hidden = (v === "C");
+    $("sidebar").classList.toggle("collapsed", false);
+    // панель показана — держим оба триггера в согласованном состоянии
+    $("rail-plugins").classList.add("active");
+    $("rail-plugins").setAttribute("aria-pressed", "true");
+    $("tb-plugins").classList.add("active");
+    $("tb-plugins").setAttribute("aria-expanded", "true");
+
+    setAnnotation(v);
+  }
+
+  /* ===================== ПОВЕРХНОСТИ ===================== */
+  function closeAllSurfaces() {
+    state.drawerOpen = false;
+    state.popupOpen = false;
+    $("drawer").classList.remove("open");
+    $("drawer").hidden = true;
+    $("tb-drawer").classList.remove("active");
+    $("tb-drawer").setAttribute("aria-expanded", "false");
+    $("tb-plugins").classList.remove("active");
+    $("tb-plugins").setAttribute("aria-expanded", "false");
+    $("ipbtn-popup").hidden = true;
+    $("tb-ipbtn").classList.remove("active");
+    $("tb-ipbtn").setAttribute("aria-expanded", "false");
+  }
+
+  function toggleSidebar() {
+    var sb = $("sidebar");
+    var collapsed = sb.classList.toggle("collapsed");
+    // синхронизируем rail-кнопку и тулбар-кнопку «Плагины»
+    $("rail-plugins").classList.toggle("active", !collapsed);
+    $("rail-plugins").setAttribute("aria-pressed", collapsed ? "false" : "true");
+    $("tb-plugins").classList.toggle("active", !collapsed);
+    $("tb-plugins").setAttribute("aria-expanded", collapsed ? "false" : "true");
+  }
+
+  function toggleDrawer() {
+    if (state.drawerOpen) { closeAllSurfaces(); return; }
+    closeAllSurfaces();
+    state.drawerOpen = true;
+    $("drawer").hidden = false;
+    // принудительный reflow для transition
+    void $("drawer").offsetWidth;
+    $("drawer").classList.add("open");
+    $("tb-drawer").classList.add("active");
+    $("tb-drawer").setAttribute("aria-expanded", "true");
+    $("drawer-close").focus();
+  }
+
+  function togglePopup() {
+    if (state.popupOpen) { closeAllSurfaces(); return; }
+    closeAllSurfaces();
+    state.popupOpen = true;
+    var btn = $("tb-ipbtn");
+    var popup = $("ipbtn-popup");
+    popup.hidden = false;
+    // позиция под кнопкой
+    var r = btn.getBoundingClientRect();
+    popup.style.top = (r.bottom + 4) + "px";
+    popup.style.left = Math.max(8, Math.min(window.innerWidth - 316, r.left)) + "px";
+    $("tb-ipbtn").classList.add("active");
+    $("tb-ipbtn").setAttribute("aria-expanded", "true");
+  }
+
+  /* ===================== СОБЫТИЯ ===================== */
+  document.querySelectorAll(".seg-btn").forEach(function (b) {
+    b.addEventListener("click", function () { applyVariant(b.dataset.variant); });
+  });
+
+  $("rail-plugins").addEventListener("click", function () {
+    if (state.variant === "C") return;
+    toggleSidebar();
+  });
+
+  $("tb-plugins").addEventListener("click", toggleSidebar);
+  $("tb-drawer").addEventListener("click", toggleDrawer);
+  $("tb-ipbtn").addEventListener("click", togglePopup);
+
+  $("drawer-close").addEventListener("click", closeAllSurfaces);
+
+  document.addEventListener("click", function (e) {
+    if (!state.popupOpen) return;
+    var popup = $("ipbtn-popup");
+    if (!popup.contains(e.target) && e.target !== $("tb-ipbtn") && !$("tb-ipbtn").contains(e.target)) {
+      closeAllSurfaces();
+    }
+  });
+
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") {
+      if (state.popupOpen) { closeAllSurfaces(); $("tb-ipbtn").focus(); }
+      else if (state.drawerOpen) { closeAllSurfaces(); $("tb-drawer").focus(); }
+    }
+  });
+
+  /* ===================== ИНИЦИАЛИЗАЦИЯ ===================== */
+  renderPlugins();
+  applyVariant("A");
+})();
+</script>
+</body>
+</html>
