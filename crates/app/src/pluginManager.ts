@@ -22,6 +22,7 @@ import {
   type PluginStatus,
 } from "./tauri";
 import { ownerPluginId } from "./pluginTarget";
+import { pluginColor } from "./pluginColor";
 
 /** Публичный фасад контроллера менеджера плагинов. */
 export interface PluginManager {
@@ -153,6 +154,7 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
   function renderItem(info: PluginInfo): HTMLElement {
     const item = el("div", "pl-item");
     item.dataset.plugin = info.id;
+    item.style.setProperty("--pc", pluginColor(info.id));
 
     const head = el("div", "pl-item-head");
 

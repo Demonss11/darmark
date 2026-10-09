@@ -17,6 +17,7 @@ import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { errorMessage, pluginViewAction, pluginViews, type PluginViewInfo } from "./tauri";
 import type { HtmlView, HtmlViewProvider, Json, ViewContext, ViewRegistry } from "./viewRegistry";
+import { pluginColor } from "./pluginColor";
 
 /** Публичный фасад контроллера: перестроение из Rust и освобождение ресурсов. */
 export interface PluginViews {
@@ -226,6 +227,7 @@ export function createPluginViews(opts: PluginViewsOptions): PluginViews {
       tab.className = "vtab plugin";
       tab.dataset.view = info.view_id;
       tab.title = info.title;
+      tab.style.setProperty("--pc", pluginColor(info.plugin_id));
       const origin = document.createElement("span");
       origin.className = "origin";
       tab.append(origin, info.title);

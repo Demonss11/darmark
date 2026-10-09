@@ -496,9 +496,9 @@ label.tbtn:has(> input:focus-visible) { outline: 2px solid var(--accent); outlin
 }
 .vtab .origin { width: 5px; height: 5px; border-radius: 50%; background: var(--fg-mute); }
 .vtab.core .origin { background: var(--accent); }
-/* Плагинная вкладка (H2): кликабельна, origin — акцент-2, чтобы отличать от core. */
+/* Плагинная вкладка (H2): кликабельна, origin — цвет плагина (--pc из pluginColor.ts). */
 .vtab.plugin { cursor: pointer; }
-.vtab.plugin .origin { background: var(--accent-2); }
+.vtab.plugin .origin { background: var(--pc); }
 
 /* редактор + gutter: общая font-size/line-height/padding-block */
 .editor-wrap { flex: 1; display: flex; min-height: 0; overflow: hidden; }

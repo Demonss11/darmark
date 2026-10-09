@@ -36,7 +36,9 @@ HTML-прототипы — **референс, не контракт** (`UI_CON
 | Токены | единый `:root`, тёмная тема, без light | `style.css:4-39` |
 | Тесты | 8 feature-спеков + wdio/cucumber | `crates/app/e2e` |
 
-**Заглушки (сюда можно вкладывать UI без ломки контрактов):** `#plugin-strip`, `#palette-trigger`, `#rail-logs`/`#log-badge`, `#tab-strip`/`#tab-current`, мёртвый drawer `#logs`/`#backdrop` (inline-хендлеры не определены нигде — безопасно удалить или реализовать).
+**Заглушки (сюда можно вкладывать UI без ломки контрактов):** `#palette-trigger`, `#rail-logs`/`#log-badge`, `#tab-strip`/`#tab-current`, мёртвый drawer `#logs`/`#backdrop` (inline-хендлеры не определены нигде — безопасно удалить или реализовать).
+
+> **Расхождение спеки с кодом (§6, #8/#11):** `#plugin-strip` в этой таблице больше не заглушка — удалён намеренно (`BUG-004`, см. §6 п.11); `--pc` уже частично портирован (`pluginColor.ts` → `palette.ts`/`pluginStatusBar.ts`). Актуальный статус — §6.
 
 ---
 
@@ -123,32 +125,42 @@ HTML-прототипы — **референс, не контракт** (`UI_CON
 
 ---
 
-## 6. Сводный бэклог улучшений (решения)
+## 6. Сводный бэклог — что уже закрыто, что открыто
 
-Priority: P0 — баг/данные/a11y-блокер; P1 — UX/идентичность; P2 — полировка. **Target** — где чинить.
+| # | Приор. | Проблема | Статус в проде | Где видно |
+|---|---|---|---|---|
+| 1 | P0 | Install игнорирует снятые чекбоксы прав | ✅ **Закрыто** | `pluginManager.ts` `renderConsent` + `handleGrant`/`handleGrantBulk` — чекбоксы реальный гейт; `setPluginPermissions` |
+| 2 | P0 | `closeDoc` без подтверждения | ✅ **Закрыто** | `fileActions.ts` `confirmDiscard()` перед `newFile`/`openFile`; `shell.ts` `onCloseRequested` |
+| 3 | P0 | Конфликт `⌘K` vs `⌘⇧K` | ✅ **Закрыто** | `shell.ts`: `k&&shift→link` проверяется ДО `k→palette`; `palette.ts` `stopPropagation` от переоткрытия |
+| 4 | P0 | Reload-хоткей без обработчика | ✅ **Закрыто** | `shell.ts` `Ctrl+R`→`reloadPlugins()`, всегда `preventDefault`; `pluginManager.reloadForDocument` |
+| 5 | P0 | Нет `:focus-visible` / `prefers-reduced-motion` | ✅ **Закрыто** | `style.css` `:focus-visible{outline}`, `@media (prefers-reduced-motion)` |
+| 6 | P0 | Диалоги без `role="dialog"`/focus-trap | ✅ **Закрыто** | `dialog.ts` + `palette.ts` (combobox/listbox/`aria-activedescendant`), `toast.ts` — по §11.1 п.3 |
+| 7 | P0 | `UI_ABOUT.md` 100% compliance | ⬜ **docs** — вне `crates/app/src`, не трогали |
+| 8 | P1 | Потеряна идентичность `--pc` | 🟡 **Частично** | `pluginColor.ts` есть, применяется в `palette.ts` и `pluginStatusBar.ts` (`.pdot`). **Нет** в `pluginManager` (`.pl-item`/`.pl-badge` без `--pc`) и в `pluginViews` (`.vtab.plugin .origin` захардкожен `--accent-2`) |
+| 9 | P1 | Удаление плагина без confirm/undo | ⬜ **Отложено в H3** (нет операции удаления) — см. §11.1 п.4 |
+| 10 | P1 | Крах-рампа «падений N/3» не видна | ⬜ **Открыто** — `PluginStatus` несёт только `state`, счётчика падений в UI нет |
+| 11 | P1 | Плагины без view невидимы; >1 view | 🟡 **Частично** | `pluginViews.ts` рендерит **несколько** вкладок на плагин (`view_id` уникален) — «>1 view» решён. Плагин без view виден в менеджере и статусбаре, но **не** в `view-switch`. `#plugin-strip` убран намеренно (`BUG-004`) |
+| 12 | P1 | Схлопывание per-plugin статусбара в «N активных» | ✅ **Закрыто** | `pluginStatusBar.ts`: элементы с `--pc`+текст, лимит `MAX_VISIBLE_PS=3` + «+N» |
+| 13 | P1 | Палитра-заглушка, нет origin/группировки | ✅ **Закрыто** | `palette.ts`: группы+счётчики, `origin`-бейдж с `--pc`, seq-гейт |
+| 14 | P1 | Разнобой `⌘` vs `Ctrl` | ✅ **Закрыто** | grep `⌘` — 0 совпадений; везде `Ctrl` (Windows-first) |
+| 15 | P1 | Жаргон в пользовательских строках | ✅ **Закрыто** | `tier/DomView/RenderIndex/MAX_PANES` встречаются **только в комментариях**, в `textContent`/копирайтите — нет |
+| 16 | P1 | Нет per-view `pane-head-actions` (copy HTML / render time / rev) | ⬜ **Открыто** — `pane-head-actions` отсутствует и в `index.html`, и в `src` |
+| 17 | P2 | Табличные регрессы | ✅ **Закрыто** | `tables.ts` — сорт/поиск/фильтры/`th`/`tr`/`td[data-md]` (защищено §2.1) |
+| 18 | P2 | `transition: all`, нет `tabular-nums` | ✅ **Закрыто** | grep `transition: all` — 0; `tabular-nums` в `.statusbar` и `.palette-count` |
+| 19 | P2 | Glow-точки `0 0 Npx currentColor` | ✅ **Закрыто** | grep `box-shadow: 0 0` — 0 |
+| 20 | P2 | Спец-ссылки в UI-копирайтите | ✅ **Закрыто** (совпало с #15) |
 
-| # | Приоритет | Проблема | Target |
-|---|---|---|---|
-| 1 | P0 | Install в idea5 игнорирует снятые чекбоксы прав (`new Set([...granted, ...INSTALLABLE.perms])`) | **app** (`pluginManager`/permissions-UI, TZ-H2 Ф3/Ф5) + idea7 |
-| 2 | P0 | `closeDoc` удаляет несохранённый документ без подтверждения (idea5) | **app** (в проде подтверждение есть — проверить `fileActions`); idea7 |
-| 3 | P0 | Конфликт `⌘K` (палитра) vs `⌘⇧K` (ссылка); обработчик ссылки недостижим | **app** (`shell.ts`) + idea7 |
-| 4 | P0 | lua-pill рекламирует «Перезагрузить ⌘R», обработчика нет | **app** (`shell.ts`/`pluginManager`) + idea7 |
-| 5 | P0 | Нет `:focus-visible` в idea4; `outline:none` без замены; нет `prefers-reduced-motion` | **app** + idea7 |
-| 6 | P0 | Диалоги/дроверы/палитра — `<div>` без `role="dialog"`/`aria-modal`/focus-trap/возврата фокуса | **app** + idea7 (см. §8) |
-| 7 | P0 | `UI_ABOUT.md` заявляет 100% compliance — не подтверждается | **docs** (переписать) |
-| 8 | P1 | Потеряна идентичность плагина `--pc` | **app** + idea7 (§5) |
-| 9 | P1 | Удаление плагина без подтверждения/undo | **app** (`pluginManager`) + idea7 |
-| 10 | P1 | Крах-рампа «падений N/3» не видна до карантина | **app** (`pluginManager`) + idea7 |
-| 11 | P1 | Плагины без view невидимы в стрипе; >1 view недостижим | **app** (`pluginViews`/`#plugin-strip`) + idea7 |
-| 12 | P1 | Схлопывание per-plugin статусбара в «N активных» | **app** (`statusBar`/слоты) + idea7 |
-| 13 | P1 | Палитра — заглушка; нет модели origin/группировки | **app** (`#palette-trigger`) + idea7 |
-| 14 | P1 | Разнобой платформенных символов `⌘` vs `Ctrl` | **app** + idea7 |
-| 15 | P1 | Смешение лексики: внутренний жаргон («tier 1 · HTML из Lua», «DomView», «RenderIndex») в пользовательских строках | **app** + idea7 |
-| 16 | P1 | В idea5/6 нет per-view pane-head-actions (copy HTML / render time / rev) | **app** + idea7 |
-| 17 | P2 | Табличные фильтры/инспекция ячеек / todo «к строке» регрессировали в идея-прототипах (в проде таблицы есть) | idea7 (паритет) |
-| 18 | P2 | UPS: `transition: all` (8/4 мест), анимация `background`, отсутствие `tabular-nums`, `<caption>`/`scope`, `Intl` для времени | **app** + idea7 |
-| 19 | P2 | Точки-свечения (`box-shadow: 0 0 Npx currentColor`) — декоративная рекурсия | **app** + idea7 |
-| 20 | P2 | Внутренние спец-ссылки (§8, §10.2, D6, MAX_PANES) в UI-копирайте | **app** + idea7 |
+### Итог по §6
+
+**Открытые пункты, реально живущие в `crates/app/src/**`:**
+- **#8 (P1)** — довести `--pc` до менеджера плагинов и вкладок (сейчас только палитра+статусбар).
+- **#10 (P1)** — крах-рампа «падений N/3» (нужен счётчик из Rust-хоста → `PluginStatus`).
+- **#11 (P1)** — видимость плагина без view (обсуждаемо: `#plugin-strip` убран намеренно, нужен другой механизм).
+- **#16 (P1)** — `pane-head-actions`: copy HTML / render time / rev в шапке панели предпросмотра.
+
+**Вне `crates/app/src`:** #7 (docs), #9 (H3). Всё остальное (§11.1 шаги 1–5) подтверждено кодом.
+
+**Замечание по §1:** таблица «что уже есть» в спеке расходится с реальностью в двух местах — `#plugin-strip` больше не заглушка (удалён, `BUG-004`), и `--pc` уже частично портирован (есть `pluginColor.ts`). Это не баг кода, а устаревший текст спеки.
 
 ---
 
