@@ -42,27 +42,30 @@
 
 **Файл:** `crates/app/src/style.css` (блок «Менеджер плагинов (H2, Фаза 5)», ~строки 300-459).
 
-- [ ] `.side-title` (~291-295): `display:inline-flex; align-items:baseline; gap:6px`; добавить
+- [x] `.side-title` (~291-295): `display:inline-flex; align-items:baseline; gap:6px`; добавить
       `.side-count` и `.side-count.warn` (по референсу `front_idea8.html:177-179`).
-- [ ] `.pl-badge` (~320-334): pill → «точка + слово» (`::before`-кружок 6px `currentColor`,
+- [x] `.pl-badge` (~320-334): pill → «точка + слово» (`::before`-кружок 6px `currentColor`,
       убрать border/background/padding); **классы состояний сохранить** (`front_idea8.html:241-263`).
-- [ ] `.pl-info-pop` (~365-380): `max-width: min(300px, calc(var(--w-sidebar) - 24px))` —
+- [x] `.pl-info-pop` (~365-380): `max-width: min(300px, calc(var(--w-sidebar) - 24px))` —
       фикс обрезки в 224px.
-- [ ] Секция согласия `.pl-perms*` (~394-436): строки `.pl-perm` без рамки (transparent,
+- [x] Секция согласия `.pl-perms*` (~394-436): строки `.pl-perm` без рамки (transparent,
       hover → `--bg-3`); `.pl-perms-head` — `flex-wrap:wrap`; `.pl-perms-title` — `nowrap +
       ellipsis`; bulk-кнопки — `margin-left:auto` (`front_idea8.html:370-411`).
-- [ ] `.pl-actions` (~438-458): убрать `margin-top`/`padding-top`/`border-top` (лишний
+- [x] `.pl-actions` (~438-458): убрать `margin-top`/`padding-top`/`border-top` (лишний
       двойной разделитель); кнопки: база `--bg-2`, **hover `--bg-3`** (инверсия — осветляет,
       как `.tbtn`), `:disabled { opacity:.6 }`, `min-height:24px`, кегль ≥11px.
-- [ ] `.pl-empty` (~459) → структурный вид: `.pl-empty-title` + `.pl-empty-hint` с путём
-      (`front_idea8.html:413-421`).
-- [ ] Добавить **заготовки под Фазу 2** (пока находятся элементами): `.pl-item::before`
-      (полоска `--pc`), `.pl-item-expand`, `.pl-item-body { display:none }`,
+- [x] `.pl-empty` (~459): классы `.pl-empty-title`/`.pl-empty-hint` заведены; замена рендера —
+      Фаза 3.
+- [x] Добавить **заготовки под Фазу 2**: `.pl-item::before` (полоска `--pc` — видна уже
+      сейчас, выравнивание уточнится в Фазе 2), `.pl-item-expand`, `.pl-item-body { display:none }`,
       `.pl-item.open .pl-item-body`, `.pl-item.open .pl-item-expand svg { rotate }`.
-- [ ] НЕ менять пока padding/gap `.pl-item` и min-height головы (структурная часть — Фаза 2).
-- [ ] НЕ переносить референс-only блоки: `.pl-panel.legacy`, `.ref-toggle`.
+- [x] НЕ менять пока padding/gap `.pl-item` и min-height головы (структурная часть — Фаза 2).
+- [x] НЕ переносить референс-only блоки: `.pl-panel.legacy`, `.ref-toggle`.
 
-**Проверка фазы:** `cd crates/app && npm run build` — зелёно (TS не менялся).
+**Проверка фазы:** `cd crates/app && npm run build` — зелёно ✅ (tsc + vite, 42 модуля).
+**Ревью `@code-reviewer`:** 0 blocker/major; 2 minor (комментарий у `.pl-item::before` — исправлен;
+выравнивание полоски под будущую 36px-голову — принято сознательно), 2 nit (мелкие расхождения
+с референсом — отложены в полировку Фазы 2/3).
 
 ---
 
