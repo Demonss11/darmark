@@ -481,3 +481,187 @@ Then("поповер информации плагина {string} скрыт", a
     { timeout: 5000, timeoutMsg: `Поповер информации плагина ${pluginId} не скрылся` }
   );
 });
+
+// ---------- Панель плагинов: аккордеон, счётчик, подписи команд (TZ-UI-PANEL) ----------
+//
+// Карточка `.pl-item` — аккордеон: голова `.pl-item-head` и тело `.pl-item-body`
+// (id `pl-body-<id>`). Тело ВСЕГДА в DOM и скрывается только CSS (`.pl-item:not(.open)`
+// → `display:none`); раскрытие задаёт класс `.pl-item.open` и `aria-expanded`/`aria-controls`
+// шеврона. Клики — `browser.execute(el => el.click())` (проектный паттерн: панель
+// может быть вне видимой области, synth-click работает и для скрытых CSS контролов).
+
+/// Приводит карточку к целевому состоянию: кликаем по шеврону `button.pl-item-expand`
+/// только если `.open` не совпадает с целью — иначе toggle инвертировал бы уже
+/// достигнутое состояние, и шаг «сворачиваю» закрыл бы раскрытую карточку соседнего
+/// сценария (состояние раскрытия живёт в `Set` вне DOM и переживает сценарии).
+async function setExpandState(pluginId, open) {
+  const ok = await browser.execute(
+    (id, target) => {
+      const item = document.querySelector(
+        `#plugin-manager .pl-item[data-plugin="${id}"]`
+      );
+      const btn = item?.querySelector("button.pl-item-expand");
+      if (!btn) return false;
+      if (item.classList.contains("open") !== target) btn.click();
+      return true;
+    },
+    pluginId,
+    open
+  );
+  if (!ok) throw new Error(`Шеврон карточки плагина ${pluginId} не найден`);
+}
+
+When("я раскрываю карточку плагина {string}", async (pluginId) => {
+  await setExpandState(pluginId, true);
+});
+
+When("я сворачиваю карточку плагина {string}", async (pluginId) => {
+  await setExpandState(pluginId, false);
+});
+
+/// Свёрнутое состояние: нет `.open`, `aria-expanded="false"` и тело скрыто CSS
+/// (computed `display` === `none`) — synth-click обошёл бы `display:none`, поэтому
+/// видимость проверяем отдельно от наличия в DOM.
+Then("карточка плагина {string} свёрнута", async (pluginId) => {
+  await browser.waitUntil(
+    async () =>
+      browser.execute((id) => {
+        const item = document.querySelector(
+          `#plugin-manager .pl-item[data-plugin="${id}"]`
+        );
+        if (!item || item.classList.contains("open")) return false;
+        const body = item.querySelector(".pl-item-body");
+        const btn = item.querySelector("button.pl-item-expand");
+        return (
+          !!body &&
+          !!btn &&
+          btn.getAttribute("aria-expanded") === "false" &&
+          getComputedStyle(body).display === "none"
+        );
+      }, pluginId),
+    { timeout: 10000, timeoutMsg: `Карточка плагина ${pluginId} не свёрнута` }
+  );
+});
+
+/// Раскрытое состояние — зеркало свёрнутого: `.open` есть, `aria-expanded="true"`,
+/// тело реально показано (computed `display` ≠ `none`).
+Then("карточка плагина {string} раскрыта", async (pluginId) => {
+  await browser.waitUntil(
+    async () =>
+      browser.execute((id) => {
+        const item = document.querySelector(
+          `#plugin-manager .pl-item[data-plugin="${id}"]`
+        );
+        if (!item || !item.classList.contains("open")) return false;
+        const body = item.querySelector(".pl-item-body");
+        const btn = item.querySelector("button.pl-item-expand");
+        return (
+          !!body &&
+          !!btn &&
+          btn.getAttribute("aria-expanded") === "true" &&
+          getComputedStyle(body).display !== "none"
+        );
+      }, pluginId),
+    { timeout: 10000, timeoutMsg: `Карточка плагина ${pluginId} не раскрылась` }
+  );
+});
+
+/// Красный тест на инвариант «тело всегда в DOM»: у свёрнутой карточки тело есть,
+/// и его id — `pl-body-<id>` (иначе `aria-controls` шеврона повис бы в пустоту).
+Then(
+  "тело карточки плагина {string} в DOM даже когда карточка свёрнута",
+  async (pluginId) => {
+    await browser.waitUntil(
+      async () =>
+        browser.execute((id) => {
+          const item = document.querySelector(
+            `#plugin-manager .pl-item[data-plugin="${id}"]`
+          );
+          if (!item || item.classList.contains("open")) return false;
+          const body = item.querySelector(".pl-item-body");
+          return !!body && body.id === `pl-body-${id}`;
+        }, pluginId),
+      {
+        timeout: 10000,
+        timeoutMsg:
+          `Тело карточки плагина ${pluginId} отсутствует в DOM при свёрнутой карточке`,
+      }
+    );
+  }
+);
+
+/// Связь шеврона с телом: `aria-controls` совпадает с `body.id`, а `getElementById`
+/// резолвит именно это тело (не только «атрибут есть»).
+Then(
+  "aria-controls шеврона плагина {string} указывает на тело карточки",
+  async (pluginId) => {
+    await browser.waitUntil(
+      async () =>
+        browser.execute((id) => {
+          const item = document.querySelector(
+            `#plugin-manager .pl-item[data-plugin="${id}"]`
+          );
+          const btn = item?.querySelector("button.pl-item-expand");
+          const body = item?.querySelector(".pl-item-body");
+          const controls = btn?.getAttribute("aria-controls");
+          return (
+            !!controls &&
+            !!body &&
+            controls === body.id &&
+            document.getElementById(controls) === body
+          );
+        }, pluginId),
+      {
+        timeout: 5000,
+        timeoutMsg:
+          `aria-controls шеврона плагина ${pluginId} не указывает на тело карточки`,
+      }
+    );
+  }
+);
+
+/// Подпись кнопки команды = `command.title` из манифеста (Фаза 2 отменила
+/// безымянное «Выполнить»). Сверяем `textContent` с переданным title.
+Then(
+  "кнопка команды {string} {string} подписана {string}",
+  async (pluginId, commandId, title) => {
+    await browser.waitUntil(
+      async () =>
+        browser.execute(
+          (pid, cid, expected) => {
+            const btn = document.querySelector(
+              `#plugin-manager .pl-item[data-plugin="${pid}"] .pl-cmd[data-command="${cid}"]`
+            );
+            return !!btn && (btn.textContent ?? "").trim() === expected;
+          },
+          pluginId,
+          commandId,
+          title
+        ),
+      {
+        timeout: 10000,
+        timeoutMsg:
+          `Кнопка команды ${commandId} плагина ${pluginId} не подписана «${title}»`,
+      }
+    );
+  }
+);
+
+/// Счётчик `#side-count` в шапке: число загруженных плагинов сверяем с числом
+/// карточек `.pl-item` (устойчивее хардкода — набор фикстур может меняться).
+Then("счётчик плагинов в шапке равен числу карточек", async () => {
+  await browser.waitUntil(
+    async () =>
+      browser.execute(() => {
+        const countEl = document.getElementById("side-count");
+        if (!countEl) return false;
+        const shown = Number.parseInt((countEl.textContent ?? "").trim(), 10);
+        const cards = document.querySelectorAll("#plugin-manager .pl-item").length;
+        return Number.isInteger(shown) && shown === cards;
+      }),
+    {
+      timeout: 10000,
+      timeoutMsg: "Счётчик #side-count не совпал с числом карточек плагинов",
+    }
+  );
+});

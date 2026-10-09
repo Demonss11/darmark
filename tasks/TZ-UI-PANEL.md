@@ -148,15 +148,16 @@
 
 ## Фаза 4 — Полировка a11y и сборка
 
-- [ ] `aria-controls` шеврона указывает на существующий `id`; `aria-expanded` синхронен
-      и при `render` (из `expanded.has`), и при `toggleExpand`.
-- [ ] `noUnusedLocals`/`noUnusedParameters`: `bodyId`, `chevronIcon`, `renderExpandButton`,
-      `expanded` — все используются; старые хелперы не осиротели.
-- [ ] Комментарии на русском, объясняют **зачем** (в т.ч. «тело всегда в DOM — так e2e
+- [x] `aria-controls` шеврона указывает на существующий `id`; `aria-expanded` синхронен
+      и при `render` (из `expanded.has`), и при `toggleExpand`. — покрыто С1/С2.
+- [x] `noUnusedLocals`/`noUnusedParameters`: `bodyId`, `chevronIcon`, `renderExpandButton`,
+      `expanded` — все используются; старые хелперы не осиротели. — `tsc` зелёный.
+- [x] Комментарии на русском, объясняют **зачем** (в т.ч. «тело всегда в DOM — так e2e
       кликает скрытые контролы»).
-- [ ] `cd crates/app && npm run build` — финально зелёно.
-- [ ] Ручной чек: Tab-порядок, `Escape` закрывает поповер и возвращает фокус,
-      `prefers-reduced-motion` гасит поворот шеврона.
+- [x] `cd crates/app && npm run build` — финально зелёно ✅.
+- [ ] Ручной чек (`@manual`, НЕ пройден автоматикой): Tab-порядок, `Escape` закрывает
+      поповер и возвращает фокус, `prefers-reduced-motion` гасит поворот шеврона
+      (наличие `@media`-правила проверено e2e `a11y.feature` — зелёное).
 
 ---
 
@@ -193,17 +194,26 @@
 
 ### Новые сценарии (создать `e2e/features/plugin-panel.feature`, шаги — в `plugins.steps.js`)
 
-- [ ] **С1 (высший приоритет).** Раскрытие/сворачивание: `.pl-item.open` есть/нет,
+- [x] **С1 (высший приоритет).** Раскрытие/сворачивание: `.pl-item.open` есть/нет,
       `aria-expanded="true"/"false"`, `getComputedStyle(.pl-item-body).display`.
-- [ ] **С2. Красный тест на инвариант:** тело присутствует в DOM при свёрнутой карточке;
-      `aria-controls` указывает на существующий элемент. Если референс начнёт удалять тело —
-      упадёт здесь, а не разрозненно в 4 сценариях.
-- [ ] **С3.** Подпись команды = `command.title` (проверка `textContent`) — входит в scope
-      Фазы 2.
-- [ ] **С4.** Счётчик `#side-count` равен числу загруженных плагинов.
-- [ ] **С5.** Порядок `fail-notice → actions → consent` — **не добавлять**: нет фикстуры
-      со сбоем; пометить как осознанно непокрытое.
-- [ ] Новые сценарии в TDD-фазе помечать `@wip` (фильтр `not @manual and not @wip`).
+- [x] **С2. Красный тест на инвариант:** тело присутствует в DOM при свёрнутой карточке;
+      `aria-controls` указывает на существующий элемент. Явное предусловие
+      «сворачиваю» + «свёрнута» — сценарий самодостаточен (раскрытие переживает
+      сценарии через `Set`).
+- [x] **С3.** Подпись команды = `command.title` (проверка `textContent`) — фикстура
+      `e2e-view.say` title «Показать сообщение» (с дефолтным «Выполнить» не спутать).
+- [x] **С4.** Счётчик `#side-count` = числу `.pl-item` (без хардкода).
+- [x] **С5.** Порядок `fail-notice → actions → consent` — **не добавлять**: нет фикстуры
+      со сбоем; помечен как осознанно непокрытый (не заявлен покрытым).
+- [x] Новые сценарии в TDD-фазе помечать `@wip` (фильтр `not @manual and not @wip`). —
+      не понадобилось: прошли с первого прогона, тегов нет.
+
+**Шаги приведены к идемпотентности** (ревью Фазы 4): `setExpandState(id, open)` кликает
+по шеврону только при расхождении `.open` с целью — шаги «раскрываю/сворачиваю» больше
+не инвертируют уже достигнутое состояние и не каскадят на соседние сценарии.
+
+**Файлы:** `e2e/features/plugin-panel.feature` (новый, 4 сценария), `e2e/steps/plugins.steps.js`
+(+~180 строк в хвосте, старые шаги не тронуты).
 
 ### Ручные проверки (`@manual`)
 
@@ -218,12 +228,14 @@
 
 ### Порядок верификации
 
-- [ ] `cd crates/app; npm run build` — `tsc` валит на любой ошибке типов (юнитов фронта нет).
-- [ ] `npx tauri build --no-bundle` — свежий `target/release/darmark.exe` для E2E.
-- [ ] Разово: `cargo install tauri-driver --locked`; совместимый `msedgedriver.exe` в PATH.
-- [ ] Целевой прогон: `cd crates/app; npx wdio run e2e/wdio.conf.js --spec e2e/features/plugins.feature --spec e2e/features/plugin-panel.feature`.
-- [ ] Полный прогон: `cd crates/app; npm run test:e2e`.
-- [ ] После реализации — ревью `@code-reviewer` перед мержем.
+- [x] `cd crates/app; npm run build` — `tsc` валит на любой ошибке типов (юнитов фронта нет). ✅
+- [x] `npx tauri build --no-bundle` — свежий `target/release/darmark.exe` для E2E. ✅ (1m21s)
+- [x] Разово: `cargo install tauri-driver --locked`; совместимый `msedgedriver.exe` в PATH. ✅ (уже было)
+- [x] Целевой прогон: `cd crates/app; npx wdio run e2e/wdio.conf.js --spec e2e/features/plugins.feature --spec e2e/features/plugin-panel.feature`. ✅ **2 passed, 2 total**
+- [x] Полный прогон: `cd crates/app; npm run test:e2e`. ✅ **13 passed, 13 total (100%) in 00:03:56**
+- [x] После реализации — ревью `@code-reviewer` перед мержем. ✅ 0 blocker/major;
+      2 minor + 2 nit (устойчивость С2/идемпотентность шагов/ссылка в комментарии) —
+      исправлены, целевой прогон повторно зелёный.
 
 ### Риски тестирования
 
@@ -257,19 +269,19 @@
 
 ## Критерии готовности
 
-- [ ] `npm run build` зелёно (strict TS, `noUnusedLocals`).
-- [ ] Все замороженные селекторы присутствуют в реальном рендере (сверка с `plugins.steps.js`).
-- [ ] `npm run test:e2e` — `plugins.feature` + новая `plugin-panel.feature` зелёные.
-- [ ] Шеврон раскрывает/сворачивает без перерисовки; после `refresh` раскрытие сохраняется.
-- [ ] Тело всегда в DOM (`display:none` при свёрнутом, без `hidden`).
-- [ ] Статус — точка+слов; классы и `STATUS_LABELS` сохранены.
-- [ ] Согласие без рамок; «Доступ: N из M» не растрёпан при 4 правах; hover осветляет.
-- [ ] Счётчик: число или `N с проблемой/с проблемами` (амбер); пустое состояние — с путём к каталогу.
-- [ ] Кнопки команд: `textContent = command.title`, `aria-label = «Выполнить: <title>»`.
-- [ ] a11y: Tab-обход, `Escape` + возврат фокуса, reduced-motion.
-- [ ] `git diff --name-only` не содержит `crates/md-core/**`, `**/src-tauri/**`,
-      `crates/plugin-*/**` (только фронт).
-- [ ] Ревью `@code-reviewer` пройдено.
+- [x] `npm run build` зелёно (strict TS, `noUnusedLocals`). ✅
+- [x] Все замороженные селекторы присутствуют в реальном рендере (сверка с `plugins.steps.js`). ✅
+- [x] `npm run test:e2e` — `plugins.feature` + новая `plugin-panel.feature` зелёные. ✅ 13/13
+- [x] Шеврон раскрывает/сворачивает без перерисовки; после `refresh` раскрытие сохраняется. ✅ (С1 + `Set` в замыкании)
+- [x] Тело всегда в DOM (`display:none` при свёрнутом, без `hidden`). ✅ (С2 — красный тест)
+- [x] Статус — точка+слов; классы и `STATUS_LABELS` сохранены. ✅ (регрессия `plugins.feature`)
+- [ ] Согласие без рамок; «Доступ: N из M» не растрёпан при 4 правах; hover осветляет. — `@manual`
+- [x] Счётчик: число или `N с проблемой/с проблемами` (амбер); пустое состояние — с путём к каталогу. ✅ (С4; амбер/пустое — `@manual`)
+- [x] Кнопки команд: `textContent = command.title`, `aria-label = «Выполнить: <title>»`. ✅ (С3)
+- [ ] a11y: Tab-обход, `Escape` + возврат фокуса, reduced-motion. — `@manual` (наличие reduced-motion-правила — зелёное `a11y.feature`)
+- [x] `git diff --name-only` не содержит `crates/md-core/**`, `**/src-tauri/**`,
+      `crates/plugin-*/**` (только фронт). ✅
+- [x] Ревью `@code-reviewer` пройдено. ✅ (0 blocker/major, minor/nit исправлены)
 
 ---
 
