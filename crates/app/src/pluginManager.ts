@@ -2,7 +2,7 @@
 //
 // Контроллер показывает снимок плагинов из Rust-хоста (команда `list_plugins`):
 // статус, тумблер вкл/выкл, «Перезагрузить», инлайн-согласие на permissions
-// (§11.1 п.4), notices (F38) и кнопки команд плагина. Тело панели собирается
+// (§11.1 п.4) и кнопки команд плагина. Тело панели собирается
 // DOM-узлами и `textContent` — строки из манифеста/хоста не проходят через
 // `innerHTML` (защита от инъекции).
 //
@@ -66,6 +66,74 @@ function el(tag: string, className?: string): HTMLElement {
   return node;
 }
 
+/** Уникальный id поповера информации — связывает кнопку (`aria-controls`) с содержимым. */
+function infoPopoverId(pluginId: string): string {
+  return `pl-info-pop-${pluginId}`;
+}
+
+/**
+ * Инфо-иконка (круг с «i») как inline SVG: CSP `default-src 'self'` разрешает
+ * inline-контент, и, в отличие от Unicode `ⓘ`, рендер не зависит от системных шрифтов.
+ */
+function infoIcon(): SVGSVGElement {
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("viewBox", "0 0 16 16");
+  svg.setAttribute("width", "14");
+  svg.setAttribute("height", "14");
+  svg.setAttribute("aria-hidden", "true");
+
+  const circle = document.createElementNS(NS, "circle");
+  circle.setAttribute("cx", "8");
+  circle.setAttribute("cy", "8");
+  circle.setAttribute("r", "7");
+  circle.setAttribute("fill", "none");
+  circle.setAttribute("stroke", "currentColor");
+  circle.setAttribute("stroke-width", "1.5");
+
+  const text = document.createElementNS(NS, "text");
+  text.setAttribute("x", "8");
+  text.setAttribute("y", "11.5");
+  text.setAttribute("text-anchor", "middle");
+  text.setAttribute("font-size", "10");
+  text.setAttribute("fill", "currentColor");
+  text.setAttribute("font-family", "inherit");
+  text.textContent = "i";
+
+  svg.append(circle, text);
+  return svg;
+}
+
+/** Кнопка-иконка «инфо» о границах изоляции плагина (первая в `.pl-item-head`). */
+function renderInfoButton(info: PluginInfo): HTMLButtonElement {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "pl-info";
+  btn.setAttribute("aria-expanded", "false");
+  btn.setAttribute("aria-controls", infoPopoverId(info.id));
+  btn.setAttribute("aria-label", `Информация о границах изоляции плагина ${info.id}`);
+  btn.append(infoIcon());
+  return btn;
+}
+
+/**
+ * Скрытый поповер с формулировками границы изоляции. Текст — только `textContent`
+ * (строки приходят из Rust-ядра и не проходят через `innerHTML`).
+ */
+function renderInfoPopover(info: PluginInfo): HTMLElement {
+  const pop = el("div", "pl-info-pop");
+  pop.id = infoPopoverId(info.id);
+  pop.setAttribute("role", "tooltip");
+  pop.setAttribute("aria-hidden", "true");
+  pop.hidden = true;
+  for (const notice of info.notices) {
+    const line = el("div", "pl-notice");
+    line.textContent = notice;
+    pop.append(line);
+  }
+  return pop;
+}
+
 export function createPluginManager(opts: PluginManagerOptions): PluginManager {
   const { root, status, onPlugins } = opts;
   let disposed = false;
@@ -75,6 +143,10 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
   let lastList: PluginInfo[] = [];
   // Идущая перезагрузка: конкурентные Ctrl+R переиспользуют её (см. reloadForDocument).
   let reloading: Promise<void> | null = null;
+  // Кнопка открытого поповера информации — их не больше одного (см. toggleInfoPopover).
+  let openInfoButton: HTMLButtonElement | null = null;
+  // Связь кнопки с её поповером по DOM-узлу — без запросов к document и без утечек.
+  const infoPopovers = new WeakMap<HTMLButtonElement, HTMLElement>();
 
   function renderBadge(info: PluginInfo): HTMLElement {
     const badge = el("span", `pl-badge ${info.status.state}`);
@@ -150,7 +222,7 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     return section;
   }
 
-  /** Один плагин: голова (тумблер/имя/бейдж), согласие, notices, действия. */
+  /** Один плагин: голова (тумблер/имя/бейдж), согласие, действия. */
   function renderItem(info: PluginInfo): HTMLElement {
     const item = el("div", "pl-item");
     item.dataset.plugin = info.id;
@@ -171,7 +243,16 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     name.textContent = info.id;
     name.title = info.id;
 
-    head.append(toggleLabel, name, renderBadge(info));
+    // Инфо-кнопка — первым элементом головы; при пустых notices не создаётся (защита).
+    if (info.notices.length > 0) {
+      const infoButton = renderInfoButton(info);
+      const infoPopover = renderInfoPopover(info);
+      infoPopovers.set(infoButton, infoPopover);
+      head.append(infoButton, toggleLabel, name, renderBadge(info));
+      head.append(infoPopover);
+    } else {
+      head.append(toggleLabel, name, renderBadge(info));
+    }
 
     const children: HTMLElement[] = [head];
 
@@ -179,13 +260,6 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     const consent = renderConsent(info);
     if (consent) children.push(consent);
 
-    // F38: формулировки границы изоляции/доступа к документу.
-    const notices = info.notices;
-    for (const notice of notices) {
-      const node = el("div", "pl-notice");
-      node.textContent = notice;
-      children.push(node);
-    }
     // Статус `failed` несёт сообщение — показываем его рядом с бейджем.
     const failMessage = statusMessage(info.status);
     if (failMessage) {
@@ -220,7 +294,37 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     return item;
   }
 
+  /** Открывает поповер кнопки; повторный клик или открытие другого закрывает предыдущий. */
+  function toggleInfoPopover(button: HTMLButtonElement): void {
+    const popover = infoPopovers.get(button);
+    if (!popover) return;
+    // Повторный клик по той же кнопке закрывает; открытие другой — закрывает текущий.
+    const wasOpen = openInfoButton === button;
+    closeAllInfoPopovers();
+    if (wasOpen) return;
+    popover.hidden = false;
+    popover.setAttribute("aria-hidden", "false");
+    button.setAttribute("aria-expanded", "true");
+    openInfoButton = button;
+  }
+
+  /** Закрывает открытый поповер (он один) и возвращает кнопку — для возврата фокуса. */
+  function closeAllInfoPopovers(): HTMLButtonElement | null {
+    const button = openInfoButton;
+    if (!button) return null;
+    const popover = infoPopovers.get(button);
+    if (popover) {
+      popover.hidden = true;
+      popover.setAttribute("aria-hidden", "true");
+    }
+    button.setAttribute("aria-expanded", "false");
+    openInfoButton = null;
+    return button;
+  }
+
   function render(list: PluginInfo[]): void {
+    // `replaceChildren` уничтожит узлы, включая открытый поповер, — сбрасываем ссылку.
+    closeAllInfoPopovers();
     if (list.length === 0) {
       const empty = el("div", "side-empty pl-empty");
       empty.textContent = "Плагины не найдены";
@@ -380,6 +484,11 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
 
   function onClick(e: MouseEvent): void {
     const target = e.target as HTMLElement | null;
+    const info = target?.closest<HTMLButtonElement>(".pl-info");
+    if (info) {
+      toggleInfoPopover(info);
+      return;
+    }
     const reload = target?.closest<HTMLButtonElement>(".pl-reload");
     if (reload) {
       void handleReload(reload);
@@ -394,8 +503,26 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     if (bulk) void handleGrantBulk(bulk);
   }
 
+  /** Клик вне кнопки/поповера закрывает его (делегирование на `document`). */
+  function onDocumentClick(e: MouseEvent): void {
+    const button = openInfoButton;
+    if (!button) return;
+    const popover = infoPopovers.get(button);
+    const target = e.target as Node | null;
+    if (target && (button.contains(target) || popover?.contains(target))) return;
+    closeAllInfoPopovers();
+  }
+
+  /** Escape закрывает поповер и возвращает фокус на кнопку. */
+  function onDocumentKeydown(e: KeyboardEvent): void {
+    if (e.key !== "Escape" || !openInfoButton) return;
+    closeAllInfoPopovers()?.focus();
+  }
+
   root.addEventListener("change", onChange);
   root.addEventListener("click", onClick);
+  document.addEventListener("click", onDocumentClick);
+  document.addEventListener("keydown", onDocumentKeydown);
 
   // Ошибку установки слушателя глушим: в обычном (не плагинном) запуске событий не будет.
   const unlistenPromise = listen("plugins-changed", () => {
@@ -408,8 +535,11 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
 
     dispose(): void {
       disposed = true;
+      closeAllInfoPopovers();
       root.removeEventListener("change", onChange);
       root.removeEventListener("click", onClick);
+      document.removeEventListener("click", onDocumentClick);
+      document.removeEventListener("keydown", onDocumentKeydown);
       void unlistenPromise.then((fn) => fn?.());
     },
   };

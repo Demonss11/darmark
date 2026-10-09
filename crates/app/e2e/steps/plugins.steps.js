@@ -397,3 +397,87 @@ Then("в статусбаре плагин {string} показывает {string
     { timeout: 3500, timeoutMsg: `В статусбаре плагин ${pluginId} не показал ${text}` }
   );
 });
+
+// ---------- Кнопка информации о границах изоляции (UI-INFO-BUTTON §7) ----------
+//
+// У карточки плагина есть кнопка `button.pl-info` (первая в `.pl-item-head`).
+// Клик открывает поповер `.pl-info-pop` с формулировками `PluginInfo.notices`;
+// Escape (и повторный клик / клик-вне) закрывают. В E2E проверяем клик и Escape;
+// hover-открытие и позиционирование не трогаем — нестабильны в WebdriverIO.
+
+/// Кнопка информации у плагина: `button.pl-info` внутри `.pl-item[data-plugin]`.
+/// Связь кнопки с поповером — через `aria-controls` (наличие атрибута, §2).
+Then("у плагина {string} есть кнопка информации", async (pluginId) => {
+  await browser.waitUntil(
+    async () =>
+      browser.execute((id) => {
+        const btn = document.querySelector(
+          `#plugin-manager .pl-item[data-plugin="${id}"] button.pl-info`
+        );
+        return !!btn && !!btn.getAttribute("aria-controls");
+      }, pluginId),
+    { timeout: 10000, timeoutMsg: `У плагина ${pluginId} нет кнопки информации` }
+  );
+});
+
+/// Клик через browser.execute: панель может быть вне видимой области, нативный
+/// WebDriver click нестабилен (тот же приём, что у тумблера/команд).
+When("я кликаю по кнопке информации плагина {string}", async (pluginId) => {
+  const ok = await browser.execute((id) => {
+    const btn = document.querySelector(
+      `#plugin-manager .pl-item[data-plugin="${id}"] button.pl-info`
+    );
+    if (!btn) return false;
+    btn.click();
+    return true;
+  }, pluginId);
+  if (!ok) throw new Error(`Кнопка информации плагина ${pluginId} не найдена`);
+});
+
+/// Поповер открыт: элемент `.pl-info-pop` существует, не скрыт атрибутом
+/// `hidden` и кнопка сообщает состояние `aria-expanded="true"` (§2, §5).
+Then("поповер информации плагина {string} виден", async (pluginId) => {
+  await browser.waitUntil(
+    async () =>
+      browser.execute((id) => {
+        const item = document.querySelector(
+          `#plugin-manager .pl-item[data-plugin="${id}"]`
+        );
+        const pop = item?.querySelector(".pl-info-pop");
+        const btn = item?.querySelector("button.pl-info");
+        return !!pop && !pop.hidden && btn?.getAttribute("aria-expanded") === "true";
+      }, pluginId),
+    { timeout: 5000, timeoutMsg: `Поповер информации плагина ${pluginId} не виден` }
+  );
+});
+
+/// Открытый (не скрытый) поповер содержит искомый текст notice. Скоуп — любой
+/// видимый `.pl-info-pop`: по §8 одновременно открыт не более одного поповера.
+Then("поповер содержит текст {string}", async (text) => {
+  await browser.waitUntil(
+    async () =>
+      browser.execute((t) => {
+        const visible = Array.from(
+          document.querySelectorAll("#plugin-manager .pl-info-pop")
+        ).filter((pop) => !pop.hidden);
+        return visible.some((pop) => (pop.textContent ?? "").includes(t));
+      }, text),
+    { timeout: 5000, timeoutMsg: `Открытый поповер не содержит текст: ${text}` }
+  );
+});
+
+/// Поповер скрыт: `hidden` вернулся, кнопка сообщает `aria-expanded="false"`.
+Then("поповер информации плагина {string} скрыт", async (pluginId) => {
+  await browser.waitUntil(
+    async () =>
+      browser.execute((id) => {
+        const item = document.querySelector(
+          `#plugin-manager .pl-item[data-plugin="${id}"]`
+        );
+        const pop = item?.querySelector(".pl-info-pop");
+        const btn = item?.querySelector("button.pl-info");
+        return !!pop && pop.hidden && btn?.getAttribute("aria-expanded") === "false";
+      }, pluginId),
+    { timeout: 5000, timeoutMsg: `Поповер информации плагина ${pluginId} не скрылся` }
+  );
+});

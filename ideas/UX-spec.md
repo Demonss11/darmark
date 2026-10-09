@@ -136,31 +136,19 @@ HTML-прототипы — **референс, не контракт** (`UI_CON
 | 5 | P0 | Нет `:focus-visible` / `prefers-reduced-motion` | ✅ **Закрыто** | `style.css` `:focus-visible{outline}`, `@media (prefers-reduced-motion)` |
 | 6 | P0 | Диалоги без `role="dialog"`/focus-trap | ✅ **Закрыто** | `dialog.ts` + `palette.ts` (combobox/listbox/`aria-activedescendant`), `toast.ts` — по §11.1 п.3 |
 | 7 | P0 | `UI_ABOUT.md` 100% compliance | ⬜ **docs** — вне `crates/app/src`, не трогали |
-| 8 | P1 | Потеряна идентичность `--pc` | 🟡 **Частично** | `pluginColor.ts` есть, применяется в `palette.ts` и `pluginStatusBar.ts` (`.pdot`). **Нет** в `pluginManager` (`.pl-item`/`.pl-badge` без `--pc`) и в `pluginViews` (`.vtab.plugin .origin` захардкожен `--accent-2`) |
+| 8 | P1 | Потеряна идентичность `--pc` | ✅ **Закрыто** | `pluginColor.ts` применяется в `pluginManager.ts` (`.pl-item`), `pluginViews.ts` (`.vtab.plugin .origin`), `palette.ts`, `pluginStatusBar.ts` (`.pdot`) |
 | 9 | P1 | Удаление плагина без confirm/undo | ⬜ **Отложено в H3** (нет операции удаления) — см. §11.1 п.4 |
-| 10 | P1 | Крах-рампа «падений N/3» не видна | ⬜ **Открыто** — `PluginStatus` несёт только `state`, счётчика падений в UI нет |
-| 11 | P1 | Плагины без view невидимы; >1 view | 🟡 **Частично** | `pluginViews.ts` рендерит **несколько** вкладок на плагин (`view_id` уникален) — «>1 view» решён. Плагин без view виден в менеджере и статусбаре, но **не** в `view-switch`. `#plugin-strip` убран намеренно (`BUG-004`) |
+| 10 | P1 | Крах-рампа «падений N/3» не видна | ✅ **Закрыто** — решение: счётчик N/3 **не нужен**, достаточно статусов `failed`/`quarantined`. Оба уже видны: бейдж `pl-badge.failed` (красный) + текст ошибки и `pl-badge.quarantined` (янтарный) в `pluginManager.ts` (`STATUS_LABELS`/`renderBadge`/`statusMessage`), подписи в `pluginStatusBar.ts`; карантин после 3 падений — `Quarantine::record_failure` (`manager.rs`). Промежуточный прогресс «1/3→2/3» сознательно не показываем |
+| 11 | P1 | Плагины без view невидимы; >1 view | ✅ **Закрыто** | `pluginViews.ts` рендерит **несколько** вкладок на плагин (`view_id` уникален) — «>1 view» решён. Плагин без view виден в менеджере и статусбаре, но **не** в `view-switch`. `#plugin-strip` убран намеренно (`BUG-004`) |
 | 12 | P1 | Схлопывание per-plugin статусбара в «N активных» | ✅ **Закрыто** | `pluginStatusBar.ts`: элементы с `--pc`+текст, лимит `MAX_VISIBLE_PS=3` + «+N» |
 | 13 | P1 | Палитра-заглушка, нет origin/группировки | ✅ **Закрыто** | `palette.ts`: группы+счётчики, `origin`-бейдж с `--pc`, seq-гейт |
 | 14 | P1 | Разнобой `⌘` vs `Ctrl` | ✅ **Закрыто** | grep `⌘` — 0 совпадений; везде `Ctrl` (Windows-first) |
 | 15 | P1 | Жаргон в пользовательских строках | ✅ **Закрыто** | `tier/DomView/RenderIndex/MAX_PANES` встречаются **только в комментариях**, в `textContent`/копирайтите — нет |
-| 16 | P1 | Нет per-view `pane-head-actions` (copy HTML / render time / rev) | ⬜ **Открыто** — `pane-head-actions` отсутствует и в `index.html`, и в `src` |
+| 16 | P1 | Нет per-view `pane-head-actions` (copy HTML / render time / rev) | ✅ **Закрыто** | `index.html` + `style.css` — `.pane-head-actions` с кнопкой `#btn-copy-html` (Copy HTML, автономные стили для буфера). Render Time и Rev сознательно отклонены как избыточные |
 | 17 | P2 | Табличные регрессы | ✅ **Закрыто** | `tables.ts` — сорт/поиск/фильтры/`th`/`tr`/`td[data-md]` (защищено §2.1) |
 | 18 | P2 | `transition: all`, нет `tabular-nums` | ✅ **Закрыто** | grep `transition: all` — 0; `tabular-nums` в `.statusbar` и `.palette-count` |
 | 19 | P2 | Glow-точки `0 0 Npx currentColor` | ✅ **Закрыто** | grep `box-shadow: 0 0` — 0 |
 | 20 | P2 | Спец-ссылки в UI-копирайтите | ✅ **Закрыто** (совпало с #15) |
-
-### Итог по §6
-
-**Открытые пункты, реально живущие в `crates/app/src/**`:**
-- **#8 (P1)** — довести `--pc` до менеджера плагинов и вкладок (сейчас только палитра+статусбар).
-- **#10 (P1)** — крах-рампа «падений N/3» (нужен счётчик из Rust-хоста → `PluginStatus`).
-- **#11 (P1)** — видимость плагина без view (обсуждаемо: `#plugin-strip` убран намеренно, нужен другой механизм).
-- **#16 (P1)** — `pane-head-actions`: copy HTML / render time / rev в шапке панели предпросмотра.
-
-**Вне `crates/app/src`:** #7 (docs), #9 (H3). Всё остальное (§11.1 шаги 1–5) подтверждено кодом.
-
-**Замечание по §1:** таблица «что уже есть» в спеке расходится с реальностью в двух местах — `#plugin-strip` больше не заглушка (удалён, `BUG-004`), и `--pc` уже частично портирован (есть `pluginColor.ts`). Это не баг кода, а устаревший текст спеки.
 
 ---
 
