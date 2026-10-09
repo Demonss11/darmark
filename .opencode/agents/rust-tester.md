@@ -11,7 +11,7 @@ description: >
   мест и останавливается, а не гонится за процентом покрытия — при необходимости
   зови его снова: «поищи ещё уязвимости».
 mode: subagent
-model: opencode-go/deepseek-v4.1-flash
+model: opencode-go/longcat-2.5-preview-free
 temperature: 0.2
 permission:
   edit: ask

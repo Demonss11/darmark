@@ -12,7 +12,7 @@ description: >
   «проверь изменения», «посмотри PR», «нормально ли это», «замержить можно?»,
   «что не так с этим кодом».
 mode: subagent
-model: opencode-go/deepseek-v4.1-flash
+model: opencode-go/longcat-2.5-preview-free
 temperature: 0.1
 permission:
   read: allow

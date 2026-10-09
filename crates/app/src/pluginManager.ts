@@ -192,8 +192,8 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
   function renderBadge(info: PluginInfo): HTMLElement {
     const badge = el("span", `pl-badge ${info.status.state}`);
     badge.textContent = STATUS_LABELS[info.status.state];
-    const message = statusMessage(info.status);
-    if (message) badge.title = message;
+    // Тултип всегда: причина для `failed`, иначе — человекочитаемый статус.
+    badge.title = statusMessage(info.status) ?? STATUS_LABELS[info.status.state];
     return badge;
   }
 

@@ -398,7 +398,7 @@ Then("в статусбаре плагин {string} показывает {string
   );
 });
 
-// ---------- Кнопка информации о границах изоляции (UI-INFO-BUTTON §7) ----------
+// ---------- Кнопка информации о границах изоляции (реализовано в pluginManager.ts) ----------
 //
 // У карточки плагина есть кнопка `button.pl-info` (в `.pl-item-head`, после имени).
 // Клик открывает поповер `.pl-info-pop` с формулировками `PluginInfo.notices`;
@@ -482,7 +482,7 @@ Then("поповер информации плагина {string} скрыт", a
   );
 });
 
-// ---------- Панель плагинов: аккордеон, счётчик, подписи команд (TZ-UI-PANEL) ----------
+// ---------- Панель плагинов: аккордеон, счётчик, подписи команд (TZ-UX-SPEC-CLEANUP.md §9) ----------
 //
 // Карточка `.pl-item` — аккордеон: голова `.pl-item-head` и тело `.pl-item-body`
 // (id `pl-body-<id>`). Тело ВСЕГДА в DOM и скрывается только CSS (`.pl-item:not(.open)`
@@ -649,13 +649,16 @@ Then(
 
 /// Счётчик `#side-count` в шапке: число загруженных плагинов сверяем с числом
 /// карточек `.pl-item` (устойчивее хардкода — набор фикстур может меняться).
+/// Текст может быть «N» или «N с проблемой/с проблемами» (ветка `warn`) — берём
+/// ведущее число, а не парсим строку целиком.
 Then("счётчик плагинов в шапке равен числу карточек", async () => {
   await browser.waitUntil(
     async () =>
       browser.execute(() => {
         const countEl = document.getElementById("side-count");
         if (!countEl) return false;
-        const shown = Number.parseInt((countEl.textContent ?? "").trim(), 10);
+        const match = /(\d+)/.exec(countEl.textContent ?? "");
+        const shown = match ? Number(match[1]) : NaN;
         const cards = document.querySelectorAll("#plugin-manager .pl-item").length;
         return Number.isInteger(shown) && shown === cards;
       }),

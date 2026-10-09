@@ -1,13 +1,13 @@
 # language: ru
 #
-# Аккордеон панели плагинов (TZ-UI-PANEL, Фазы 1-3). Карточка `.pl-item` — строка-
+# Аккордеон панели плагинов (TZ-UX-SPEC-CLEANUP.md §9). Карточка `.pl-item` — строка-
 # объект: голова `.pl-item-head` (тумблер → имя → инфо → бейдж → шеврон
 # `button.pl-item-expand` с aria-expanded/aria-controls) и тело `div.pl-item-body`
 # (id `pl-body-<id>`). Тело ВСЕГДА в DOM и скрыто только CSS (`display:none`) — на
 # этом инварианте держатся все e2e-шаги, кликающие контролы свёрнутой карточки
 # синтетическим `.click()`. Раскрытие — `Set` вне DOM, переживает `replaceChildren`.
 # Шаги — в `steps/plugins.steps.js`, блок «Панель плагинов: аккордеон, счётчик,
-# подписи команд (TZ-UI-PANEL)».
+# подписи команд (TZ-UX-SPEC-CLEANUP.md §9)».
 
 Функционал: Аккордеон панели плагинов
 

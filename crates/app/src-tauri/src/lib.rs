@@ -6,7 +6,7 @@
 //! «белого списка» каталогов нет — диалог и есть согласие).
 
 mod error;
-// Плагинная подсистема — только Windows: Job Object и CREATE_NO_WINDOW (TZ-H2).
+// Плагинная подсистема — только Windows: Job Object и CREATE_NO_WINDOW (плагинная система).
 #[cfg(windows)]
 pub mod plugins;
 mod state;
@@ -87,7 +87,7 @@ pub struct PluginViewInfo {
     pub html: String,
 }
 
-/// Статус плагина для менеджера UI (§4.7 TZ-H2).
+/// Статус плагина для менеджера UI (§4.7 плагинной системы).
 ///
 /// Объявлен платформенно-нейтрально (вне `plugins`): команда `list_plugins` должна
 /// компилироваться и на не-Windows. Сериализуется как `{"state":"active"}` и т.п.

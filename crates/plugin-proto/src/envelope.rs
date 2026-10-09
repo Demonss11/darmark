@@ -1,4 +1,4 @@
-//! serde-конверт хост ↔ child (§4.1 TZ-H2, §7.1 DESIGN_DOC): JSON-in-frame.
+//! serde-конверт хост ↔ child (§4.1 плагинной системы, §7.1 DESIGN_DOC): JSON-in-frame.
 //!
 //! От ручной кодировки C-спайка отказываемся: единый формат данных `ToChild`/`ToHost`/`PluginError`.
 //! Разбор входящего от child потока — **fallible** (F36): нарушение протокола превращается в

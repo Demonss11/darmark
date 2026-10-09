@@ -1,4 +1,4 @@
-// pluginStatusBar.ts — per-plugin элементы в статусбаре (UX-spec §11.1 п.5).
+// pluginStatusBar.ts — per-plugin элементы в статусбаре (TZ-UX-SPEC-CLEANUP.md, п.5).
 //
 // Показываем включённые плагины, получившие согласие `ui:statusbar`: точка
 // цвета плагина (`--pc`) + последнее сообщение (`host.show_message`) либо

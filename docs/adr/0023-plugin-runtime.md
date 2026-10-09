@@ -3,7 +3,7 @@
 - **Статус:** **Принят**
 - **Дата:** 07.10.2026
 - **Основание:** ADR-0021 (изоляция процесса), ADR-0022 (контракт ViewProvider);
-  реализация H2 — `tasks/TZ-H2.md` (Фазы 0–6); факты — `docs/proto/FINDINGS.md` (F16–F42)
+  реализация H2 — плагинная система (Фазы 0–6); факты — `docs/proto/FINDINGS.md` (F16–F42)
 - **Связанные:** `docs/DESIGN_DOC.md` §6–§12, §14, §16; `docs/PLUGIN_API.md`;
   `crates/plugin-proto`, `crates/plugin-host`, `crates/app/src-tauri/src/plugins`
 
@@ -139,6 +139,6 @@ on_deactivate → terminate`. Ошибка загрузки/активации �
 
 ## 5. Ссылки
 
-- `tasks/TZ-H2.md` (Фазы 0–6), `docs/DESIGN_DOC.md` §6–§12/§14, `docs/adr/0021-*`, `docs/adr/0022-*`
+- Плагинная система (Фазы 0–6), `docs/DESIGN_DOC.md` §6–§12/§14, `docs/adr/0021-*`, `docs/adr/0022-*`
 - `docs/proto/FINDINGS.md` F16–F42, `docs/PLUGIN_API.md`
 - Код: `crates/plugin-proto`, `crates/plugin-host`, `crates/app/src-tauri/src/plugins/*`

@@ -1,7 +1,14 @@
+# UI_ABOUT — дизайн-концепции и чек-лист доступности
 
-## Ключевые концепты (frontend-design)
+> **Статус:** non-normative, обновлено на H2.
+> **Расхождения с кодом:** `tasks/TZ-UX-SPEC-CLEANUP.md §4`.
+> **Описание реализованного UI:** `ideas/UI_CONCEPT.md`.
 
-### 1. Дизайн вырастает из предметной области
+---
+
+## 1. Дизайн-концепции
+
+### 1.1. Дизайн вырастает из предметной области
 
 **darmark — это инструмент для работы с текстом и кодом.** Значит:
 - Моноширинный шрифт для кода и данных (`Cascadia Code`)
@@ -9,7 +16,7 @@
 - Акцентный цвет — фиолетовый (ассоциация с кодом, креативностью)
 - Минимум декорации, максимум функциональности
 
-### 2. Типографика несёт личность
+### 1.2. Типографика несёт личность
 
 **Выбор шрифтов:**
 - Основной: `-apple-system, Segoe UI, Inter, Roboto` — системный, чистый, профессиональный
@@ -23,7 +30,7 @@
 - `small`: 11.5px, regular
 - `mono`: 12.5px, monospace
 
-### 3. Визуальная структура = информация
+### 1.3. Визуальная структура = информация
 
 **Разделители несут смысл:**
 - `border-bottom` — разделение секций (toolbar, context-bar, statusbar)
@@ -37,18 +44,18 @@
 - Красный — ошибка/карантин
 - Фиолетовый — акцент/выбран
 
-### 4. Один запоминающийся элемент
+### 1.4. Один запоминающийся элемент
 
 **Фиолетовый акцент (`--accent: #7c5cff`)** — единственный яркий цвет:
 - Активные вкладки (полоска сверху)
 - Выбранные кнопки (фон `accent-soft`)
 - Каретка редактора
 - Ссылки в предпросмотре
-- Точки плагинов
+- Точки плагинов (`--pc`)
 
 Всё остальное — приглушённые серые тона.
 
-### 5. Два тира представлений
+### 1.5. Два тира представлений
 
 **Tier 1 (plugin-safe HTML):**
 - Предпросмотр Markdown
@@ -62,12 +69,12 @@
 - Тулбар
 - Полный доступ к DOM
 
-### 6. Плагины как расширения
+### 1.6. Плагины как расширения
 
 **Плагины могут:**
 - Объявлять команды (кнопки «Выполнить» в панели «Плагины»)
 - Создавать представления (plugin-view)
-- Подписываться на события
+- Подписаться на события
 - Показывать уведомления
 
 **Плагины не могут:**
@@ -78,9 +85,9 @@
 
 ---
 
-## Проверка по web-design-guidelines
+## 2. Чек-лист доступности (web-design-guidelines)
 
-### Accessibility
+### 2.1. Accessibility
 
 | Правило | Статус | Комментарий |
 |---|---|---|
@@ -94,7 +101,7 @@
 | Headings hierarchical | OK | `h1`–`h6` иерархически |
 | `scroll-margin-top` on heading anchors | OK | `.md-block { scroll-margin-top: 12px }` |
 
-### Focus States
+### 2.2. Focus States
 
 | Правило | Статус | Комментарий |
 |---|---|---|
@@ -103,7 +110,7 @@
 | Use `:focus-visible` over `:focus` | OK | Используется `:focus-visible` |
 | Group focus with `:focus-within` | OK | `.format-group:focus-within` |
 
-### Animation
+### 2.3. Animation
 
 | Правило | Статус | Комментарий |
 |---|---|---|
@@ -112,7 +119,7 @@
 | Never `transition: all` | OK | Все transition явные |
 | Set correct `transform-origin` | OK | Используется по умолчанию |
 
-### Typography
+### 2.4. Typography
 
 | Правило | Статус | Комментарий |
 |---|---|---|
@@ -121,9 +128,9 @@
 | Non-breaking spaces | OK | `10&nbsp;MB`, `Ctrl+K` |
 | Loading states end with `…` | OK | «Загрузка…» |
 | `font-variant-numeric: tabular-nums` | OK | Для чисел в статусбаре |
-| `text-wrap: balance` | OK | Для заголовков |
+| `text-wrap: balance` | — | Отсутствует в `style.css` (см. `TZ-UX-SPEC-CLEANUP.md §4`) |
 
-### Content Handling
+### 2.5. Content Handling
 
 | Правило | Статус | Комментарий |
 |---|---|---|
@@ -132,7 +139,7 @@
 | Handle empty states | OK | Пустые состояния обработаны |
 | User-generated content | OK | Санитайзер в md-core |
 
-### Navigation & State
+### 2.6. Navigation & State
 
 | Правило | Статус | Комментарий |
 |---|---|---|
@@ -141,31 +148,31 @@
 | Deep-link all stateful UI | N/A | Десктопное приложение |
 | Destructive actions need confirmation | OK | Диалог при закрытии с несохранёнными изменениями |
 
-### Touch & Interaction
+### 2.7. Touch & Interaction
 
 | Правило | Статус | Комментарий |
 |---|---|---|
-| `touch-action: manipulation` | OK | На интерактивных элементах |
-| `-webkit-tap-highlight-color` | OK | Установлен |
-| `overscroll-behavior: contain` | OK | На drawer/modal |
+| `touch-action: manipulation` | — | Отсутствует в `style.css` (см. `TZ-UX-SPEC-CLEANUP.md §4`) |
+| `-webkit-tap-highlight-color` | — | Отсутствует в `style.css` (см. `TZ-UX-SPEC-CLEANUP.md §4`) |
+| `overscroll-behavior: contain` | — | Отсутствует в `style.css` (см. `TZ-UX-SPEC-CLEANUP.md §4`) |
 | Drag/swipe need tap/click alternative | OK | Все жесты имеют альтернативы |
 
-### Dark Mode & Theming
+### 2.8. Dark Mode & Theming
 
 | Правило | Статус | Комментарий |
 |---|---|---|
-| `color-scheme: dark` | OK | `<meta name="color-scheme" content="dark light">` |
+| `color-scheme: dark` | OK | `<meta name="color-scheme" content="dark">` |
 | `<meta name="theme-color">` | OK | `<meta name="theme-color" content="#0d0e12">` |
 | Native `<select>` | N/A | Не используется |
 
-### Hover & Interactive States
+### 2.9. Hover & Interactive States
 
 | Правило | Статус | Комментарий |
 |---|---|---|
 | Buttons need `hover:` state | OK | Все кнопки имеют `:hover` |
-| Interactive states increase contrast | OK | hover/active/focus ярче |
+| Interactive states increase contrast | OK | hover/active/focus ярки |
 
-### Content & Copy
+### 2.10. Content & Copy
 
 | Правило | Статус | Комментарий |
 |---|---|---|
@@ -175,7 +182,7 @@
 | Specific button labels | OK | «Сохранить как…», не «Сохранить» |
 | Error messages include fix | OK | Понятные сообщения об ошибках |
 
-### Anti-patterns
+### 2.11. Anti-patterns
 
 | Правило | Статус | Комментарий |
 |---|---|---|
@@ -196,9 +203,11 @@
 
 ---
 
-## Итог
+## 3. Итог
 
-**Соответствие рекомендациям:** 100% (все применимые правила соблюдены)
+**Соответствие рекомендациям:** высокое (большинство применимых правил соблюдены).
+
+**Известные расхождения:** см. `tasks/TZ-UX-SPEC-CLEANUP.md §4` (5 пунктов: `text-wrap: balance`, `touch-action`, `-webkit-tap-highlight-color`, `overscroll-behavior`, `color-scheme`).
 
 **Ключевые концепты:**
 1. Дизайн из предметной области (код/текст)
@@ -206,4 +215,4 @@
 3. Структура как информация (разделители, цвета)
 4. Один акцентный элемент (фиолетовый)
 5. Два тира представлений (plugin-safe vs full DOM)
-6. Плагины как расширения (context-bar, plugin-view)
+6. Плагины как расширения (панель плагинов, plugin-view, статусбар)

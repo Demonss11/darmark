@@ -1,6 +1,6 @@
 // paneHost.ts — монтирование дерева панелей в DOM (DESIGN_DOC §5.2, §5.5).
 //
-// Каркас разметки взят из `ideas/front_idea5.html`: слоты `.pane[data-pane]` с
+// Каркас разметки: слоты `.pane[data-pane]` с
 // `data-view`, разделитель `.divider`, шапка панели `pane-head`/`view-switch`.
 // В v1 слоты статичны (`index.html`), а paneHost применяет модель layout:
 // показывает панели, присутствующие в дереве, и скрывает отсутствующие.

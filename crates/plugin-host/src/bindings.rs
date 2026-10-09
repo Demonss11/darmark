@@ -1,4 +1,4 @@
-//! Функции, доступные Lua-плагину (Фаза 1 TZ-H2, §6.3 DESIGN_DOC).
+//! Функции, доступные Lua-плагину (Фаза 1 плагинной системы, §6.3 DESIGN_DOC).
 //!
 //! `host.*` документные вызовы идут через [`HostApi`] — в child это RPC к GUI-хосту
 //! (`ToHost::HostCall` ↔ `ToChild::Reply`), в тестах — фейк. `md.*` и `json.*` считаются
@@ -54,7 +54,7 @@ fn host_err(e: PluginError) -> mlua::Error {
 /// Превращает результат host-call в Lua-контракт `(value, err)`:
 /// успех → `(value, nil)`, отказ → `(nil, {code, message, permission?})`.
 ///
-/// Permission-отказ приходит плагину **значением**, а не Lua-исключением (§4.4 TZ-H2 / §8
+/// Permission-отказ приходит плагину **значением**, а не Lua-исключением (§4.4 плагинной системы / §8
 /// DESIGN_DOC): `on_activate` не прерывается, плагин сам решает, что делать.
 fn defuse(
     lua: &Lua,

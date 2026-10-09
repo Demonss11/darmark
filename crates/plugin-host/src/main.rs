@@ -1,9 +1,9 @@
-//! Child-процесс плагинного хоста darmark (Фазы 1 и 6 TZ-H2).
+//! Child-процесс плагинного хоста darmark (Фазы 1 и 6 плагинной системы).
 //!
 //! По умолчанию работает как stdio-хост: читает кадры `ToChild` (host → child) из stdin,
 //! шлёт `ToHost` (child → host) в stdout. Host-call'ы плагина (`host.get_document_*`,
 //! `apply_edit`, `show_message`) идут честным round-trip'ом: `ToHost::HostCall` →
-//! ожидание `ToChild::Reply` (аргумент/ответ передаются только как дельта/окно, §4.2 TZ-H2).
+//! ожидание `ToChild::Reply` (аргумент/ответ передаются только как дельта/окно, §4.2 плагинной системы).
 //!
 //! Режим `--self-test <path>` — dev-проверка песочницы без GUI-хоста.
 //!

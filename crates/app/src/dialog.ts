@@ -1,4 +1,4 @@
-// dialog.ts — переиспользуемая модальная инфраструктура (UX-spec §11.1, шаг 3).
+// dialog.ts — переиспользуемая модальная инфраструктура (TZ-UX-SPEC-CLEANUP.md, шаг 3).
 //
 // Один стек диалогов: оверлей + панель с `role="dialog"`, focus-trap, Escape
 // (capture + stopPropagation — чтобы Escape не дошёл до обработчиков `shell.ts`

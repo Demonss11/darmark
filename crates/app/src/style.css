@@ -1,5 +1,5 @@
-/* darmark — одна тёмная тема (idea5). Без тумблера и prefers-color-scheme.
-   Токены — из ideas/front_idea5.html; скроллерами остаются сами #editor/#preview. */
+/* darmark — одна тёмная тема. Без тумблера и prefers-color-scheme.
+   Скроллерами остаются сами #editor/#preview. */
 
 :root {
   color-scheme: dark; /* тёмные нативные контролы/скроллбары (Web Interface Guidelines) */
@@ -377,8 +377,8 @@ label.tbtn:has(> input:focus-visible) { outline: 2px solid var(--accent); outlin
 }
 /* Расширяет зону нажатия, не раздувая визуальный размер кнопки.
    По вертикали inset = -6px: зона ровно в 36px-строку и не заходит на
-   соседние карточки; по горизонтали соседи — некликабельные имя/бейдж,
-   а до тумблера (справа от имени) ≥ gap+inset — мискликов нет. */
+   соседние карточки. По горизонтали соседи — некликабельные имя (слева)
+   и бейдж (справа), до интерактивных тумблера/шеврона зона не достаёт. */
 .pl-info::before {
   content: "";
   position: absolute;
@@ -536,7 +536,8 @@ label.tbtn:has(> input:focus-visible) { outline: 2px solid var(--accent); outlin
 .pl-perms-bulk button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 /* Bulk-кнопки согласия компактнее: в шапке секции дорога горизонталь. */
 .pl-perms-bulk button { min-height: 22px; padding: 2px 8px; font-size: 11px; }
-.pl-empty { padding: 10px 12px; color: var(--fg-mute); font-size: 12px; }
+/* Панель плагинов: чуть больше воздуха, чем у общего `.side-empty` (референс idea8). */
+.pl-empty { padding: 16px 12px; }
 /* Структурное пустое состояние (рендер заменится в Фазе 3). */
 .pl-empty-title { color: var(--fg-dim); font-size: 12px; font-weight: 600; margin-bottom: 4px; }
 .pl-empty-hint { font-size: 11px; color: var(--fg-mute); }

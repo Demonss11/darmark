@@ -1,4 +1,4 @@
-//! Реализация [`HostServices`] поверх [`DocumentStore`] — range/delta host-API (§4.2 TZ-H2).
+//! Реализация [`HostServices`] поверх [`DocumentStore`] — range/delta host-API (§4.2 плагинной системы).
 //!
 //! Основной путь чтения — окно (`get_document_range`), а не полная копия: при модели
 //! «child на плагин» копия 10 МБ умножалась бы на число процессов (F30). `apply_edit` идёт

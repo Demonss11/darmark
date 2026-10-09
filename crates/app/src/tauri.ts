@@ -67,7 +67,7 @@ export function documentSnapshot(id: DocumentId): Promise<DocumentSnapshot | nul
   return invoke<DocumentSnapshot | null>("document_snapshot", { id });
 }
 
-/** Описание плагинного тир-1 представления (IPC-команда `plugin_views`, §4.6 TZ-H2). */
+/** Описание плагинного тир-1 представления (IPC-команда `plugin_views`, §4.6 плагинной системы). */
 export interface PluginViewInfo {
   view_id: string;
   plugin_id: string;
@@ -91,7 +91,7 @@ export function pluginViewAction(
   return invoke<void>("plugin_view_action", { viewId, action, payload: payload ?? null });
 }
 
-/** Статус плагина — tagged union из Rust (§4.7 TZ-H2). */
+/** Статус плагина — tagged union из Rust (§4.7 плагинной системы). */
 export type PluginStatus =
   | { state: "stopped" }
   | { state: "active" }

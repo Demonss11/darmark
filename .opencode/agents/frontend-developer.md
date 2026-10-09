@@ -10,7 +10,7 @@ description: >
   «сделай кнопку/модалку», «поправь верстку», «не работает в интерфейсе»,
   «почини типы TS», «свяжи с командой Tauri».
 mode: subagent
-model: opencode-go/deepseek-v4.1-flash
+model: opencode-go/longcat-2.5-preview-free
 temperature: 0.2
 permission:
   edit: ask

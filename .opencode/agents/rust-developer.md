@@ -10,7 +10,7 @@ description: >
   пишет «добавь функцию на Rust», «почини borrow checker», «отрефактори
   этот модуль», «падает/течёт в Rust», «ускорь этот крейт».
 mode: subagent
-model: opencode-go/deepseek-v4.1-flash
+model: opencode-go/longcat-2.5-preview-free
 temperature: 0.2
 permission:
   edit: ask

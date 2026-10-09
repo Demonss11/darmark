@@ -12,7 +12,7 @@ description: >
   несколько важных сценариев и останавливается, а не гонится за полнотой —
   при необходимости зови его снова: «поищи ещё пробелы».
 mode: subagent
-model: opencode-go/deepseek-v4.1-flash
+model: opencode-go/longcat-2.5-preview-free
 temperature: 0.2
 permission:
   edit: ask
