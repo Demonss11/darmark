@@ -75,44 +75,47 @@
 
 ### style.css
 
-- [ ] `.pl-item` (~301-307): `position:relative; padding:0; gap:0;
+- [x] `.pl-item` (~301-307): `position:relative; padding:0; gap:0;
       border-bottom:1px solid var(--line-soft)`; `:last-child { border-bottom:none }`;
       `::before`-полоска `top:7px; height:22px` из `--pc`; `:hover { background: var(--bg-2) }`.
-- [ ] `.pl-item-head` (~308): `min-height:36px; padding:0 10px 0 12px` (остаётся `<div>`,
+- [x] `.pl-item-head` (~308): `min-height:36px; padding:0 10px 0 12px` (остаётся `<div>`,
       **не** `<button>` — внутри живут `input.pl-enabled` и `button.pl-info`).
-- [ ] `.pl-name` (~311-319): `font-weight:600`.
-- [ ] `@media (prefers-reduced-motion: reduce)`: погасить поворот шеврона.
+- [x] `.pl-name` (~311-319): `font-weight:600`.
+- [x] `@media (prefers-reduced-motion: reduce)`: погасить поворот шеврона.
 
 ### pluginManager.ts
 
-- [ ] **Состояние раскрытия:** `const expanded = new Set<string>();` внутри
+- [x] **Состояние раскрытия:** `const expanded = new Set<string>();` внутри
       `createPluginManager` (замыкание, рядом с `openInfoButton`, ~стр. 147) — переживает
-      `replaceChildren`, не течёт, уничтожается в `dispose()`.
-- [ ] Хелпер `bodyId(id)` → `pl-body-<id>` (рядом с `infoPopoverId`, ~70-72).
-- [ ] Иконка-шеврон `chevronIcon()` по образцу `infoIcon` (`createElementNS`, polyline
+      `replaceChildren`, не течёт, `expanded.clear()` в `dispose()`.
+- [x] Хелпер `bodyId(id)` → `pl-body-<id>` (рядом с `infoPopoverId`, ~70-72).
+- [x] Иконка-шеврон `chevronIcon()` по образцу `infoIcon` (`createElementNS`, polyline
       `9 6 15 12 9 18`, `aria-hidden`).
-- [ ] `renderExpandButton(info, open)`: `button.pl-item-expand`, `type=button`,
+- [x] `renderExpandButton(info, open)`: `button.pl-item-expand`, `type=button`,
       `dataset.expand`, `aria-expanded`, `aria-controls=bodyId(id)`,
       `aria-label="Развернуть/Свернуть карточку <id>"`.
-- [ ] **`renderItem` (~226-295) пересобрать:**
+- [x] **`renderItem` (~226-295) пересобрать:**
   - порядок head: **тумблер → имя → info (если notices) → бейдж → шеврон**;
     `infoPopover` — последним ребёнком head (позиционируется абсолютно, порядок не важен);
   - `const body = el("div", "pl-item-body"); body.id = bodyId(info.id);`
   - в body порядок **fail-notice → actions → consent** (критичное выше рутины);
   - `item.classList.toggle("open", expanded.has(info.id))`; `item.append(head, body)`;
   - сохранить `infoPopovers.set(...)` и защиту «пустой notices → без info-кнопки».
-- [ ] **`toggleExpand(btn)`** — переключение на месте, **без refresh и без IPC**:
+- [x] **`toggleExpand(btn)`** — переключение на месте, **без refresh и без IPC**:
       правка `expanded`, `classList.toggle("open")`, `aria-expanded`, `aria-label`.
       Фокус остаётся на кнопке (узлы не пересоздаются).
-- [ ] **`onClick` (~485-504)**: ветка `.pl-item-expand` — после `.pl-info` и до `.pl-reload`
+- [x] **`onClick` (~485-504)**: ветка `.pl-item-expand` — после `.pl-info` и до `.pl-reload`
       (ветки различаются классами, конфликтов нет; контракт поповера не меняется).
-- [ ] `render`/`refresh` (~325-335): `renderItem` читает `expanded` → раскрытие
+- [x] `render`/`refresh` (~325-335): `renderItem` читает `expanded` → раскрытие
       восстанавливается после каждой перерисовки; доп. правок нет.
-- [ ] *(опц.)* Прунинг: удалять из `expanded` id, отсутствующие в `list`.
+- [x] *(опц.)* Прунинг: удалять из `expanded` id, отсутствующие в `list`.
+- [x] Бонус Фазы 2: кнопки команд подписаны `command.title` (было «Выполнить»).
 
-**Проверка фазы:** `npm run build`; визуально — карточки свёрнуты по умолчанию, шеврон
-переключает без перерисовки, после действия (toggle/grant/reload) карточка **остаётся
-раскрытой**; в DevTools все e2e-селекторы на месте.
+**Проверка фазы:** `npm.cmd run build` — зелёно ✅ (tsc + vite, 42 модуля).
+**Ревью `@code-reviewer`:** 0 blocker/major; 1 minor (hit-area `.pl-info` выходила за
+36px-строку → `inset:-6px` — исправлено), 4 nit (устаревшие комментарии e2e «первая в head» —
+исправлены; JSDoc шеврона и комментарий hit-area — исправлены; `expanded.clear()` в
+`dispose()` — добавлено).
 
 ---
 

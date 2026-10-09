@@ -306,14 +306,22 @@ label.tbtn:has(> input:focus-visible) { outline: 2px solid var(--accent); outlin
 
 /* ===== Менеджер плагинов (H2, Фаза 5) ===== */
 .pl-item {
-  position: relative; /* база для полоски плагина ::before (заготовка Фазы 2) */
+  position: relative; /* база для полоски плагина ::before */
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 9px 12px 11px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--line-soft);
 }
-.pl-item-head { position: relative; display: flex; align-items: center; gap: 8px; }
+.pl-item:last-child { border-bottom: none; }
+/* Hover строки: фон меняется, полоска ::before остаётся поверх (не перекрывается). */
+.pl-item:hover { background: var(--bg-2); }
+.pl-item-head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px; /* высота строки-объекта; внутри живут input/button, поэтому не button */
+  padding: 0 10px 0 12px;
+}
 .pl-toggle { display: inline-flex; align-items: center; cursor: pointer; flex-shrink: 0; }
 .pl-toggle input { margin: 0; accent-color: var(--accent); cursor: pointer; }
 .pl-name {
@@ -323,6 +331,7 @@ label.tbtn:has(> input:focus-visible) { outline: 2px solid var(--accent); outlin
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 12.5px;
+  font-weight: 600;
   color: var(--fg);
 }
 /* Статус: точка + слово (не pill). Классы состояний сохранены — их читает e2e. */
@@ -366,13 +375,14 @@ label.tbtn:has(> input:focus-visible) { outline: 2px solid var(--accent); outlin
   flex-shrink: 0;
   transition: background 0.12s, color 0.12s;
 }
-/* Расширяет зону нажатия до ~44px, не раздувая визуальный размер кнопки.
-   По горизонтали inset меньше: справа вплотную `.pl-toggle` (gap 8px) — иначе
-   зона нажатия перекрывала бы тумблер и провоцировала мисклики. */
+/* Расширяет зону нажатия, не раздувая визуальный размер кнопки.
+   По вертикали inset = -6px: зона ровно в 36px-строку и не заходит на
+   соседние карточки; по горизонтали соседи — некликабельные имя/бейдж,
+   а до тумблера (справа от имени) ≥ gap+inset — мискликов нет. */
 .pl-info::before {
   content: "";
   position: absolute;
-  inset: -10px -6px;
+  inset: -6px;
 }
 .pl-info:hover { background: var(--bg-3); color: var(--fg); }
 .pl-info[aria-expanded="true"] { background: var(--accent-soft); color: var(--pc); }
@@ -406,11 +416,9 @@ label.tbtn:has(> input:focus-visible) { outline: 2px solid var(--accent); outlin
 @media (prefers-reduced-motion: reduce) {
   .pl-info { transition: none; }
 }
-/* ==== Заготовки под Фазу 2: строка-объект + аккордеон ====
-   Полоска `::before` видна уже сейчас (.pl-item и --pc есть в DOM), но
-   выровнена под будущую голову 36px — до Фазы 2 выравнивание уточнится.
-   `.pl-item-expand`/`.pl-item-body` в DOM пока нет: правила срабатывают
-   только после пересборки renderItem. ==== */
+/* ==== Строка-объект + аккордеон (Фаза 2) ====
+   Полоска `::before` выровнена по голове строки (36px). `.pl-item-expand` —
+   шеврон в конце головы; `.pl-item-body` — тело аккордеона, всегда в DOM. ==== */
 /* Полоска плагина слева (--pc), выровнена по голове строки (~36px). */
 .pl-item::before {
   content: "";

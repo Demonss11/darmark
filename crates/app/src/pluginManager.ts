@@ -71,6 +71,11 @@ function infoPopoverId(pluginId: string): string {
   return `pl-info-pop-${pluginId}`;
 }
 
+/** Уникальный id тела карточки — связывает шеврон (`aria-controls`) с аккордеоном. */
+function bodyId(pluginId: string): string {
+  return `pl-body-${pluginId}`;
+}
+
 /**
  * Инфо-иконка (круг с «i») как inline SVG: CSP `default-src 'self'` разрешает
  * inline-контент, и, в отличие от Unicode `ⓘ`, рендер не зависит от системных шрифтов.
@@ -104,7 +109,27 @@ function infoIcon(): SVGSVGElement {
   return svg;
 }
 
-/** Кнопка-иконка «инфо» о границах изоляции плагина (первая в `.pl-item-head`). */
+/**
+ * Шеврон раскрытия как inline SVG (CSP `default-src 'self'` без внешних ассетов;
+ * Unicode-стрелка зависела бы от системного шрифта). Поворот задаётся CSS.
+ */
+function chevronIcon(): SVGSVGElement {
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", "2");
+
+  const polyline = document.createElementNS(NS, "polyline");
+  polyline.setAttribute("points", "9 6 15 12 9 18");
+
+  svg.append(polyline);
+  return svg;
+}
+
+/** Кнопка-иконка «инфо» о границах изоляции плагина (в `.pl-item-head`). */
 function renderInfoButton(info: PluginInfo): HTMLButtonElement {
   const btn = document.createElement("button");
   btn.type = "button";
@@ -134,6 +159,19 @@ function renderInfoPopover(info: PluginInfo): HTMLElement {
   return pop;
 }
 
+/** Кнопка-шеврон раскрытия карточки (в конце `.pl-item-head`, перед поповером). */
+function renderExpandButton(info: PluginInfo, open: boolean): HTMLButtonElement {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "pl-item-expand";
+  btn.dataset.expand = info.id;
+  btn.setAttribute("aria-expanded", String(open));
+  btn.setAttribute("aria-controls", bodyId(info.id));
+  btn.setAttribute("aria-label", `${open ? "Свернуть" : "Развернуть"} карточку ${info.id}`);
+  btn.append(chevronIcon());
+  return btn;
+}
+
 export function createPluginManager(opts: PluginManagerOptions): PluginManager {
   const { root, status, onPlugins } = opts;
   let disposed = false;
@@ -147,6 +185,9 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
   let openInfoButton: HTMLButtonElement | null = null;
   // Связь кнопки с её поповером по DOM-узлу — без запросов к document и без утечек.
   const infoPopovers = new WeakMap<HTMLButtonElement, HTMLElement>();
+  // Раскрытые карточки — вне DOM: `render` пересоздаёт узлы (`replaceChildren`),
+  // а раскрытие должно переживать перерисовку после действий (toggle/grant/reload).
+  const expanded = new Set<string>();
 
   function renderBadge(info: PluginInfo): HTMLElement {
     const badge = el("span", `pl-badge ${info.status.state}`);
@@ -222,7 +263,7 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     return section;
   }
 
-  /** Один плагин: голова (тумблер/имя/бейдж), согласие, действия. */
+  /** Один плагин: голова-строка (тумблер/имя/инфо/бейдж/шеврон) + тело-аккордеон. */
   function renderItem(info: PluginInfo): HTMLElement {
     const item = el("div", "pl-item");
     item.dataset.plugin = info.id;
@@ -243,29 +284,31 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     name.textContent = info.id;
     name.title = info.id;
 
-    // Инфо-кнопка — первым элементом головы; при пустых notices не создаётся (защита).
-    if (info.notices.length > 0) {
+    const open = expanded.has(info.id);
+
+    // Порядок головы: тумблер → имя → инфо (если notices) → бейдж → шеврон.
+    head.append(toggleLabel, name);
+    // Инфо-кнопка — только при непустых notices: пустой поповер бессмыслен.
+    const infoPopover = info.notices.length > 0 ? renderInfoPopover(info) : null;
+    if (infoPopover) {
       const infoButton = renderInfoButton(info);
-      const infoPopover = renderInfoPopover(info);
       infoPopovers.set(infoButton, infoPopover);
-      head.append(infoButton, toggleLabel, name, renderBadge(info));
-      head.append(infoPopover);
-    } else {
-      head.append(toggleLabel, name, renderBadge(info));
+      head.append(infoButton);
     }
+    head.append(renderBadge(info), renderExpandButton(info, open));
+    // Поповер — последним ребёнком головы: позиционируется абсолютно, порядок не важен.
+    if (infoPopover) head.append(infoPopover);
 
-    const children: HTMLElement[] = [head];
+    const body = el("div", "pl-item-body");
+    body.id = bodyId(info.id);
 
-    // Инлайн-секция согласия: запросы манифеста + фактически выданные права.
-    const consent = renderConsent(info);
-    if (consent) children.push(consent);
-
-    // Статус `failed` несёт сообщение — показываем его рядом с бейджем.
+    // Порядок тела: критичное выше рутины — fail-notice → actions → consent.
+    // Статус `failed` несёт сообщение — показываем его первым.
     const failMessage = statusMessage(info.status);
     if (failMessage) {
       const node = el("div", "pl-notice");
       node.textContent = failMessage;
-      children.push(node);
+      body.append(node);
     }
 
     const actions = el("div", "pl-actions");
@@ -281,16 +324,23 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
       btn.type = "button";
       btn.className = "pl-cmd";
       btn.dataset.command = command.id;
-      btn.textContent = "Выполнить";
+      btn.textContent = command.title;
       btn.title = command.keybinding
         ? `${command.title} (${command.keybinding})`
         : command.title;
       btn.setAttribute("aria-label", `Выполнить: ${command.title}`);
       actions.append(btn);
     }
-    children.push(actions);
+    body.append(actions);
 
-    item.append(...children);
+    // Инлайн-секция согласия: запросы манифеста + фактически выданные права.
+    const consent = renderConsent(info);
+    if (consent) body.append(consent);
+
+    // Тело всегда в DOM (скрывается CSS `.pl-item:not(.open)`) — иначе e2e не
+    // найдёт контролы свёрнутой карточки до её раскрытия.
+    item.classList.toggle("open", open);
+    item.append(head, body);
     return item;
   }
 
@@ -322,9 +372,30 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     return button;
   }
 
+  /**
+   * Раскрывает/сворачивает карточку на месте — без `refresh` и IPC: узлы не
+   * пересоздаются, фокус остаётся на шевроне, лишних гонок и перерисовок нет.
+   */
+  function toggleExpand(btn: HTMLButtonElement): void {
+    const id = btn.dataset.expand;
+    const item = btn.closest<HTMLElement>(".pl-item");
+    if (!id || !item) return;
+    const open = !expanded.has(id);
+    if (open) expanded.add(id);
+    else expanded.delete(id);
+    item.classList.toggle("open", open);
+    btn.setAttribute("aria-expanded", String(open));
+    btn.setAttribute("aria-label", `${open ? "Свернуть" : "Развернуть"} карточку ${id}`);
+  }
+
   function render(list: PluginInfo[]): void {
     // `replaceChildren` уничтожит узлы, включая открытый поповер, — сбрасываем ссылку.
     closeAllInfoPopovers();
+    // Прунинг: выкидываем раскрытие исчезнувших плагинов, иначе `Set` растёт вечно.
+    const ids = new Set(list.map((info) => info.id));
+    for (const id of expanded) {
+      if (!ids.has(id)) expanded.delete(id);
+    }
     if (list.length === 0) {
       const empty = el("div", "side-empty pl-empty");
       empty.textContent = "Плагины не найдены";
@@ -489,6 +560,11 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
       toggleInfoPopover(info);
       return;
     }
+    const expand = target?.closest<HTMLButtonElement>(".pl-item-expand");
+    if (expand) {
+      toggleExpand(expand);
+      return;
+    }
     const reload = target?.closest<HTMLButtonElement>(".pl-reload");
     if (reload) {
       void handleReload(reload);
@@ -535,6 +611,7 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
 
     dispose(): void {
       disposed = true;
+      expanded.clear(); // симметрия с create: контроллер не удерживает id после уничтожения
       closeAllInfoPopovers();
       root.removeEventListener("change", onChange);
       root.removeEventListener("click", onClick);
