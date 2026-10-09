@@ -28,13 +28,16 @@
 | D8 | Имя продукта `darmark`: identifier `dev.darmark.app`, productName `darmark`, каталог `%APPDATA%/darmark/` | Имя обязано быть согласовано во всех артефактах и e2e-фикстурах. |
 | D9 | Лимиты памяти плагина — средствами рантайма/ОС; собственные аллокаторы и арены (`bumpalo`) не применяются | См. §10; отклонение арен — §16 (ADR-16). |
 | D10 | Язык документации — русский (код, комментарии, ТЗ, ADR); публичный API-референс — русский, en-перевод отложен | — |
+| D11 | Порядок принятия: решения фиксируются этим документом, проверяются измерительным стендом, затем оформляются как ADR | ADR предшествуют реализации; трассировка — §16, дорожная карта — `docs/ROADMAP.md` |
 | D12 | Excel-таблицы не развиваются; существующий функционал `tables.ts` сохраняется и остаётся рабочим | Размер усилий не окупается; приоритет — плагинная платформа и Document/View/Pane. |
 | D13 | Только Lua 5.5; сравнение с 5.4 не планируется | 5.5 даёт требуемые возможности (§6.1.1). |
-| D16 | Изоляция плагинов — отдельный дочерний процесс; GUI-хост без `mlua`, на `panic = "abort"` | Убирает хрупкость in-process (panic-стратегия, оверхед hook, патч `pcall`, C-ABI) и даёт изоляцию отказов. In-process `unwind` отклонён (размер ломает D6), in-process C-hook — отклонён (хрупкость). См. §6, §10, §11.4. |
+| D14 | Транспорт host↔child — stdio с JSON-совместимым конвертом; кадр `u32 LE длина \|\| JSON` | Единый конверт для данных и dev-режима; не требует дополнительной библиотеки поверх пайпа |
+| D15 | Результаты измерений (размер, память, производительность) фиксируются в `docs/proto/FINDINGS.md` | Нормативная спецификация не содержит чисел измерений; трассировка — §16 |
+| D16 | Изоляция плагинов — отдельный дочерний процесс; GUI-хост без `mlua`, на `panic = "abort"` | Убирает хрупкость in-process (panic-стратategия, оверхед hook, патч `pcall`, C-ABI) и даёт изоляцию отказов. In-process `unwind` отклонён (размер ломает D6), in-process C-hook — отклонён (хрупкость). См. §6, §10, §11.4. |
 | D17 | `rawget`/`rawset` чистятся из `BASE` вместе с `load`/`collectgarbage` | Не нужны плагину и снимают обход санитизации метатаблицами. |
 
 **Порядок принятия (D11).** Решения D1–D17 фиксируются этим документом, проверяются измерительным
-стендом, затем оформляются как ADR; ADR предшествуют реализации H1–H3. Трассировка — §16, дорожная
+стендом, затем оформляются как ADR; ADR предшествуют реализации. Трассировка — §16, дорожная
 карта — `docs/ROADMAP.md`.
 
 ---
@@ -70,8 +73,10 @@
 │  документы · рендер · плагины · настройки                    │
 ├─────────────────────────────────────────────────────────────┤
 │ Rust-хост (crates/app/src-tauri/src)                         │
-│  DocumentStore · RenderCache · PluginSupervisor · Sanitizer  │
+│  DocumentStore · RenderCache · Sanitizer                     │
 │  EventBus · SettingsStore                                    │
+│  plugins/: supervisor · manager · services · bus · scan ·    │
+│            settings · views                                  │
 ├─────────────────────────────────────────────────────────────┤
 │ Child-хост плагина (отдельный процесс, stdio-RPC)            │
 │  PluginHost(mlua) · Lua 5.5 · Job Object                     │
@@ -256,6 +261,24 @@ export interface ViewContext {
 | `mapping.ts` | карты «байты ↔ code units» |
 | `tables.ts` | украшение таблиц (функционал заморожен, D12) |
 | `tauri.ts` | IPC-обёртки |
+| `sidebar.ts` | rail + сворачиваемый sidebar |
+| `statusBar.ts` | статусбар: состояние, сообщения, позиция |
+| `fileActions.ts` | файловые операции (новый/открыть/сохранить) |
+| `shell.ts` | оболочка: палитра, диалоги, toast |
+| `formatActions.ts` | Markdown-обёртки над выделением |
+| `gutter.ts` | номера строк редактора |
+| `inspector.ts` | двусторонняя подсветка блоков |
+| `images.ts` | относительные src → asset-URL |
+| `scrollsync.ts` | синхронная прокрутка редактор ↔ превью |
+| `renderIndex.ts` | единый индекс на ревизию |
+| `palette.ts` | палитра команд (Ctrl+K) |
+| `dialog.ts` | модальная инфраструктура |
+| `toast.ts` | уведомления |
+| `pluginManager.ts` | панель плагинов, карточки, согласие |
+| `pluginViews.ts` | тир-1 представления плагинов |
+| `pluginStatusBar.ts` | per-plugin статусбар |
+| `pluginColor.ts` | цвета плагинов |
+| `sampleDocument.ts` | стартовый документ |
 
 `linkController` строит **один** `RenderIndex` на `rev` и раздаёт его inspector и scrollsync.
 
@@ -288,7 +311,7 @@ mlua = { version = "0.12", features = ["lua55", "vendored"] }
 
 Также доступен `table.create`. API-референс плагинов **обязан** быть написан явно под 5.5, а не скопирован из материалов под 5.1/5.4.
 
-**Набор стандартных библиотек** — задаётся через `Lua::new_with(StdLib, LuaOptions)` (перечисляются только включаемые библиотеки, см. уточнение F7 после таблицы):
+**Набор стандартных библиотек** — задаётся через `Lua::new_with(StdLib, LuaOptions)` (перечисляются только включаемые библиотеки):
 
 | Библиотека | Включаем | Причина |
 |---|---|---|
@@ -301,7 +324,7 @@ mlua = { version = "0.12", features = ["lua55", "vendored"] }
 
 **Чистка после загрузки `BASE`:** удалить `load`, `loadfile`, `dofile`, `collectgarbage`, `rawget`, `rawset`; `print` перенаправить в `host.log("info", ...)`.
 
-> **Уточнение (F7).** В `mlua` 0.12 отдельного флага `BASE` нет: базовая библиотека грузится **неявно**. Поэтому в `new_with` передаются только `STRING|TABLE|MATH|UTF8`, а опасные входы базовой библиотеки удаляются из глобалов после создания состояния (строка `BASE` выше и D17).
+> **Уточнение.** В `mlua` 0.12 отдельного флага `BASE` нет: базовая библиотека грузится **неявно**. Поэтому в `new_with` передаются только `STRING|TABLE|MATH|UTF8`, а опасные входы базовой библиотеки удаляются из глобалов после создания состояния (строка `BASE` выше и D17).
 
 ### 6.2. Модель: плагин = код, инстанс = привязка
 ```
@@ -350,6 +373,9 @@ json.encode(value) / json.decode(s)
 
 ### 6.4. Точки расширения (`contributes`)
 Манифест декларирует, что плагин добавляет:
+
+> **Примечание:** `contributes.toolbar` объявляется, но `ui:toolbar` не реализуется — кнопка
+> появится только после реализации соответствующего разрешения (§8).
 ```json
 {
   "id": "word-count",
@@ -443,23 +469,23 @@ scan(plugins_dir) -> validate(manifest) -> load(src) -> on_activate(ctx)
 
 По образцу Tauri ACL: **всё запрещено по умолчанию**, плагин декларирует нужное, пользователь подтверждает при установке/первом запуске и может отозвать.
 
-| Разрешение | Что даёт |
-|---|---|
-| `document:read` | `get_document_len`, `get_document_range`, `get_document_version`, `get_document_text` |
-| `document:write` | `apply_edit` |
-| `view:create` | регистрация тир-1 view |
-| `view:modify` | `set_view_content`, `on_event` |
-| `filesystem:read` | `host.read_file(path)` — со scope (какие пути) |
-| `filesystem:write` | `host.write_file(path, data)` — со scope |
-| `network` | `host.http_*` — по умолчанию **не предоставляется вообще** |
-| `ui:menu` | пункт в меню |
-| `ui:statusbar` | элемент статусбара |
-| `ui:sidebar` | панель в сайдбаре |
-| `ui:toolbar` | кнопка в тулбаре |
+| Разрешение | Что даёт | Статус |
+|---|---|---|
+| `document:read` | `get_document_len`, `get_document_range`, `get_document_version`, `get_document_text` | ✅ реализовано |
+| `document:write` | `apply_edit` | ✅ реализовано |
+| `view:create` | регистрация тир-1 view | ✅ реализовано (декларативное) |
+| `view:modify` | `set_view_content`, `on_event` | ✅ реализовано |
+| `ui:statusbar` | элемент статусбара | ✅ реализовано |
+| `filesystem:read` | `host.read_file(path)` — со scope (какие пути) | ❌ не реализуется |
+| `filesystem:write` | `host.write_file(path, data)` — со scope | ❌ не реализуется |
+| `network` | `host.http_*` — по умолчанию **не предоставляется вообще** | ❌ не реализуется |
+| `ui:menu` | пункт в меню | ⏳ отложено |
+| `ui:sidebar` | панель в сайдбаре | ⏳ отложено |
+| `ui:toolbar` | кнопка в тулбаре | ⏳ отложено |
 
 Проверка — **на стороне хоста, до вызова**. Плагин без `document:write` получает `error { code = "permission_denied", permission = "document:write" }`, а не исключение Lua.
 
-**Согласие (H2):** пользователь выдаёт подмножество декларированных прав (`granted`), эффективный набор = `manifest ∩ granted` (deny-by-default). Согласие хранится в `%APPDATA%/darmark/config.json`; смена набора у запущенного плагина применяется перезапуском child-процесса.
+**Согласие:** пользователь выдаёт подмножество декларированных прав (`granted`), эффективный набор = `manifest ∩ granted` (deny-by-default). Согласие хранится в `%APPDATA%/darmark/config.json`; смена набора у запущенного плагина применяется перезапуском child-процесса.
 
 ---
 
@@ -472,7 +498,6 @@ scan(plugins_dir) -> validate(manifest) -> load(src) -> on_activate(ctx)
 | `document:opened` / `document:closed` | `doc_id`, `path` |
 | `view:scroll` | `view_id`, `top` |
 | `view:focus` | `view_id` |
-| `pane:resized` | `pane_id`, `w`, `h` |
 | `command:invoked` | `command_id`, `doc_id` |
 
 ### 9.2. Модель доставки: notify-only + pull
@@ -539,8 +564,8 @@ scan(plugins_dir) -> validate(manifest) -> load(src) -> on_activate(ctx)
 | Аспект | Правило |
 |---|---|
 | SVG | allowlist-подмножество: `svg`, `g`, `path`, `rect`, `circle`, `line`, `polyline`, `text`, `defs`, `use` — без событий и внешних ссылок; иначе растровый fallback |
-| Атрибуты плагина | `data-p-<pluginid>-*` переживают санитизацию (единственная правка allowlist ядра в H2) |
-| Классы | атрибут `class` входит в глобальный allowlist и сохраняется как есть; для плагинов зарезервирован префикс `p-<pluginid>-`. Ужесточение до «только `p-*`» в H2 **не выполняется** |
+| Атрибуты плагина | `data-p-<pluginid>-*` переживают санитизацию (единственная правка allowlist ядра) |
+| Классы | атрибут `class` входит в глобальный allowlist и сохраняется как есть; для плагинов зарезервирован префикс `p-<pluginid>-`. Ужесточение до «только `p-*`» **не выполняется** |
 | Схемы URL | `http`, `https`, `mailto`, `tel`; плагинам `http` в `src`/`href` дополнительно запрещён без permission `network` |
 
 ### 11.3. CSP
@@ -577,6 +602,9 @@ scan(plugins_dir) -> validate(manifest) -> load(src) -> on_activate(ctx)
 | Дифференциальные | harness CommonMark/GFM | `to_html` vs `to_html_mapped` на корпусе спецификаций |
 
 ### 13.2. Замороженные E2E-контракты (нельзя ломать)
+
+> Источник истины — `tasks/TZ-UX-SPEC-CLEANUP.md §1`. Список ниже продублирован для удобства;
+> при расхождении приоритет у `TZ-UX-SPEC-CLEANUP.md`.
 - **DOM id**: `editor`, `preview`, `btn-inspect`, `chk-sync`, `chk-preview`, `btn-new`, `btn-open`, `btn-save`, `btn-save-as`, `file-label`, `stat-pos`, `stat-size`, `stat-msg`, `stat-inspect`, `toolbar`, `panes`, `statusbar`, `toggle-sync`, `toggle-preview`, `app`.
 - **Селекторы**: `#preview .md-block[data-md]`, `.table-enhanced`, `.table-enhanced tbody tr`, `.table-enhanced td[data-md]`, `.table-count`, `.table-scroll`, `.col-filter-btn`, `.col-filter-menu`, `.col-filter-item`, `.inspect-active`, `.inspect-col`, `tr.inspect-row`.
 - **Текстовые**: стартовый документ `"Добро пожаловать в darmark"`; заголовки демо-таблицы `Файл | Размер | Строк | Изменён`.
@@ -601,7 +629,7 @@ scan(plugins_dir) -> validate(manifest) -> load(src) -> on_activate(ctx)
 
 ## 15. Порядок работ
 
-Дорожная карта H1–H3 — `docs/ROADMAP.md`. Порядок принятия решений — §0 (проверочный стенд → ADR → реализация).
+Дорожная карта — `docs/ROADMAP.md`. Порядок принятия решений — §0 (проверочный стенд → ADR → реализация).
 
 ---
 

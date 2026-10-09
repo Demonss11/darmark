@@ -1,8 +1,8 @@
-# PLUGIN API — референс Lua-плагинов darmark (H2)
+# PLUGIN API — референс Lua-плагинов darmark
 
 > **Язык:** Lua **5.5** (mlua `lua55` + vendored). Референс написан под 5.5, а не скопирован
-> из материалов под 5.1/5.4 (§6.1.1 DESIGN_DOC). Нормативная архитектура — `docs/DESIGN_DOC.md`
-> §6–§12, ADR-0021/0022/0023. Образцы — каталог `plugins/` в репозитории.
+> из материалов под 5.1/5.4. Нормативная архитектура — `docs/DESIGN_DOC.md`, ADR-0021/0022/0023.
+> Образцы — каталог `plugins/` в репозитории.
 
 Плагин — это каталог `%APPDATA%/darmark/plugins/<id>/` с манифестом `plugin.json` и `.lua`-файлом.
 Плагин исполняется в **отдельном процессе** и не видит DOM: единственный доступ к приложению —
@@ -33,23 +33,24 @@ host-функции и события (notify-only + pull).
 - `id` — `[a-z0-9_-]+`; `entry` — имя `*.lua` без путей и `..`.
 - `api_version` — целое ≥ 1; плагин с `api_version > HOST_API_VERSION` (сейчас 1) отвергается.
 - Пустые обязательные поля (`name`, `version`) — ошибка.
+- **Лимит исходника:** размер `.lua`-файла ≤ **1 МиБ** (`MAX_PLUGIN_SOURCE_BYTES`).
 
-### Разрешения (§8 DESIGN_DOC)
+### Разрешения
 
 | Разрешение | Что даёт |
 |---|---|
 | `document:read` | `get_document_len`, `get_document_range`, `get_document_version`, `get_document_text` |
 | `document:write` | `apply_edit` |
-| `view:create` | регистрация тир-1 view (`contributes.views`) — *в H2 регистрация не гейтится по этому разрешению; см. примечание* |
+| `view:create` | регистрация тир-1 view (`contributes.views`) — *регистрация не гейтится по этому разрешению; см. примечание* |
 | `view:modify` | `set_view_content` |
 | `ui:statusbar` | `show_message` |
 
-> Примечание про `view:create`: в H2 вкладка представления регистрируется у любого **включённого**
+> Примечание про `view:create`: вкладка представления регистрируется у любого **включённого**
 > плагина с непустым `contributes.views`; фактическая запись HTML всё равно требует `view:modify`.
 > Отдельная проверка `view:create` при регистрации не выполняется (разрешение декларативное).
 
-- Известные, но **вне H2** (`ui:menu`, `ui:sidebar`, `ui:toolbar`) отвергаются с сообщением
-  «не реализовано в H2».
+- Известные, но **не поддерживаемые** (`ui:menu`, `ui:sidebar`, `ui:toolbar`) отвергаются с сообщением
+  «не реализовано».
 - `filesystem:*`/`network` **не предоставляются**: декларация отвергается валидатором.
 - Проверка — **на хосте, до вызова**. Плагин без нужного разрешения получает `permission_denied`
   **значением**, а не исключением.
@@ -98,8 +99,8 @@ host.apply_edit(doc_id, start, stop, text)   -> (boolean, err)  -- document:writ
 
 - `start`/`stop`/`len` — **байтовые** смещения UTF-8 (как `data-md` в ядре). `end` подрезается
   вниз до границы символа; `start` вне границы символа → ошибка `invalid_range`.
-- `get_document_range` — основной путь: окно ограничено лимитом кадра (1 МиБ). Для больших
-  документов читайте **циклом** окон (см. пример `word-count`).
+- `get_document_range` — основной путь: окно ограничено лимитом кадра (**1 МиБ**). Для больших
+  документов читайте **циклом** окон (см. пример `word-count` в §7).
 - `apply_edit` заменяет `[start, stop)` на `text`; `rev` растёт только при реальной смене (эхо-защита).
 
 ### Представление (тир-1)
@@ -119,14 +120,15 @@ host.set_view_content(view_id, html)  -> (boolean, err)   -- view:modify
 host.log(level, message)      -- "debug"|"info"|"warn"|"error"; print() идёт сюда же
 host.show_message(text)       -- (boolean, err)   -- ui:statusbar; уведомление в статусбар
 host.export_html(html)        -- (boolean, err)   -- нативный диалог сохранения; без filesystem:write
-host.get_setting(key)         -- (value, err)     -- НЕ реализовано в H2: err.code == "not_implemented"
-host.set_setting(key, value)  -- (boolean, err)   -- НЕ реализовано в H2: err.code == "not_implemented"
+host.get_setting(key)         -- (value, err)     -- НЕ реализовано: err.code == "not_implemented"
+host.set_setting(key, value)  -- (boolean, err)   -- НЕ реализовано: err.code == "not_implemented"
 ```
 
 `host.log`/`print` в GUI-хосте выводятся в stderr приложения; в dev-режиме
 (`--serve-plugin`/`--debug-plugin`) — кадром `ToHost::Log` в назначенный stdio; в `--self-test` —
 в stderr.
-`get_setting`/`set_setting` в H2 не реализованы (задел на будущее): вызов возвращает
+
+`get_setting`/`set_setting` не реализованы (задел на будущее): вызов возвращает
 `(nil, { code = "not_implemented" })`, а `contributes.settings` пока не отображается в UI.
 
 `export_html`: `true` — записано, `false` — пользователь отменил диалог; `filesystem:write`
@@ -146,22 +148,22 @@ json.decode(s)                 -> value
 ## 4. События
 
 Модель **notify-only + pull**: событие не несёт содержимое документа, только `doc_id`+`rev`;
-текст плагин читает сам. Каталог H2:
+текст плагин читает сам. Каталог событий:
 
 | Событие | payload |
 |---|---|
 | `document:changed` | `{ doc_id, rev }` |
 | `document:opened` | `{ doc_id, path }` |
-| `document:closed` | `{ doc_id, path }` (`path` всегда `null` — путь закрытого документа хосту неизвестен) |
+| `document:closed` | `{ doc_id, path }` (`path` всегда `null` — путь закрытого документа хосту неизвестн) |
 | `command:invoked` | `{ command_id, doc_id }` |
 
 `document:changed` по одному `doc_id` **коалесцируется по `rev`** (доставляется последняя
 ревизия за тик). Команды из `contributes.commands` исполняются событием `command:invoked`
-(в H2 — кнопкой «Выполнить» в менеджере плагинов).
+(кнопкой «Выполнить» в менеджере плагинов).
 
 ---
 
-## 5. Особенности Lua 5.5 (§6.1.1)
+## 5. Особенности Lua 5.5
 
 - **Явные глобалы.** Есть декларация `global x`; в скопе с явной декларацией неявные глобалы
   запрещены — опечатка становится ошибкой компиляции, а не тихим `nil`. Локальные — `local`.
@@ -172,7 +174,7 @@ json.decode(s)                 -> value
   сборщиком Lua).
 - **`table.create(narr, nhash, nelem)`** — создать таблицу с предвыделением (для больших массивов).
 
-Стандартные библиотеки: `BASE` (с чисткой), `STRING`, `TABLE`, `MATH`, `UTF8`. **Недоступны:**
+Стандартные библиотеки: `BASE` (с чистки), `STRING`, `TABLE`, `MATH`, `UTF8`. **Недоступны:**
 `OS`, `IO`, `PACKAGE`, `COROUTINE`, `DEBUG`; из `BASE` удалены `load`, `loadfile`, `dofile`,
 `collectgarbage`, `rawget`, `rawset` (D17); `print` перенаправлен в `host.log("info", …)`.
 
@@ -225,3 +227,12 @@ end
 
 function on_deactivate(ctx) end
 ```
+
+---
+
+## См. также
+
+- `docs/PLUGIN_GUIDE.md` — пошаговое руководство по написанию плагинов
+- `docs/adr/0023-plugin-runtime.md` — архитектура плагинной системы
+- `docs/DESIGN_DOC.md` — нормативная спецификация
+- `tasks/TZ-UX-SPEC-CLEANUP.md` — замороженные контракты и открытые пункты
