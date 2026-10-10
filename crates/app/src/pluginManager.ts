@@ -15,12 +15,14 @@ import {
   errorMessage,
   listPlugins,
   reloadPlugin,
+  removePlugin,
   runPluginCommand,
   setPluginEnabled,
   setPluginPermissions,
   type PluginInfo,
   type PluginStatus,
 } from "./tauri";
+import { openDialog, type Dialog } from "./dialog";
 import { ownerPluginId } from "./pluginTarget";
 import { pluginColor } from "./pluginColor";
 
@@ -319,6 +321,12 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     reload.disabled = !info.enabled;
     actions.append(reload);
 
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "pl-remove";
+    remove.textContent = "Удалить";
+    actions.append(remove);
+
     for (const command of info.commands) {
       const btn = document.createElement("button");
       btn.type = "button";
@@ -542,6 +550,63 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     await refresh();
   }
 
+  /**
+   * Confirm-диалог удаления плагина через `dialog.ts` (variant «center»).
+   * Возвращает `true`, если пользователь подтвердил удаление.
+   */
+  function confirmRemovePlugin(id: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      const content = el("div", "pl-confirm-remove");
+      const text = el("p", "pl-confirm-text");
+      text.textContent = `Плагин «${id}» будет удалён безвозвратно. Его файлы и настройки будут стёрты.`;
+      content.append(text);
+
+      const buttons = el("div", "pl-confirm-buttons");
+      const cancelBtn = document.createElement("button");
+      cancelBtn.type = "button";
+      cancelBtn.className = "pl-confirm-cancel";
+      cancelBtn.textContent = "Отмена";
+      const confirmBtn = document.createElement("button");
+      confirmBtn.type = "button";
+      confirmBtn.className = "pl-confirm-ok";
+      confirmBtn.textContent = "Удалить";
+      buttons.append(cancelBtn, confirmBtn);
+      content.append(buttons);
+
+      let dialog: Dialog | null = null;
+      const cleanup = (result: boolean) => {
+        dialog?.close();
+        resolve(result);
+      };
+
+      cancelBtn.addEventListener("click", () => cleanup(false));
+      confirmBtn.addEventListener("click", () => cleanup(true));
+
+      dialog = openDialog({
+        title: "Удаление плагина",
+        content,
+        variant: "center",
+        initialFocus: cancelBtn,
+        onClose: () => resolve(false),
+      });
+    });
+  }
+
+  async function handleRemove(btn: HTMLButtonElement): Promise<void> {
+    const id = btn.closest<HTMLElement>(".pl-item")?.dataset.plugin;
+    if (!id) return;
+    const confirmed = await confirmRemovePlugin(id);
+    if (!confirmed) return;
+    btn.disabled = true;
+    try {
+      await removePlugin(id);
+      status(`Плагин ${id}: удалён`);
+    } catch (e) {
+      status(`Плагин ${id}: ${errorMessage(e)}`);
+    }
+    await refresh();
+  }
+
   async function handleCommand(btn: HTMLButtonElement): Promise<void> {
     const commandId = btn.dataset.command;
     if (!commandId) return;
@@ -579,6 +644,11 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     const reload = target?.closest<HTMLButtonElement>(".pl-reload");
     if (reload) {
       void handleReload(reload);
+      return;
+    }
+    const remove = target?.closest<HTMLButtonElement>(".pl-remove");
+    if (remove) {
+      void handleRemove(remove);
       return;
     }
     const command = target?.closest<HTMLButtonElement>(".pl-cmd");

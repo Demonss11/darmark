@@ -60,6 +60,8 @@ pub struct PluginRuntime {
     source: String,
     /// Путь к `.lua` на диске: `reload`/`start` перечитывают его, чтобы подхватить правки (§4.7).
     entry_path: Option<PathBuf>,
+    /// Каталог плагина на диске — для удаления (`remove_plugin`).
+    dir: PathBuf,
     services: Arc<dyn HostServices>,
     supervisor: Option<Supervisor>,
     enabled: bool,
@@ -89,6 +91,7 @@ impl PluginRuntime {
             exe: exe.into(),
             source: source.into(),
             entry_path: None,
+            dir: PathBuf::new(),
             services,
             supervisor: None,
             enabled: true,
@@ -108,6 +111,12 @@ impl PluginRuntime {
     /// Задаёт путь `.lua` на диске: с ним `start`/`reload` читают свежий исходник (§4.7).
     pub fn with_entry_path(mut self, path: impl Into<PathBuf>) -> Self {
         self.entry_path = Some(path.into());
+        self
+    }
+
+    /// Задаёт каталог плагина на диске — для удаления (`remove_plugin`).
+    pub fn with_dir(mut self, dir: impl Into<PathBuf>) -> Self {
+        self.dir = dir.into();
         self
     }
 
@@ -344,6 +353,20 @@ impl PluginManager {
         plugin.reload()
     }
 
+    /// Удаляет плагин из реестра: останавливает child и возвращает путь к каталогу
+    /// на диске для последующего удаления файлов.
+    ///
+    /// Каталог не удаляется здесь — это ответственность вызывающего (`PluginHost`),
+    /// который сначала снимает views и настройки, а потом удаляет файлы.
+    pub fn remove_plugin(&mut self, id: &str) -> Result<PathBuf, PluginError> {
+        let mut plugin = self
+            .plugins
+            .remove(id)
+            .ok_or_else(|| PluginError::new("unknown_plugin", format!("нет плагина {id}")))?;
+        plugin.stop();
+        Ok(plugin.dir)
+    }
+
     /// `set_plugin_permissions`: фиксирует согласие пользователя на права плагина.
     ///
     /// Пересечение с манифестом (`manifest ∩ granted`) — deny-by-default: выданное
@@ -450,6 +473,7 @@ pub fn load_plugins(
             commands,
         )
         .with_entry_path(discovered.entry_path)
+        .with_dir(discovered.dir)
         .with_granted(granted);
         runtime.set_enabled(enabled);
         manager.register(runtime);

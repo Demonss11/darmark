@@ -428,6 +428,24 @@ fn reload_plugin(id: String, state: tauri::State<'_, PluginState>) -> Result<(),
     }
 }
 
+/// Удаляет плагин: останавливает child, снимает views, удаляет настройки и каталог
+/// с диска (Фаза 5, п.9 TZ-UX-SPEC-CLEANUP).
+#[tauri::command(async)]
+fn remove_plugin(id: String, state: tauri::State<'_, PluginState>) -> Result<(), CommandError> {
+    #[cfg(windows)]
+    {
+        state
+            .host
+            .remove(&id)
+            .map_err(|error| CommandError::new(error::ErrorCode::Plugin, error.message))
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (id, state);
+        Err(plugin_unavailable())
+    }
+}
+
 /// Фиксирует согласие пользователя на права плагина (consent как реальный гейт, §11.1 п.4).
 ///
 /// Сохраняется только `manifest ∩ granted` (deny-by-default); активный плагин
@@ -615,6 +633,7 @@ pub fn run() {
             set_plugin_enabled,
             set_plugin_permissions,
             reload_plugin,
+            remove_plugin,
             run_plugin_command,
             open_devtools
         ])

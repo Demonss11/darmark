@@ -138,6 +138,11 @@ export function reloadPlugin(id: string): Promise<void> {
   return invoke<void>("reload_plugin", { id });
 }
 
+/** Полностью удаляет плагин: останавливает child, снимает views, удаляет каталог и настройки (п.9 TZ-UX-SPEC-CLEANUP). */
+export function removePlugin(id: string): Promise<void> {
+  return invoke<void>("remove_plugin", { id });
+}
+
 /** Исполняет команду плагина (`command:invoked` в Lua-хендлер). */
 export function runPluginCommand(commandId: string): Promise<void> {
   // Tauri сопоставляет camelCase-ключ `commandId` с Rust-параметром `command_id`.

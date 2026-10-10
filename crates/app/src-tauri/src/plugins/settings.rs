@@ -145,6 +145,11 @@ impl SettingsStore {
             .granted_permissions = permissions;
     }
 
+    /// Удаляет настройки плагина (вкл/выкл, согласованные права).
+    pub fn remove_plugin(&mut self, id: &str) {
+        self.plugins.remove(id);
+    }
+
     /// Добавляет файл в начало списка недавних: дедупликация, лимит [`RECENT_FILES_LIMIT`].
     pub fn push_recent_file(&mut self, path: impl Into<String>) {
         let path = path.into();

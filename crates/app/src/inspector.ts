@@ -96,6 +96,9 @@ export function createInspector(opts: {
   // при перестройке индекса (правка/перерендер) и выходе из режима: байтовые
   // смещения блока после правки недействительны.
   let pinned = false;
+  // Временная подсветка (click-to-inspect вне режима). В отличие от `pinned`,
+  // не закрепляется — снимается при любом клике.
+  let transient = false;
 
   // Состояние textarea и фокуса до включения режима (восстанавливаем на выходе).
   let savedSelection = { start: 0, end: 0 };
@@ -193,6 +196,16 @@ export function createInspector(opts: {
 
   // ---------- слушатели ----------
 
+  /**
+   * Получение индекса для click-to-inspect вне режима.
+   * В отличие от `onIndexChanged()`, не требует активного режима инспектора.
+   */
+  function getIndex(): { blocks: Block[]; maps: UnitMaps } | null {
+    const snap = index.current();
+    if (!snap) return null;
+    return { blocks: snap.blocks, maps: snap.maps };
+  }
+
   function onMouseOver(e: MouseEvent) {
     if (!active || pinned) return; // закреплённую подсветку наведение не меняет
     const el = e.target as Element | null;
@@ -211,6 +224,53 @@ export function createInspector(opts: {
     lastHover = null;
     clearBlockHighlight(); // снимает и подсветку источника, и бэнды (AC-6)
     restoreSavedFocus();
+  }
+
+  /**
+   * Клик вне preview снимает подсветку и закрепление (исправление UX-бага).
+   * Раньше подсветка в предпросмотре оставалась, если кликнуть в другую область
+   * (редактор, тулбар и т.д.) после закрепления подсветки в предпросмотре.
+   * Также снимает временную подсветку (click-to-inspect вне режима).
+   */
+  function onDocumentClick(e: MouseEvent) {
+    if (!active && !transient) return;
+    const targetEl = e.target as Element | null;
+    if (preview.contains(targetEl)) return; // клик внутри preview — не наш случай
+    releasePin();
+    if (active) restoreSavedFocus();
+  }
+
+  /**
+   * Click-to-inspect вне режима инспектора (пункт 11.1.3).
+   * Подсвечивает блок в предпросмотре и выделяет фрагмент в редакторе,
+   * но НЕ закрепляет подсветку — она исчезает при следующем клике.
+   */
+  function onClickPreview(e: MouseEvent) {
+    if (active) return; // в режиме инспектора работает onClickCapture
+    const targetEl = e.target as Element | null;
+    const interactive = !!targetEl?.closest?.(INTERACTIVE_SELECTOR);
+    if (interactive) return; // интерактивные элементы — обычное поведение
+
+    const target = resolveTarget(targetEl, e.shiftKey);
+    if (!target) return;
+
+    const idx = getIndex();
+    if (!idx) return;
+
+    // Подсвечиваем блок в предпросмотре (временно)
+    clearBlockHighlight();
+    const range = parseRange(target.el);
+    if (!range) return;
+    const start = bytesToUnits(idx.maps, range.start);
+    const end = bytesToUnits(idx.maps, range.end);
+    target.el.classList.add("inspect-active");
+    activeBlockEl = target.el;
+    transient = true;
+
+    // Выделяем текст в редакторе и прокручиваем
+    editor.focus();
+    editor.setSelectionRange(start, end);
+    programmaticSel = { start, end };
   }
 
   /**
@@ -265,6 +325,7 @@ export function createInspector(opts: {
   // элементу (BUG-003).
   function releasePin() {
     pinned = false;
+    transient = false;
     lastHover = null;
     lastHoverShift = false;
     clearBlockHighlight();
@@ -329,6 +390,8 @@ export function createInspector(opts: {
     preview.addEventListener("mouseover", onMouseOver);
     preview.addEventListener("mouseout", onMouseOut);
     preview.addEventListener("click", onClickCapture, true);
+    preview.addEventListener("click", onClickPreview);
+    document.addEventListener("click", onDocumentClick);
     document.addEventListener("selectionchange", onEditorSelection);
     document.addEventListener("keydown", onShiftKey);
     document.addEventListener("keyup", onShiftKey);
@@ -340,6 +403,7 @@ export function createInspector(opts: {
     if (!active) return;
     active = false;
     pinned = false;
+    transient = false;
     clearBlockHighlight();
     blocks = null;
     maps = null;
@@ -351,6 +415,8 @@ export function createInspector(opts: {
     preview.removeEventListener("mouseover", onMouseOver);
     preview.removeEventListener("mouseout", onMouseOut);
     preview.removeEventListener("click", onClickCapture, true);
+    preview.removeEventListener("click", onClickPreview);
+    document.removeEventListener("click", onDocumentClick);
     document.removeEventListener("selectionchange", onEditorSelection);
     document.removeEventListener("keydown", onShiftKey);
     document.removeEventListener("keyup", onShiftKey);
@@ -362,6 +428,7 @@ export function createInspector(opts: {
 
   function onIndexChanged(): void {
     pinned = false; // индекс перестроен: закреплённые смещения устарели
+    transient = false; // индекс перестроен: временная подсветка устарела
     clearBlockHighlight();
     blocks = null;
     maps = null;

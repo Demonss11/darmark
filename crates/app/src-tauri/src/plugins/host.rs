@@ -310,6 +310,42 @@ impl PluginHost {
         result
     }
 
+    /// `remove_plugin`: полное удаление плагина (Фаза 5, п.9 TZ-UX-SPEC-CLEANUP).
+    ///
+    /// Порядок критичен: сначала снимаем views и останавливаем child, потом удаляем
+    /// настройки и каталог с диска. Ошибка удаления файлов не откатывает удаление
+    /// из реестра — плагин уже не запустится, а каталог можно удалить вручную.
+    pub fn remove(&self, id: &str) -> Result<(), PluginError> {
+        // Снимаем views до удаления из менеджера: иначе останутся «зомби»-вкладки.
+        lock(&self.views).remove_plugin(id);
+
+        // Удаляем из менеджера (останавливает child) и получаем путь к каталогу.
+        let dir = lock(&self.manager).remove_plugin(id)?;
+
+        // Удаляем настройки плагина из config.json.
+        if let Some(path) = &self.config_path {
+            let mut settings = lock(&self.settings);
+            settings.remove_plugin(id);
+            if let Err(e) = settings.save(path) {
+                eprintln!("не сохранить config.json: {e}");
+            }
+        }
+
+        // Удаляем каталог плагина с диска.
+        if !dir.as_os_str().is_empty() && dir.exists() {
+            if let Err(e) = std::fs::remove_dir_all(&dir) {
+                return Err(PluginError::new(
+                    "remove_failed",
+                    format!("{}: {e}", dir.display()),
+                ));
+            }
+        }
+
+        self.pump();
+        (self.notify)();
+        Ok(())
+    }
+
     /// `reload_plugin`: перезапуск без рестарта GUI (Фаза 5).
     ///
     /// Неудачная перезагрузка (синтаксис и т.п.) снимает view плагина: иначе остаётся
