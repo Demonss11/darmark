@@ -5,21 +5,21 @@ import { Given, Then, When } from "@wdio/cucumber-framework";
 import { browser } from "@wdio/globals";
 
 /// Количество вкладок в #tab-strip.
-async function tabCount(): Promise<number> {
+async function tabCount() {
   return browser.execute(
     () => document.querySelectorAll("#tab-strip .tab").length
   );
 }
 
 /// Индекс активной вкладки (0-based) или -1.
-async function activeTabIndex(): Promise<number> {
+async function activeTabIndex() {
   return browser.execute(() => {
     const tabs = Array.from(document.querySelectorAll("#tab-strip .tab"));
     return tabs.findIndex((t) => t.getAttribute("aria-selected") === "true");
   });
 }
 
-Then("в {string} {int} вкладка", async (selector: string, expected: number) => {
+Then("в {string} {int} вкладка", async (selector, expected) => {
   // Поддерживаем только #tab-strip — единственный контейнер вкладок.
   const count = await tabCount();
   if (count !== expected) {
@@ -29,7 +29,7 @@ Then("в {string} {int} вкладка", async (selector: string, expected: numb
   }
 });
 
-Then("в {string} {int} вкладки", async (selector: string, expected: number) => {
+Then("в {string} {int} вкладки", async (selector, expected) => {
   const count = await tabCount();
   if (count !== expected) {
     throw new Error(
@@ -56,12 +56,12 @@ When("я создаю новый документ", async () => {
   );
 });
 
-When("я переключаюсь на {int} вкладку", async (index1: number) => {
+When("я переключаюсь на {int} вкладку", async (index1) => {
   // index1 — 1-based для читаемости Gherkin (первая, вторая, ...)
   const idx = index1 - 1;
   const ok = await browser.execute((i) => {
     const tabs = document.querySelectorAll("#tab-strip .tab");
-    const tab = tabs[i] as HTMLElement | undefined;
+    const tab = tabs[i];
     if (!tab) return false;
     tab.click();
     return true;
@@ -70,7 +70,7 @@ When("я переключаюсь на {int} вкладку", async (index1: num
   await browser.pause(50);
 });
 
-Then("активна {int} вкладка", async (index1: number) => {
+Then("активна {int} вкладка", async (index1) => {
   const idx = index1 - 1;
   await browser.waitUntil(
     async () => {
@@ -81,13 +81,13 @@ Then("активна {int} вкладка", async (index1: number) => {
   );
 });
 
-When("я закрываю {int} вкладку", async (index1: number) => {
+When("я закрываю {int} вкладку", async (index1) => {
   const idx = index1 - 1;
   const ok = await browser.execute((i) => {
     const tabs = document.querySelectorAll("#tab-strip .tab");
-    const tab = tabs[i] as HTMLElement | undefined;
+    const tab = tabs[i];
     if (!tab) return false;
-    const close = tab.querySelector(".close") as HTMLElement | null;
+    const close = tab.querySelector(".close");
     if (!close) return false;
     close.click();
     return true;
@@ -96,7 +96,7 @@ When("я закрываю {int} вкладку", async (index1: number) => {
   await browser.pause(100); // IPC close + перерисовка
 });
 
-Then("у {int} вкладки aria-selected равен {string}", async (index1: number, expected: string) => {
+Then("у {int} вкладки aria-selected равен {string}", async (index1, expected) => {
   const idx = index1 - 1;
   const actual = await browser.execute((i) => {
     const tabs = document.querySelectorAll("#tab-strip .tab");
@@ -109,13 +109,13 @@ Then("у {int} вкладки aria-selected равен {string}", async (index1:
   }
 });
 
-Then("у {int} вкладки есть dirty-точка", async (index1: number) => {
+Then("у {int} вкладки есть dirty-точка", async (index1) => {
   const idx = index1 - 1;
   await browser.waitUntil(
     async () => {
       const has = await browser.execute((i) => {
         const tabs = document.querySelectorAll("#tab-strip .tab");
-        const tab = tabs[i] as HTMLElement | undefined;
+        const tab = tabs[i];
         if (!tab) return false;
         return !!tab.querySelector(".dirty");
       }, idx);
@@ -125,13 +125,13 @@ Then("у {int} вкладки есть dirty-точка", async (index1: number)
   );
 });
 
-Then("у {int} вкладки нет dirty-точки", async (index1: number) => {
+Then("у {int} вкладки нет dirty-точки", async (index1) => {
   const idx = index1 - 1;
   await browser.waitUntil(
     async () => {
       const has = await browser.execute((i) => {
         const tabs = document.querySelectorAll("#tab-strip .tab");
-        const tab = tabs[i] as HTMLElement | undefined;
+        const tab = tabs[i];
         if (!tab) return false;
         return !!tab.querySelector(".dirty");
       }, idx);

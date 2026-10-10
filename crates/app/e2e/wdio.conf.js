@@ -58,6 +58,15 @@ function preparePlugins() {
           enabled: true,
           granted_permissions: ["view:create", "view:modify"],
         },
+        // Падающий при активации плагин (S13): каждая неудача копит серию карантина.
+        // Прав нет — единственный наблюдаемый эффект это статус failed → quarantined.
+        // Выключен по умолчанию: включённый падающий плагин перевёл бы `#side-count`
+        // в ветку «N с проблемой» и сломал счётчик в `plugin-panel.feature` (С4).
+        // Карантинный сценарий включает его сам и набирает серию перезагрузками.
+        "e2e-fail": {
+          enabled: false,
+          granted_permissions: [],
+        },
       },
       recent_files: [],
     };

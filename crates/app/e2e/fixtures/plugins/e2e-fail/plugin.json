@@ -1,0 +1,8 @@
+{
+  "id": "e2e-fail",
+  "name": "E2E Fail",
+  "version": "1.0.0",
+  "api_version": 1,
+  "entry": "main.lua",
+  "permissions": []
+}

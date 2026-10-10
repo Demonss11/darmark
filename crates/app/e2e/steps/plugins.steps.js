@@ -172,6 +172,20 @@ Then("в {string} нет вкладки плагина {string}", async (selecto
 });
 
 When("я перезагружаю плагин {string}", async (pluginId) => {
+  // Ждём активную кнопку: предыдущая перезагрузка синхронно дизейблит её до конца
+  // IPC + refresh, поэтому серия reload подряд (сценарий карантина) без ожидания
+  // наткнулась бы на ещё выключенную кнопку.
+  await browser.waitUntil(
+    async () =>
+      browser.execute((id) => {
+        const item = document.querySelector(
+          `#plugin-manager .pl-item[data-plugin="${id}"]`
+        );
+        const btn = item?.querySelector("button.pl-reload");
+        return !!btn && !btn.disabled;
+      }, pluginId),
+    { timeout: 15000, timeoutMsg: `Кнопка «Перезагрузить» плагина ${pluginId} недоступна` }
+  );
   const ok = await browser.execute((id) => {
     const item = document.querySelector(
       `#plugin-manager .pl-item[data-plugin="${id}"]`
@@ -810,5 +824,67 @@ Then("плагинного маркера нет", async () => {
     async () =>
       browser.execute(() => !document.getElementById("e2e-marker")),
     { timeout: 10000, timeoutMsg: "Маркер #e2e-marker остался после снятия права" }
+  );
+});
+
+// ---------- Быстрый возврат к предпросмотру (S10-D) ----------
+//
+// Вариант D оставил текущий визуал вкладок и добавил кнопку `#btn-back-preview`
+// в шапке панели предпросмотра. Она видна только при активной плагинной вкладке;
+// клик возвращает core-вкладку «Предпросмотр» — та же логика `showPreview`, что и
+// у клика по core-вкладке (pluginViews.ts). Проверяем видимость через атрибут
+// `hidden` (переключение мгновенное, анимации нет).
+
+Then("кнопка возврата к предпросмотру видна", async () => {
+  await browser.waitUntil(
+    async () =>
+      browser.execute(() => {
+        const btn = document.getElementById("btn-back-preview");
+        return !!btn && !btn.hidden;
+      }),
+    { timeout: 5000, timeoutMsg: "Кнопка #btn-back-preview не показана на плагинной вкладке" }
+  );
+});
+
+When("я нажимаю кнопку возврата к предпросмотру", async () => {
+  const ok = await browser.execute(() => {
+    const btn = document.getElementById("btn-back-preview");
+    if (!btn || btn.hidden) return false;
+    btn.click();
+    return true;
+  });
+  if (!ok) throw new Error("Кнопка #btn-back-preview недоступна");
+  await browser.pause(50);
+});
+
+Then("предпросмотр виден", async () => {
+  await browser.waitUntil(
+    async () =>
+      browser.execute(() => {
+        const el = document.getElementById("preview");
+        return !!el && !el.hidden;
+      }),
+    { timeout: 5000, timeoutMsg: "#preview не показан после возврата" }
+  );
+});
+
+Then("плагинное view скрыто", async () => {
+  await browser.waitUntil(
+    async () =>
+      browser.execute(() => {
+        const el = document.getElementById("plugin-view");
+        return !!el && el.hidden;
+      }),
+    { timeout: 5000, timeoutMsg: "#plugin-view не скрыт после возврата" }
+  );
+});
+
+Then("кнопка возврата к предпросмотру скрыта", async () => {
+  await browser.waitUntil(
+    async () =>
+      browser.execute(
+        () => document.getElementById("btn-back-preview")?.hidden === true
+      ),
+    { timeout: 5000, timeoutMsg: "Кнопка #btn-back-preview осталась видимой" }
   );
 });
