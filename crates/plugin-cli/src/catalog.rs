@@ -124,6 +124,8 @@ impl Catalog {
             .map_err(|e| format!("{}: не создать каталог: {e}", dest.display()))?;
         let target = dest.join(&entry.id);
         prepare_target(&target, force)?;
+        // F47: ссылка указывает на канонический путь источника — так junction/symlink остаётся
+        // валидным независимо от формы пути, которой пользователь задал `--repo`.
         let source = std::fs::canonicalize(&entry.dir)
             .map_err(|e| format!("{}: {e}", entry.dir.display()))?;
         create_link(&source, &target)?;
@@ -173,7 +175,11 @@ impl Catalog {
 ///
 /// Ссылка/junction удаляется как ссылка (`fs::remove_dir`) — цель не затрагивается; обычный
 /// каталог удаляется целиком (`fs::remove_dir_all`).
-pub fn remove(id: &str, dest: &Path) -> Result<(), String> {
+///
+/// Идемпотентна: отсутствие `<dest>/<id>` — не ошибка, а `Ok(false)` (нечего удалять); `Ok(true)`
+/// — если что-то удалено. `Err` — только для небезопасного `id` или сбоя удаления. Так повторный
+/// `remove` в скрипте/скрипт-обёртке не валит пайплайн.
+pub fn remove(id: &str, dest: &Path) -> Result<bool, String> {
     if !is_safe_id(id) {
         return Err(format!(
             "недопустимый id плагина {id:?}: только строчные латинские, цифры, '-' и '_'"
@@ -181,9 +187,10 @@ pub fn remove(id: &str, dest: &Path) -> Result<(), String> {
     }
     let target = dest.join(id);
     if std::fs::symlink_metadata(&target).is_err() {
-        return Err(format!("{}: плагин не установлен", target.display()));
+        return Ok(false);
     }
-    remove_path(&target)
+    remove_path(&target)?;
+    Ok(true)
 }
 
 /// Ищет ближайший к `start` (включая сам `start`) предок, внутри которого лежит
@@ -651,16 +658,16 @@ mod tests {
         let catalog = Catalog::load(&repo).unwrap();
         let target = catalog.install("alpha", &dest, false).unwrap();
 
-        remove("alpha", &dest).unwrap();
+        assert!(remove("alpha", &dest).unwrap(), "копия удалена");
         assert!(!target.exists(), "копия должна быть удалена");
         assert!(repo.join("alpha").join(MANIFEST_FILE).is_file());
     }
 
     #[test]
-    fn remove_missing_fails() {
+    fn remove_missing_is_noop() {
         let root = tempfile::tempdir().unwrap();
-        let err = remove("alpha", root.path()).unwrap_err();
-        assert!(err.contains("не установлен"), "err: {err}");
+        // Идемпотентность: плагина нет — не ошибка, а «нечего удалять».
+        assert!(!remove("alpha", root.path()).unwrap());
     }
 
     #[test]
@@ -683,7 +690,7 @@ mod tests {
         assert!(meta.file_type().is_symlink(), "ожидался junction");
         assert!(target.join(MANIFEST_FILE).is_file());
 
-        remove("alpha", &dest).unwrap();
+        assert!(remove("alpha", &dest).unwrap(), "junction удалён");
         assert!(fs::symlink_metadata(&target).is_err(), "junction удалён");
         assert!(
             repo.join("alpha").join(MANIFEST_FILE).is_file(),
@@ -754,6 +761,25 @@ mod tests {
         .unwrap();
         // Ссылка не переустанавливается; новая версия видна через неё.
         assert!(catalog.update(None, &dest).unwrap().is_empty());
+        assert!(manifest_text(&target).contains("2.0.0"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn update_specific_link_is_skipped() {
+        let root = tempfile::tempdir().unwrap();
+        let repo = single_plugin_repo(root.path());
+        let dest = root.path().join("dest");
+        let catalog = Catalog::load(&repo).unwrap();
+        let target = catalog.link("alpha", &dest, false).unwrap();
+
+        fs::write(
+            repo.join("alpha").join(MANIFEST_FILE),
+            manifest("alpha", "2.0.0"),
+        )
+        .unwrap();
+        // Явный id на ссылке: не ошибка и не переустановка — источник общий (S6).
+        assert!(catalog.update(Some("alpha"), &dest).unwrap().is_empty());
         assert!(manifest_text(&target).contains("2.0.0"));
     }
 

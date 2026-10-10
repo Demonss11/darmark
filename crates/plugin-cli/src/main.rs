@@ -203,8 +203,12 @@ fn main() -> ExitCode {
             }
         },
         Ok(Action::Remove { id, dest }) => match run_remove(&id, dest) {
-            Ok(target) => {
+            Ok((target, true)) => {
                 println!("удалён: {}", target.display());
+                ExitCode::SUCCESS
+            }
+            Ok((target, false)) => {
+                println!("не установлен: {} (нечего удалять)", target.display());
                 ExitCode::SUCCESS
             }
             Err(message) => {
@@ -535,11 +539,12 @@ fn run_link(
     catalog.link(id, &dest, force)
 }
 
-/// `remove`: удаляет установленный плагин.
-fn run_remove(id: &str, dest: Option<PathBuf>) -> Result<PathBuf, String> {
+/// `remove`: удаляет установленный плагин. Возвращает путь-цель и признак: `true` — удалён,
+/// `false` — нечего удалять (идемпотентно, код выхода всё равно `0`).
+fn run_remove(id: &str, dest: Option<PathBuf>) -> Result<(PathBuf, bool), String> {
     let dest = resolve_dest(dest)?;
-    catalog::remove(id, &dest)?;
-    Ok(dest.join(id))
+    let removed = catalog::remove(id, &dest)?;
+    Ok((dest.join(id), removed))
 }
 
 /// `update`: обновляет установленные копии до версии из репозитория.
@@ -1189,5 +1194,27 @@ mod tests {
         assert!(!has_on_activate("function on_event() end"));
         // `on_activate` как значение, а не точка входа — не объявление.
         assert!(!has_on_activate("local f = on_activate"));
+    }
+
+    /// F45: `normalize_repo` намеренно терпит обе формы — и сам каталог плагинов с `index.json`,
+    /// и корень репозитория с `plugins/index.json` (разработчику удобнее указывать любой из них);
+    /// пустой каталог возвращается как есть — понятную ошибку даст загрузка индекса.
+    #[test]
+    fn normalize_repo_accepts_catalog_dir_and_repo_root() {
+        let root = tempfile::tempdir().unwrap();
+
+        // Каталог с index.json — возвращается как есть.
+        let plugins = root.path().join("plugins");
+        fs::create_dir_all(&plugins).unwrap();
+        fs::write(plugins.join(catalog::CATALOG_FILE), "{}").unwrap();
+        assert_eq!(normalize_repo(plugins.clone()), plugins);
+
+        // Корень репозитория с plugins/index.json — нормализуется в <dir>/plugins.
+        assert_eq!(normalize_repo(root.path().to_path_buf()), plugins);
+
+        // Пустой каталог без index.json — возвращается как есть.
+        let empty = root.path().join("empty");
+        fs::create_dir_all(&empty).unwrap();
+        assert_eq!(normalize_repo(empty.clone()), empty);
     }
 }
