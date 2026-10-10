@@ -2,6 +2,9 @@
 target/
 gen/schemas/
 
+# Sidecar-бинарники для tauri build (генерируются scripts/prepare-sidecars.mjs)
+crates/app/src-tauri/binaries/
+
 # Node.js dependencies and build output
 node_modules/
 crates/app/node_modules/

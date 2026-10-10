@@ -10,6 +10,8 @@
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
+    "sidecars": "node scripts/prepare-sidecars.mjs",
+    "sidecars:dev": "node scripts/prepare-sidecars.mjs --profile debug",
     "test:e2e": "wdio run e2e/wdio.conf.js"
   },
   "dependencies": {

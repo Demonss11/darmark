@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "identifier": "dev.darmark.app",
   "build": {
-    "beforeDevCommand": "npm run dev",
+    "beforeDevCommand": "npm run sidecars:dev && npm run dev",
     "devUrl": "http://localhost:5173",
-    "beforeBuildCommand": "npm run build",
+    "beforeBuildCommand": "npm run build && npm run sidecars",
     "frontendDist": "../dist"
   },
   "app": {
@@ -30,6 +30,7 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
+    "externalBin": ["binaries/darmark-plugin-host", "binaries/darmark-plugin"],
     "windows": {
       "webviewInstallMode": {
         "type": "downloadBootstrapper"
