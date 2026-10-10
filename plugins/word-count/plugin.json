@@ -4,5 +4,9 @@
   "version": "1.0.0",
   "api_version": 1,
   "entry": "main.lua",
-  "permissions": ["document:read", "ui:statusbar"]
+  "permissions": ["document:read", "document:write", "view:create", "view:modify", "ui:statusbar"],
+  "contributes": {
+    "views": [{ "kind": "stats", "title": "Статистика", "tier": 1 }],
+    "commands": [{ "id": "wordcount.count", "title": "Посчитать слова", "keybinding": "Ctrl+Alt+W" }]
+  }
 }

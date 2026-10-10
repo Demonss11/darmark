@@ -35,6 +35,15 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
+/// Последний документ, для которого публиковались `document:opened`/`changed`.
+/// Нужен, чтобы после (ре)старта view-плагина переиздать ему `document:opened`:
+/// иначе вкладка, наполняемая по подписке, останется пустой.
+#[derive(Clone)]
+struct LastDoc {
+    id: String,
+    path: Option<String>,
+}
+
 /// Общее состояние плагинной подсистемы (один экземпляр на приложение).
 pub struct PluginHost {
     manager: Mutex<PluginManager>,
@@ -51,6 +60,10 @@ pub struct PluginHost {
     /// Вкл/выкл из менеджера обязан переживать рестарт, поэтому сохраняется на диск.
     settings: Mutex<SettingsStore>,
     config_path: Option<PathBuf>,
+    /// Последний документ, для которого публиковались `document:opened`/`changed`.
+    /// После (ре)старта view-плагина переиздаём ему `document:opened`, чтобы
+    /// вкладка, наполняемая по подписке, не осталась пустой.
+    last_doc: Mutex<Option<LastDoc>>,
 }
 
 /// Максимум раундов `pump`: обработчик события может сам править документ (`apply_edit`)
@@ -81,6 +94,7 @@ impl PluginHost {
             notify: Arc::new(|| {}),
             settings: Mutex::new(SettingsStore::default()),
             config_path: None,
+            last_doc: Mutex::new(None),
         }
     }
 
@@ -100,6 +114,7 @@ impl PluginHost {
             notify,
             settings: Mutex::new(SettingsStore::default()),
             config_path: None,
+            last_doc: Mutex::new(None),
         }
     }
 
@@ -174,17 +189,44 @@ impl PluginHost {
     }
 
     /// Публикует `document:changed` (коалесинг по `rev`). Доставка — [`Self::pump`].
+    ///
+    /// Если событие о другом документе, `last_doc` переключается на него (путь неизвестен):
+    /// переиздание после (ре)старта должно адресовать именно последний документ.
     pub fn publish_document_changed(&self, doc_id: &str, rev: u64) {
+        {
+            let mut last = lock(&self.last_doc);
+            if !last.as_ref().is_some_and(|doc| doc.id == doc_id) {
+                *last = Some(LastDoc {
+                    id: doc_id.to_string(),
+                    path: None,
+                });
+            }
+        }
         lock(&self.bus).publish_document_changed(doc_id, rev);
     }
 
     /// Публикует `document:opened`. Доставка — [`Self::pump`].
+    ///
+    /// Открытие фиксирует документ как последний: он будет переиздан подписчикам
+    /// при (ре)старте view-плагина.
     pub fn publish_opened(&self, doc_id: &str, path: Option<&str>) {
+        *lock(&self.last_doc) = Some(LastDoc {
+            id: doc_id.to_string(),
+            path: path.map(str::to_string),
+        });
         lock(&self.bus).publish_opened(doc_id, path);
     }
 
     /// Публикует `document:closed`. Доставка — [`Self::pump`].
+    ///
+    /// Закрытие последнего документа сбрасывает `last_doc`: переиздавать нечего.
     pub fn publish_closed(&self, doc_id: &str) {
+        {
+            let mut last = lock(&self.last_doc);
+            if last.as_ref().is_some_and(|doc| doc.id == doc_id) {
+                *last = None;
+            }
+        }
         lock(&self.bus).publish_closed(doc_id);
     }
 
@@ -247,6 +289,26 @@ impl PluginHost {
         }
     }
 
+    /// Переиздаёт конкретному плагину `document:opened` для последнего документа.
+    ///
+    /// Нужен после (ре)старта view-плагина: contributed view уже в реестре, child снова
+    /// активен, но его `on_activate` не наполнит вкладку, если плагин строит её по
+    /// подписке на `document:opened`/`changed`. Адресно — только этому плагину, чтобы
+    /// не дублировать событие остальным.
+    fn reannounce_opened(&self, plugin_id: &str) {
+        let last = lock(&self.last_doc).clone();
+        let Some(last) = last else { return };
+        let payload = json!({ "doc_id": last.id, "path": last.path });
+        let mut manager = lock(&self.manager);
+        if let Some(runtime) = manager.get_mut(plugin_id) {
+            if matches!(runtime.status, super::PluginStatus::Active) {
+                // Отказ доставки уводит статус в failed/quarantined — это уже обработает
+                // последующий pump/notify владельца вызова.
+                let _ = runtime.dispatch_event("document:opened", payload);
+            }
+        }
+    }
+
     /// Best-effort старт enabled-плагинов и уведомление фронтенда.
     ///
     /// Ошибка запуска одного плагина не мешает остальным и не роняет GUI (§4.7).
@@ -291,6 +353,12 @@ impl PluginHost {
         // Неудачный старт или выключение — view плагина не должны висеть в реестре.
         if !enabled || result.is_err() {
             lock(&self.views).remove_plugin(id);
+        }
+
+        // Успешный (ре)старт: view снова в реестре, child активен — переиздаём
+        // последний `document:opened`, иначе наполняемая по подписке вкладка пуста.
+        if result.is_ok() && enabled {
+            self.reannounce_opened(id);
         }
 
         // Вкл/выкл должен переживать рестарт: фиксируем в config.json (§12).
@@ -362,6 +430,10 @@ impl PluginHost {
         let result = lock(&self.manager).reload_plugin(id);
         if result.is_err() {
             lock(&self.views).remove_plugin(id);
+        } else {
+            // View перерегистрирован выше, child перезапущен: переиздаём последний
+            // `document:opened`, чтобы вкладка по подписке не осталась пустой.
+            self.reannounce_opened(id);
         }
         self.pump();
         (self.notify)();
@@ -422,6 +494,10 @@ impl PluginHost {
         let result = lock(&self.manager).set_plugin_permissions(id, effective);
         if result.is_err() {
             lock(&self.views).remove_plugin(id);
+        } else if enabled {
+            // Права применились и плагин перезапущен: переиздаём последний
+            // `document:opened`, чтобы view по подписке не сбросился в пустой.
+            self.reannounce_opened(id);
         }
 
         self.pump();

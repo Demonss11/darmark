@@ -738,3 +738,77 @@ Then("счётчик плагинов в шапке равен числу кар
     }
   );
 });
+
+// ---------- View по подписке переживает reload/вкл/выкл/смену прав ----------
+//
+// Фикстура e2e-view-event наполняет вкладку ТОЛЬКО по подписке на document:opened
+// (как реальные word-count/todo-lens). После (ре)старта child contributed view
+// перерегистрируется с пустым HTML, и хост обязан адресно переиздать плагину
+// последний документ; иначе вкладка остаётся пустой.
+//
+// События приходят асинхронно, а контроллер pluginViews пересобирает вкладки
+// (`.vtab.plugin`) на каждом `plugin-views-changed`. Чтобы проверка маркера
+// наблюдала ПОСЛЕ-событийное состояние, а не застарелый HTML (иначе шаг прошёл бы
+// ложно), вкладку помечают токеном ДО действия и ждут её пересборки.
+
+/// Одноразовый токен текущего шага «пометка → ожидание пересборки».
+let markedView = null;
+
+/// Помечает вкладку плагина токеном. Ставится ПЕРЕД действием, порождающим
+/// `plugin-views-changed` (reload/включение/смена прав).
+When("я помечаю вкладку плагина {string}", async (viewId) => {
+  const token = `e2e-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const ok = await browser.execute(
+    (id, t) => {
+      const tab = document.querySelector(`#view-switch .vtab.plugin[data-view="${id}"]`);
+      if (!tab) return false;
+      tab.dataset.e2eToken = t;
+      return true;
+    },
+    viewId,
+    token
+  );
+  if (!ok) throw new Error(`Вкладка плагина ${viewId} не найдена для пометки`);
+  markedView = { viewId, token };
+});
+
+/// Ждёт пересборки вкладок: `renderTabs` пересоздаёт `.vtab.plugin` на каждом
+/// `plugin-views-changed`. Токен исчез с вкладки → узел заменён (событие пришло).
+/// Только после этого проверка маркера читает актуальный HTML.
+Then("вкладка плагина {string} пересобралась", async (viewId) => {
+  if (!markedView || markedView.viewId !== viewId) {
+    throw new Error(
+      `Вкладку ${viewId} не помечали: перед ожиданием нужен шаг «я помечаю вкладку плагина»`
+    );
+  }
+  const { token } = markedView;
+  await browser.waitUntil(
+    async () =>
+      browser.execute(
+        (id, t) => {
+          const tab = document.querySelector(
+            `#view-switch .vtab.plugin[data-view="${id}"]`
+          );
+          // Пересборка = старый узел (с токеном) заменён новым.
+          return !!tab && tab.dataset.e2eToken !== t;
+        },
+        viewId,
+        token
+      ),
+    {
+      timeout: 15000,
+      timeoutMsg: `Вкладка плагина ${viewId} не пересобралась (не было plugin-views-changed)`,
+    }
+  );
+  markedView = null;
+});
+
+/// Маркер `#e2e-marker` отсутствует: после снятия права `view:modify` переиздание
+/// `document:opened` не может наполнить view (set_view_content → permission_denied).
+Then("плагинного маркера нет", async () => {
+  await browser.waitUntil(
+    async () =>
+      browser.execute(() => !document.getElementById("e2e-marker")),
+    { timeout: 10000, timeoutMsg: "Маркер #e2e-marker остался после снятия права" }
+  );
+});

@@ -1,0 +1,12 @@
+{
+  "id": "todo-lens",
+  "name": "Todo Lens",
+  "version": "1.0.0",
+  "api_version": 1,
+  "entry": "main.lua",
+  "permissions": ["document:read", "document:write", "view:create", "view:modify", "ui:statusbar"],
+  "contributes": {
+    "views": [{ "kind": "tasks", "title": "Задачи", "tier": 1 }],
+    "commands": [{ "id": "todolens.focus", "title": "Показать задачи" }]
+  }
+}

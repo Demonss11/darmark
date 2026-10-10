@@ -944,6 +944,86 @@ fn set_enabled_false_removes_views() {
     );
 }
 
+/// Хост с одним view-плагином `viewplugin`, наполняющим вкладку **только** по событию
+/// (`view-event.lua`, не в `on_activate`); права `view:modify` выданы.
+fn view_event_host() -> PluginHost {
+    let store = store_with_doc("x");
+    let views = views();
+    let pending: Arc<Mutex<Vec<(String, u64)>>> = Arc::new(Mutex::new(Vec::new()));
+    let notify: Arc<dyn Fn() + Send + Sync> = Arc::new(|| {});
+    let services: Arc<dyn HostServices> = Arc::new(
+        DocumentServices::new(Arc::clone(&store))
+            .with_views(Arc::clone(&views))
+            .with_notify(Arc::clone(&notify))
+            .with_pending_changed(Arc::clone(&pending)),
+    );
+    let mut manager = PluginManager::default();
+    manager.register(
+        PluginRuntime::new(
+            "viewplugin",
+            child_exe(),
+            fixture("view-event.lua"),
+            vec!["view:modify".to_string()],
+            Arc::clone(&services),
+            vec![view_contrib("main", "Main", 1)],
+            Vec::new(),
+        )
+        .with_granted(vec!["view:modify".to_string()]),
+    );
+    PluginHost::new(manager, views, services, notify, pending)
+}
+
+/// После `reload` contributed view снимается и регистрируется заново с пустым HTML, а шина
+/// уже пуста — плагин, наполняющий вкладку по подписке на `document:opened`, без
+/// переиздания остался бы пустым. Хост обязан адресно переиздать ему последний документ.
+#[test]
+fn reload_reannounces_opened_to_view_plugin() {
+    let _guard = serial();
+    let host = view_event_host();
+
+    host.set_enabled("viewplugin", true).expect("включение");
+    // На старте события шины нет: плагин наполняет view только по подписке.
+    assert_eq!(host.plugin_views().len(), 1, "view зарегистрирован");
+    assert!(
+        host.plugin_views()[0].html.is_empty(),
+        "без события view пуст: {:?}",
+        host.plugin_views()[0].html
+    );
+
+    // Последний документ — doc-1; шину дреним, чтобы её событие не подменило reannounce.
+    host.publish_opened("doc-1", None);
+    host.pump();
+
+    // reload снимает view (пустой HTML), перезапускает child и обязан переиздать
+    // `document:opened` — иначе вкладка по подписке осталась бы пустой.
+    host.reload("viewplugin").expect("перезагрузка");
+
+    let html = host.plugin_views()[0].html.clone();
+    assert!(
+        !html.is_empty() && html.contains("e2e-marker"),
+        "reload обязан переиздать document:opened и наполнить view: {html:?}"
+    );
+}
+
+/// Тот же сценарий, но документ не публиковался: переиздавать нечего — reannounce no-op,
+/// view остаётся пустым (хост не выдумывает документ).
+#[test]
+fn reload_without_document_leaves_view_empty() {
+    let _guard = serial();
+    let host = view_event_host();
+
+    host.set_enabled("viewplugin", true).expect("включение");
+    host.reload("viewplugin").expect("перезагрузка");
+
+    let snapshot = host.plugin_views();
+    assert_eq!(snapshot.len(), 1, "view зарегистрирован");
+    assert!(
+        snapshot[0].html.is_empty(),
+        "без документа переиздание — no-op: {:?}",
+        snapshot[0].html
+    );
+}
+
 #[test]
 fn set_enabled_persists_to_config() {
     let _guard = serial();

@@ -52,6 +52,12 @@ function preparePlugins() {
           enabled: true,
           granted_permissions: ["document:read", "document:write"],
         },
+        // View, наполняемый только по подписке (хост-фикс reannounce): без прав
+        // set_view_content вернёт permission_denied, и спек станет ложно красным.
+        "e2e-view-event": {
+          enabled: true,
+          granted_permissions: ["view:create", "view:modify"],
+        },
       },
       recent_files: [],
     };
