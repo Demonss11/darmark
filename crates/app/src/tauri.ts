@@ -52,6 +52,32 @@ export function renderDocument(id: DocumentId, mapped = false): Promise<RenderRe
   return invoke<RenderResult>("render_document", { id, mapped });
 }
 
+/**
+ * Результат undo/redo (D5, ADR-0028): текст после операции и байтовые (UTF-8)
+ * смещения результата — по ним редактор восстанавливает выделение.
+ */
+export interface UndoResult {
+  text: string;
+  rev: number;
+  /** Начало результата (байты UTF-8, inclusive). */
+  start: number;
+  /** Конец результата (байты UTF-8, exclusive). */
+  end: number;
+}
+
+/**
+ * Отменяет последнюю правку в Rust-undo-стеке. Ошибка IPC при пустом стеке
+ * (код `nothing_to_undo`) или неизвестном документе (`not_found`).
+ */
+export function undoDocument(id: DocumentId): Promise<UndoResult> {
+  return invoke<UndoResult>("undo_document", { id });
+}
+
+/** Повторяет отменённую правку. Ошибка IPC при пустом redo-стеке (`nothing_to_redo`). */
+export function redoDocument(id: DocumentId): Promise<UndoResult> {
+  return invoke<UndoResult>("redo_document", { id });
+}
+
 /** Сохраняет документ; текст берётся из стора, `path` задаётся для «Сохранить как». */
 export function saveDocument(id: DocumentId, path?: string): Promise<DocMeta> {
   return invoke<DocMeta>("save_document", { id, path: path ?? null });

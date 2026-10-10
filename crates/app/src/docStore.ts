@@ -10,6 +10,8 @@ import {
   openDocument as ipcOpen,
   updateDocument as ipcUpdate,
   renderDocument as ipcRender,
+  undoDocument as ipcUndo,
+  redoDocument as ipcRedo,
   saveDocument as ipcSave,
   closeDocument as ipcClose,
   documentSnapshot,
@@ -63,6 +65,13 @@ export interface DocStore {
   setText(text: string): void;
   /** Отменить дебаунс и немедленно отправить текст активной вкладки в Rust. */
   flush(): Promise<void>;
+  /**
+   * Отменить последнюю правку (Rust-undo, D5/ADR-0028). Возвращает байтовый
+   * (UTF-8) диапазон результата для выделения либо `null`, если отменять нечего.
+   */
+  undo(): Promise<{ start: number; end: number } | null>;
+  /** Повторить отменённую правку; `null`, если повторять нечего. */
+  redo(): Promise<{ start: number; end: number } | null>;
   /** Повторный рендер активной вкладки с текущим `mapped`. */
   reload(): void;
   /**
@@ -85,6 +94,15 @@ export interface DocStore {
 
 /** Дебаунс IPC-рендера: не спамить `update_document` на каждое нажатие. */
 const DEBOUNCE_MS = 120;
+
+/** Код IPC-ошибки из `CommandError { code, message }` (или `undefined`). */
+function errorCode(e: unknown): string | undefined {
+  if (e && typeof e === "object" && "code" in e) {
+    const code = (e as { code?: unknown }).code;
+    if (typeof code === "string") return code;
+  }
+  return undefined;
+}
 
 /** Имя файла из пути (для таба-заглушки). */
 function baseName(p: string): string {
@@ -184,6 +202,53 @@ export function createDocStore(opts: DocStoreOptions): DocStore {
     })();
   }
 
+  /**
+   * Общий путь undo/redo (D5/ADR-0028): сначала слить отложенный ввод, чтобы Rust
+   * увидел текущий буфер, затем применить историю на Rust-стороне.
+   */
+  async function history(
+    direction: "undo" | "redo"
+  ): Promise<{ start: number; end: number } | null> {
+    const id = activeId;
+    if (!id) return null;
+    const tab = tabs.find((t) => t.id === id);
+    if (!tab) return null;
+
+    // 1. Слить отложенный ввод: Rust должен отменять с учётом текущего буфера,
+    //    а не устаревшего (последний push мог быть отложен дебаунсом).
+    clearTimeout(debounceTimer);
+    try {
+      await pushText();
+    } catch (e) {
+      lastRev = -1;
+      opts.onStatus(`Ошибка рендера: ${errorMessage(e)}`);
+      return null;
+    }
+    if (id !== activeId) return null; // вкладка сменилась, пока ждали
+
+    // 2. Применить undo/redo в Rust-сторе.
+    try {
+      const res = direction === "undo" ? await ipcUndo(id) : await ipcRedo(id);
+      if (id !== activeId) return null; // вкладка сменилась, пока ждали
+      if (res.rev < lastRev) return null; // устаревший ответ (гонка двух отмен подряд)
+      // Держим `lastRev` на новой ревизии: устаревший ответ IPC не откатит текст.
+      lastRev = res.rev;
+      // dirty не сбрасываем: отмена меняет текст, а факт «не записано в файл» неизвестен.
+      tabs = tabs.map((t) =>
+        t.id === id ? { ...t, text: res.text, rev: res.rev, dirty: true } : t
+      );
+      notify();
+      reload(); // перерисовать HTML из нового текста
+      return { start: res.start, end: res.end };
+    } catch (e) {
+      // «Нечего отменять/повторять» — нормальный сценарий: тихо, без тоста.
+      const code = errorCode(e);
+      if (code === "nothing_to_undo" || code === "nothing_to_redo") return null;
+      opts.onStatus(`Отмена/повтор: ${errorMessage(e)}`);
+      return null;
+    }
+  }
+
   function toSnapshot(tab: Tab | null): DocumentSnapshot | null {
     if (!tab) return null;
     return { id: tab.id, path: tab.path, rev: tab.rev, text: tab.text, dirty_hint: tab.dirty };
@@ -236,6 +301,9 @@ export function createDocStore(opts: DocStoreOptions): DocStore {
       clearTimeout(debounceTimer);
       await pushText();
     },
+
+    undo: () => history("undo"),
+    redo: () => history("redo"),
 
     reload,
 
