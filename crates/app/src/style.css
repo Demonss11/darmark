@@ -767,6 +767,27 @@ label.tbtn:has(> input:focus-visible) { outline: 2px solid var(--accent); outlin
 
 .tl-empty { padding: 32px; text-align: center; color: var(--fg-mute); font-size: 12px; }
 
+/* Группа задач по заголовку Markdown (todo-lens, H2). Заголовок и счётчик группы;
+   размер заголовка зависит от уровня (# — крупнее, #### и глубже — мельче). */
+.tl-heading {
+  display: flex; align-items: baseline; gap: 8px;
+  margin: 16px 0 6px; padding-bottom: 4px;
+  border-bottom: 1px solid var(--line-soft);
+  font-weight: 600; font-size: 13px; color: var(--head);
+}
+.tl-heading:first-child { margin-top: 0; }
+.tl-heading.tl-h1 { font-size: 15px; }
+.tl-heading.tl-h2 { font-size: 14px; }
+.tl-heading.tl-h4,
+.tl-heading.tl-h5,
+.tl-heading.tl-h6 { font-size: 12px; }
+/* Задачи до первого заголовка — приглушённый «Без раздела». */
+.tl-heading-none { font-style: italic; font-weight: 500; color: var(--fg-mute); }
+.tl-group-progress {
+  margin-left: auto; font-size: 10.5px; font-weight: 500; color: var(--fg-mute);
+  font-family: "Cascadia Code", ui-monospace, monospace; letter-spacing: 0.03em;
+}
+
 /* ===================== СТАТУСБАР ===================== */
 .statusbar {
   display: flex;

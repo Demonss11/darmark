@@ -24,14 +24,36 @@ end
 
 -- Поиск задач построчно. Паттерн: отступ, маркер списка, [x]/[X]/[ ], пробелы, текст.
 -- Возвращает таблицу задач: line (1-based), done, text, status_pos (байтовая позиция
--- символа статуса в документе — правим только его при переключении).
+-- символа статуса в документе — правим только его при переключении),
+-- heading (текст ближайшего заголовка ATX выше задачи или nil), heading_level (1-6)
+-- и heading_seq (номер заголовка — ключ группировки; nil для задач до первого заголовка).
 -- Предполагаем LF-переводы строк (в документах darmark по умолчанию LF).
 local function find_tasks(text)
   local tasks = {}
   local pos = 0 -- байтовое смещение начала текущей строки
   local line_num = 0
+  local current_heading = nil
+  local current_level = nil
+  local current_heading_seq = nil -- порядковый номер заголовка (растёт на каждом)
+  local heading_seq = 0
   for line in text:gmatch("[^\n]*") do
     line_num = line_num + 1
+    -- Отслеживаем последний заголовок ATX (# ... ######).
+    -- ВАЖНО: используем `#+`, а не `#{1,6}` — в Lua-шаблонах нет квантификатора
+    -- {n,m}, поэтому `#{1,6}` искал литерал «{1,6}» и заголовки не находились.
+    -- Ограничение «не больше 6 решёток» проверяем отдельно (CommonMark: 7+ — не
+    -- заголовок, а обычный абзац). Учитываем и закрывающие решётки (### Текст ###).
+    local hashes, heading_text = line:match("^(#+)%s+(.*)$")
+    if hashes and #hashes <= 6 then
+      -- Убираем хвостовые пробелы/CR и закрывающие решётки в стиле CommonMark.
+      heading_text = heading_text:gsub("%s+$", ""):gsub("%s+#+%s*$", "")
+      current_level = #hashes
+      current_heading = heading_text
+      -- Отдельный номер на каждый заголовок: одинаковый текст у двух заголовков
+      -- (например, «## Прочее» и «# Прочее») — это РАЗНЫЕ группы, а не одна.
+      heading_seq = heading_seq + 1
+      current_heading_seq = heading_seq
+    end
     local indent, status, sep, text_part = line:match("^(%s*[-*+])%s+%[([ xX])%](%s+)(.*)$")
     if indent then
       local done = status == "x" or status == "X"
@@ -52,6 +74,9 @@ local function find_tasks(text)
           done = done,
           text = text_part,
           status_pos = status_pos,
+          heading = current_heading,
+          heading_level = current_level,
+          heading_seq = current_heading_seq,
         }
       end
     end
@@ -64,9 +89,12 @@ local function esc(s)
   return (s:gsub("&", "&amp;"):gsub("<", "&lt;"):gsub(">", "&gt;"):gsub('"', "&quot;"))
 end
 
--- HTML панели. Без <button> (запрещён санитайзером, DROP_CONTENT_TAGS) и без
--- inline-style (разрешён только text-align на td/th): элемент задачи — <div role="button">.
--- Прогресс показываем текстом: inline-style для width санитайзер срезает.
+-- HTML панели. Оформление — ТОЛЬКО классами приложения (style.css): санитайзер
+-- `md-core` вырезает inline-`style` (кроме `text-align` на td/th), поэтому
+-- `.pv-head`, `.pv-note`, `.tl-progress`, `.tl-item`, `.tl-check`, `.tl-text`,
+-- `.tl-ln`, `.tl-empty` берут стили из фронтенда. `<button>` запрещён
+-- (DROP_CONTENT_TAGS) — элементы-кнопки несут `role="button"`.
+-- Задачи группируются по заголовкам Markdown (ближайший выше по документу).
 local function render(tasks, done_count)
   local total = #tasks
   local pct = total > 0 and math.floor(done_count / total * 100 + 0.5) or 0
@@ -79,15 +107,53 @@ local function render(tasks, done_count)
   if total == 0 then
     html[#html + 1] = '<div class="tl-empty">Нет задач «- [ ]» в документе.</div>'
   else
+    -- Группируем задачи по заголовкам, сохраняя порядок появления.
+    -- Ключ — номер заголовка (heading_seq), а не его текст: два заголовка с
+    -- одинаковым текстом («## Прочее» и «# Прочее») дают РАЗНЫЕ группы.
+    -- 0 — задачи до первого заголовка («Без раздела»).
+    local groups = {}
+    local group_order = {}
     for _, t in ipairs(tasks) do
-      html[#html + 1] = '<div class="tl-item' .. (t.done and ' done' or '') .. '" role="button"'
-        .. ' data-p-todo-lens-action="toggle"'
-        .. ' data-p-todo-lens-payload="' .. t.line .. '"'
-        .. ' title="Переключить задачу на строке ' .. t.line .. '">'
-        .. '<span class="tl-check">' .. (t.done and "✓" or "") .. '</span>'
-        .. '<span class="tl-text">' .. esc(t.text) .. '</span>'
-        .. '<span class="tl-ln">:' .. t.line .. '</span>'
-        .. '</div>'
+      local key = t.heading_seq or 0
+      if not groups[key] then
+        groups[key] = { heading = t.heading, level = t.heading_level, tasks = {} }
+        group_order[#group_order + 1] = key
+      end
+      groups[key].tasks[#groups[key].tasks + 1] = t
+    end
+
+    for _, key in ipairs(group_order) do
+      local group = groups[key]
+      local group_done = 0
+      for _, t in ipairs(group.tasks) do
+        if t.done then group_done = group_done + 1 end
+      end
+
+      -- Заголовок группы: уровень заголовка несёт класс tl-h{n} (data-* санитайзер
+      -- срезает — выживают только data-p-*; размер задаётся в CSS).
+      if group.heading then
+        html[#html + 1] = '<div class="tl-heading tl-h' .. (group.level or 0) .. '">'
+          .. '<span class="tl-heading-text">' .. esc(group.heading) .. '</span>'
+          .. '<span class="tl-group-progress">' .. group_done .. '/' .. #group.tasks .. '</span>'
+          .. '</div>'
+      else
+        html[#html + 1] = '<div class="tl-heading tl-heading-none">'
+          .. '<span class="tl-heading-text">Без раздела</span>'
+          .. '<span class="tl-group-progress">' .. group_done .. '/' .. #group.tasks .. '</span>'
+          .. '</div>'
+      end
+
+      -- Задачи группы
+      for _, t in ipairs(group.tasks) do
+        html[#html + 1] = '<div class="tl-item' .. (t.done and ' done' or '') .. '" role="button"'
+          .. ' data-p-todo-lens-action="toggle"'
+          .. ' data-p-todo-lens-payload="' .. t.line .. '"'
+          .. ' title="Переключить задачу на строке ' .. t.line .. '">'
+          .. '<span class="tl-check">' .. (t.done and "✓" or "") .. '</span>'
+          .. '<span class="tl-text">' .. esc(t.text) .. '</span>'
+          .. '<span class="tl-ln">:' .. t.line .. '</span>'
+          .. '</div>'
+      end
     end
   end
   return table.concat(html, "\n")
