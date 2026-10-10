@@ -86,7 +86,7 @@ on_deactivate → terminate`. Ошибка загрузки/активации �
 Документ: `get_document_len`/`get_document_range` (основной путь чтения)/`get_document_version`/
 `get_document_text`/`apply_edit` (`document:write`). View: `set_view_content` (`view:modify`).
 Хост: `log`, `show_message` (`ui:statusbar`), `export_html` (нативный диалог, без `filesystem:write`),
-`get_setting`/`set_setting` (задел; в H2 возвращают `not_implemented`). Нативно в child:
+`get_setting`/`set_setting` (per-plugin JSON-хранилище, F43/S5). Нативно в child:
 `md.to_html`/`to_html_mapped`, `json.encode/decode`.
 Полный референс — `docs/PLUGIN_API.md`.
 
@@ -120,9 +120,10 @@ on_deactivate → terminate`. Ошибка загрузки/активации �
   обслуживания исключается из дедлайна.
 - Согласие на permissions пока не собирается (F39); `get_document_text` ограничен кадром (F40);
   единый `notify` даёт лишний `list_plugins` при смене view (F41).
-- Постоянные настройки плагина (`get_setting`/`set_setting`, `contributes.settings`) не
-  реализованы — возвращают `not_implemented`; `view:create` не гейтит регистрацию представления
-  (декларативное разрешение).
+- Постоянные настройки плагина (`get_setting`/`set_setting`) реализованы (F43/S5): per-plugin
+  JSON-хранилище `%APPDATA%/darmark/plugin-settings/<id>.json` (scope по `_plugin_id`); UI-схема
+  `contributes.settings` пока не рендерится. `view:create` теперь гейтит регистрацию тир-1
+  представления (deny-by-default, F44/S4).
 
 ---
 

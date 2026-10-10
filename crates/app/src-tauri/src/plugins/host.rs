@@ -20,6 +20,7 @@ use crate::{PluginInfo, PluginViewInfo};
 
 use super::bus::EventBus;
 use super::manager::{effective_permissions, PluginManager};
+use super::plugin_settings::PluginSettingsStore;
 use super::services::PendingChanged;
 use super::settings::SettingsStore;
 use super::views::PluginViews;
@@ -66,6 +67,9 @@ pub struct PluginHost {
     /// Вкл/выкл из менеджера обязан переживать рестарт, поэтому сохраняется на диск.
     settings: Mutex<SettingsStore>,
     config_path: Option<PathBuf>,
+    /// Постоянные настройки плагинов (F43/S5): общий с `DocumentServices` стор, чтобы
+    /// удаление плагина подчищало и его `plugin-settings/<id>.json`. Без него — `None`.
+    plugin_settings: Option<Arc<Mutex<PluginSettingsStore>>>,
     /// Последний документ, для которого публиковались `document:opened`/`changed`.
     /// После (ре)старта view-плагина переиздаём ему `document:opened`, чтобы
     /// вкладка, наполняемая по подписке, не осталась пустой.
@@ -101,6 +105,7 @@ impl PluginHost {
             plugins_notify: Arc::new(|| {}),
             settings: Mutex::new(SettingsStore::default()),
             config_path: None,
+            plugin_settings: None,
             last_doc: Mutex::new(None),
         }
     }
@@ -122,6 +127,7 @@ impl PluginHost {
             plugins_notify: Arc::new(|| {}),
             settings: Mutex::new(SettingsStore::default()),
             config_path: None,
+            plugin_settings: None,
             last_doc: Mutex::new(None),
         }
     }
@@ -131,6 +137,13 @@ impl PluginHost {
     pub fn with_settings(mut self, settings: SettingsStore, config_path: Option<PathBuf>) -> Self {
         self.settings = Mutex::new(settings);
         self.config_path = config_path;
+        self
+    }
+
+    /// Подключает хранилище постоянных настроек плагинов (F43/S5). Тот же `Arc`, что у
+    /// `DocumentServices`: `remove` подчищает файл настроек удаляемого плагина.
+    pub fn with_plugin_settings(mut self, settings: Arc<Mutex<PluginSettingsStore>>) -> Self {
+        self.plugin_settings = Some(settings);
         self
     }
 
@@ -368,21 +381,22 @@ impl PluginHost {
     /// `set_plugin_enabled`: вкл/выкл плагина (IPC-команда менеджера, Фаза 5).
     ///
     /// **Порядок критичен:** при включении contributed view регистрируются в реестре
-    /// **до** старта child — иначе `host.set_view_content` из `on_activate` вернул бы
-    /// `unknown_view`. При выключении — наоборот: стоп, затем снятие view (нет «зомби»).
+    /// **до** старта child (и только при выданном `view:create`, F44/S4) — иначе
+    /// `host.set_view_content` из `on_activate` вернул бы `unknown_view`. При выключении —
+    /// наоборот: стоп, затем снятие view (нет «зомби»).
     pub fn set_enabled(&self, id: &str, enabled: bool) -> Result<(), PluginError> {
-        let views_contrib = {
+        let (views_contrib, effective) = {
             let manager = lock(&self.manager);
-            manager
+            let runtime = manager
                 .get(id)
-                .map(|runtime| runtime.views.clone())
-                .ok_or_else(|| PluginError::new("unknown_plugin", format!("нет плагина {id}")))?
+                .ok_or_else(|| PluginError::new("unknown_plugin", format!("нет плагина {id}")))?;
+            (runtime.views.clone(), runtime.effective())
         };
 
+        // View регистрируем ДО старта child (иначе `host.set_view_content` из `on_activate`
+        // вернул бы `unknown_view`), но только при выданном `view:create` (F44/S4).
         if enabled {
-            let mut views = lock(&self.views);
-            views.remove_plugin(id);
-            views.register(id, &views_contrib);
+            lock(&self.views).sync(id, &views_contrib, &effective);
         }
 
         let result = lock(&self.manager).set_plugin_enabled(id, enabled);
@@ -436,6 +450,11 @@ impl PluginHost {
             }
         }
 
+        // Удаляем постоянные настройки плагина (F43/S5): отдельный файл per-plugin.
+        if let Some(settings) = &self.plugin_settings {
+            lock(settings).remove_plugin(id);
+        }
+
         // Удаляем каталог плагина с диска.
         if !dir.as_os_str().is_empty() && dir.exists() {
             if let Err(e) = std::fs::remove_dir_all(&dir) {
@@ -459,11 +478,10 @@ impl PluginHost {
     pub fn reload(&self, id: &str) -> Result<(), PluginError> {
         // Для включённого плагина гарантируем contributed view в реестре ДО старта
         // child: предыдущий сбой мог снять view, а `on_activate` пишет HTML через
-        // `set_view_content` — иначе `unknown_view` и потерянный контент.
-        if let Some((true, contributes)) = self.enabled_views(id) {
-            let mut views = lock(&self.views);
-            views.remove_plugin(id);
-            views.register(id, &contributes);
+        // `set_view_content` — иначе `unknown_view` и потерянный контент. Регистрация —
+        // только при выданном `view:create` (F44/S4).
+        if let Some((true, contributes, effective)) = self.runtime_view_state(id) {
+            lock(&self.views).sync(id, &contributes, &effective);
         }
         let result = lock(&self.manager).reload_plugin(id);
         if result.is_err() {
@@ -479,11 +497,16 @@ impl PluginHost {
         result
     }
 
-    /// Состояние плагина: `(enabled, contributes.views)`, если он зарегистрирован.
-    fn enabled_views(&self, id: &str) -> Option<(bool, Vec<ViewContrib>)> {
-        lock(&self.manager)
-            .get(id)
-            .map(|runtime| (runtime.is_enabled(), runtime.views.clone()))
+    /// Состояние плагина: `(enabled, contributes.views, effective permissions)`, если он
+    /// зарегистрирован. Эффективный набор нужен для гейта регистрации view (`view:create`).
+    fn runtime_view_state(&self, id: &str) -> Option<(bool, Vec<ViewContrib>, Vec<String>)> {
+        lock(&self.manager).get(id).map(|runtime| {
+            (
+                runtime.is_enabled(),
+                runtime.views.clone(),
+                runtime.effective(),
+            )
+        })
     }
 
     /// `set_plugin_permissions`: согласие пользователя как **реальный** гейт прав
@@ -523,12 +546,11 @@ impl PluginHost {
         }
 
         // Применение: enabled → reload (права захватываются при start), иначе no-op.
-        // View гарантируем ДО перезапуска (как в [`Self::reload`]), иначе «восставший»
+        // View синхронизируем с новым эффективным набором ДО перезапуска: выдача
+        // `view:create` регистрирует вкладку, отзыв — снимает (F44/S4). Иначе «восставший»
         // после сбоя плагин не сможет наполнить свою вкладку в `on_activate`.
         if enabled {
-            let mut views = lock(&self.views);
-            views.remove_plugin(id);
-            views.register(id, &contributes);
+            lock(&self.views).sync(id, &contributes, &effective);
         }
         let result = lock(&self.manager).set_plugin_permissions(id, effective);
         if result.is_err() {

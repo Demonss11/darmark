@@ -711,6 +711,13 @@ fn setup_plugins(app: &mut tauri::App) -> Result<(), String> {
     let views = Arc::new(Mutex::new(PluginViews::new()));
     // Очередь отложенных document:changed от плагинных apply_edit (общая services ↔ host).
     let pending_changed: plugins::services::PendingChanged = Arc::new(Mutex::new(Vec::new()));
+    // Постоянные настройки плагинов (F43/S5): per-plugin файл. Общий стор у services
+    // (host-call'ы get/set_setting) и host (удаление плагина подчищает файл).
+    let plugin_settings = plugins::plugin_settings::PluginSettingsStore::base_dir().map(|dir| {
+        Arc::new(Mutex::new(
+            plugins::plugin_settings::PluginSettingsStore::new(dir),
+        ))
+    });
 
     // Два независимых сигнала фронтенду (F41/S2): `plugin-views-changed` — сменился
     // контент/реестр представлений; `plugins-changed` — состав/статус/карантин/включение.
@@ -790,15 +797,17 @@ fn setup_plugins(app: &mut tauri::App) -> Result<(), String> {
         }
     });
 
-    let services: Arc<dyn plugins::HostServices> = Arc::new(
-        DocumentServices::new(store)
-            .with_views(Arc::clone(&views))
-            .with_notify(Arc::clone(&views_notify))
-            .with_pending_changed(Arc::clone(&pending_changed))
-            .with_exporter(exporter)
-            .with_status_sink(status_sink)
-            .with_document_sink(document_sink),
-    );
+    let mut services = DocumentServices::new(store)
+        .with_views(Arc::clone(&views))
+        .with_notify(Arc::clone(&views_notify))
+        .with_pending_changed(Arc::clone(&pending_changed))
+        .with_exporter(exporter)
+        .with_status_sink(status_sink)
+        .with_document_sink(document_sink);
+    if let Some(settings) = &plugin_settings {
+        services = services.with_plugin_settings(Arc::clone(settings));
+    }
+    let services: Arc<dyn plugins::HostServices> = Arc::new(services);
 
     let result = load_plugins(
         &plugins_dir(),
@@ -811,7 +820,7 @@ fn setup_plugins(app: &mut tauri::App) -> Result<(), String> {
         eprintln!("плагин {}: {}", error.dir.display(), error.message);
     }
 
-    let host = PluginHost::new(
+    let mut host = PluginHost::new(
         result.manager,
         views,
         services,
@@ -820,6 +829,9 @@ fn setup_plugins(app: &mut tauri::App) -> Result<(), String> {
     )
     .with_plugins_notify(plugins_notify)
     .with_settings(settings, config_path);
+    if let Some(settings) = &plugin_settings {
+        host = host.with_plugin_settings(Arc::clone(settings));
+    }
     // Best-effort старт enabled-плагинов; notify внутри.
     host.start_enabled();
     app.manage(PluginState { host });

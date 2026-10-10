@@ -455,12 +455,15 @@ pub fn load_plugins(
         );
         let contributes = discovered.manifest.contributes.views.clone();
         let commands = discovered.manifest.contributes.commands.clone();
-        // Тир-1 view регистрируются в общем реестре только для включённых плагинов:
-        // у выключенного (config.json) не должно быть пустой вкладки. `runtime.views`
-        // хранит contributes, чтобы `set_enabled(true)` зарегистрировал их при включении.
-        if enabled {
-            if let Ok(mut views) = views.lock() {
-                views.register(&id, &contributes);
+        // Тир-1 view регистрируются в общем реестре только для включённых плагинов И только
+        // при выданном `view:create` (F44/S4, deny-by-default, как `document:*`). У выключенного
+        // (config.json) или без права не должно быть пустой вкладки. `runtime.views` хранит
+        // contributes, чтобы `set_enabled(true)` синхронизировал их при включении.
+        if let Ok(mut views) = views.lock() {
+            if enabled {
+                views.sync(&id, &contributes, &granted);
+            } else {
+                views.remove_plugin(&id);
             }
         }
         let mut runtime = PluginRuntime::new(

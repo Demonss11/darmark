@@ -12,6 +12,7 @@ use serde_json::{json, Value};
 use crate::state::{DocumentId, DocumentStore};
 use crate::MAX_FILE_SIZE;
 
+use super::plugin_settings::PluginSettingsStore;
 use super::views::PluginViews;
 use super::HostServices;
 
@@ -74,6 +75,9 @@ pub struct DocumentServices {
     /// Уведомление фронтенда о внешней правке (`document-updated`). Без него — no-op:
     /// GUI-путь (без sink) не эмитит событие, чтобы не было петли IPC.
     document_sink: Option<DocumentSink>,
+    /// Постоянные настройки плагинов (F43/S5): per-plugin JSON-файл. Без него
+    /// `get_setting`/`set_setting` возвращают `no_settings`.
+    plugin_settings: Option<Arc<Mutex<PluginSettingsStore>>>,
 }
 
 impl DocumentServices {
@@ -86,6 +90,7 @@ impl DocumentServices {
             exporter: None,
             status_sink: None,
             document_sink: None,
+            plugin_settings: None,
         }
     }
 
@@ -128,6 +133,13 @@ impl DocumentServices {
     /// событие не шлёт, иначе получилась бы петля «правка → событие → перерисовка → правка».
     pub fn with_document_sink(mut self, sink: DocumentSink) -> Self {
         self.document_sink = Some(sink);
+        self
+    }
+
+    /// Подключает хранилище постоянных настроек плагинов (F43/S5). Без него
+    /// `get_setting`/`set_setting` возвращают `no_settings`.
+    pub fn with_plugin_settings(mut self, settings: Arc<Mutex<PluginSettingsStore>>) -> Self {
+        self.plugin_settings = Some(settings);
         self
     }
 
@@ -216,6 +228,50 @@ impl DocumentServices {
         }
         Ok(json!(true))
     }
+
+    /// `get_setting`: читает постоянную настройку плагина (F43/S5).
+    ///
+    /// Scope — по внедрённому `Supervisor` `_plugin_id`: плагин видит только свои настройки.
+    /// Отсутствующий ключ → `nil` (`Value::Null`, без ошибки). Недоступное хранилище или
+    /// некорректный ключ — значение-ошибка, не паника.
+    fn get_setting(&self, args: &Value) -> Result<Value, PluginError> {
+        let plugin_id = plugin_id_arg(args)?;
+        let key = key_arg(args)?;
+        let store = self.plugin_settings.as_ref().ok_or_else(|| {
+            PluginError::new(
+                "no_settings",
+                "хранилище настроек недоступно в этом окружении",
+            )
+        })?;
+        let mut store = store
+            .lock()
+            .map_err(|_| PluginError::new("internal", "хранилище настроек отравлено"))?;
+        Ok(store.get(plugin_id, key)?.unwrap_or(Value::Null))
+    }
+
+    /// `set_setting`: записывает постоянную настройку плагина (F43/S5).
+    ///
+    /// Значение — произвольный JSON. Scope — по `_plugin_id` (плагин пишет только свои
+    /// настройки). Пустой/слишком длинный ключ или значение сверх лимита — значение-ошибка.
+    fn set_setting(&self, args: &Value) -> Result<Value, PluginError> {
+        let plugin_id = plugin_id_arg(args)?;
+        let key = key_arg(args)?;
+        let value = args
+            .get("value")
+            .cloned()
+            .ok_or_else(|| PluginError::new("bad_args", "set_setting: нет value"))?;
+        let store = self.plugin_settings.as_ref().ok_or_else(|| {
+            PluginError::new(
+                "no_settings",
+                "хранилище настроек недоступно в этом окружении",
+            )
+        })?;
+        let mut store = store
+            .lock()
+            .map_err(|_| PluginError::new("internal", "хранилище настроек отравлено"))?;
+        store.set(plugin_id, key, value)?;
+        Ok(json!(true))
+    }
 }
 
 impl HostServices for DocumentServices {
@@ -227,6 +283,9 @@ impl HostServices for DocumentServices {
             "set_view_content" => return self.set_view_content(&args),
             "export_html" => return self.export_html(&args),
             "show_message" => return self.show_message(&args),
+            // Настройки плагина (F43/S5) не трогают `DocumentStore`: скоуп — по `_plugin_id`.
+            "get_setting" => return self.get_setting(&args),
+            "set_setting" => return self.set_setting(&args),
             _ => {}
         }
 
@@ -321,13 +380,7 @@ impl HostServices for DocumentServices {
                 }
                 Ok(json!(true))
             }
-            // Настройки плагина (§12) в H2 не реализованы: скоуп по plugin_id и хранилище —
-            // отдельная задача. Отвечаем явной ошибкой, а не тихим `nil` (чтобы автор плагина
-            // не считал вызов успешным). Задокументировано в docs/PLUGIN_API.md/PLUGIN_GUIDE.md.
-            "get_setting" | "set_setting" => Err(PluginError::new(
-                "not_implemented",
-                "настройки плагина (get_setting/set_setting) не реализованы в H2",
-            )),
+            // Настройки плагина (F43/S5) обрабатываются выше — до блокировки стора.
             other => Err(PluginError::protocol(format!(
                 "неизвестный host-call: {other}"
             ))),
@@ -356,6 +409,21 @@ fn doc_id(args: &Value) -> Result<DocumentId, PluginError> {
         .and_then(Value::as_str)
         .ok_or_else(|| PluginError::new("bad_args", "нет строкового doc_id"))?;
     Ok(DocumentId::new(raw))
+}
+
+/// Владелец host-call'а: `_plugin_id` инжектит [`super::supervisor::Supervisor`], плагин не
+/// может подменить владельца своих настроек. Без инъекции вызов отвергается.
+fn plugin_id_arg(args: &Value) -> Result<&str, PluginError> {
+    args.get("_plugin_id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| PluginError::new("bad_args", "нет _plugin_id"))
+}
+
+/// Строковый ключ настройки (валидацию длины делает хранилище).
+fn key_arg(args: &Value) -> Result<&str, PluginError> {
+    args.get("key")
+        .and_then(Value::as_str)
+        .ok_or_else(|| PluginError::new("bad_args", "нет строкового key"))
 }
 
 fn usize_arg(args: &Value, name: &str) -> Result<usize, PluginError> {

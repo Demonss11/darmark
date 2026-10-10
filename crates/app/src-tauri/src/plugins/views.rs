@@ -15,6 +15,10 @@ use plugin_proto::manifest::ViewContrib;
 
 use crate::PluginViewInfo;
 
+/// Разрешение, гейтящее регистрацию тир-1 view (F44/S4, §8): без него `contributes.views`
+/// не превращается во вкладку. Запись HTML всё равно требует отдельного `view:modify`.
+pub const VIEW_CREATE_PERMISSION: &str = "view:create";
+
 /// Реестр представлений: `view_id = "{plugin_id}:{kind}"` → HTML и метаданные.
 ///
 /// `BTreeMap` даёт детерминированный (отсортированный по `view_id`) порядок
@@ -87,6 +91,23 @@ impl PluginViews {
     /// Убирает все представления плагина (выключение/перезагрузка/удаление).
     pub fn remove_plugin(&mut self, plugin_id: &str) {
         self.views.retain(|_, view| view.plugin_id != plugin_id);
+    }
+
+    /// Синхронизирует представления плагина с его **эффективными** правами (F44/S4).
+    ///
+    /// Тир-1 view регистрируется только если выдан `view:create` (deny-by-default, как
+    /// `document:*`); иначе все view плагина снимаются. Единая точка для загрузки, вкл/выкл,
+    /// `reload` и смены прав: вкладка появляется/исчезает вслед за согласием пользователя.
+    /// Вызов идемпотентен и безопасен при пустом `contributes`.
+    pub fn sync(&mut self, plugin_id: &str, contributes: &[ViewContrib], effective: &[String]) {
+        let can_create = effective
+            .iter()
+            .any(|permission| permission == VIEW_CREATE_PERMISSION);
+        if can_create && contributes.iter().any(|view| view.tier == 1) {
+            self.register(plugin_id, contributes);
+        } else {
+            self.remove_plugin(plugin_id);
+        }
     }
 }
 
@@ -186,5 +207,46 @@ mod tests {
         let snapshot = views.snapshot();
         assert_eq!(snapshot.len(), 1);
         assert_eq!(snapshot[0].view_id, "b:two");
+    }
+
+    #[test]
+    fn sync_registers_only_with_view_create() {
+        let mut views = PluginViews::new();
+        let contributes = vec![view("main", "Main", 1)];
+
+        // Без `view:create` в эффективном наборе view не регистрируется (deny-by-default).
+        views.sync("p", &contributes, &["view:modify".to_string()]);
+        assert!(views.snapshot().is_empty(), "без view:create вкладки нет");
+
+        // Выдача `view:create` → view появляется.
+        views.sync(
+            "p",
+            &contributes,
+            &["view:create".to_string(), "view:modify".to_string()],
+        );
+        assert_eq!(views.snapshot().len(), 1);
+
+        // Отзыв → view исчезает.
+        views.sync("p", &contributes, &[]);
+        assert!(
+            views.snapshot().is_empty(),
+            "отзыв view:create снимает view"
+        );
+    }
+
+    #[test]
+    fn sync_with_empty_contributes_removes_stale_view() {
+        let mut views = PluginViews::new();
+        views.sync(
+            "p",
+            &[view("main", "Main", 1)],
+            &["view:create".to_string()],
+        );
+        assert_eq!(views.snapshot().len(), 1);
+
+        // Пустой contributes (или только тир-2) при праве → нечего регистрировать,
+        // но старые view плагина снимаются, чтобы не осталось «зомби»-вкладки.
+        views.sync("p", &[], &["view:create".to_string()]);
+        assert!(views.snapshot().is_empty());
     }
 }

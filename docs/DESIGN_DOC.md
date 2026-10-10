@@ -383,7 +383,7 @@ json.encode(value) / json.decode(s)
   "version": "1.0.0",
   "api_version": 1,
   "entry": "main.lua",
-  "permissions": ["document:read", "ui:statusbar"],
+  "permissions": ["document:read", "view:create", "ui:statusbar"],
   "contributes": {
     "views":     [{ "kind": "wordcount", "title": "Статистика", "tier": 1 }],
     "commands":  [{ "id": "wordcount.count", "title": "Посчитать слова", "keybinding": "Ctrl+Alt+W" }],
@@ -473,7 +473,7 @@ scan(plugins_dir) -> validate(manifest) -> load(src) -> on_activate(ctx)
 |---|---|---|
 | `document:read` | `get_document_len`, `get_document_range`, `get_document_version`, `get_document_text` | ✅ реализовано |
 | `document:write` | `apply_edit` | ✅ реализовано |
-| `view:create` | регистрация тир-1 view | ✅ реализовано (декларативное) |
+| `view:create` | регистрация тир-1 view (гейтит `contributes.views`) | ✅ реализовано |
 | `view:modify` | `set_view_content`, `on_event` | ✅ реализовано |
 | `ui:statusbar` | элемент статусбара | ✅ реализовано |
 | `filesystem:read` | `host.read_file(path)` — со scope (какие пути) | ❌ не реализуется |
@@ -587,7 +587,7 @@ scan(plugins_dir) -> validate(manifest) -> load(src) -> on_activate(ctx)
 ## 12. Настройки, состояние, recent files
 
 - **Конфиг приложения**: `%APPDATA%/darmark/config.json`, владелец — Rust `SettingsStore`.
-- **Плагины**: `%APPDATA%/darmark/plugins/<id>/` (манифест + `.lua`), настройки плагина — `settings.json` в той же папке, схема из `contributes.settings`.
+- **Плагины**: `%APPDATA%/darmark/plugins/<id>/` (манифест + `.lua`); постоянные настройки плагина — `%APPDATA%/darmark/plugin-settings/<id>.json` (per-plugin JSON-объект; UI-схема `contributes.settings` пока не рендерится).
 - **Состояние окна**: размер/позиция окна, layout (дерево), открытые документы, активная панель — восстанавливается между сессиями.
 - **Recent files**: список путей + время, лимит 20.
 - Доступ плагина к настройкам: `host.get_setting(key)`, `host.set_setting(key, value)` — только своего плагина.

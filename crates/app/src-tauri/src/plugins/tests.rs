@@ -14,6 +14,7 @@ use crate::state::{DocumentId, DocumentStore};
 
 use super::host::PluginHost;
 use super::manager::{effective_permissions, load_plugins, PluginManager, PluginRuntime};
+use super::plugin_settings::{PluginSettingsStore, MAX_SETTING_KEY_BYTES, MAX_SETTING_VALUE_BYTES};
 use super::scan::scan_plugins;
 use super::services::{DocumentServices, DocumentSink, Exporter, StatusSink};
 use super::settings::SettingsStore;
@@ -621,12 +622,12 @@ fn host_with_signal_log() -> (PluginHost, Arc<Mutex<Vec<&'static str>>>) {
             "viewplugin",
             child_exe(),
             fixture("view-activate.lua"),
-            vec!["view:modify".to_string()],
+            vec!["view:create".to_string(), "view:modify".to_string()],
             Arc::clone(&services),
             vec![view_contrib("main", "Main", 1)],
             Vec::new(),
         )
-        .with_granted(vec!["view:modify".to_string()]),
+        .with_granted(vec!["view:create".to_string(), "view:modify".to_string()]),
     );
     let host = PluginHost::new(manager, views, services, views_notify, pending)
         .with_plugins_notify(plugins_notify);
@@ -882,7 +883,7 @@ fn get_document_text_allows_text_within_frame() {
 #[test]
 fn load_plugins_registers_contributed_views() {
     let dir = tempfile::tempdir().unwrap();
-    let manifest = r#"{"id":"word-count","name":"Word Count","version":"1.0.0","api_version":1,"entry":"main.lua","contributes":{"views":[{"kind":"stats","title":"Статистика","tier":1}]}}"#;
+    let manifest = r#"{"id":"word-count","name":"Word Count","version":"1.0.0","api_version":1,"entry":"main.lua","permissions":["view:create"],"contributes":{"views":[{"kind":"stats","title":"Статистика","tier":1}]}}"#;
     write_plugin(
         dir.path(),
         "word-count",
@@ -892,11 +893,14 @@ fn load_plugins_registers_contributed_views() {
 
     let store = store_with_doc("x");
     let views = views();
+    // F44/S4: регистрация view гейтится `view:create` — выдаём согласие явно.
+    let mut settings = SettingsStore::default();
+    settings.set_granted_permissions("word-count", vec!["view:create".to_string()]);
     let result = load_plugins(
         dir.path(),
         &PathBuf::from("darmark-plugin-host.exe"),
         services(&store),
-        &SettingsStore::default(),
+        &settings,
         Arc::clone(&views),
     );
     assert!(result.errors.is_empty(), "{:?}", result.errors);
@@ -905,6 +909,36 @@ fn load_plugins_registers_contributed_views() {
     assert_eq!(snapshot.len(), 1);
     assert_eq!(snapshot[0].view_id, "word-count:stats");
     assert_eq!(snapshot[0].title, "Статистика");
+}
+
+/// F44/S4: тот же манифест, но без согласия на `view:create` → вкладка не регистрируется
+/// (deny-by-default, как `document:*`).
+#[test]
+fn load_plugins_without_view_create_does_not_register_view() {
+    let dir = tempfile::tempdir().unwrap();
+    let manifest = r#"{"id":"word-count","name":"Word Count","version":"1.0.0","api_version":1,"entry":"main.lua","permissions":["view:create"],"contributes":{"views":[{"kind":"stats","title":"Статистика","tier":1}]}}"#;
+    write_plugin(
+        dir.path(),
+        "word-count",
+        manifest,
+        Some("function on_activate(ctx) end"),
+    );
+
+    let store = store_with_doc("x");
+    let views = views();
+    // Согласие не выдано: эффективный набор пуст → view не регистрируется, но и не падаем.
+    let result = load_plugins(
+        dir.path(),
+        &PathBuf::from("darmark-plugin-host.exe"),
+        services(&store),
+        &SettingsStore::default(),
+        Arc::clone(&views),
+    );
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
+    assert!(
+        views.lock().unwrap().snapshot().is_empty(),
+        "без view:create вкладки быть не должно"
+    );
 }
 
 // ─── Фаза 5: экспорт, статусбар, команды, менеджер ─────────────────────
@@ -1002,17 +1036,179 @@ fn show_message_without_plugin_id_is_rejected() {
     assert_eq!(err.code, "bad_args");
 }
 
+/// F43/S5: `DocumentServices` с подключённым хранилищем настроек плагинов (подменяемый путь).
+fn services_with_plugin_settings(
+    store: &Arc<Mutex<DocumentStore>>,
+    dir: &Path,
+) -> Arc<dyn HostServices> {
+    Arc::new(
+        DocumentServices::new(Arc::clone(store))
+            .with_plugin_settings(Arc::new(Mutex::new(PluginSettingsStore::new(dir)))),
+    )
+}
+
+/// F43/S5: round-trip разных JSON-типов (число, строка, вложенный объект, `null`) и
+/// отсутствующий ключ → `nil` (`Value::Null`, без ошибки).
 #[test]
-fn settings_functions_are_not_implemented() {
+fn settings_roundtrip_types_and_missing_key() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store_with_doc("x");
+    let services = services_with_plugin_settings(&store, dir.path());
+
+    for (key, value) in [
+        ("num", json!(42)),
+        ("str", json!("привет")),
+        ("obj", json!({ "a": 1, "b": [true, null] })),
+        ("nil", json!(null)),
+    ] {
+        let ok = services
+            .handle(
+                "set_setting",
+                json!({ "key": key, "value": value, "_plugin_id": "p" }),
+            )
+            .unwrap();
+        assert_eq!(ok, json!(true), "set_setting {key}");
+        let got = services
+            .handle("get_setting", json!({ "key": key, "_plugin_id": "p" }))
+            .unwrap();
+        assert_eq!(got, value, "round-trip {key}");
+    }
+
+    let missing = services
+        .handle("get_setting", json!({ "key": "nope", "_plugin_id": "p" }))
+        .unwrap();
+    assert_eq!(missing, serde_json::Value::Null, "нет ключа → nil");
+}
+
+/// F43/S5: изоляция по `plugin_id` — плагины не видят настройки друг друга.
+#[test]
+fn settings_are_isolated_per_plugin() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store_with_doc("x");
+    let services = services_with_plugin_settings(&store, dir.path());
+
+    services
+        .handle(
+            "set_setting",
+            json!({ "key": "k", "value": "a", "_plugin_id": "p1" }),
+        )
+        .unwrap();
+    services
+        .handle(
+            "set_setting",
+            json!({ "key": "k", "value": "b", "_plugin_id": "p2" }),
+        )
+        .unwrap();
+
+    assert_eq!(
+        services
+            .handle("get_setting", json!({ "key": "k", "_plugin_id": "p1" }))
+            .unwrap(),
+        json!("a")
+    );
+    assert_eq!(
+        services
+            .handle("get_setting", json!({ "key": "k", "_plugin_id": "p2" }))
+            .unwrap(),
+        json!("b")
+    );
+}
+
+/// F43/S5: настройки переживают пересоздание стора из того же каталога (персист на диск).
+#[test]
+fn settings_persist_across_store_instances() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store_with_doc("x");
+
+    {
+        let services = services_with_plugin_settings(&store, dir.path());
+        services
+            .handle(
+                "set_setting",
+                json!({ "key": "k", "value": { "n": 1 }, "_plugin_id": "p" }),
+            )
+            .unwrap();
+    }
+    let fresh = services_with_plugin_settings(&store, dir.path());
+    assert_eq!(
+        fresh
+            .handle("get_setting", json!({ "key": "k", "_plugin_id": "p" }))
+            .unwrap(),
+        json!({ "n": 1 }),
+        "настройка должна перечитаться с диска"
+    );
+}
+
+/// F43/S5: некорректный ключ → `bad_args`, значение сверх лимита → `too_large`, паники нет.
+#[test]
+fn setting_limits_and_bad_key_are_errors() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store_with_doc("x");
+    let services = services_with_plugin_settings(&store, dir.path());
+
+    let empty = services
+        .handle(
+            "set_setting",
+            json!({ "key": "", "value": 1, "_plugin_id": "p" }),
+        )
+        .unwrap_err();
+    assert_eq!(empty.code, "bad_args", "пустой ключ");
+
+    let long = "k".repeat(MAX_SETTING_KEY_BYTES + 1);
+    let long_err = services
+        .handle("get_setting", json!({ "key": long, "_plugin_id": "p" }))
+        .unwrap_err();
+    assert_eq!(long_err.code, "bad_args", "слишком длинный ключ");
+
+    let big = "x".repeat(MAX_SETTING_VALUE_BYTES + 1);
+    let big_err = services
+        .handle(
+            "set_setting",
+            json!({ "key": "k", "value": big, "_plugin_id": "p" }),
+        )
+        .unwrap_err();
+    assert_eq!(big_err.code, "too_large", "значение сверх лимита");
+
+    // Файл тоже ограничен: несколько крупных значений упираются в лимит файла.
+    let chunk = "y".repeat(MAX_SETTING_VALUE_BYTES - 10);
+    let mut saw_too_large = false;
+    for i in 0..8 {
+        let result = services.handle(
+            "set_setting",
+            json!({ "key": format!("f{i}"), "value": chunk.clone(), "_plugin_id": "p" }),
+        );
+        if let Err(e) = result {
+            assert_eq!(e.code, "too_large", "файл настроек переполнен");
+            saw_too_large = true;
+            break;
+        }
+    }
+    assert!(saw_too_large, "хранилище обязано упереться в лимит файла");
+}
+
+/// F43/S5: без подключённого хранилища host-call отвечает `no_settings`, а не падает.
+#[test]
+fn settings_without_store_is_error() {
     let store = store_with_doc("x");
     let services = DocumentServices::new(store);
     for method in ["get_setting", "set_setting"] {
-        let err = services.handle(method, json!({ "key": "k" })).unwrap_err();
-        assert_eq!(
-            err.code, "not_implemented",
-            "host-call {method} в H2 не реализован"
-        );
+        let err = services
+            .handle(method, json!({ "key": "k", "value": 1, "_plugin_id": "p" }))
+            .unwrap_err();
+        assert_eq!(err.code, "no_settings", "host-call {method}");
     }
+}
+
+/// F43/S5: без `_plugin_id` (инъекции Supervisor) вызов отвергается — scope обязателен.
+#[test]
+fn setting_without_plugin_id_is_rejected() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store_with_doc("x");
+    let services = services_with_plugin_settings(&store, dir.path());
+    let err = services
+        .handle("get_setting", json!({ "key": "k" }))
+        .unwrap_err();
+    assert_eq!(err.code, "bad_args");
 }
 
 #[test]
@@ -1038,12 +1234,12 @@ fn set_enabled_registers_view_before_activation() {
             "viewplugin",
             child_exe(),
             fixture("view-activate.lua"),
-            vec!["view:modify".to_string()],
+            vec!["view:create".to_string(), "view:modify".to_string()],
             Arc::clone(&services),
             vec![view_contrib("main", "Main", 1)],
             Vec::new(),
         )
-        .with_granted(vec!["view:modify".to_string()]),
+        .with_granted(vec!["view:create".to_string(), "view:modify".to_string()]),
     );
     let host = PluginHost::new(
         manager,
@@ -1090,12 +1286,12 @@ fn set_enabled_false_removes_views() {
             "viewplugin",
             child_exe(),
             fixture("view-activate.lua"),
-            vec!["view:modify".to_string()],
+            vec!["view:create".to_string(), "view:modify".to_string()],
             Arc::clone(&services),
             vec![view_contrib("main", "Main", 1)],
             Vec::new(),
         )
-        .with_granted(vec!["view:modify".to_string()]),
+        .with_granted(vec!["view:create".to_string(), "view:modify".to_string()]),
     );
     let host = PluginHost::new(
         manager,
@@ -1131,6 +1327,59 @@ fn set_enabled_false_removes_views() {
     );
 }
 
+/// F44/S4: выдача `view:create` активному плагину регистрирует view, отзыв — снимает.
+/// Доказывает, что регистрация следует за согласием (deny-by-default), а не за манифестом.
+#[test]
+fn granting_view_create_adds_and_revoking_removes_view() {
+    let _guard = serial();
+    let store = store_with_doc("x");
+    let views = views();
+    let pending: Arc<Mutex<Vec<(String, u64)>>> = Arc::new(Mutex::new(Vec::new()));
+    let notify: Arc<dyn Fn() + Send + Sync> = Arc::new(|| {});
+    let services: Arc<dyn HostServices> = Arc::new(
+        DocumentServices::new(Arc::clone(&store))
+            .with_views(Arc::clone(&views))
+            .with_notify(Arc::clone(&notify))
+            .with_pending_changed(Arc::clone(&pending)),
+    );
+    let mut manager = PluginManager::default();
+    // Манифест декларирует `view:create`, но согласие не выдано.
+    manager.register(PluginRuntime::new(
+        "viewplugin",
+        child_exe(),
+        fixture("view-activate.lua"),
+        vec!["view:create".to_string(), "view:modify".to_string()],
+        Arc::clone(&services),
+        vec![view_contrib("main", "Main", 1)],
+        Vec::new(),
+    ));
+    let host = PluginHost::new(manager, Arc::clone(&views), services, notify, pending);
+
+    host.set_enabled("viewplugin", true).expect("включение");
+    assert!(
+        views.lock().unwrap().snapshot().is_empty(),
+        "без согласия на view:create вкладки нет"
+    );
+
+    host.set_permissions(
+        "viewplugin",
+        vec!["view:create".to_string(), "view:modify".to_string()],
+    )
+    .expect("выдача прав");
+    assert_eq!(
+        views.lock().unwrap().snapshot().len(),
+        1,
+        "выдача view:create регистрирует вкладку"
+    );
+
+    host.set_permissions("viewplugin", vec!["view:modify".to_string()])
+        .expect("отзыв view:create");
+    assert!(
+        views.lock().unwrap().snapshot().is_empty(),
+        "отзыв view:create снимает вкладку"
+    );
+}
+
 /// Хост с одним view-плагином `viewplugin`, наполняющим вкладку **только** по событию
 /// (`view-event.lua`, не в `on_activate`); права `view:modify` выданы.
 fn view_event_host() -> PluginHost {
@@ -1150,12 +1399,12 @@ fn view_event_host() -> PluginHost {
             "viewplugin",
             child_exe(),
             fixture("view-event.lua"),
-            vec!["view:modify".to_string()],
+            vec!["view:create".to_string(), "view:modify".to_string()],
             Arc::clone(&services),
             vec![view_contrib("main", "Main", 1)],
             Vec::new(),
         )
-        .with_granted(vec!["view:modify".to_string()]),
+        .with_granted(vec!["view:create".to_string(), "view:modify".to_string()]),
     );
     PluginHost::new(manager, views, services, notify, pending)
 }
@@ -1233,12 +1482,12 @@ fn set_enabled_persists_to_config() {
             "viewplugin",
             child_exe(),
             fixture("view-activate.lua"),
-            vec!["view:modify".to_string()],
+            vec!["view:create".to_string(), "view:modify".to_string()],
             Arc::clone(&services),
             vec![view_contrib("main", "Main", 1)],
             Vec::new(),
         )
-        .with_granted(vec!["view:modify".to_string()]),
+        .with_granted(vec!["view:create".to_string(), "view:modify".to_string()]),
     );
     let host = PluginHost::new(manager, views, services, notify, pending)
         .with_settings(SettingsStore::default(), Some(config.clone()));

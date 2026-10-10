@@ -8,6 +8,7 @@
 pub mod bus;
 pub mod host;
 pub mod manager;
+pub mod plugin_settings;
 pub mod scan;
 pub mod services;
 pub mod settings;

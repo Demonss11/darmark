@@ -44,13 +44,14 @@ host-функции и события (notify-only + pull).
 |---|---|
 | `document:read` | `get_document_len`, `get_document_range`, `get_document_version`, `get_document_text` |
 | `document:write` | `apply_edit` |
-| `view:create` | регистрация тир-1 view (`contributes.views`) — *регистрация не гейтится по этому разрешению; см. примечание* |
+| `view:create` | регистрация тир-1 view (`contributes.views`) — **гейтит регистрацию**: без согласия вкладка не появляется |
 | `view:modify` | `set_view_content` |
 | `ui:statusbar` | `show_message` |
 
-> Примечание про `view:create`: вкладка представления регистрируется у любого **включённого**
-> плагина с непустым `contributes.views`; фактическая запись HTML всё равно требует `view:modify`.
-> Отдельная проверка `view:create` при регистрации не выполняется (разрешение декларативное).
+> Про `view:create`: вкладка регистрируется только у **включённого** плагина, у которого
+> `view:create` входит в эффективный набор прав (`manifest ∩ granted`, deny-by-default). Без
+> согласия на `view:create` `contributes.views` не регистрируется (вкладки нет), хотя плагин
+> загружается и работает. Запись HTML всё равно требует отдельного `view:modify`.
 
 - Известные, но **не поддерживаемые** (`ui:menu`, `ui:sidebar`, `ui:toolbar`) отвергаются с сообщением
   «не реализовано».
@@ -123,16 +124,24 @@ host.set_view_content(view_id, html)  -> (boolean, err)   -- view:modify
 host.log(level, message)      -- "debug"|"info"|"warn"|"error"; print() идёт сюда же
 host.show_message(text)       -- (boolean, err)   -- ui:statusbar; уведомление в статусбар
 host.export_html(html)        -- (boolean, err)   -- нативный диалог сохранения; без filesystem:write
-host.get_setting(key)         -- (value, err)     -- НЕ реализовано: err.code == "not_implemented"
-host.set_setting(key, value)  -- (boolean, err)   -- НЕ реализовано: err.code == "not_implemented"
+host.get_setting(key)         -- (value, err)     -- постоянная настройка плагина; нет ключа → nil
+host.set_setting(key, value)  -- (boolean, err)   -- записать настройку (произвольный JSON)
 ```
 
 `host.log`/`print` в GUI-хосте выводятся в stderr приложения; в dev-режиме
 (`--serve-plugin`/`--debug-plugin`) — кадром `ToHost::Log` в назначенный stdio; в `--self-test` —
 в stderr.
 
-`get_setting`/`set_setting` не реализованы (задел на будущее): вызов возвращает
-`(nil, { code = "not_implemented" })`, а `contributes.settings` пока не отображается в UI.
+**Настройки плагина** (`get_setting`/`set_setting`) — постоянное хранилище **per-plugin**:
+каждый плагин читает и пишет только свои настройки (scope по `plugin_id`, подставляется хостом).
+Значение — произвольный JSON (число, строка, массив, объект, `null`); отсутствующий ключ
+возвращает `nil` (`(nil, nil)`, не ошибку). Данные лежат в
+`%APPDATA%/darmark/plugin-settings/<plugin_id>.json` и переживают перезапуск приложения.
+
+- Лимиты: ключ ≤ 256 Б; одно значение ≤ 64 КиБ; файл настроек плагина ≤ 256 КиБ. Пустой/слишком
+  длинный ключ → `bad_args`, значение/файл сверх лимита → `too_large` (значением, не паникой).
+- UI-схема `contributes.settings` **пока не рендерится**: манифест её объявляет, но панель
+  настроек плагина в менеджере не строится — плагин читает/пишет значения программно.
 
 `export_html`: `true` — записано, `false` — пользователь отменил диалог; `filesystem:write`
 не требуется (согласие даёт сам диалог).
