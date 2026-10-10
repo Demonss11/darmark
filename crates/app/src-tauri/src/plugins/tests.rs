@@ -590,6 +590,155 @@ fn view_contrib(kind: &str, title: &str, tier: u8) -> plugin_proto::manifest::Vi
     }
 }
 
+/// Колбэк, пишущий имя сигнала в общий журнал (F41/S2): позволяет проверить, какой именно
+/// канал эмитится в каждом сценарии.
+fn push_log(
+    log: &Arc<Mutex<Vec<&'static str>>>,
+    event: &'static str,
+) -> Arc<dyn Fn() + Send + Sync> {
+    let log = Arc::clone(log);
+    Arc::new(move || log.lock().unwrap().push(event))
+}
+
+/// Хост с одним view-плагином (`view-activate.lua`, наполняет вкладку в `on_activate`) и
+/// журналом раздельных сигналов `plugin-views-changed`/`plugins-changed` (F41/S2).
+fn host_with_signal_log() -> (PluginHost, Arc<Mutex<Vec<&'static str>>>) {
+    let store = store_with_doc("x");
+    let views = views();
+    let pending: Arc<Mutex<Vec<(String, u64)>>> = Arc::new(Mutex::new(Vec::new()));
+    let log = Arc::new(Mutex::new(Vec::<&'static str>::new()));
+    let views_notify = push_log(&log, "plugin-views-changed");
+    let plugins_notify = push_log(&log, "plugins-changed");
+    let services: Arc<dyn HostServices> = Arc::new(
+        DocumentServices::new(Arc::clone(&store))
+            .with_views(Arc::clone(&views))
+            .with_notify(Arc::clone(&views_notify))
+            .with_pending_changed(Arc::clone(&pending)),
+    );
+    let mut manager = PluginManager::default();
+    manager.register(
+        PluginRuntime::new(
+            "viewplugin",
+            child_exe(),
+            fixture("view-activate.lua"),
+            vec!["view:modify".to_string()],
+            Arc::clone(&services),
+            vec![view_contrib("main", "Main", 1)],
+            Vec::new(),
+        )
+        .with_granted(vec!["view:modify".to_string()]),
+    );
+    let host = PluginHost::new(manager, views, services, views_notify, pending)
+        .with_plugins_notify(plugins_notify);
+    (host, log)
+}
+
+/// F41/S2: `set_view_content` меняет только контент view → эмитится **лишь**
+/// `plugin-views-changed`; менеджер плагинов не должен перечитывать `list_plugins`.
+#[test]
+fn set_view_content_emits_only_views_changed() {
+    let store = store_with_doc("x");
+    let views = views();
+    views
+        .lock()
+        .unwrap()
+        .register("p", &[view_contrib("main", "Main", 1)]);
+
+    let log = Arc::new(Mutex::new(Vec::<&'static str>::new()));
+    let views_notify = push_log(&log, "plugin-views-changed");
+
+    // DocumentServices получает только view-сигнал; `plugins-changed` ему недоступен —
+    // это структурная гарантия того, что set_view_content не дёрнет менеджер.
+    let services: Arc<dyn HostServices> = Arc::new(
+        DocumentServices::new(Arc::clone(&store))
+            .with_views(Arc::clone(&views))
+            .with_notify(Arc::clone(&views_notify)),
+    );
+    services
+        .handle(
+            "set_view_content",
+            json!({ "view_id": "p:main", "html": "<b>x</b>", "_plugin_id": "p" }),
+        )
+        .unwrap();
+
+    assert_eq!(
+        log.lock().unwrap().clone(),
+        vec!["plugin-views-changed"],
+        "только view-сигнал; plugins-changed не эмитится"
+    );
+}
+
+/// F41/S2: включение/перезагрузка меняют статус (и реестр view) → оба сигнала, включая
+/// `plugins-changed` (менеджер обязан обновить состав/статусы).
+#[test]
+fn set_enabled_and_reload_emit_plugins_changed() {
+    let _guard = serial();
+    let (host, log) = host_with_signal_log();
+
+    host.set_enabled("viewplugin", true).expect("включение");
+    let after_enable = log.lock().unwrap().clone();
+    assert!(
+        after_enable.contains(&"plugins-changed"),
+        "включение меняет состав/статус → plugins-changed: {after_enable:?}"
+    );
+    assert!(
+        after_enable.contains(&"plugin-views-changed"),
+        "включение регистрирует view → plugin-views-changed: {after_enable:?}"
+    );
+
+    log.lock().unwrap().clear();
+    host.reload("viewplugin").expect("перезагрузка");
+    assert!(
+        log.lock().unwrap().contains(&"plugins-changed"),
+        "reload меняет статус → plugins-changed: {:?}",
+        log.lock().unwrap()
+    );
+}
+
+/// F41/S2: отказ доставки события уводит статус плагина из `Active` (тот же путь, что при
+/// накоплении серии ведёт к карантину) — менеджер обязан получить `plugins-changed` без
+/// участия пользователя.
+#[test]
+fn pump_failure_emits_plugins_changed() {
+    let _guard = serial();
+    let store = store_with_doc("x");
+    let views = views();
+    let pending: Arc<Mutex<Vec<(String, u64)>>> = Arc::new(Mutex::new(Vec::new()));
+    let log = Arc::new(Mutex::new(Vec::<&'static str>::new()));
+    let views_notify = push_log(&log, "plugin-views-changed");
+    let plugins_notify = push_log(&log, "plugins-changed");
+    let services: Arc<dyn HostServices> = Arc::new(
+        DocumentServices::new(Arc::clone(&store))
+            .with_views(Arc::clone(&views))
+            .with_notify(Arc::clone(&views_notify))
+            .with_pending_changed(Arc::clone(&pending)),
+    );
+    let mut manager = PluginManager::default();
+    // `event-hang.lua` зависает на доставке события → invocation снимается (статус ≠ Active).
+    let mut runtime = PluginRuntime::new(
+        "event-hang",
+        child_exe(),
+        fixture("event-hang.lua"),
+        Vec::new(),
+        Arc::clone(&services),
+        Vec::new(),
+        Vec::new(),
+    )
+    .with_watchdog(Duration::from_millis(300), Duration::from_secs(30));
+    runtime.start().expect("активация");
+    manager.register(runtime);
+    let host = PluginHost::new(manager, views, services, views_notify, pending)
+        .with_plugins_notify(plugins_notify);
+
+    host.run_plugin_command("test.command", Some("doc-1"));
+
+    assert!(
+        log.lock().unwrap().contains(&"plugins-changed"),
+        "отказ доставки → смена статуса → plugins-changed: {:?}",
+        log.lock().unwrap()
+    );
+}
+
 #[test]
 fn document_services_set_view_content_sanitizes_and_notifies() {
     let store = store_with_doc("x");
@@ -690,6 +839,44 @@ fn apply_edit_defers_document_changed() {
         )
         .unwrap();
     assert_eq!(pending.lock().unwrap().len(), 1, "эхо не порождает событие");
+}
+
+/// F40/S1: ответ `get_document_text` — JSON-строка; при обилии управляющих символов
+/// экранирование раздувает кадр host→child (до 6×) сверх `MAX_HOST_FRAME_BYTES`. Вместо
+/// `protocol`-сбоя хост обязан вернуть **явный** `too_large` (основной путь — окна).
+#[test]
+fn get_document_text_rejects_escaping_overflow() {
+    // ~3 МиБ управляющих символов 0x01 (каждый → `\u0001`, 6 Б) ⇒ > 16 МиБ в кадре.
+    let dense = "\u{0001}".repeat(3 * 1024 * 1024);
+    let store = store_with_doc(&dense);
+    let services = services(&store);
+
+    let err = services
+        .handle("get_document_text", json!({ "doc_id": "doc-1" }))
+        .unwrap_err();
+    assert_eq!(
+        err.code, "too_large",
+        "плотный текст → явный отказ, не protocol"
+    );
+}
+
+/// F40/S1 (контроль): текст, умещающийся в кадр даже после экранирования, отдаётся целиком —
+/// гард не должен резать легитимные документы.
+#[test]
+fn get_document_text_allows_text_within_frame() {
+    // 1 МиБ кавычек → ~2 МиБ после экранирования: заметно меньше 16 МиБ.
+    let text = "\"".repeat(1024 * 1024);
+    let store = store_with_doc(&text);
+    let services = services(&store);
+
+    let value = services
+        .handle("get_document_text", json!({ "doc_id": "doc-1" }))
+        .unwrap();
+    assert_eq!(
+        value.as_str().map(str::len),
+        Some(text.len()),
+        "текст в пределах кадра отдаётся целиком"
+    );
 }
 
 #[test]

@@ -19,6 +19,19 @@ use super::HostServices;
 /// `len` раздул бы `Reply` и мог бы заблокировать запись в stdin child (§3.2 ревью).
 const MAX_RANGE_BYTES: usize = plugin_proto::frame::MAX_EVENT_FRAME_BYTES;
 
+/// Бюджет ответа `get_document_text` **после JSON-экранирования** (F40/S1).
+///
+/// Гард `MAX_FILE_SIZE` смотрит сырой `text.len()`, но в кадре ответ — JSON-строка: `"`/`\`
+/// дают 2 Б, управляющий символ — до 6 Б (`\u00XX`). Потолок кадра host→child —
+/// [`plugin_proto::frame::MAX_HOST_FRAME_BYTES`] (16 МиБ); вычитаем запас на обвязку конверта
+/// (`{"msg":"reply","id":N,"result":…}`) и держим отказ ниже него.
+///
+/// Запас именован и намеренно консервативен: пересмотреть при изменении формата конверта
+/// (добавлении полей ответа).
+const REPLY_ENVELOPE_RESERVE: usize = 1024;
+const MAX_TEXT_REPLY_ESCAPED: usize =
+    plugin_proto::frame::MAX_HOST_FRAME_BYTES - REPLY_ENVELOPE_RESERVE;
+
 /// Очередь отложенных `document:changed` (плагинные `apply_edit`): `(doc_id, rev)`.
 /// Общая между `DocumentServices` (кладёт) и `PluginHost` (дренит в EventBus).
 pub type PendingChanged = Arc<Mutex<Vec<(String, u64)>>>;
@@ -43,8 +56,10 @@ pub struct DocumentServices {
     store: Arc<Mutex<DocumentStore>>,
     /// Реестр плагинных view (Фаза 4): нужен только для `set_view_content`.
     views: Option<Arc<Mutex<PluginViews>>>,
-    /// Уведомление фронтенда об изменении представлений (эмит `plugin-views-changed`).
-    notify: Option<Arc<dyn Fn() + Send + Sync>>,
+    /// Сигнал `plugin-views-changed`: сменился контент представления. Отдельный от
+    /// `plugins-changed` (F41/S2): `set_view_content` не меняет состав/статусы плагинов,
+    /// поэтому не должен заставлять менеджер перечитывать `list_plugins`.
+    views_notify: Option<Arc<dyn Fn() + Send + Sync>>,
     /// Отложенные `document:changed` от плагинных `apply_edit`: `(doc_id, rev)`.
     ///
     /// Публиковать их в EventBus прямо здесь нельзя — `apply_edit` исполняется под
@@ -66,7 +81,7 @@ impl DocumentServices {
         Self {
             store,
             views: None,
-            notify: None,
+            views_notify: None,
             pending_changed: None,
             exporter: None,
             status_sink: None,
@@ -80,9 +95,12 @@ impl DocumentServices {
         self
     }
 
-    /// Подключает колбэк уведомления фронтенда о смене контента view.
+    /// Подключает сигнал `plugin-views-changed` (смена контента view, F41/S2).
+    ///
+    /// Отдельный канал: этот колбэк **не** эмитит `plugins-changed` — `set_view_content`
+    /// не меняет состав/статусы плагинов.
     pub fn with_notify(mut self, notify: Arc<dyn Fn() + Send + Sync>) -> Self {
-        self.notify = Some(notify);
+        self.views_notify = Some(notify);
         self
     }
 
@@ -154,7 +172,7 @@ impl DocumentServices {
         };
         // Эмитим событие только при реальной смене HTML (§7 риски: избежать шторма IPC).
         if changed {
-            if let Some(notify) = &self.notify {
+            if let Some(notify) = &self.views_notify {
                 notify();
             }
         }
@@ -257,6 +275,18 @@ impl HostServices for DocumentServices {
                         format!("документ больше {} МБ", MAX_FILE_SIZE / (1024 * 1024)),
                     ));
                 }
+                // F40/S1: ответ — JSON-строка; при обилии `"`/`\`/управляющих символов
+                // экранирование раздувает кадр (до 6×) сверх `MAX_HOST_FRAME_BYTES`, и child
+                // получил бы `protocol`-сбой. Проверяем экранированную длину заранее и
+                // возвращаем **явный** `too_large`: плагин понимает причину, а не «битый
+                // протокол». Основной путь чтения — окна `get_document_range`.
+                if json_escaped_len(&doc.text) > MAX_TEXT_REPLY_ESCAPED {
+                    return Err(PluginError::new(
+                        "too_large",
+                        "документ не умещается в кадр после JSON-экранирования; \
+                         используйте get_document_range",
+                    ));
+                }
                 Ok(json!(&doc.text))
             }
             "apply_edit" => {
@@ -303,6 +333,21 @@ impl HostServices for DocumentServices {
             ))),
         }
     }
+}
+
+/// Верхняя оценка длины JSON-строки `text` после экранирования serde_json (F40/S1).
+///
+/// `"` и `\` → 2 Б; управляющие символы (< 0x20) → до 6 Б (`\u00XX`); прочие байты
+/// (включая UTF-8) serde_json не экранирует. Оценка намеренно **сверху** (например, `\n`
+/// реально 2 Б, но считаем 6): недооценка привела бы к отправке кадра сверх лимита.
+fn json_escaped_len(text: &str) -> usize {
+    text.bytes()
+        .map(|b| match b {
+            b'"' | b'\\' => 2,
+            0x00..=0x1f => 6,
+            _ => 1,
+        })
+        .sum()
 }
 
 fn doc_id(args: &Value) -> Result<DocumentId, PluginError> {

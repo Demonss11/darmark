@@ -55,7 +55,13 @@ pub struct PluginHost {
     /// собственную копию `Arc`, поэтому поле пока не читается.
     #[allow(dead_code)]
     services: Arc<dyn HostServices>,
-    notify: Arc<dyn Fn() + Send + Sync>,
+    /// Сигнал `plugin-views-changed`: сменился контент/реестр представлений.
+    views_notify: Arc<dyn Fn() + Send + Sync>,
+    /// Сигнал `plugins-changed`: сменился состав/статус/карантин/включение (F41/S2).
+    /// Отдельный от view-сигнала: `set_view_content` не должен дёргать `list_plugins`.
+    /// По умолчанию no-op (тесты, [`PluginHost::empty`]); подключается
+    /// [`PluginHost::with_plugins_notify`].
+    plugins_notify: Arc<dyn Fn() + Send + Sync>,
     /// Настройки приложения (вкл/выкл плагинов, §12) и путь `config.json` для записи.
     /// Вкл/выкл из менеджера обязан переживать рестарт, поэтому сохраняется на диск.
     settings: Mutex<SettingsStore>,
@@ -91,7 +97,8 @@ impl PluginHost {
             views: Arc::new(Mutex::new(PluginViews::new())),
             pending_changed: Arc::new(Mutex::new(Vec::new())),
             services: Arc::new(NoopServices),
-            notify: Arc::new(|| {}),
+            views_notify: Arc::new(|| {}),
+            plugins_notify: Arc::new(|| {}),
             settings: Mutex::new(SettingsStore::default()),
             config_path: None,
             last_doc: Mutex::new(None),
@@ -102,7 +109,7 @@ impl PluginHost {
         manager: PluginManager,
         views: Arc<Mutex<PluginViews>>,
         services: Arc<dyn HostServices>,
-        notify: Arc<dyn Fn() + Send + Sync>,
+        views_notify: Arc<dyn Fn() + Send + Sync>,
         pending_changed: PendingChanged,
     ) -> Self {
         Self {
@@ -111,7 +118,8 @@ impl PluginHost {
             views,
             pending_changed,
             services,
-            notify,
+            views_notify,
+            plugins_notify: Arc::new(|| {}),
             settings: Mutex::new(SettingsStore::default()),
             config_path: None,
             last_doc: Mutex::new(None),
@@ -124,6 +132,32 @@ impl PluginHost {
         self.settings = Mutex::new(settings);
         self.config_path = config_path;
         self
+    }
+
+    /// Подключает сигнал `plugins-changed` (F41/S2): состав/статус/карантин/включение.
+    ///
+    /// Отдельный от `plugin-views-changed` (передаётся в [`PluginHost::new`]): `set_view_content`
+    /// меняет лишь контент view и не должен заставлять фронтенд-менеджер лишний раз звать
+    /// `list_plugins`. По умолчанию (без вызова) сигнал — no-op.
+    pub fn with_plugins_notify(mut self, notify: Arc<dyn Fn() + Send + Sync>) -> Self {
+        self.plugins_notify = notify;
+        self
+    }
+
+    /// Уведомляет фронтенд о смене реестра/контента представлений (`plugin-views-changed`).
+    fn notify_views(&self) {
+        (self.views_notify)();
+    }
+
+    /// Уведомляет менеджер о смене состава/статуса/карантина (`plugins-changed`).
+    fn notify_plugins(&self) {
+        (self.plugins_notify)();
+    }
+
+    /// Оба сигнала: реестр view и статусы изменились вместе (enable/reload/remove/permissions).
+    fn notify_all(&self) {
+        self.notify_views();
+        self.notify_plugins();
     }
 
     /// `plugin_views`: снимок реестра представлений для фронтенда.
@@ -178,12 +212,13 @@ impl PluginHost {
                 }),
             )
         };
-        // Отказ invocation увёл статус в failed/quarantined — сообщаем фронтенду.
+        // Отказ invocation увёл статус в failed/quarantined — сообщаем менеджеру.
+        // Реестр view не менялся: только `plugins-changed` (F41/S2).
         let failed = result.is_err();
         // `on_action` мог править документ (`apply_edit`) — дреним manager до pump.
         self.pump();
         if failed {
-            (self.notify)();
+            self.notify_plugins();
         }
         result
     }
@@ -285,7 +320,8 @@ impl PluginHost {
             }
         }
         if status_changed {
-            (self.notify)();
+            // Сменился статус/карантин, но не реестр view → только `plugins-changed` (F41/S2).
+            self.notify_plugins();
         }
     }
 
@@ -324,8 +360,9 @@ impl PluginHost {
             }
         }
         // on_activate мог править документ — доставляем отложенные события и уведомляем.
+        // Состав/статусы изменились (старт) — оба сигнала.
         self.pump();
-        (self.notify)();
+        self.notify_all();
     }
 
     /// `set_plugin_enabled`: вкл/выкл плагина (IPC-команда менеджера, Фаза 5).
@@ -372,9 +409,9 @@ impl PluginHost {
             }
         }
 
-        // `on_activate` мог править документ; `notify` — статус/состав изменились.
+        // `on_activate` мог править документ; вкл/выкл меняет состав/статус и реестр view.
         self.pump();
-        (self.notify)();
+        self.notify_all();
         result
     }
 
@@ -410,7 +447,8 @@ impl PluginHost {
         }
 
         self.pump();
-        (self.notify)();
+        // Удаление меняет и реестр view, и состав плагинов — оба сигнала.
+        self.notify_all();
         Ok(())
     }
 
@@ -436,7 +474,8 @@ impl PluginHost {
             self.reannounce_opened(id);
         }
         self.pump();
-        (self.notify)();
+        // reload меняет статус и перерегистрирует view — оба сигнала.
+        self.notify_all();
         result
     }
 
@@ -501,7 +540,8 @@ impl PluginHost {
         }
 
         self.pump();
-        (self.notify)();
+        // Смена прав меняет статус (перезапуск) и перерегистрирует view — оба сигнала.
+        self.notify_all();
         result
     }
 }

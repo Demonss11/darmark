@@ -712,14 +712,19 @@ fn setup_plugins(app: &mut tauri::App) -> Result<(), String> {
     // Очередь отложенных document:changed от плагинных apply_edit (общая services ↔ host).
     let pending_changed: plugins::services::PendingChanged = Arc::new(Mutex::new(Vec::new()));
 
-    // notify эмитит оба события: состав/контент view (`plugin-views-changed`) и
-    // статус/состав плагинов для менеджера UI (`plugins-changed`). Фронт перечитывает снимки.
+    // Два независимых сигнала фронтенду (F41/S2): `plugin-views-changed` — сменился
+    // контент/реестр представлений; `plugins-changed` — состав/статус/карантин/включение.
+    // Раньше единый notify слал оба, и любой `set_view_content` заставлял менеджер
+    // лишний раз звать `list_plugins`.
     let handle = app.handle().clone();
-    let notify: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
+    let views_notify: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
         if let Err(e) = handle.emit("plugin-views-changed", ()) {
             eprintln!("не эмитить plugin-views-changed: {e}");
         }
-        if let Err(e) = handle.emit("plugins-changed", ()) {
+    });
+    let plugins_handle = app.handle().clone();
+    let plugins_notify: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
+        if let Err(e) = plugins_handle.emit("plugins-changed", ()) {
             eprintln!("не эмитить plugins-changed: {e}");
         }
     });
@@ -788,7 +793,7 @@ fn setup_plugins(app: &mut tauri::App) -> Result<(), String> {
     let services: Arc<dyn plugins::HostServices> = Arc::new(
         DocumentServices::new(store)
             .with_views(Arc::clone(&views))
-            .with_notify(Arc::clone(&notify))
+            .with_notify(Arc::clone(&views_notify))
             .with_pending_changed(Arc::clone(&pending_changed))
             .with_exporter(exporter)
             .with_status_sink(status_sink)
@@ -806,8 +811,15 @@ fn setup_plugins(app: &mut tauri::App) -> Result<(), String> {
         eprintln!("плагин {}: {}", error.dir.display(), error.message);
     }
 
-    let host = PluginHost::new(result.manager, views, services, notify, pending_changed)
-        .with_settings(settings, config_path);
+    let host = PluginHost::new(
+        result.manager,
+        views,
+        services,
+        views_notify,
+        pending_changed,
+    )
+    .with_plugins_notify(plugins_notify)
+    .with_settings(settings, config_path);
     // Best-effort старт enabled-плагинов; notify внутри.
     host.start_enabled();
     app.manage(PluginState { host });
