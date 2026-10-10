@@ -99,4 +99,21 @@ Tauri 2 + vanilla TypeScript/Vite на фронте + чистое Rust-ядро
 - `@rust-developer` (написание/рефакторинг/отладка Rust),
 - `@frontend-developer` (vanilla TS/DOM, состояние, IPC, строгая типизация, a11y),
 - `@rust-tester` (поиск важных непокрытых мест в Rust-коде и покрытие их тестами; умеет работать по TDD — тест до кода),
-- `@frontend-tester` (поиск непокрытых пользовательских сценариев и покрытие их E2E-сценариями Cucumber; нативные диалоги/ОС помечает `@manual`).
+- `@frontend-tester` (поиск непокрытых пользовательских сценариев и покрытие их E2E-сценариями Cucumber; нативные диалоги/ОС помечает `@manual`),
+- `@plugin-developer` (написание/сопровождение Lua-плагинов: main.lua + plugin.json под песочницу darmark),
+- `@security-reviewer` (read-only ревью безопасности: песочница, permissions, протокол host↔child, watchdog, XSS, CSP),
+- `@architect` (дизайн-ревью до кодинга: согласованность с DESIGN_DOC/ADR, оформление новых ADR),
+- `@release-engineer` (релизный процесс: прогон проверок, size-gate, сборка NSIS, сверка релизного профиля),
+- `@ui-designer` (визуальные направления и прототипы-референсы интерфейса; не пишет продуктовый код).
+
+## Навыки проекта
+
+- `coding-discipline` (дисциплина изменений: минимальный дифф, правки строго по месту),
+- `rust-testing` (механика написания Rust-тестов и поиска непокрытых мест),
+- `cucumber-e2e` (механика E2E-тестирования интерфейса на Gherkin + Cucumber),
+- `plugin-sandbox` (механика песочницы плагинов: plugin.json, permissions, watchdog, карантин),
+- `tauri-ipc-conventions` (инварианты IPC и фронтенда: контракт фронт↔Rust, брендированные id, защита от гонок),
+- `md-core-domain` (домен ядра Markdown: pulldown-cmark, XSS-санитайзер, YAML-шапка, mapping),
+- `release-checklist` (пошаговая релизная процедура, проверки бюджета размера),
+- `tooling-audit` (аудит агентов/навыков: frontmatter, permission, висячие ссылки, дубли, хардкод),
+- `ui-prototype` (механика прототипирования: где лежат прототипы, CSS-токены, CSP-safe, чек-лист хендоффа).
