@@ -110,6 +110,7 @@ const pluginViews = createPluginViews({
   switchEl: document.getElementById("view-switch") as HTMLElement,
   containerEl: document.getElementById("plugin-view") as HTMLElement,
   previewEl: preview,
+  backButtonEl: document.getElementById("btn-back-preview"),
   status: (msg) => status.flash(msg),
   // Появилось/пропало представление — перерисуем статусбар (его интерактивность
   // зависит от наличия view, а события `plugins-changed`/`plugin-views-changed`

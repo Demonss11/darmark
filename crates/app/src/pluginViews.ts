@@ -53,6 +53,11 @@ export interface PluginViewsOptions {
   containerEl: HTMLElement;
   /** `#preview` — скрывается, пока активна плагинная вкладка. */
   previewEl: HTMLElement;
+  /**
+   * Кнопка быстрого возврата к предпросмотру (`#btn-back-preview`). Видна только
+   * при активной плагинной вкладке; клик эквивалентен клику по core-вкладке.
+   */
+  backButtonEl: HTMLElement | null;
   /** Сообщение в статусбар (ошибки IPC/действия). */
   status(msg: string): void;
   /** Список представлений обновился (после `render`) — для зависимых панелей. */
@@ -141,7 +146,7 @@ function createPluginViewProvider(
 }
 
 export function createPluginViews(opts: PluginViewsOptions): PluginViews {
-  const { registry, ctx, switchEl, containerEl, previewEl, status } = opts;
+  const { registry, ctx, switchEl, containerEl, previewEl, backButtonEl, status } = opts;
 
   // Активный плагинный view; `null` — активна core-вкладка «Предпросмотр».
   let activeViewId: string | null = null;
@@ -173,6 +178,7 @@ export function createPluginViews(opts: PluginViewsOptions): PluginViews {
     for (const runtime of runtimes.values()) runtime.view.setActive(false);
     previewEl.hidden = false;
     containerEl.hidden = true;
+    if (backButtonEl) backButtonEl.hidden = true;
     setActiveTab(null);
   }
 
@@ -186,6 +192,7 @@ export function createPluginViews(opts: PluginViewsOptions): PluginViews {
     activeViewId = viewId;
     previewEl.hidden = true;
     containerEl.hidden = false;
+    if (backButtonEl) backButtonEl.hidden = false;
     for (const [id, other] of runtimes) other.view.setActive(id === viewId);
     setActiveTab(viewId);
   }
@@ -274,6 +281,11 @@ export function createPluginViews(opts: PluginViewsOptions): PluginViews {
 
   switchEl.addEventListener("click", onSwitchClick);
 
+  // Быстрый возврат к предпросмотру с плагинной вкладки — та же логика, что у
+  // core-вкладки. Слушатель вешаем только если кнопка присутствует в разметке.
+  const onBackClick = (): void => showPreview();
+  backButtonEl?.addEventListener("click", onBackClick);
+
   return {
     refresh,
 
@@ -297,6 +309,7 @@ export function createPluginViews(opts: PluginViewsOptions): PluginViews {
     dispose(): void {
       disposed = true;
       switchEl.removeEventListener("click", onSwitchClick);
+      backButtonEl?.removeEventListener("click", onBackClick);
       for (const [id, runtime] of runtimes) {
         runtime.view.dispose();
         registry.unregisterHtml(id);
@@ -306,6 +319,7 @@ export function createPluginViews(opts: PluginViewsOptions): PluginViews {
       containerEl.innerHTML = "";
       containerEl.hidden = true;
       previewEl.hidden = false;
+      if (backButtonEl) backButtonEl.hidden = true;
       setActiveTab(null);
       void unlistenPromise.then((fn) => fn?.());
     },
