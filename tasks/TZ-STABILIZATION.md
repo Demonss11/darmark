@@ -39,8 +39,8 @@
 
 | # | Что | Статус |
 |---|---|---|
-| S13 | E2E жизненного цикла плагина (enable/reload/quarantine/view/action) поверх release-бинарника | план |
-| S14 | E2E на релизный `darmark.exe` (не только debug) | план |
+| S13 | E2E жизненного цикла плагина (enable/reload/quarantine/view/action) поверх release-бинарника | сделано — добавлены `undo`, `plugin-back-preview`, `plugin-quarantine`; 2 пред-существующих падения — в «Открытых вопросах» |
+| S14 | E2E на релизный `darmark.exe` (не только debug) | подтверждено — `e2e/wdio.conf.js` гоняет `target/release/darmark.exe` |
 
 ## P2 — контракты
 
@@ -55,11 +55,34 @@
 - Фаза 2b H3 (удалённый реестр, Ed25519) — отложена на неопределённый срок.
 - Подсветка синтаксиса — идеи (`ideas/UI-IDEAS.md` IDEA-014).
 
+## Открытые вопросы
+
+### E2E (после добавления сценариев S13/S14)
+
+Добавлены и зелёные: `features/undo.feature` (`Ctrl+Z`/`Ctrl+Y` для ввода и откат программной правки
+плагина `apply_edit`), `features/plugin-back-preview.feature` (S10-D), `features/plugin-quarantine.feature`
+(N=3 + сброс тумблером). S14 подтверждён (release-бинарник). Инцидентально починен
+`e2e/steps/tabs.steps.js` — TS-аннотации в `.js` (`: string`, `as HTMLElement`) ломали старт всего
+прогона `npm run test:e2e`.
+
+`npm run test:e2e` → **16 passed, 2 failed (18 spec files)**:
+
+1. **`plugins.feature` — «Повторная выдача прав не обнуляет view по подписке» (1 failing).**
+   При снятии `view:modify` прежний HTML вкладки (`#e2e-marker`) **остаётся**: `PluginViews::register`
+   при повторной регистрации сохраняет HTML, а `view:create` по-прежнему выдан → `set_view_content`
+   отклоняется, старый контент не чистится. Затронуто S4 (`702a5bd`).
+   **Решение не принято:** продуктовый фикс (отзыв `view:modify` очищает контент вкладки — согласно
+   deny-by-default) **или** обновление ожидания теста.
+2. **`tabs.feature` — 23 failing.** Фича пишет числа словами («первая вкладка»), а `steps/tabs.steps.js`
+   объявляет шаги с `{int}` → шаги «not defined»; плюс сценарии не изолированы по состоянию (вкладки
+   накапливаются между сценариями). E2E-долг вне scope S13/S14.
+   **Решение не принято:** починить шаги (парсинг числительных) + изоляцию **или** пометить `@wip`.
+
 ## Критерии готовности
 
 - [x] S1–S3 (F40/F41/F42) исправлены и под тестами (`cargo test -p darmark`).
 - [x] F44 (`view:create` гейтит регистрацию view) и F43 (хранилище + `get_setting`/`set_setting`) — сделано; [ ] рендер UI-схемы `contributes.settings` — отдельно.
 - [x] Релизный workflow (`release.yml`); [x] smoke установщика (silent-install: 3 exe рядом, child запускается, uninstall чистый); [ ] чистая VM — `@manual` перед релизом.
 - [x] UX-решение по представлениям: вариант **D** (текущий визуал вкладок + быстрый возврат) — принято и реализовано.
-- [ ] E2E зелёные (debug + release).
+- [ ] E2E зелёные (debug + release) — новые сценарии зелёные; открыты 2 пред-существующих падения (см. «Открытые вопросы»).
 - [x] ADR `HOST_API_VERSION` принят (ADR-0027).
