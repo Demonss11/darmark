@@ -28,14 +28,72 @@ impl DocumentId {
 
 /// Операция правки для undo/redo-стека (D5). Владелец стека — документ.
 ///
-/// Поля закладываются в Фазе 1, стек наполняется в Фазе 3 (TS `docStore`/Rust-undo).
-#[allow(dead_code)] // поля начнёт читать undo-стек в Фазе 3
+/// Смещения — **байтовые** UTF-8 (как `data-md` в `md-core`): `removed` — прежнее
+/// содержимое `[start, start+removed.len())`, `inserted` — пришедшее ему на смену.
+/// Undo меняет `inserted` обратно на `removed`, redo — наоборот.
 #[derive(Clone, Debug)]
 pub struct EditOp {
-    pub rev: u64,
-    /// Диапазон в **байтовых** смещениях UTF-8 (как `data-md` в `md-core`).
-    pub range: (usize, usize),
-    pub text: String,
+    pub start: usize,
+    pub removed: String,
+    pub inserted: String,
+}
+
+/// Потолок undo/redo-стека: при переполнении отбрасывается самый старый оп.
+///
+/// Ограничивает память: редактор шлёт правку на каждое нажатие, а каждый оп держит
+/// две строки. 500 шагов с запасом покрывают типичную сессию редактирования.
+const UNDO_LIMIT: usize = 500;
+
+/// Кладёт оп в стек, отбрасывая самый старый при переполнении [`UNDO_LIMIT`].
+///
+/// Применяется к обоим стекам сообразно: `undo` растёт на новых правках, `redo` —
+/// на отменах; каждый держится в границах лимита.
+fn push_op(stack: &mut Vec<EditOp>, op: EditOp) {
+    stack.push(op);
+    if stack.len() > UNDO_LIMIT {
+        stack.remove(0);
+    }
+}
+
+/// Минимальная правка `old → new`: общий префикс и общий суффикс по байтам.
+///
+/// Границы усекаются **вниз до границ UTF-8**: общий префикс/суффикс может разрезать
+/// многочленный символ (совпавшие байты внутри разных символов), и без выравнивания
+/// срез `&str` запаниковал бы. Возвращает оп с байтовыми `start`, `removed`, `inserted`.
+fn minimal_diff(old: &str, new: &str) -> EditOp {
+    let old_bytes = old.as_bytes();
+    let new_bytes = new.as_bytes();
+
+    // Общий префикс по байтам, затем выравнивание вниз до границы символа.
+    let max_prefix = old_bytes.len().min(new_bytes.len());
+    let mut start = 0;
+    while start < max_prefix && old_bytes[start] == new_bytes[start] {
+        start += 1;
+    }
+    while start > 0 && !old.is_char_boundary(start) {
+        start -= 1;
+    }
+
+    // Общий суффикс по байтам, не заходя за отрезанный префикс, затем выравнивание.
+    let mut suffix = 0;
+    while suffix < old_bytes.len() - start
+        && suffix < new_bytes.len() - start
+        && old_bytes[old_bytes.len() - 1 - suffix] == new_bytes[new_bytes.len() - 1 - suffix]
+    {
+        suffix += 1;
+    }
+    while suffix > 0
+        && (!old.is_char_boundary(old_bytes.len() - suffix)
+            || !new.is_char_boundary(new_bytes.len() - suffix))
+    {
+        suffix -= 1;
+    }
+
+    EditOp {
+        start,
+        removed: old[start..old_bytes.len() - suffix].to_string(),
+        inserted: new[start..new_bytes.len() - suffix].to_string(),
+    }
 }
 
 /// Кэш HTML. Ключ — `(mapped, rev)`, значение — готовый HTML.
@@ -49,7 +107,6 @@ pub struct RenderCache {
 }
 
 /// Документ: текст, ревизия, путь, кэш рендера и undo/redo.
-#[allow(dead_code)] // undo/redo наполняются в Фазе 3
 pub struct Document {
     pub id: DocumentId,
     pub path: Option<PathBuf>,
@@ -90,6 +147,19 @@ pub struct RenderResult {
     pub html: String,
     pub rev: u64,
     pub changed: bool,
+}
+
+/// Результат undo/redo: текст после операции и байтовый диапазон изменения.
+///
+/// `start`/`end` — границы изменённого фрагмента в **байтовых** смещениях UTF-8:
+/// при undo это восстановленный `removed`, при redo — применённый `inserted`.
+/// Фронт по ним выставляет выделение/каретку в редакторе.
+#[derive(Debug, Serialize)]
+pub struct UndoResult {
+    pub text: String,
+    pub rev: u64,
+    pub start: usize,
+    pub end: usize,
 }
 
 impl Document {
@@ -208,9 +278,15 @@ impl DocumentStore {
 
     /// Применяет правку текста и рендерит. `rev` растёт только при реальной смене
     /// текста, поэтому повторный вызов с тем же текстом даёт `changed: false`.
+    ///
+    /// Реальная правка кладёт **минимальный** оп в `undo` (D5) и очищает `redo`:
+    /// новая ветка истории делает прежнее «вперёд» недостижимым.
     pub fn update(&mut self, id: &DocumentId, text: String, mapped: bool) -> Option<RenderResult> {
         let doc = self.docs.get_mut(id)?;
         if doc.text != text {
+            let op = minimal_diff(&doc.text, &text);
+            push_op(&mut doc.undo, op);
+            doc.redo.clear();
             doc.text = text;
             doc.rev += 1;
         }
@@ -301,10 +377,67 @@ impl DocumentStore {
         new_text.push_str(text);
         new_text.push_str(&doc.text[stop..]);
         if doc.text != new_text {
+            // Точный оп (не минимальный diff): диапазон задан вызывающей стороной явно.
+            let op = EditOp {
+                start,
+                removed: doc.text[start..stop].to_string(),
+                inserted: text.to_string(),
+            };
+            push_op(&mut doc.undo, op);
+            doc.redo.clear();
             doc.text = new_text;
             doc.rev += 1;
         }
         Some(doc.rev)
+    }
+
+    /// Отменяет последнюю правку (LIFO). `None` — документа нет или нечего отменять.
+    ///
+    /// Меняет `[start, start+inserted.len())` обратно на `removed`, переносит оп в
+    /// `redo`, растит `rev` (кэш рендера инвалидируется по ревизии). Возвращает текст
+    /// и байтовый диапазон восстановленного фрагмента.
+    pub fn undo(&mut self, id: &DocumentId) -> Option<UndoResult> {
+        let doc = self.docs.get_mut(id)?;
+        let op = doc.undo.pop()?;
+        let mut new_text = String::with_capacity(doc.text.len() + op.removed.len());
+        new_text.push_str(&doc.text[..op.start]);
+        new_text.push_str(&op.removed);
+        new_text.push_str(&doc.text[op.start + op.inserted.len()..]);
+        doc.text = new_text;
+        doc.rev += 1;
+        let end = op.start + op.removed.len();
+        let result = UndoResult {
+            text: doc.text.clone(),
+            rev: doc.rev,
+            start: op.start,
+            end,
+        };
+        push_op(&mut doc.redo, op);
+        Some(result)
+    }
+
+    /// Повторяет отменённую правку (LIFO). `None` — документа нет или нечего повторять.
+    ///
+    /// Меняет `[start, start+removed.len())` на `inserted`, переносит оп назад в
+    /// `undo`, растит `rev`. Возвращает текст и байтовый диапазон применённого фрагмента.
+    pub fn redo(&mut self, id: &DocumentId) -> Option<UndoResult> {
+        let doc = self.docs.get_mut(id)?;
+        let op = doc.redo.pop()?;
+        let mut new_text = String::with_capacity(doc.text.len() + op.inserted.len());
+        new_text.push_str(&doc.text[..op.start]);
+        new_text.push_str(&op.inserted);
+        new_text.push_str(&doc.text[op.start + op.removed.len()..]);
+        doc.text = new_text;
+        doc.rev += 1;
+        let end = op.start + op.inserted.len();
+        let result = UndoResult {
+            text: doc.text.clone(),
+            rev: doc.rev,
+            start: op.start,
+            end,
+        };
+        push_op(&mut doc.undo, op);
+        Some(result)
     }
 }
 
@@ -500,5 +633,183 @@ mod tests {
 
         store.close(&a);
         assert_eq!(store.active_id(), None);
+    }
+
+    // ---------- undo/redo (D5) ----------
+
+    #[test]
+    fn update_records_minimal_op_and_undo_redo_roundtrip() {
+        let mut store = DocumentStore::default();
+        let id = store.create("# A".into()).id;
+
+        store.update(&id, "# B".into(), false).unwrap();
+        {
+            let doc = store.get(&id).unwrap();
+            assert_eq!(doc.undo.len(), 1, "реальная правка кладёт один оп");
+            let op = &doc.undo[0];
+            assert_eq!(op.start, 2, "общий префикс «# » — 2 байта");
+            assert_eq!(op.removed, "A");
+            assert_eq!(op.inserted, "B");
+        }
+
+        let undone = store.undo(&id).unwrap();
+        assert_eq!(undone.text, "# A");
+        assert_eq!(
+            (undone.start, undone.end),
+            (2, 3),
+            "выделение результата undo"
+        );
+        assert_eq!(store.get(&id).unwrap().text, "# A");
+
+        let redone = store.redo(&id).unwrap();
+        assert_eq!(redone.text, "# B");
+        assert_eq!(
+            (redone.start, redone.end),
+            (2, 3),
+            "выделение результата redo"
+        );
+    }
+
+    #[test]
+    fn apply_edit_records_exact_op_and_undo_redo_roundtrip() {
+        let mut store = DocumentStore::default();
+        let id = store.create("hello world".into()).id;
+
+        assert_eq!(store.apply_edit(&id, 6, 11, "there"), Some(1));
+        {
+            let op = &store.get(&id).unwrap().undo[0];
+            assert_eq!(op.start, 6);
+            assert_eq!(op.removed, "world");
+            assert_eq!(op.inserted, "there");
+        }
+
+        let undone = store.undo(&id).unwrap();
+        assert_eq!(undone.text, "hello world");
+        assert_eq!((undone.start, undone.end), (6, 11));
+
+        let redone = store.redo(&id).unwrap();
+        assert_eq!(redone.text, "hello there");
+        assert_eq!((redone.start, redone.end), (6, 11));
+    }
+
+    #[test]
+    fn undo_is_lifo_and_new_edit_clears_redo() {
+        let mut store = DocumentStore::default();
+        let id = store.create("a".into()).id;
+
+        store.update(&id, "ab".into(), false).unwrap();
+        store.update(&id, "abc".into(), false).unwrap();
+
+        assert_eq!(
+            store.undo(&id).unwrap().text,
+            "ab",
+            "сначала последняя правка"
+        );
+        assert_eq!(store.undo(&id).unwrap().text, "a", "затем предыдущая");
+        assert_eq!(store.get(&id).unwrap().text, "a");
+
+        // Новая правка после отката делает «вперёд» недостижимым.
+        store.update(&id, "aX".into(), false).unwrap();
+        assert!(store.redo(&id).is_none(), "новая правка сбрасывает redo");
+    }
+
+    #[test]
+    fn diff_does_not_split_multibyte_prefix() {
+        let mut store = DocumentStore::default();
+        // «ёж» → «ёк»: различается только «ж»/«к» (по 2 байта), префикс «ё» — 2 байта.
+        let id = store.create("ёж".into()).id;
+        store.update(&id, "ёк".into(), false).unwrap();
+
+        let op = &store.get(&id).unwrap().undo[0];
+        assert_eq!(op.start, 2, "граница префикса не режет «ё»");
+        assert_eq!(op.removed, "ж");
+        assert_eq!(op.inserted, "к");
+        assert_eq!(store.undo(&id).unwrap().text, "ёж");
+        assert_eq!(store.redo(&id).unwrap().text, "ёк");
+    }
+
+    #[test]
+    fn diff_suffix_alignment_keeps_utf8_boundaries() {
+        let mut store = DocumentStore::default();
+        // «é» (C3 A9) и «ө» (D3 A9): общий суффикс-байт A9 лежит в середине символа —
+        // без выравнивания вниз срез порвал бы UTF-8 и запаниковал.
+        let id = store.create("aé".into()).id;
+        store.update(&id, "aө".into(), false).unwrap();
+
+        let op = &store.get(&id).unwrap().undo[0];
+        assert_eq!(op.start, 1);
+        assert_eq!(op.removed, "é");
+        assert_eq!(op.inserted, "ө");
+        assert_eq!(store.undo(&id).unwrap().text, "aé");
+        assert_eq!(store.redo(&id).unwrap().text, "aө");
+    }
+
+    #[test]
+    fn empty_stacks_yield_none_without_bumping_rev() {
+        let mut store = DocumentStore::default();
+        let id = store.create("x".into()).id;
+
+        assert!(store.undo(&id).is_none());
+        assert!(store.redo(&id).is_none());
+        assert_eq!(
+            store.get(&id).unwrap().rev,
+            0,
+            "пустые стеки ревизию не двигают"
+        );
+    }
+
+    #[test]
+    fn unknown_document_undo_redo_yield_none() {
+        let mut store = DocumentStore::default();
+        let id = store.create("x".into()).id;
+        store.close(&id);
+
+        assert!(store.undo(&id).is_none());
+        assert!(store.redo(&id).is_none());
+    }
+
+    #[test]
+    fn undo_limit_drops_oldest() {
+        let mut store = DocumentStore::default();
+        let id = store.create(String::new()).id;
+
+        for i in 0..(UNDO_LIMIT + 10) {
+            store.update(&id, format!("{i}"), false).unwrap();
+        }
+        assert_eq!(
+            store.get(&id).unwrap().undo.len(),
+            UNDO_LIMIT,
+            "стек ограничен UNDO_LIMIT"
+        );
+
+        // Откатываем весь стек: самые старые оп'ы отброшены, поэтому undo
+        // останавливается на состоянии после 10-й правки (текст «9»), а не на пустом.
+        let mut last = String::new();
+        while let Some(result) = store.undo(&id) {
+            last = result.text;
+        }
+        assert_eq!(last, "9", "самые старые оп'ы отброшены");
+    }
+
+    #[test]
+    fn rev_grows_on_undo_redo_and_echo_update_is_noop() {
+        let mut store = DocumentStore::default();
+        let id = store.create("a".into()).id;
+
+        store.update(&id, "b".into(), false).unwrap();
+        let rev_after_update = store.get(&id).unwrap().rev;
+
+        let undone = store.undo(&id).unwrap();
+        assert!(undone.rev > rev_after_update, "undo двигает ревизию");
+        let redone = store.redo(&id).unwrap();
+        assert!(redone.rev > undone.rev, "redo двигает ревизию");
+
+        // Эхо-правка (тот же текст) не плодит оп и не двигает ревизию.
+        let before = store.get(&id).unwrap();
+        let (ops_before, rev_before) = (before.undo.len(), before.rev);
+        store.update(&id, "b".into(), false).unwrap();
+        let after = store.get(&id).unwrap();
+        assert_eq!(after.undo.len(), ops_before, "эхо не плодит оп");
+        assert_eq!(after.rev, rev_before, "эхо не двигает ревизию");
     }
 }

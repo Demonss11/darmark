@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use error::CommandError;
-use state::{DocMeta, DocumentId, DocumentSnapshot, DocumentStore, RenderResult};
+use state::{DocMeta, DocumentId, DocumentSnapshot, DocumentStore, RenderResult, UndoResult};
 
 /// Максимальный размер файла, который разрешено открывать (10 МБ).
 /// Единственная проверка при чтении — защита от чтения гигантских файлов.
@@ -310,6 +310,50 @@ fn update_document(
     if rev_changed {
         plugins.publish_document_changed(id.as_str(), result.rev);
     }
+    Ok(result)
+}
+
+/// Отменяет последнюю правку документа (Rust-undo, D5).
+///
+/// `rev` растёт (кэш рендера инвалидируется по ревизии), поэтому плагины уведомляются
+/// `document:changed` — как и при обычной правке. Неизвестный документ →
+/// `unknown_document`; пустой undo-стек → `nothing_to_undo`.
+#[tauri::command(async)]
+fn undo_document(
+    id: DocumentId,
+    store: tauri::State<'_, Arc<Mutex<DocumentStore>>>,
+    plugins: tauri::State<'_, PluginState>,
+) -> Result<UndoResult, CommandError> {
+    let result = {
+        let mut guard = lock_store(&store);
+        // Различаем «нет документа» и «нечего отменять»: `undo` возвращает `None` в обоих.
+        if guard.get(&id).is_none() {
+            return Err(CommandError::unknown_document(id.as_str()));
+        }
+        guard.undo(&id).ok_or_else(CommandError::nothing_to_undo)?
+    };
+    // Guard отпущен до pump: событие доставляется плагинам, их host-call'ы берут стор.
+    plugins.publish_document_changed(id.as_str(), result.rev);
+    Ok(result)
+}
+
+/// Повторяет отменённую правку документа (Rust-undo, D5).
+///
+/// Неизвестный документ → `unknown_document`; пустой redo-стек → `nothing_to_redo`.
+#[tauri::command(async)]
+fn redo_document(
+    id: DocumentId,
+    store: tauri::State<'_, Arc<Mutex<DocumentStore>>>,
+    plugins: tauri::State<'_, PluginState>,
+) -> Result<UndoResult, CommandError> {
+    let result = {
+        let mut guard = lock_store(&store);
+        if guard.get(&id).is_none() {
+            return Err(CommandError::unknown_document(id.as_str()));
+        }
+        guard.redo(&id).ok_or_else(CommandError::nothing_to_redo)?
+    };
+    plugins.publish_document_changed(id.as_str(), result.rev);
     Ok(result)
 }
 
@@ -649,6 +693,8 @@ pub fn run() {
             new_document,
             open_document,
             update_document,
+            undo_document,
+            redo_document,
             render_document,
             document_snapshot,
             save_document,

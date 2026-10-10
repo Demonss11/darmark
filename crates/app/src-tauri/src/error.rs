@@ -19,6 +19,10 @@ pub enum ErrorCode {
     NotUtf8,
     /// Команда ссылается на неизвестный документ.
     UnknownDocument,
+    /// Нечего отменять (пустой undo-стек).
+    NothingToUndo,
+    /// Нечего повторять (пустой redo-стек).
+    NothingToRedo,
     /// Ошибка плагинной подсистемы (неизвестный плагин/view, отказ invocation).
     Plugin,
 }
@@ -60,6 +64,14 @@ impl CommandError {
             format!("Документ не найден: {id}"),
         )
     }
+
+    pub fn nothing_to_undo() -> Self {
+        Self::new(ErrorCode::NothingToUndo, "Нечего отменять")
+    }
+
+    pub fn nothing_to_redo() -> Self {
+        Self::new(ErrorCode::NothingToRedo, "Нечего повторять")
+    }
 }
 
 impl fmt::Display for CommandError {
@@ -79,5 +91,17 @@ mod tests {
         let err = CommandError::unknown_document("doc-7");
         assert_eq!(err.code, ErrorCode::UnknownDocument);
         assert_eq!(err.message, "Документ не найден: doc-7");
+    }
+
+    #[test]
+    fn undo_redo_errors_have_distinct_codes() {
+        assert_eq!(
+            CommandError::nothing_to_undo().code,
+            ErrorCode::NothingToUndo
+        );
+        assert_eq!(
+            CommandError::nothing_to_redo().code,
+            ErrorCode::NothingToRedo
+        );
     }
 }
