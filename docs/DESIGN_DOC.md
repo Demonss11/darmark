@@ -685,6 +685,8 @@ scan(plugins_dir) -> validate(manifest) -> load(src) -> on_activate(ctx)
 | 23 | Плагинный runtime: child-хост + Supervisor (stdio, Job Object, watchdog, карантин) | §6–§12, §14 | ADR-0023 |
 | 24 | Плагины: триггер в тулбаре + правый дровер (вариант C) | §5.5, §13.2 | ADR-0024 |
 | 25 | Ре-дизайн палитры и типографики: семантические токены, WCAG AA | §5, §13.2 | ADR-0025 |
+| 26 | Локальный каталог плагинов: `plugins/index.json` + CLI `install/link/remove/update` (Фаза 2a H3) | §7.1, §10 | ADR-0026 |
+| 27 | Политика совместимости `HOST_API_VERSION`: мажор — только несовместимые изменения, двухступенчатая депрекация (Фаза 3 H3, S15) | §7.2, §8 | ADR-0027 |
 
 ---
 
