@@ -22,11 +22,12 @@ export function createEditorView(
   host.addEventListener("click", onSelect);
   host.addEventListener("select", onSelect);
 
-  // Внешняя смена документа (open/new): подтягиваем буфер без генерации `input`.
+  // Внешняя смена документа (open/new/switchTab): подтягиваем буфер без генерации `input`.
   // Сравнение значений исключает цикл store → view → store.
-  const unsubscribe = store.subscribe((s) => {
-    if (s.text !== host.value) {
-      host.value = s.text;
+  const unsubscribe = store.subscribe((tabs, activeId) => {
+    const active = tabs.find((t) => t.id === activeId) ?? null;
+    if (active && active.text !== host.value) {
+      host.value = active.text;
       host.setSelectionRange(0, 0);
       onSelection();
     }

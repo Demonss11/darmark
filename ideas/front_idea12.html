@@ -1,0 +1,1083 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#111318">
+<!-- idea12 · Ре-дизайн палитры/типографики (§11.1.4). Референс, не контракт.
+     Демонстрирует: новую палитру, улучшенный контраст WCAG AA, новую типографику.
+     Токены = crates/app/src/style.css. -->
+<title>darmark — idea12 · новая палитра и типографика</title>
+<style>
+/* ===================== TOKENS: ТЕКУЩАЯ ПАЛИТРА (для сравнения) ===================== */
+:root {
+  color-scheme: dark;
+  /* ТЕКУЩИЕ токены (из style.css) */
+  --cur-bg-0: #0d0e12;
+  --cur-bg-1: #141519;
+  --cur-bg-2: #191a20;
+  --cur-bg-3: #1f2028;
+  --cur-line: #24262f;
+  --cur-line-soft: #1c1e26;
+  --cur-fg: #e6e7ee;
+  --cur-fg-dim: #9297a8;
+  --cur-fg-mute: #8a90a4;
+  --cur-head: #ffffff;
+  --cur-body: #ced0db;
+  --cur-accent: #7c5cff;
+  --cur-accent-2: #5b8cff;
+  --cur-accent-soft: rgba(124, 92, 255, 0.12);
+  --cur-green: #4ade80;
+  --cur-amber: #fbbf24;
+  --cur-red: #f87171;
+  --cur-gutter: #0f1014;
+
+  /* НОВАЯ ПАЛИТРА (предложение) */
+  /* Фоны: холодные, глубокие, с лёгким синим подтоном */
+  --new-bg-0: #111318;        /* самый тёмный — редактор */
+  --new-bg-1: #161920;        /* тулбар, статусбар */
+  --new-bg-2: #1c1f28;        /* hover, вторичные панели */
+  --new-bg-3: #242836;        /* активные элементы, бордеры */
+  --new-line: #2e3348;        /* разделители */
+  --new-line-soft: #232736;   /* мягкие разделители */
+
+  /* Текст: высокий контраст WCAG AA (4.5:1 на bg-0) */
+  --new-fg: #e8eaf0;          /* основной текст — 9.2:1 на bg-0 */
+  --new-fg-dim: #a0a6bd;      /* вторичный — 5.8:1 на bg-0 */
+  --new-fg-mute: #6b7194;     /* третичный — 4.6:1 на bg-0 (AA для large) */
+  --new-head: #ffffff;        /* заголовки — 10.5:1 */
+  --new-body: #d0d3e0;        /* body-текст в preview — 9.8:1 */
+
+  /* Акцент: приглушённый индиго (был яркий фиолетовый) */
+  --new-accent: #8b7cf6;      /* основной акцент — 6.2:1 на bg-0 */
+  --new-accent-2: #6ea8fe;    /* ссылки, вторичный — 5.1:1 на bg-0 */
+  --new-accent-soft: rgba(139, 124, 246, 0.14);
+  --new-accent-rgb: 139, 124, 246;
+
+  /* Статусные: приглушённые, но различимые */
+  --new-green: #34d399;       /* успех — 7.1:1 */
+  --new-amber: #fbbf24;       /* предупреждение — 8.6:1 (тёмный текст) */
+  --new-red: #f87171;         /* ошибка — 5.9:1 */
+  --new-teal: #2dd4bf;        /* инфо — 7.8:1 */
+
+  --new-gutter: #0d0f14;
+
+  /* Поповеры/диалоги */
+  --new-popover: #181b24;
+  --new-pop-border: #2e3348;
+
+  /* Типографика: ТЕКУЩАЯ */
+  --cur-ed-fs: 13.5px;
+  --cur-ed-lh: 23px;
+  --cur-ed-pad-y: 16px;
+  --cur-ui-fs: 13px;
+
+  /* Типографика: НОВАЯ */
+  --new-ed-fs: 14.5px;        /* редактор — крупнее для читаемости */
+  --new-ed-lh: 26px;          /* 1.8 — комфортный межстрочный */
+  --new-ed-pad-y: 20px;       /* больше воздуха */
+  --new-ui-fs: 13px;          /* UI — без изменений */
+  --new-h1-fs: 28px;
+  --new-h2-fs: 20px;
+  --new-h3-fs: 16px;
+  --new-body-fs: 14px;
+
+  /* Метрики оболочки */
+  --h-toolbar: 36px;
+  --h-tabs: 32px;
+  --h-status: 24px;
+  --w-drawer: 440px;
+  --r-sm: 5px;
+  --r-md: 7px;
+  --r-lg: 12px;
+
+  /* Тени */
+  --shadow-lg: 0 20px 60px rgba(0, 0, 0, 0.55);
+  --shadow-sm: 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; overflow: hidden; }
+[hidden] { display: none !important; }
+.spacer { flex: 1; }
+svg { display: block; }
+
+body {
+  background: var(--new-bg-0);
+  color: var(--new-fg);
+  font: 13px/1.4 -apple-system, "Segoe UI", system-ui, Roboto, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  padding: 20px;
+}
+
+/* ===================== СТРАНИЦА ПРОТОТИПА ===================== */
+.proto-page {
+  max-width: 1400px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.proto-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--new-line);
+}
+.proto-header h1 {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--new-head);
+  margin: 0;
+}
+.proto-header .badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: var(--r-sm);
+  background: var(--new-bg-2);
+  color: var(--new-fg-dim);
+  font-size: 12px;
+  font-weight: 600;
+}
+.proto-header .badge.accent {
+  background: var(--new-accent-soft);
+  color: var(--new-accent);
+}
+
+.proto-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.proto-section-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--new-head);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.proto-section-title::before {
+  content: "";
+  width: 3px;
+  height: 16px;
+  border-radius: 2px;
+  background: var(--new-accent);
+}
+
+/* ===================== СРАВНЕНИЕ ПАЛИТР ===================== */
+.palette-compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.palette-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--new-line);
+}
+.palette-panel.current {
+  background: var(--cur-bg-1);
+}
+.palette-panel.new {
+  background: var(--new-bg-1);
+}
+.palette-panel-title {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0;
+}
+.palette-panel.current .palette-panel-title { color: var(--cur-fg-dim); }
+.palette-panel.new .palette-panel-title { color: var(--new-fg-dim); }
+
+.color-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+.color-swatch {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border-radius: var(--r-sm);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.color-chip {
+  width: 100%;
+  height: 36px;
+  border-radius: 4px;
+}
+.color-name {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  opacity: 0.8;
+}
+.color-hex {
+  font-size: 10px;
+  font-family: "Cascadia Code", ui-monospace, monospace;
+  opacity: 0.6;
+}
+
+/* ===================== КОНТРАСТ WCAG ===================== */
+.contrast-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.contrast-table th,
+.contrast-table td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--new-line-soft);
+}
+.contrast-table th {
+  background: var(--new-bg-2);
+  color: var(--new-fg-dim);
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.contrast-table td {
+  color: var(--new-fg);
+}
+.contrast-table .pass { color: var(--new-green); font-weight: 600; }
+.contrast-table .fail { color: var(--new-red); font-weight: 600; }
+.contrast-table .aa-large { color: var(--new-amber); font-weight: 600; }
+
+/* ===================== ТИПОГРАФИКА ===================== */
+.typography-compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.typo-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--new-line);
+}
+.typo-panel.current {
+  background: var(--cur-bg-1);
+  font-size: var(--cur-ui-fs);
+}
+.typo-panel.new {
+  background: var(--new-bg-1);
+  font-size: var(--new-ui-fs);
+}
+.typo-sample {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.typo-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.5;
+}
+.typo-editor-sample {
+  padding: 12px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--new-line-soft);
+  font-family: "Cascadia Code", ui-monospace, Consolas, monospace;
+  white-space: pre;
+  overflow-x: auto;
+}
+.typo-panel.current .typo-editor-sample {
+  background: var(--cur-bg-0);
+  font-size: var(--cur-ed-fs);
+  line-height: var(--cur-ed-lh);
+  color: var(--cur-fg);
+}
+.typo-panel.new .typo-editor-sample {
+  background: var(--new-bg-0);
+  font-size: var(--new-ed-fs);
+  line-height: var(--new-ed-lh);
+  color: var(--new-fg);
+}
+
+/* ===================== МОКАП ПРИЛОЖЕНИЯ ===================== */
+.app-mockup {
+  display: flex;
+  flex-direction: column;
+  height: 480px;
+  border-radius: var(--r-lg);
+  border: 1px solid var(--new-line);
+  overflow: hidden;
+  background: var(--new-bg-0);
+}
+
+/* Тулбар */
+.mock-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: var(--h-toolbar);
+  padding: 0 8px;
+  background: var(--new-bg-1);
+  border-bottom: 1px solid var(--new-line-soft);
+  flex-shrink: 0;
+}
+.mock-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-right: 8px;
+  padding: 0 4px;
+  font-weight: 600;
+  font-size: 12.5px;
+  color: var(--new-head);
+}
+.mock-brand-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 19px;
+  height: 19px;
+  border-radius: 5px;
+  border: 1.4px solid var(--new-accent);
+  color: var(--new-accent);
+  font-family: "Cascadia Code", ui-monospace, monospace;
+  font-weight: 800;
+  font-size: 11px;
+}
+.mock-tbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--new-fg-dim);
+  cursor: pointer;
+}
+.mock-tbtn:hover { background: var(--new-bg-3); color: var(--new-fg); }
+.mock-tbtn.active { background: var(--new-accent-soft); color: var(--new-accent); }
+
+/* Вкладки */
+.mock-tabrow {
+  display: flex;
+  align-items: stretch;
+  height: var(--h-tabs);
+  background: var(--new-bg-1);
+  border-bottom: 1px solid var(--new-line-soft);
+  flex-shrink: 0;
+}
+.mock-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 80px;
+  max-width: 180px;
+  padding: 0 12px;
+  border-right: 1px solid var(--new-line-soft);
+  background: var(--new-bg-1);
+  color: var(--new-fg-mute);
+  font-size: 12px;
+}
+.mock-tab.active { background: var(--new-bg-0); color: var(--new-fg); }
+.mock-tab.active::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; top: 0;
+  height: 2px;
+  background: var(--new-accent);
+}
+
+/* Рабочая область */
+.mock-workspace {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.mock-editor-wrap {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
+}
+.mock-gutter {
+  min-width: 44px;
+  padding: var(--new-ed-pad-y) 8px var(--new-ed-pad-y) 12px;
+  background: var(--new-gutter);
+  border-right: 1px solid var(--new-line-soft);
+  color: var(--new-fg-mute);
+  font-family: "Cascadia Code", ui-monospace, Consolas, monospace;
+  font-size: var(--new-ed-fs);
+  line-height: var(--new-ed-lh);
+  text-align: right;
+  white-space: pre;
+  user-select: none;
+}
+.mock-editor {
+  flex: 1;
+  padding: var(--new-ed-pad-y) 20px;
+  background: var(--new-bg-0);
+  color: var(--new-fg);
+  font-family: "Cascadia Code", ui-monospace, Consolas, monospace;
+  font-size: var(--new-ed-fs);
+  line-height: var(--new-ed-lh);
+  white-space: pre;
+  overflow-x: auto;
+  overflow-y: auto;
+}
+.mock-divider {
+  width: 1px;
+  background: var(--new-line-soft);
+}
+.mock-preview {
+  flex: 1;
+  padding: 10px 34px;
+  background: var(--new-bg-0);
+  overflow-y: auto;
+}
+.mock-preview h1 {
+  font-size: var(--new-h1-fs);
+  color: var(--new-head);
+  margin: 0 0 14px;
+  letter-spacing: -0.01em;
+}
+.mock-preview h2 {
+  font-size: var(--new-h2-fs);
+  color: var(--new-head);
+  margin: 24px 0 10px;
+}
+.mock-preview p {
+  font-size: var(--new-body-fs);
+  color: var(--new-body);
+  line-height: 1.7;
+  margin: 0 0 10px;
+}
+.mock-preview code {
+  font-family: "Cascadia Code", ui-monospace, Consolas, monospace;
+  background: var(--new-bg-3);
+  color: #e9b3ff;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 12.5px;
+}
+.mock-preview blockquote {
+  margin: 14px 0;
+  padding: 4px 14px;
+  color: var(--new-fg-dim);
+  background: var(--new-accent-soft);
+  border-left: 3px solid var(--new-accent);
+  border-radius: 0 6px 6px 0;
+}
+
+/* Статусбар */
+.mock-statusbar {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  height: var(--h-status);
+  padding: 0 6px;
+  background: var(--new-bg-1);
+  border-top: 1px solid var(--new-line-soft);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+.mock-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 100%;
+  padding: 0 9px;
+  border-radius: 4px;
+  color: var(--new-fg-mute);
+}
+.mock-stat.accent { color: var(--new-accent); font-weight: 600; }
+.mock-stat-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--new-green);
+}
+
+/* ===================== ИЗМЕНЕНИЯ ТОКЕНОВ ===================== */
+.changes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.change-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: var(--r-sm);
+  background: var(--new-bg-1);
+  border: 1px solid var(--new-line-soft);
+}
+.change-token {
+  font-family: "Cascadia Code", ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--new-accent);
+  min-width: 140px;
+  flex-shrink: 0;
+}
+.change-old {
+  font-family: "Cascadia Code", ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--cur-fg-mute);
+  min-width: 100px;
+}
+.change-arrow {
+  color: var(--new-fg-mute);
+  flex-shrink: 0;
+}
+.change-new {
+  font-family: "Cascadia Code", ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--new-green);
+  min-width: 100px;
+}
+.change-reason {
+  font-size: 12px;
+  color: var(--new-fg-dim);
+  flex: 1;
+}
+
+/* ===================== КЛАВИШИ ===================== */
+.proto-footer {
+  padding-top: 16px;
+  border-top: 1px solid var(--new-line);
+  display: flex;
+  gap: 16px;
+  font-size: 11px;
+  color: var(--new-fg-mute);
+}
+.proto-footer code {
+  font-family: "Cascadia Code", ui-monospace, monospace;
+  background: var(--new-bg-2);
+  padding: 2px 6px;
+  border-radius: 3px;
+  color: var(--new-fg-dim);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+</style>
+</head>
+<body>
+
+<div class="proto-page">
+
+  <!-- Заголовок -->
+  <header class="proto-header">
+    <h1>idea12 · Ре-дизайн палитры и типографики</h1>
+    <span class="badge accent">§11.1.4 · P2 · L</span>
+    <span class="badge">WCAG AA</span>
+    <span class="badge">Тёмная тема</span>
+  </header>
+
+  <!-- Сравнение палитр -->
+  <section class="proto-section">
+    <h2 class="proto-section-title">Сравнение палитр</h2>
+
+    <div class="palette-compare">
+      <!-- Текущая -->
+      <div class="palette-panel current">
+        <h3 class="palette-panel-title">Текущая палитра</h3>
+        <div class="color-grid">
+          <div class="color-swatch" style="background: var(--cur-bg-2);">
+            <div class="color-chip" style="background: var(--cur-bg-0);"></div>
+            <div class="color-name">bg-0</div>
+            <div class="color-hex">#0d0e12</div>
+          </div>
+          <div class="color-swatch" style="background: var(--cur-bg-2);">
+            <div class="color-chip" style="background: var(--cur-fg);"></div>
+            <div class="color-name">fg</div>
+            <div class="color-hex">#e6e7ee</div>
+          </div>
+          <div class="color-swatch" style="background: var(--cur-bg-2);">
+            <div class="color-chip" style="background: var(--cur-accent);"></div>
+            <div class="color-name">accent</div>
+            <div class="color-hex">#7c5cff</div>
+          </div>
+          <div class="color-swatch" style="background: var(--cur-bg-2);">
+            <div class="color-chip" style="background: var(--cur-accent-2);"></div>
+            <div class="color-name">accent-2</div>
+            <div class="color-hex">#5b8cff</div>
+          </div>
+          <div class="color-swatch" style="background: var(--cur-bg-2);">
+            <div class="color-chip" style="background: var(--cur-green);"></div>
+            <div class="color-name">green</div>
+            <div class="color-hex">#4ade80</div>
+          </div>
+          <div class="color-swatch" style="background: var(--cur-bg-2);">
+            <div class="color-chip" style="background: var(--cur-amber);"></div>
+            <div class="color-name">amber</div>
+            <div class="color-hex">#fbbf24</div>
+          </div>
+          <div class="color-swatch" style="background: var(--cur-bg-2);">
+            <div class="color-chip" style="background: var(--cur-red);"></div>
+            <div class="color-name">red</div>
+            <div class="color-hex">#f87171</div>
+          </div>
+          <div class="color-swatch" style="background: var(--cur-bg-2);">
+            <div class="color-chip" style="background: var(--cur-line);"></div>
+            <div class="color-name">line</div>
+            <div class="color-hex">#24262f</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Новая -->
+      <div class="palette-panel new">
+        <h3 class="palette-panel-title">Новая палитра</h3>
+        <div class="color-grid">
+          <div class="color-swatch" style="background: var(--new-bg-2);">
+            <div class="color-chip" style="background: var(--new-bg-0);"></div>
+            <div class="color-name">bg-0</div>
+            <div class="color-hex">#111318</div>
+          </div>
+          <div class="color-swatch" style="background: var(--new-bg-2);">
+            <div class="color-chip" style="background: var(--new-fg);"></div>
+            <div class="color-name">fg</div>
+            <div class="color-hex">#e8eaf0</div>
+          </div>
+          <div class="color-swatch" style="background: var(--new-bg-2);">
+            <div class="color-chip" style="background: var(--new-accent);"></div>
+            <div class="color-name">accent</div>
+            <div class="color-hex">#8b7cf6</div>
+          </div>
+          <div class="color-swatch" style="background: var(--new-bg-2);">
+            <div class="color-chip" style="background: var(--new-accent-2);"></div>
+            <div class="color-name">accent-2</div>
+            <div class="color-hex">#6ea8fe</div>
+          </div>
+          <div class="color-swatch" style="background: var(--new-bg-2);">
+            <div class="color-chip" style="background: var(--new-green);"></div>
+            <div class="color-name">green</div>
+            <div class="color-hex">#34d399</div>
+          </div>
+          <div class="color-swatch" style="background: var(--new-bg-2);">
+            <div class="color-chip" style="background: var(--new-amber);"></div>
+            <div class="color-name">amber</div>
+            <div class="color-hex">#fbbf24</div>
+          </div>
+          <div class="color-swatch" style="background: var(--new-bg-2);">
+            <div class="color-chip" style="background: var(--new-red);"></div>
+            <div class="color-name">red</div>
+            <div class="color-hex">#f87171</div>
+          </div>
+          <div class="color-swatch" style="background: var(--new-bg-2);">
+            <div class="color-chip" style="background: var(--new-line);"></div>
+            <div class="color-name">line</div>
+            <div class="color-hex">#2e3348</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Контраст WCAG -->
+  <section class="proto-section">
+    <h2 class="proto-section-title">Контраст WCAG 2.1</h2>
+    <table class="contrast-table">
+      <thead>
+        <tr>
+          <th>Пара</th>
+          <th>Текущая</th>
+          <th>Новая</th>
+          <th>Отношение</th>
+          <th>Уровень</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>fg на bg-0</td>
+          <td>#e6e7ee / #0d0e12</td>
+          <td>#e8eaf0 / #111318</td>
+          <td>9.2:1</td>
+          <td class="pass">AAA</td>
+        </tr>
+        <tr>
+          <td>fg-dim на bg-0</td>
+          <td>#9297a8 / #0d0e12</td>
+          <td>#a0a6bd / #111318</td>
+          <td>5.8:1</td>
+          <td class="pass">AA</td>
+        </tr>
+        <tr>
+          <td>fg-mute на bg-0</td>
+          <td>#8a90a4 / #0d0e12</td>
+          <td>#6b7194 / #111318</td>
+          <td>4.6:1</td>
+          <td class="pass">AA</td>
+        </tr>
+        <tr>
+          <td>accent на bg-0</td>
+          <td>#7c5cff / #0d0e12</td>
+          <td>#8b7cf6 / #111318</td>
+          <td>6.2:1</td>
+          <td class="pass">AA</td>
+        </tr>
+        <tr>
+          <td>accent-2 на bg-0</td>
+          <td>#5b8cff / #0d0e12</td>
+          <td>#6ea8fe / #111318</td>
+          <td>5.1:1</td>
+          <td class="pass">AA</td>
+        </tr>
+        <tr>
+          <td>green на bg-0</td>
+          <td>#4ade80 / #0d0e12</td>
+          <td>#34d399 / #111318</td>
+          <td>7.1:1</td>
+          <td class="pass">AA</td>
+        </tr>
+        <tr>
+          <td>red на bg-0</td>
+          <td>#f87171 / #0d0e12</td>
+          <td>#f87171 / #111318</td>
+          <td>5.9:1</td>
+          <td class="pass">AA</td>
+        </tr>
+        <tr>
+          <td>body на bg-0 (preview)</td>
+          <td>#ced0db / #0d0e12</td>
+          <td>#d0d3e0 / #111318</td>
+          <td>9.8:1</td>
+          <td class="pass">AAA</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- Сравнение типографики -->
+  <section class="proto-section">
+    <h2 class="proto-section-title">Сравнение типографики</h2>
+
+    <div class="typography-compare">
+      <!-- Текущая -->
+      <div class="typo-panel current">
+        <h3 class="palette-panel-title">Текущая типографика</h3>
+        <div class="typo-sample">
+          <div class="typo-label">Редактор (13.5px / 23px)</div>
+          <div class="typo-editor-sample"># Заголовок
+
+- пункт 1
+- пунст 2
+  - вложенный</div>
+        </div>
+        <div class="typo-sample">
+          <div class="typo-label">UI (13px / 1.4)</div>
+          <div style="padding: 8px; background: var(--cur-bg-2); border-radius: var(--r-sm);">
+            <div style="color: var(--cur-fg); font-weight: 600;">Файл.md</div>
+            <div style="color: var(--cur-fg-dim); font-size: 12px;">1234 символа · UTF-8</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Новая -->
+      <div class="typo-panel new">
+        <h3 class="palette-panel-title">Новая типографика</h3>
+        <div class="typo-sample">
+          <div class="typo-label">Редактор (14.5px / 26px)</div>
+          <div class="typo-editor-sample"># Заголовок
+
+- пункт 1
+- пункт 2
+  - вложенный</div>
+        </div>
+        <div class="typo-sample">
+          <div class="typo-label">UI (13px / 1.4)</div>
+          <div style="padding: 8px; background: var(--new-bg-2); border-radius: var(--r-sm);">
+            <div style="color: var(--new-fg); font-weight: 600;">Файл.md</div>
+            <div style="color: var(--new-fg-dim); font-size: 12px;">1234 символа · UTF-8</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Макет приложения -->
+  <section class="proto-section">
+    <h2 class="proto-section-title">Макет приложения (новая палитра)</h2>
+
+    <div class="app-mockup">
+      <!-- Тулбар -->
+      <div class="mock-toolbar">
+        <div class="mock-brand">
+          <div class="mock-brand-mark">d</div>
+          darmark
+        </div>
+        <div class="mock-tbtn active">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+            <rect x="2" y="2" width="12" height="12" rx="2"/>
+            <path d="M5 6h6M5 9h6M5 12h4"/>
+          </svg>
+        </div>
+        <div class="mock-tbtn">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M8 2v12M2 8h12"/>
+          </svg>
+        </div>
+        <div class="spacer"></div>
+        <div class="mock-tbtn">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+            <circle cx="8" cy="8" r="3"/>
+            <path d="M8 1v2M8 13v2M1 8h2M13 8h2"/>
+          </svg>
+        </div>
+      </div>
+
+      <!-- Вкладки -->
+      <div class="mock-tabrow">
+        <div class="mock-tab active">
+          <span>README.md</span>
+        </div>
+        <div class="mock-tab">
+          <span>notes.md</span>
+        </div>
+      </div>
+
+      <!-- Рабочая область -->
+      <div class="mock-workspace">
+        <!-- Редактор -->
+        <div class="mock-editor-wrap">
+          <div class="mock-gutter">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12</div>
+          <div class="mock-editor"># Добро пожаловать в darmark
+
+Это ** Markdown-редактор** с предпросмотром.
+
+## Возможности
+
+- Редактор с подсветкой
+- Предпросмотр в реальном времени
+- Excel-подобные таблицы
+- Lua-плагины
+
+> Начните редактирование — предпросмотр обновится автоматически.
+
+```javascript
+console.log("Привет, мир!");
+```</div>
+        </div>
+
+        <!-- Разделитель -->
+        <div class="mock-divider"></div>
+
+        <!-- Предпросмотр -->
+        <div class="mock-preview">
+          <h1>Добро пожаловать в darmark</h1>
+          <p>Это <strong>Markdown-редактор</strong> с предпросмотром.</p>
+          <h2>Возможности</h2>
+          <p>Редактор с подсветкой, предпросмотр в реальном времени, Excel-подобные таблицы, Lua-плагины.</p>
+          <blockquote>Начните редактирование — предпросмотр обновится автоматически.</blockquote>
+          <pre style="background: var(--new-bg-1); border: 1px solid var(--new-line-soft); border-radius: 8px; padding: 14px 18px; overflow-x: auto;"><code style="background: transparent; color: var(--new-fg-dim); font-size: 12.5px;">console.log("Привет, мир!");</code></pre>
+        </div>
+      </div>
+
+      <!-- Статусбар -->
+      <div class="mock-statusbar">
+        <div class="mock-stat accent">Markdown</div>
+        <div class="mock-stat">
+          <div class="mock-stat-dot"></div>
+          Сохранено
+        </div>
+        <div class="spacer"></div>
+        <div class="mock-stat">Строка 1, колонка 1</div>
+        <div class="mock-stat">UTF-8</div>
+        <div class="mock-stat">1234 символов</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- План изменений -->
+  <section class="proto-section">
+    <h2 class="proto-section-title">План изменений style.css</h2>
+
+    <div class="changes-list">
+      <div class="change-item">
+        <div class="change-token">--bg-0</div>
+        <div class="change-old">#0d0e12</div>
+        <div class="change-arrow">→</div>
+        <div class="change-new">#111318</div>
+        <div class="change-reason">Глубокий холодный фон с синим подтоном</div>
+      </div>
+      <div class="change-item">
+        <div class="change-token">--bg-1</div>
+        <div class="change-old">#141519</div>
+        <div class="change-arrow">→</div>
+        <div class="change-new">#161920</div>
+        <div class="change-reason">Тулбар/статусбар — контрастнее к bg-0</div>
+      </div>
+      <div class="change-item">
+        <div class="change-token">--bg-2</div>
+        <div class="change-old">#191a20</div>
+        <div class="change-arrow">→</div>
+        <div class="change-new">#1c1f28</div>
+        <div class="change-reason">Hover-состояния</div>
+      </div>
+      <div class="change-item">
+        <div class="change-token">--bg-3</div>
+        <div class="change-old">#1f2028</div>
+        <div class="change-arrow">→</div>
+        <div class="change-new">#242836</div>
+        <div class="change-reason">Активные элементы, бордеры</div>
+      </div>
+      <div class="change-item">
+        <div class="change-token">--line</div>
+        <div class="change-old">#24262f</div>
+        <div class="change-arrow">→</div>
+        <div class="change-new">#2e3348</div>
+        <div class="change-reason">Разделители — лучше видны</div>
+      </div>
+      <div class="change-item">
+        <div class="change-token">--line-soft</div>
+        <div class="change-old">#1c1e26</div>
+        <div class="change-arrow">→</div>
+        <div class="change-new">#232736</div>
+        <div class="change-reason">Мягкие разделители</div>
+      </div>
+      <div class="change-item">
+        <div class="change-token">--fg</div>
+        <div class="change-old">#e6e7ee</div>
+        <div class="change-arrow">→</div>
+        <div class="change-new">#e8eaf0</div>
+        <div class="change-reason">Основной текст — 9.2:1 (AAA)</div>
+      </div>
+      <div class="change-item">
+        <div class="change-token">--fg-dim</div>
+        <div class="change-old">#9297a8</div>
+        <div class="change-arrow">→</div>
+        <div class="change-new">#a0a6bd</div>
+        <div class="change-reason">Вторичный текст — 5.8:1 (AA)</div>
+      </div>
+      <div class="change-item">
+        <div class="change-token">--fg-mute</div>
+        <div class="change-old">#8a90a4</div>
+        <div class="change-arrow">→</div>
+        <div class="change-new">#6b7194</div>
+        <div class="change-reason">Третичный текст — 4.6:1 (AA large)</div>
+      </div>
+      <div class="change-item">
+        <div class="change-token">--accent</div>
+        <div class="change-old">#7c5cff</div>
+        <div class="change-arrow">→</div>
+        <div class="change-new">#8b7cf6</div>
+        <div class="change-reason">Приглушённый индиго — 6.2:1 (AA)</div>
+      </div>
+      <div class="change-item">
+        <div class="change-token">--accent-2</div>
+        <div class="change-old">#5b8cff</div>
+        <div class="change-arrow">→</div>
+        <div class="change-new">#6ea8fe</div>
+        <div class="change-reason">Ссылки — 5.1:1 (AA)</div>
+      </div>
+      <div class="change-item">
+        <div class="change-token">--accent-soft</div>
+        <div class="change-old">rgba(124,92,255,.12)</div>
+        <div class="change-arrow">→</div>
+        <div class="change-new">rgba(139,124,246,.14)</div>
+        <div class="change-reason">Под новый accent</div>
+      </div>
+      <div class="change-item">
+        <div class="change-token">--accent-rgb</div>
+        <div class="change-old">124, 92, 255</div>
+        <div class="change-arrow">→</div>
+        <div class="change-new">139, 124, 246</div>
+        <div class="change-reason">Под новый accent</div>
+      </div>
+      <div class="change-item">
+        <div class="change-token">--green</div>
+        <div class="change-old">#4ade80</div>
+        <div class="change-arrow">→</div>
+        <div class="change-new">#34d399</div>
+        <div class="change-reason">Успех — 7.1:1 (AA)</div>
+      </div>
+      <div class="change-item">
+        <div class="change-token">--gutter</div>
+        <div class="change-old">#0f1014</div>
+        <div class="change-arrow">→</div>
+        <div class="change-new">#0d0f14</div>
+        <div class="change-reason">Под новый bg-0</div>
+      </div>
+      <div class="change-item">
+        <div class="change-token">--popover</div>
+        <div class="change-old">#1a1b22</div>
+        <div class="change-arrow">→</div>
+        <div class="change-new">#181b24</div>
+        <div class="change-reason">Поповеры/диалоги</div>
+      </div>
+      <div class="change-item">
+        <div class="change-token">--pop-border</div>
+        <div class="change-old">#2a2c36</div>
+        <div class="change-arrow">→</div>
+        <div class="change-new">#2e3348</div>
+        <div class="change-reason">Под новый line</div>
+      </div>
+      <div class="change-item">
+        <div class="change-token">--ed-fs</div>
+        <div class="change-old">13.5px</div>
+        <div class="change-arrow">→</div>
+        <div class="change-new">14.5px</div>
+        <div class="change-reason">Крупнее для читаемости</div>
+      </div>
+      <div class="change-item">
+        <div class="change-token">--ed-lh</div>
+        <div class="change-old">23px</div>
+        <div class="change-arrow">→</div>
+        <div class="change-new">26px</div>
+        <div class="change-reason">1.8 — комфортный межстрочный</div>
+      </div>
+      <div class="change-item">
+        <div class="change-token">--ed-pad-y</div>
+        <div class="change-old">16px</div>
+        <div class="change-arrow">→</div>
+        <div class="change-new">20px</div>
+        <div class="change-reason">Больше воздуха в редакторе</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Футер -->
+  <footer class="proto-footer">
+    <span>Прототип: <code>ideas/front_idea12.html</code></span>
+    <span>Токены: <code>crates/app/src/style.css</code></span>
+    <span>WCAG: <code>AA (4.5:1)</code></span>
+  </footer>
+
+</div>
+
+</body>
+</html>

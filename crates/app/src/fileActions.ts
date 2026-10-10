@@ -31,7 +31,7 @@ export function createFileActions(opts: {
   const { store, status, onPathChanged, focusEditor } = opts;
 
   async function confirmDiscard(): Promise<boolean> {
-    if (!store.state().dirty) return true;
+    if (!store.active()?.dirty) return true;
     return confirm("Несохранённые изменения будут потеряны. Продолжить?", {
       title: "darmark",
       kind: "warning",
@@ -53,7 +53,7 @@ export function createFileActions(opts: {
     const selected = await open({
       multiple: false,
       filters: [MD_FILTER],
-      defaultPath: store.state().path ?? undefined,
+      defaultPath: store.active()?.path ?? undefined,
     });
     if (typeof selected !== "string") return; // отмена
     try {
@@ -64,8 +64,8 @@ export function createFileActions(opts: {
   }
 
   async function saveFile(): Promise<void> {
-    const s = store.state();
-    if (!s.id) {
+    const s = store.active();
+    if (!s?.id) {
       status("Документ не создан — сохранение недоступно");
       return;
     }
@@ -79,12 +79,13 @@ export function createFileActions(opts: {
   }
 
   async function saveAs(): Promise<void> {
-    if (!store.state().id) {
+    const s = store.active();
+    if (!s?.id) {
       status("Документ не создан — сохранение недоступно");
       return;
     }
     const selected = await save({
-      defaultPath: store.state().path ?? "untitled.md",
+      defaultPath: s.path ?? "untitled.md",
       filters: [MD_FILTER],
     });
     if (typeof selected !== "string") return;

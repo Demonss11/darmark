@@ -165,12 +165,8 @@
           <!-- Видимого заголовка в UI нет — даём скринридерам точку входа в main. -->
           <h1 class="visually-hidden">darmark — редактор Markdown</h1>
           <div class="tabrow">
-            <div class="tab-strip" id="tab-strip">
-              <div class="tab active" id="tab-current">
-                <span class="name" id="tab-name">безымянный</span>
-                <span class="dirty" id="tab-dirty" hidden aria-hidden="true"></span>
-              </div>
-            </div>
+            <!-- Вкладки создаются динамически из DocStore (renderTabStrip в main.ts). -->
+            <div class="tab-strip" id="tab-strip"></div>
           </div>
 
           <div id="panes" class="panes">

@@ -603,10 +603,11 @@ scan(plugins_dir) -> validate(manifest) -> load(src) -> on_activate(ctx)
 
 ### 13.2. Замороженные E2E-контракты (нельзя ломать)
 
-> Источник истины — `tasks/TZ-UX-SPEC-CLEANUP.md §1`. Список ниже продублирован для удобства;
-> при расхождении приоритет у `TZ-UX-SPEC-CLEANUP.md`.
+> Источник истины — этот раздел (`DESIGN_DOC §13.2`).
 - **DOM id**: `editor`, `preview`, `btn-inspect`, `chk-sync`, `chk-preview`, `btn-new`, `btn-open`, `btn-save`, `btn-save-as`, `file-label`, `stat-pos`, `stat-size`, `stat-msg`, `stat-inspect`, `toolbar`, `panes`, `statusbar`, `toggle-sync`, `toggle-preview`, `app`.
+- **Де-факто id** (используются спеками): `view-switch`, `plugin-view`, `format-group`, `e2e-marker`, `gutter`, `tab-name`, `tab-dirty`.
 - **Селекторы**: `#preview .md-block[data-md]`, `.table-enhanced`, `.table-enhanced tbody tr`, `.table-enhanced td[data-md]`, `.table-count`, `.table-scroll`, `.col-filter-btn`, `.col-filter-menu`, `.col-filter-item`, `.inspect-active`, `.inspect-col`, `tr.inspect-row`.
+- **Селекторы плагинной панели**: `.vtab.core`, `.vtab.plugin[data-view]`, `.pl-item[data-plugin]`, `.pl-badge`, `input.pl-enabled`, `button.pl-reload`, `.pl-cmd[data-command]`, `input.pl-grant[data-permission]`, `button.pl-info`, `.pl-info-pop`.
 - **Текстовые**: стартовый документ `"Добро пожаловать в darmark"`; заголовки демо-таблицы `Файл | Размер | Строк | Изменён`.
 - **Константы**: debounce рендера **120 мс**, `ECHO_MS = 100`, throttle инспектора 100 мс.
 - **Глобальные**: `window.__xss`, `window.__errors` / `window.__errorCapture`.
@@ -616,6 +617,15 @@ scan(plugins_dir) -> validate(manifest) -> load(src) -> on_activate(ctx)
   `#rail-plugins`, `#panel-plugins`, `#rail-logs`; добавляются `#tb-plugins`, `#tb-plugins-cnt`,
   `#tb-plugins-dot`, `#drawer`, `#drawer-title`, `#drawer-body`, `#drawer-close`, `#backdrop`,
   `#sb-logs`, `#log-badge`.
+- **Инварианты скролла и переключения view:** `#editor` и `#preview` — сами скролл-контейнеры
+  (e2e читает их `scrollTop`); переключение view — `hidden`-toggle уже смонтированных узлов,
+  не пересоздание DOM.
+- **Защищённый функционал инспектора:** `#btn-inspect`, `Ctrl+I`, `#stat-inspect`, `data-md`,
+  `.inspect-*` — не переименовывать, не перевязывать, не подменять.
+- **ARIA-паттерн инфо-кнопки плагина:** кнопка имеет `aria-expanded="true|false"`,
+  `aria-controls="<id поповера>"`, `aria-label="Информация о границах изоляции плагина <id>"`;
+  поповер — `role="tooltip"`, уникальный `id` (`pl-info-pop-<plugin_id>`),
+  `aria-hidden="true|false"`; поповер не захватывает фокус (фокус остаётся на кнопке).
 
 > Имя продукта (D8) обязано быть согласовано в начале строки; стартовый текст, e2e-фикстуры и шаги правятся синхронно.
 
@@ -667,7 +677,9 @@ scan(plugins_dir) -> validate(manifest) -> load(src) -> on_activate(ctx)
 | 20 | Результат измерений — таблица FINDINGS | §16 | D15 |
 | 21 | Изоляция плагина: отдельный child-процесс | §0, §6, §10, §11.4, §14 | D16; F18, F21, F22–F24, F30–F31, F34, F36 |
 | 22 | Контракт ViewProvider: два тира (тир-1 `HtmlViewProvider` plugin-safe, тир-2 `DomViewProvider`) | §5.3, §5.4, §9.4, §11.2 | — |
+| 23 | Плагинный runtime: child-хост + Supervisor (stdio, Job Object, watchdog, карантин) | §6–§12, §14 | ADR-0023 |
 | 24 | Плагины: триггер в тулбаре + правый дровер (вариант C) | §5.5, §13.2 | ADR-0024 |
+| 25 | Ре-дизайн палитры и типографики: семантические токены, WCAG AA | §5, §13.2 | ADR-0025 |
 
 ---
 

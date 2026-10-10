@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0d0e12">
+<!-- idea11 · Мультивкладки документов (§11.1.1). Референс, не контракт.
+     Демонстрирует: переключение, закрытие, dirty-индикаторы, drag-and-drop,
+     контекстное меню, горячие клавиши. Токены = crates/app/src/style.css. -->
+<title>darmark — idea11 · мультивкладки документов</title>
+<style>
+/* ===================== TOKENS (canonical, = crates/app/src/style.css) ===================== */
+:root {
+  color-scheme: dark;
+  --bg-0:#0d0e12; --bg-1:#141519; --bg-2:#191a20; --bg-3:#1f2028;
+  --line:#24262f; --line-soft:#1c1e26;
+  --fg:#e6e7ee; --fg-dim:#9297a8; --fg-mute:#8a90a4;
+  --head:#ffffff; --body:#ced0db;
+  --accent:#7c5cff; --accent-2:#5b8cff; --accent-soft:rgba(124,92,255,.12);
+  --accent-rgb:124,92,255;
+  --green:#4ade80; --amber:#fbbf24; --red:#f87171;
+  --gutter:#0f1014;
+
+  --popover:#1a1b22; --pop-border:#2a2c36;
+  --shadow-lg:0 20px 60px rgba(0,0,0,.55);
+  --shadow-sm:0 6px 18px rgba(0,0,0,.35);
+
+  --h-toolbar:36px; --h-tabs:32px; --h-status:24px;
+  --r-sm:5px; --r-md:7px; --r-lg:12px;
+
+  --ed-fs:13.5px; --ed-lh:23px; --ed-pad-y:16px;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; overflow: hidden; }
+[hidden] { display: none !important; }
+.spacer { flex: 1; }
+svg { display: block; }
+
+body {
+  background: var(--bg-0);
+  color: var(--fg);
+  font: 13px/1.4 -apple-system, "Segoe UI", system-ui, Roboto, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection { background: rgba(var(--accent-rgb),.32); color: #fff; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background:#272935; border-radius:8px; border:3px solid transparent; background-clip:padding-box; }
+::-webkit-scrollbar-thumb:hover { background:#3a3d52; background-clip:padding-box; }
+
+:focus { outline: none; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 4px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+#app { display: flex; flex-direction: column; height: 100vh; }
+
+/* ===================== TOOLBAR ===================== */
+.toolbar {
+  display: flex; align-items: center; gap: 2px; height: var(--h-tabs);
+  padding: 0 8px; background: var(--bg-1); border-bottom: 1px solid var(--line-soft);
+  flex-shrink: 0; user-select: none;
+}
+.brand {
+  display: inline-flex; align-items: center; gap: 7px; margin-right: 6px;
+  padding: 0 4px 0 2px; font-weight: 600; font-size: 12.5px; color: var(--head);
+}
+.brand-mark {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 19px; height: 19px; border-radius: 5px;
+  border: 1.4px solid var(--accent); color: var(--accent);
+  font-family: "Cascadia Code", ui-monospace, monospace; font-weight: 800; font-size: 11px;
+}
+
+.tbtn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; padding: 0; border: none; border-radius: var(--r-sm);
+  background: transparent; color: var(--fg-dim); cursor: pointer; flex-shrink: 0;
+  transition: background .12s, color .12s;
+}
+.tbtn:hover { background: var(--bg-3); color: var(--fg); }
+.tbtn svg { width: 15px; height: 15px; }
+
+/* ===================== TABROW (мультивкладки) ===================== */
+.tabrow {
+  display: flex; align-items: stretch; height: var(--h-tabs);
+  background: var(--bg-1); border-bottom: 1px solid var(--line-soft);
+  flex-shrink: 0; overflow: hidden;
+}
+.tab-strip {
+  display: flex; align-items: stretch; flex: 1; min-width: 0;
+  overflow-x: auto; scrollbar-width: none;
+}
+.tab-strip::-webkit-scrollbar { height: 0; }
+
+.tab {
+  position: relative;
+  display: inline-flex; align-items: center; gap: 6px;
+  min-width: 90px; max-width: 200px;
+  padding: 0 8px 0 12px;
+  border-right: 1px solid var(--line-soft);
+  background: var(--bg-1);
+  color: var(--fg-mute);
+  font-size: 12px;
+  cursor: default;
+  flex-shrink: 0;
+  user-select: none;
+  transition: background .12s, color .12s;
+}
+.tab:hover { background: var(--bg-2); color: var(--fg-dim); }
+.tab.active { background: var(--bg-0); color: var(--fg); }
+.tab.active::after {
+  content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px;
+  background: var(--accent);
+}
+
+/* иконка типа файла */
+.tab .ficon {
+  width: 14px; height: 14px; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 3px;
+  background: var(--bg-3);
+  color: var(--fg-dim);
+  font-family: "Cascadia Code", ui-monospace, monospace;
+  font-size: 9px; font-weight: 700;
+}
+.tab .ficon.md { color: var(--accent-2); }
+.tab .ficon.txt { color: var(--green); }
+.tab .ficon.lua { color: var(--amber); }
+
+/* имя файла */
+.tab .name {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  flex: 1; min-width: 0;
+}
+
+/* индикатор изменений — точка */
+.tab .dirty {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--amber); flex-shrink: 0;
+  opacity: 0; transition: opacity .12s;
+}
+.tab .dirty.on { opacity: 1; }
+
+/* кнопка закрытия */
+.tab .close {
+  width: 18px; height: 18px; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: none; border-radius: 3px;
+  background: transparent; color: inherit; cursor: pointer;
+  opacity: 0; transition: opacity .12s, background .12s;
+}
+.tab:hover .close, .tab.active .close { opacity: .6; }
+.tab .close:hover { opacity: 1; background: var(--bg-3); }
+.tab .close svg { width: 10px; height: 10px; }
+
+/* drag-and-drop визуал */
+.tab.dragging { opacity: .4; }
+.tab.drop-target-left::before,
+.tab.drop-target-right::after {
+  content: ""; position: absolute; top: 0; bottom: 0; width: 2px;
+  background: var(--accent);
+}
+.tab.drop-target-left::before { left: 0; }
+.tab.drop-target-right::after { right: 0; }
+
+/* ===================== CONTEXT MENU (на вкладке) ===================== */
+.tab-menu {
+  position: fixed; z-index: 200;
+  min-width: 180px;
+  padding: 4px;
+  background: var(--popover);
+  border: 1px solid var(--pop-border);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-sm);
+}
+.tab-menu-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 10px;
+  border-radius: var(--r-sm);
+  color: var(--fg-dim);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background .1s, color .1s;
+}
+.tab-menu-item:hover { background: var(--bg-3); color: var(--fg); }
+.tab-menu-item .key {
+  margin-left: auto; font-size: 10px; color: var(--fg-mute);
+  font-family: "Cascadia Code", ui-monospace, monospace;
+}
+.tab-menu-item.danger { color: var(--red); }
+.tab-menu-item.danger:hover { background: rgba(248,113,113,.1); }
+.tab-menu-sep { height: 1px; margin: 4px 8px; background: var(--line-soft); }
+
+/* ===================== WORKSPACE ===================== */
+.workspace { display: flex; flex: 1; min-height: 0; }
+
+.main { flex: 1; display: flex; flex-direction: column; min-width: 0; background: var(--bg-0); }
+
+.panes { flex: 1; display: flex; min-height: 0; overflow: hidden; }
+.pane {
+  flex: 1 1 0; min-width: 0; min-height: 0;
+  display: flex; flex-direction: column;
+  overflow: hidden; background: var(--bg-0);
+}
+.pane[hidden] { display: none; }
+
+.pane-head {
+  display: flex; align-items: center; height: var(--h-tabs);
+  padding: 0 8px 0 4px; gap: 2px;
+  background: var(--bg-0); border-bottom: 1px solid var(--line-soft);
+  flex-shrink: 0;
+}
+.pane-path {
+  font-size: 11px; color: var(--fg-mute); max-width: 220px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* редактор */
+.editor-wrap { flex: 1; display: flex; min-height: 0; overflow: hidden; }
+.line-numbers {
+  min-width: 44px; padding: var(--ed-pad-y) 8px var(--ed-pad-y) 12px;
+  background: var(--gutter); border-right: 1px solid var(--line-soft);
+  color: var(--fg-mute);
+  font-family: "Cascadia Code", "JetBrains Mono", ui-monospace, Consolas, monospace;
+  font-size: var(--ed-fs); line-height: var(--ed-lh); text-align: right;
+  white-space: pre; overflow: hidden; user-select: none;
+}
+#editor {
+  flex: 1; min-width: 0; padding: var(--ed-pad-y) 20px;
+  border: none; outline: none; resize: none;
+  background: var(--bg-0); color: var(--fg); caret-color: var(--accent);
+  font-family: "Cascadia Code", "JetBrains Mono", ui-monospace, Consolas, monospace;
+  font-size: var(--ed-fs); line-height: var(--ed-lh); tab-size: 4;
+  white-space: pre; overflow-x: auto; overflow-y: auto;
+}
+
+/* ===================== PREVIEW ===================== */
+#preview { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; padding: 10px 34px 80px; }
+.markdown-body { max-width: 860px; color: var(--body); line-height: 1.7; word-wrap: break-word; }
+.markdown-body h1 { font-size: 26px; color: var(--head); margin: 0 0 14px; padding-bottom: .2em; border-bottom: 1px solid var(--line); letter-spacing: -.01em; }
+.markdown-body h2 { font-size: 19px; color: var(--head); margin: 24px 0 10px; padding-bottom: .2em; border-bottom: 1px solid var(--line); letter-spacing: -.01em; }
+.markdown-body h3 { font-size: 15px; color: var(--head); margin: 18px 0 8px; }
+.markdown-body p { margin: 0 0 10px; }
+.markdown-body a { color: var(--accent-2); text-decoration: none; border-bottom: 1px dashed rgba(91,140,255,.35); }
+.markdown-body a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+.markdown-body code {
+  font-family: "Cascadia Code", ui-monospace, Consolas, monospace;
+  background: var(--bg-3); color: var(--code-fg, #e9b3ff);
+  padding: 2px 6px; border-radius: 4px; font-size: 12.5px;
+}
+.markdown-body pre {
+  background: var(--bg-1); border: 1px solid var(--line-soft); border-radius: 8px;
+  padding: 14px 18px; margin: 12px 0 18px; overflow-x: auto;
+}
+.markdown-body pre code { background: transparent; padding: 0; color: var(--fg-dim); }
+.markdown-body ul, .markdown-body ol { padding-left: 22px; margin: 8px 0 14px; }
+.markdown-body li { margin: 4px 0; }
+.markdown-body hr { border: none; border-top: 1px solid var(--line); margin: 22px 0; }
+
+/* ===================== STATUS BAR ===================== */
+.statusbar {
+  display: flex; align-items: center; gap: 1px; height: var(--h-status);
+  padding: 0 6px; background: var(--bg-1); border-top: 1px solid var(--line-soft);
+  font-size: 11px; font-variant-numeric: tabular-nums; flex-shrink: 0;
+}
+.stat {
+  display: inline-flex; align-items: center; gap: 6px; height: 100%;
+  padding: 0 9px; border-radius: 4px; color: var(--fg-mute); white-space: nowrap;
+}
+.stat.accent { color: var(--accent); font-weight: 600; }
+.stat-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+
+/* ===================== DIALOG ===================== */
+.dialog-backdrop {
+  position: fixed; inset: 0; z-index: 1000;
+  display: flex; justify-content: center; align-items: center;
+  padding: 16px; background: rgba(0,0,0,.45);
+}
+.dialog {
+  position: relative; display: flex; flex-direction: column;
+  width: min(480px, 92vw); max-height: min(80vh, 640px);
+  overflow: hidden; background: var(--popover);
+  border: 1px solid var(--pop-border); border-radius: var(--r-lg);
+  box-shadow: var(--shadow-lg);
+}
+.dialog-title {
+  margin: 0; padding: 14px 16px 10px;
+  color: var(--head); font-size: 14px; font-weight: 600;
+}
+.dialog-body { min-height: 0; overflow: auto; padding: 0 16px 14px; font-size: 12.5px; color: var(--fg-dim); line-height: 1.6; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 0 16px 16px; }
+.dialog-actions button {
+  min-height: 28px; padding: 4px 14px;
+  border: 1px solid var(--line); border-radius: var(--r-sm);
+  background: var(--bg-2); color: var(--fg); font: inherit; font-size: 11.5px;
+  cursor: pointer;
+}
+.dialog-actions button:hover { background: var(--bg-3); }
+.dialog-actions button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.dialog-actions button.primary:hover { filter: brightness(1.1); }
+.dialog-actions button.danger { color: var(--red); }
+.dialog-actions button.danger:hover { background: rgba(248,113,113,.1); }
+
+/* ===================== TOAST ===================== */
+.toast-host {
+  position: fixed; right: 12px; bottom: calc(var(--h-status) + 12px);
+  z-index: 1100; display: flex; flex-direction: column; gap: 8px;
+  max-width: min(360px, 80vw); pointer-events: none;
+}
+.toast {
+  pointer-events: none; padding: 9px 13px;
+  border: 1px solid var(--pop-border); border-left-width: 3px;
+  border-radius: var(--r-md); background: var(--popover);
+  box-shadow: var(--shadow-sm); color: var(--fg); font-size: 12.5px;
+  opacity: 0; transform: translateY(8px);
+  transition: opacity .18s, transform .18s;
+}
+.toast-show { opacity: 1; transform: none; }
+.toast-info { border-left-color: var(--accent-2); }
+.toast-warning { border-left-color: var(--amber); }
+.toast-success { border-left-color: var(--green); }
+</style>
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ================= TOOLBAR ================= -->
+  <header id="toolbar" class="toolbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">d</span>
+      <span>darmark</span>
+    </div>
+    <button class="tbtn" id="btn-new" title="Новый файл (Ctrl+N)" aria-label="Новый файл">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="12" x2="12" y2="18"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+    </button>
+    <button class="tbtn" id="btn-open" title="Открыть (Ctrl+O)" aria-label="Открыть">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+    </button>
+    <div class="spacer"></div>
+    <span class="pane-path" id="doc-path">—</span>
+  </header>
+
+  <!-- ================= TABROW ================= -->
+  <div class="tabrow">
+    <div class="tab-strip" id="tab-strip" role="tablist" aria-label="Открытые документы"></div>
+  </div>
+
+  <!-- ================= WORKSPACE ================= -->
+  <div class="workspace">
+    <main class="main">
+      <div class="panes" id="panes">
+        <section class="pane" id="pane-editor" data-pane="editor">
+          <div class="editor-wrap">
+            <div class="line-numbers" id="gutter" aria-hidden="true">1</div>
+            <textarea id="editor" spellcheck="false" wrap="off" aria-label="Редактор Markdown" placeholder="# Начните печатать markdown…"></textarea>
+          </div>
+        </section>
+        <section class="pane" id="pane-preview" data-pane="preview" hidden>
+          <article id="preview" class="markdown-body"></article>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <!-- ================= STATUS BAR ================= -->
+  <footer id="statusbar" class="statusbar" aria-live="polite">
+    <span class="stat"><span class="stat-dot" aria-hidden="true"></span><span id="stat-state">Готов</span></span>
+    <span class="stat" id="stat-msg">—</span>
+    <div class="spacer"></div>
+    <span class="stat" id="stat-pos">Стр 1, Кол 1</span>
+    <span class="stat" id="stat-size">0 симв.</span>
+  </footer>
+</div>
+
+<!-- ================= CONTEXT MENU ================= -->
+<div class="tab-menu" id="tab-menu" role="menu" hidden></div>
+
+<!-- ================= DIALOG ================= -->
+<div class="dialog-backdrop" id="dialog-backdrop" hidden>
+  <div class="dialog" role="alertdialog" aria-labelledby="dialog-title" aria-describedby="dialog-body">
+    <h2 class="dialog-title" id="dialog-title">Несохранённые изменения</h2>
+    <div class="dialog-body" id="dialog-body"></div>
+    <div class="dialog-actions" id="dialog-actions"></div>
+  </div>
+</div>
+
+<!-- ================= TOAST ================= -->
+<div class="toast-host" id="toast-host"></div>
+
+<script>
+// ============================================================
+// idea11 — Мультивкладки документов (§11.1.1)
+// Демо-данные: 4 документа с разными состояниями dirty.
+// ============================================================
+
+'use strict';
+
+// --- Модель документа ---
+const DOCS = [
+  { id: 'doc-1', name: 'readme.md',      path: 'docs/readme.md',      dirty: false, icon: 'md',  iconClass: 'md',  text: '# Добро пожаловать в darmark\n\nЛёгкий Markdown-редактор в духе Notepad++.\n\n- Слева редактор\n- Справа предпросмотр\n- Горячие клавиши: `Ctrl+Tab`, `Ctrl+W`' },
+  { id: 'doc-2', name: 'ROADMAP.md',    path: 'docs/ROADMAP.md',    dirty: true,  icon: 'md',  iconClass: 'md',  text: '# Дорожная карта\n\n## Фаза 1 — Ядро\n\n- [x] Markdown-рендер\n- [x] Таблицы\n- [ ] Мультивкладки' },
+  { id: 'doc-3', name: 'notes.txt',     path: 'C:/Users/me/notes.txt', dirty: false, icon: 'txt', iconClass: 'txt', text: 'Простой текстовый файл.\n\nПоддерживается просмотр без Markdown-разметки.' },
+  { id: 'doc-4', name: 'script.lua',    path: 'plugins/script.lua',  dirty: true,  icon: 'lua', iconClass: 'lua', text: '-- Плагин darmark\n\nfunction on_activate(ctx)\n  print("hello")\nend' },
+];
+
+let activeDocId = DOCS[0].id;
+let docOrder = DOCS.map(d => d.id);
+let pendingCloseId = null; // для диалога подтверждения
+
+// --- DOM ---
+const tabStrip = document.getElementById('tab-strip');
+const editor = document.getElementById('editor');
+const gutter = document.getElementById('gutter');
+const paneEditor = document.getElementById('pane-editor');
+const panePreview = document.getElementById('pane-preview');
+const preview = document.getElementById('preview');
+const docPath = document.getElementById('doc-path');
+const tabMenu = document.getElementById('tab-menu');
+const dialogBackdrop = document.getElementById('dialog-backdrop');
+const dialogBody = document.getElementById('dialog-body');
+const dialogActions = document.getElementById('dialog-actions');
+const toastHost = document.getElementById('toast-host');
+
+// --- Утилиты ---
+const getDoc = id => DOCS.find(d => d.id === id);
+
+function escapeHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// Простейший markdown → HTML (только для демо прототипа)
+function renderMarkdown(text) {
+  const lines = text.split('\n');
+  let html = '';
+  let inList = false;
+  for (const raw of lines) {
+    const line = escapeHtml(raw);
+    if (line.startsWith('### ')) { html += `<h3>${line.slice(4)}</h3>`; }
+    else if (line.startsWith('## ')) { html += `<h2>${line.slice(3)}</h2>`; }
+    else if (line.startsWith('# ')) { html += `<h1>${line.slice(2)}</h1>`; }
+    else if (line.startsWith('- [x] ')) { html += `<ul><li>☑ ${line.slice(6)}</li></ul>`; }
+    else if (line.startsWith('- [ ] ')) { html += `<ul><li>☐ ${line.slice(6)}</li></ul>`; }
+    else if (line.startsWith('- ')) { html += `<ul><li>${line.slice(2)}</li></ul>`; }
+    else if (line.startsWith('```')) { html += `<pre><code>${line.slice(3)}</code></pre>`; }
+    else if (line.trim() === '') { html += ''; }
+    else { html += `<p>${line}</p>`; }
+  }
+  return html;
+}
+
+// --- Рендер вкладок ---
+function renderTabs() {
+  tabStrip.replaceChildren();
+  for (const id of docOrder) {
+    const doc = getDoc(id);
+    const tab = document.createElement('div');
+    tab.className = 'tab' + (id === activeDocId ? ' active' : '');
+    tab.setAttribute('role', 'tab');
+    tab.setAttribute('aria-selected', id === activeDocId ? 'true' : 'false');
+    tab.dataset.docId = id;
+
+    // иконка типа файла
+    const icon = document.createElement('span');
+    icon.className = 'ficon ' + doc.iconClass;
+    icon.textContent = doc.icon;
+    icon.setAttribute('aria-hidden', 'true');
+
+    // имя
+    const name = document.createElement('span');
+    name.className = 'name';
+    name.textContent = doc.name;
+    name.title = doc.path || doc.name;
+
+    // dirty-индикатор
+    const dirty = document.createElement('span');
+    dirty.className = 'dirty' + (doc.dirty ? ' on' : '');
+    dirty.title = doc.dirty ? 'Есть несохранённые изменения' : 'Сохранено';
+
+    // кнопка закрытия
+    const close = document.createElement('button');
+    close.className = 'close';
+    close.title = 'Закрыть (Ctrl+W)';
+    close.setAttribute('aria-label', `Закрыть ${doc.name}`);
+    close.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+
+    tab.append(icon, name, dirty, close);
+    tabStrip.appendChild(tab);
+  }
+}
+
+// --- Рендер активного документа ---
+function renderActiveDoc() {
+  const doc = getDoc(activeDocId);
+  docPath.textContent = doc.path || doc.name;
+  editor.value = doc.text;
+  gutter.textContent = doc.text.split('\n').map((_, i) => i + 1).join('\n');
+  updatePreview();
+  updateStatus();
+}
+
+function updatePreview() {
+  const doc = getDoc(activeDocId);
+  if (doc.iconClass === 'txt' || doc.iconClass === 'lua') {
+    // Для txt/lua показываем как есть (экранированный текст)
+    preview.innerHTML = `<pre><code>${escapeHtml(doc.text)}</code></pre>`;
+  } else {
+    preview.innerHTML = renderMarkdown(doc.text);
+  }
+}
+
+function updateStatus() {
+  const doc = getDoc(activeDocId);
+  const size = doc.text.length;
+  document.getElementById('stat-size').textContent = `${size} симв.`;
+  document.getElementById('stat-state').textContent = doc.dirty ? 'Изменён' : 'Готов';
+}
+
+// --- Переключение ---
+function activateTab(id) {
+  if (id === activeDocId) return;
+  // Сохраняем текст текущего документа
+  const prev = getDoc(activeDocId);
+  prev.text = editor.value;
+  prev.dirty = prev.text !== getOriginalText(prev.id);
+
+  activeDocId = id;
+  renderTabs();
+  renderActiveDoc();
+}
+
+function getOriginalText(id) {
+  const originals = {
+    'doc-1': DOCS[0].text,
+    'doc-2': DOCS[1].text,
+    'doc-3': DOCS[2].text,
+    'doc-4': DOCS[3].text,
+  };
+  return originals[id] || '';
+}
+
+// --- Закрытие ---
+function requestCloseTab(id) {
+  const doc = getDoc(id);
+  if (!doc.dirty) {
+    closeTab(id);
+    return;
+  }
+  pendingCloseId = id;
+  dialogBody.innerHTML = `<p>Документ <b>${escapeHtml(doc.name)}</b> имеет несохранённые изменения. Закрыть без сохранения?</p>`;
+  dialogActions.replaceChildren();
+
+  const btnCancel = document.createElement('button');
+  btnCancel.textContent = 'Отмена';
+  btnCancel.onclick = () => { pendingCloseId = null; dialogBackdrop.hidden = true; };
+
+  const btnSave = document.createElement('button');
+  btnSave.textContent = 'Сохранить и закрыть';
+  btnSave.className = 'primary';
+  btnSave.onclick = () => {
+    doc.dirty = false;
+    doc.text = editor.value;
+    closeTab(id);
+    dialogBackdrop.hidden = true;
+    pendingCloseId = null;
+    showToast('success', `${doc.name} сохранён и закрыт`);
+  };
+
+  const btnDiscard = document.createElement('button');
+  btnDiscard.textContent = 'Закрыть без сохранения';
+  btnDiscard.className = 'danger';
+  btnDiscard.onclick = () => {
+    closeTab(id);
+    dialogBackdrop.hidden = true;
+    pendingCloseId = null;
+    showToast('warning', `${doc.name} закрыт без сохранения`);
+  };
+
+  dialogActions.append(btnCancel, btnSave, btnDiscard);
+  dialogBackdrop.hidden = false;
+  btnCancel.focus();
+}
+
+function closeTab(id) {
+  const idx = docOrder.indexOf(id);
+  if (idx === -1) return;
+  docOrder.splice(idx, 1);
+
+  if (docOrder.length === 0) {
+    // Все вкладки закрыты — показываем пустое состояние
+    activeDocId = null;
+    docPath.textContent = 'Нет открытых документов';
+    editor.value = '';
+    gutter.textContent = '1';
+    preview.innerHTML = '<p style="color:var(--fg-mute)">Все документы закрыты. Нажмите <b>Ctrl+N</b> для нового файла.</p>';
+    document.getElementById('stat-state').textContent = 'Нет документа';
+    document.getElementById('stat-size').textContent = '0 симв.';
+  } else {
+    if (id === activeDocId) {
+      // Активируем ближайшую вкладку
+      const nextIdx = Math.min(idx, docOrder.length - 1);
+      activeDocId = docOrder[nextIdx];
+    }
+    renderActiveDoc();
+  }
+  renderTabs();
+}
+
+// --- Контекстное меню ---
+function showTabMenu(x, y, docId) {
+  const doc = getDoc(docId);
+  tabMenu.replaceChildren();
+
+  const items = [
+    { label: 'Закрыть', key: 'Ctrl+W', action: () => requestCloseTab(docId) },
+    { label: 'Закрыть остальные', key: '', action: () => closeOthers(docId) },
+    { label: 'Закрыть справа', key: '', action: () => closeRight(docId) },
+    { sep: true },
+    { label: 'Копировать путь', key: '', action: () => { showToast('info', doc.path || doc.name); } },
+    { label: 'Открыть в проводнике', key: '', action: () => showToast('info', 'Открытие проводника: ' + (doc.path || doc.name)) },
+  ];
+
+  for (const item of items) {
+    if (item.sep) {
+      const sep = document.createElement('div');
+      sep.className = 'tab-menu-sep';
+      tabMenu.appendChild(sep);
+      continue;
+    }
+    const el = document.createElement('div');
+    el.className = 'tab-menu-item';
+    el.setAttribute('role', 'menuitem');
+    el.innerHTML = `<span>${item.label}</span>` + (item.key ? `<span class="key">${item.key}</span>` : '');
+    el.onclick = () => { hideTabMenu(); item.action(); };
+    tabMenu.appendChild(el);
+  }
+
+  // Позиционирование
+  tabMenu.hidden = false;
+  const rect = tabMenu.getBoundingClientRect();
+  let left = x, top = y;
+  if (left + rect.width > window.innerWidth - 8) left = window.innerWidth - rect.width - 8;
+  if (top + rect.height > window.innerHeight - 8) top = window.innerHeight - rect.height - 8;
+  tabMenu.style.left = left + 'px';
+  tabMenu.style.top = top + 'px';
+}
+
+function hideTabMenu() {
+  tabMenu.hidden = true;
+}
+
+function closeOthers(keepId) {
+  const toClose = docOrder.filter(id => id !== keepId);
+  // Закрываем справа налево, чтобы индексы не сдвигались
+  for (let i = toClose.length - 1; i >= 0; i--) {
+    const doc = getDoc(toClose[i]);
+    if (doc.dirty) {
+      pendingCloseId = toClose[i];
+      dialogBody.innerHTML = `<p>Документ <b>${escapeHtml(doc.name)}</b> имеет несохранённые изменения. Закрыть?</p>`;
+      dialogActions.replaceChildren();
+      const btnCancel = document.createElement('button');
+      btnCancel.textContent = 'Отмена';
+      btnCancel.onclick = () => { pendingCloseId = null; dialogBackdrop.hidden = true; };
+      const btnSave = document.createElement('button');
+      btnSave.textContent = 'Сохранить';
+      btnSave.className = 'primary';
+      btnSave.onclick = () => { doc.dirty = false; doc.text = getOriginalText(doc.id); closeTab(doc.id); dialogBackdrop.hidden = true; pendingCloseId = null; };
+      const btnDiscard = document.createElement('button');
+      btnDiscard.textContent = 'Закрыть без сохранения';
+      btnDiscard.className = 'danger';
+      btnDiscard.onclick = () => { closeTab(doc.id); dialogBackdrop.hidden = true; pendingCloseId = null; };
+      dialogActions.append(btnCancel, btnSave, btnDiscard);
+      dialogBackdrop.hidden = false;
+      btnCancel.focus();
+      return; // Останавливаемся на первом dirty — пользователь решит
+    }
+    closeTab(toClose[i]);
+  }
+  if (activeDocId !== keepId) activateTab(keepId);
+  showToast('info', 'Закрыты остальные вкладки');
+}
+
+function closeRight(docId) {
+  const idx = docOrder.indexOf(docId);
+  const toClose = docOrder.slice(idx + 1).reverse();
+  for (const id of toClose) {
+    const doc = getDoc(id);
+    if (doc.dirty) {
+      requestCloseTab(id);
+      return;
+    }
+    closeTab(id);
+  }
+  showToast('info', 'Закрыты вкладки справа');
+}
+
+// --- Drag-and-drop вкладок ---
+let dragDocId = null;
+
+// --- Toast ---
+function showToast(type, message) {
+  const toast = document.createElement('div');
+  toast.className = 'toast toast-' + type;
+  toast.textContent = message;
+  toastHost.appendChild(toast);
+  requestAnimationFrame(() => toast.classList.add('toast-show'));
+  setTimeout(() => {
+    toast.classList.remove('toast-show');
+    setTimeout(() => toast.remove(), 200);
+  }, 3000);
+}
+
+// --- События вкладок ---
+tabStrip.addEventListener('click', e => {
+  const tab = e.target.closest('.tab');
+  if (!tab) return;
+  const id = tab.dataset.docId;
+  const closeBtn = e.target.closest('.close');
+  if (closeBtn) {
+    e.stopPropagation();
+    requestCloseTab(id);
+  } else {
+    activateTab(id);
+  }
+});
+
+tabStrip.addEventListener('contextmenu', e => {
+  const tab = e.target.closest('.tab');
+  if (!tab) return;
+  e.preventDefault();
+  const id = tab.dataset.docId;
+  activateTab(id);
+  showTabMenu(e.clientX, e.clientY, id);
+});
+
+// Закрытие меню по клику вне
+document.addEventListener('click', e => {
+  if (!e.target.closest('.tab-menu')) hideTabMenu();
+});
+
+// Drag-and-drop
+tabStrip.addEventListener('dragstart', e => {
+  const tab = e.target.closest('.tab');
+  if (!tab) return;
+  dragDocId = tab.dataset.docId;
+  tab.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', dragDocId);
+});
+
+tabStrip.addEventListener('dragend', e => {
+  const tab = e.target.closest('.tab');
+  if (tab) tab.classList.remove('dragging');
+  document.querySelectorAll('.tab').forEach(t => {
+    t.classList.remove('drop-target-left', 'drop-target-right');
+  });
+  dragDocId = null;
+});
+
+tabStrip.addEventListener('dragover', e => {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  const tab = e.target.closest('.tab');
+  if (!tab || tab.dataset.docId === dragDocId) return;
+  document.querySelectorAll('.tab').forEach(t => {
+    t.classList.remove('drop-target-left', 'drop-target-right');
+  });
+  const rect = tab.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  if (x < rect.width / 2) {
+    tab.classList.add('drop-target-left');
+  } else {
+    tab.classList.add('drop-target-right');
+  }
+});
+
+tabStrip.addEventListener('drop', e => {
+  e.preventDefault();
+  const tab = e.target.closest('.tab');
+  if (!tab || !dragDocId) return;
+  const targetId = tab.dataset.docId;
+  if (targetId === dragDocId) return;
+
+  const fromIdx = docOrder.indexOf(dragDocId);
+  const toIdx = docOrder.indexOf(targetId);
+  docOrder.splice(fromIdx, 1);
+
+  const rect = tab.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const insertAt = x < rect.width / 2 ? toIdx : toIdx + 1;
+  docOrder.splice(insertAt > fromIdx ? insertAt - 1 : insertAt, 0, dragDocId);
+
+  dragDocId = null;
+  renderTabs();
+});
+
+// Делаем вкладки перетаскиваемыми
+tabStrip.addEventListener('mousedown', e => {
+  const tab = e.target.closest('.tab');
+  if (!tab || e.target.closest('.close')) return;
+  tab.draggable = true;
+});
+tabStrip.addEventListener('mouseup', () => {
+  document.querySelectorAll('.tab').forEach(t => t.draggable = false);
+});
+
+// --- Горячие клавиши ---
+document.addEventListener('keydown', e => {
+  // Ctrl+Tab — следующая вкладка
+  if (e.ctrlKey && e.key === 'Tab') {
+    e.preventDefault();
+    if (docOrder.length < 2) return;
+    const idx = docOrder.indexOf(activeDocId);
+    const next = docOrder[(idx + 1) % docOrder.length];
+    activateTab(next);
+    return;
+  }
+  // Ctrl+Shift+Tab — предыдущая вкладка
+  if (e.ctrlKey && e.shiftKey && e.key === 'Tab') {
+    e.preventDefault();
+    if (docOrder.length < 2) return;
+    const idx = docOrder.indexOf(activeDocId);
+    const prev = docOrder[(idx - 1 + docOrder.length) % docOrder.length];
+    activateTab(prev);
+    return;
+  }
+  // Ctrl+W — закрыть текущую вкладку
+  if (e.ctrlKey && e.key === 'w') {
+    e.preventDefault();
+    if (activeDocId) requestCloseTab(activeDocId);
+    return;
+  }
+  // Ctrl+N — новый файл
+  if (e.ctrlKey && e.key === 'n') {
+    e.preventDefault();
+    showToast('info', 'Новый файл (Ctrl+N)');
+    return;
+  }
+  // Escape — закрыть меню/диалог
+  if (e.key === 'Escape') {
+    if (!tabMenu.hidden) { hideTabMenu(); return; }
+    if (!dialogBackdrop.hidden) {
+      dialogBackdrop.hidden = true;
+      pendingCloseId = null;
+      return;
+    }
+  }
+});
+
+// --- События редактора ---
+editor.addEventListener('input', () => {
+  const doc = getDoc(activeDocId);
+  if (!doc) return;
+  doc.text = editor.value;
+  const orig = getOriginalText(doc.id);
+  const wasDirty = doc.dirty;
+  doc.dirty = doc.text !== orig;
+  if (wasDirty !== doc.dirty) {
+    // Обновляем только dirty-индикатор, не перерисовывая всё
+    const tab = tabStrip.querySelector(`[data-doc-id="${doc.id}"] .dirty`);
+    if (tab) tab.classList.toggle('on', doc.dirty);
+    updateStatus();
+  }
+  updatePreview();
+});
+
+editor.addEventListener('scroll', () => {
+  gutter.scrollTop = editor.scrollTop;
+});
+
+// --- Инициализация ---
+renderTabs();
+renderActiveDoc();
+
+// Подсказка при загрузке
+setTimeout(() => {
+  showToast('info', 'Ctrl+Tab — переключение, Ctrl+W — закрыть, ПКМ на вкладке — меню');
+}, 500);
+</script>
+</body>
+</html>

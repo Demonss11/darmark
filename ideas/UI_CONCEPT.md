@@ -2,7 +2,7 @@
 
 > **Статус:** non-normative, описание **реализованного** интерфейса H2.
 > **Нормативная спецификация:** `docs/DESIGN_DOC.md` (§5 — layout/pane/view, §13.2 — замороженные e2e-контракты).
-> **Плагинный UX (H2):** `tasks/TZ-UX-SPEC-CLEANUP.md` §11.
+> **Плагинный UX (H2):** нормативная спецификация — `docs/DESIGN_DOC.md` (§6–§12).
 > **Референс-прототип:** `ideas/front_idea7.html` (вдохновение, не контракт).
 > **Бэклог идей развития UI:** `ideas/UI-IDEAS.md`.
 > Источник истины об интерфейсе — **код** `crates/app` (`index.html`, `src/*`, `src/style.css`).
@@ -85,7 +85,7 @@
 
 ## 4. Замороженные e2e-контракты
 
-Полный список замороженных контрактов — `tasks/TZ-UX-SPEC-CLEANUP.md §1`.
+Полный список замороженных контрактов — `docs/DESIGN_DOC.md` §13.2.
 
 Ключевое: id (`app`, `toolbar`, `panes`, `statusbar`, `editor`, `preview`, `btn-*`, `toggle-*`, `chk-*`, `stat-*`), селекторы (`#preview .md-block[data-md]`, `.table-enhanced*`, `.inspect-*`, `.pl-item[data-plugin]`, `.pl-badge`, `input.pl-enabled`, `button.pl-reload`), инварианты (`#editor`/`#preview` — скролл-контейнеры; переключение view — `hidden`-toggle).
 
@@ -93,7 +93,7 @@
 
 ## 5. Дальше
 
-Идеи развития интерфейса — в бэклоге `ideas/UI-IDEAS.md`. Нормативно по плагинной системе — `tasks/TZ-UX-SPEC-CLEANUP.md` §11.
+Идеи развития интерфейса — в бэклоге `ideas/UI-IDEAS.md`. Нормативно по плагинной системе — `docs/DESIGN_DOC.md` (§6–§12).
 
 ---
 
@@ -106,4 +106,3 @@
 | `ideas/UI-IDEAS.md` | бэклог идей развития UI |
 | `ideas/UI-BUGS.md` | баг-бэклог интерфейса |
 | `docs/DESIGN_DOC.md` | нормативная спецификация |
-| `tasks/TZ-UX-SPEC-CLEANUP.md` | замена TZ-H2/UX-spec: контракты, открытые пункты, план |

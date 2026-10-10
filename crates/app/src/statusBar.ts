@@ -31,24 +31,25 @@ export function createStatusBar(opts: {
   }
 
   function updateStatus(): void {
-    const s = store.state();
+    const s = store.active();
+    const text = s?.text ?? "";
     const pos = editor.selectionStart ?? 0;
-    const before = s.text.slice(0, pos);
+    const before = text.slice(0, pos);
     const line = before.split("\n").length;
     const col = pos - (before.lastIndexOf("\n") + 1) + 1;
     statPos.textContent = `Стр ${line}, Кол ${col}`;
-    statSize.textContent = `${[...s.text].length} симв.`;
+    statSize.textContent = `${[...text].length} симв.`;
   }
 
   function updateTitle(): void {
-    const s = store.state();
-    const name = s.path ? baseName(s.path) : "безымянный";
+    const s = store.active();
+    const name = s?.path ? baseName(s.path) : "безымянный";
     // Заголовок окна — не критично: если команда недоступна/упала, не плодим
     // unhandled rejection (разрешение core:window:allow-set-title — в capabilities).
     getCurrentWindow()
-      .setTitle(`${s.dirty ? "● " : ""}${name} — ${appName}`)
+      .setTitle(`${s?.dirty ? "● " : ""}${name} — ${appName}`)
       .catch((e) => console.warn("set_title:", e));
-    fileLabel.textContent = name + (s.dirty ? " ●" : "");
+    fileLabel.textContent = name + (s?.dirty ? " ●" : "");
   }
 
   function flash(msg: string): void {

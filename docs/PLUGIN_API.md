@@ -235,4 +235,4 @@ function on_deactivate(ctx) end
 - `docs/PLUGIN_GUIDE.md` — пошаговое руководство по написанию плагинов
 - `docs/adr/0023-plugin-runtime.md` — архитектура плагинной системы
 - `docs/DESIGN_DOC.md` — нормативная спецификация
-- `tasks/TZ-UX-SPEC-CLEANUP.md` — замороженные контракты и открытые пункты
+- `docs/DESIGN_DOC.md` §13.2 — замороженные e2e-контракты

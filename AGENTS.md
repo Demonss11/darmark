@@ -36,7 +36,7 @@ Tauri 2 + vanilla TypeScript/Vite на фронте + чистое Rust-ядро
   `list/set_enabled/reload`. `PluginManager` линкует `plugin-proto`, но **не** `plugin-host`/`mlua`
   (D6/ADR-0021).
 - Задачи только по фронтенду не должны трогать `md-core` и `src-tauri`
-- `crates/plugin-proto/` — продуктовое ядро плагинной системы (H2, TZ-UX-SPEC-CLEANUP.md): кадры транспорта
+- `crates/plugin-proto/` — продуктовое ядро плагинной системы (H2): кадры транспорта
   (`frame.rs`), serde-конверт хост↔child (`envelope.rs`), Job Object (`job.rs`), карантин
   (`quarantine.rs`), манифест и валидация (`manifest.rs`), формулировки границы (`notices.rs`),
   бюджеты watchdog (`limits.rs`). **Без mlua и без Tauri** — линкуется и в GUI-хост, и в child.
@@ -44,7 +44,7 @@ Tauri 2 + vanilla TypeScript/Vite на фронте + чистое Rust-ядро
   крейт с `mlua`; `src-tauri` его **не** линкует (D6/ADR-0021, проверяется CI: `cargo tree -p darmark`
   без `mlua`). Здесь песочница (D17), `host.*`/`md.*`/`json.*` и stdio-цикл конверта.
 - `crates/lua-proto/`, `crates/lua-rpc-spike/` — **прототип** (источник переноса блоков и фикстур
-  `crash`/`hang`/`chatty`/`edit`), в продукт не линкуются; держатся в workspace до Фазы 2 TZ-UX-SPEC-CLEANUP.md.
+  `crash`/`hang`/`chatty`/`edit`), в продукт не линкуются; держатся в workspace до Фазы 2.
 
 ## Команды
 

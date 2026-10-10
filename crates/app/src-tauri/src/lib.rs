@@ -332,6 +332,28 @@ fn document_snapshot(
     lock_store(&store).get(&id).map(|doc| doc.snapshot())
 }
 
+/// Возвращает список всех открытых документов в порядке открытия (мультивкладки, п.11.1.1).
+#[tauri::command]
+fn list_documents(store: tauri::State<'_, Arc<Mutex<DocumentStore>>>) -> Vec<DocMeta> {
+    lock_store(&store).list()
+}
+
+/// Устанавливает активный документ (мультивкладки, п.11.1.1).
+///
+/// Пока активный документ также хранится на TS-стороне — команда закладывает
+/// контракт для будущего перехода состояния в Rust. Возвращает ошибку,
+/// если документ не найден.
+#[tauri::command]
+fn activate_document(
+    id: DocumentId,
+    store: tauri::State<'_, Arc<Mutex<DocumentStore>>>,
+) -> Result<(), CommandError> {
+    lock_store(&store)
+        .activate(&id)
+        .then_some(())
+        .ok_or_else(|| CommandError::unknown_document(id.as_str()))
+}
+
 // ---------- команды плагинных представлений (Фаза 4, контракт с фронтендом) ----------
 
 /// Снимок плагинных тир-1 представлений (пусто, если плагинов нет/не-Windows).
@@ -429,7 +451,7 @@ fn reload_plugin(id: String, state: tauri::State<'_, PluginState>) -> Result<(),
 }
 
 /// Удаляет плагин: останавливает child, снимает views, удаляет настройки и каталог
-/// с диска (Фаза 5, п.9 TZ-UX-SPEC-CLEANUP).
+/// с диска.
 #[tauri::command(async)]
 fn remove_plugin(id: String, state: tauri::State<'_, PluginState>) -> Result<(), CommandError> {
     #[cfg(windows)]
@@ -627,6 +649,8 @@ pub fn run() {
             document_snapshot,
             save_document,
             close_document,
+            list_documents,
+            activate_document,
             plugin_views,
             plugin_view_action,
             list_plugins,

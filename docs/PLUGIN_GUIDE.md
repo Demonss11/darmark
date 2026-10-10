@@ -242,6 +242,6 @@ darmark --debug-plugin <path>                  # запуск плагина б�
 - `docs/PLUGIN_API.md` — полный референс Lua-плагинов
 - `docs/adr/0023-plugin-runtime.md` — архитектура плагинной системы
 - `docs/DESIGN_DOC.md` — нормативная спецификация
-- `tasks/TZ-UX-SPEC-CLEANUP.md` — замороженные контракты и открытые пункты
+- `docs/DESIGN_DOC.md` §13.2 — замороженные e2e-контракты
 - Эталонные примеры — в каталоге `plugins/` репозитория: `word-count` (события + статусбар),
   `export-html` (экспорт + команда), `format-selection` (правка документа)

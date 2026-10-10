@@ -1,7 +1,7 @@
 # UI_ABOUT — дизайн-концепции и чек-лист доступности
 
 > **Статус:** non-normative, обновлено на H2.
-> **Расхождения с кодом:** `tasks/TZ-UX-SPEC-CLEANUP.md §4`.
+> **Расхождения с кодом:** см. §2.4/§2.7 ниже.
 > **Описание реализованного UI:** `ideas/UI_CONCEPT.md`.
 
 ---
@@ -128,7 +128,7 @@
 | Non-breaking spaces | OK | `10&nbsp;MB`, `Ctrl+K` |
 | Loading states end with `…` | OK | «Загрузка…» |
 | `font-variant-numeric: tabular-nums` | OK | Для чисел в статусбаре |
-| `text-wrap: balance` | — | Отсутствует в `style.css` (см. `TZ-UX-SPEC-CLEANUP.md §4`) |
+| `text-wrap: balance` | — | Отсутствует в `style.css` |
 
 ### 2.5. Content Handling
 
@@ -152,9 +152,9 @@
 
 | Правило | Статус | Комментарий |
 |---|---|---|
-| `touch-action: manipulation` | — | Отсутствует в `style.css` (см. `TZ-UX-SPEC-CLEANUP.md §4`) |
-| `-webkit-tap-highlight-color` | — | Отсутствует в `style.css` (см. `TZ-UX-SPEC-CLEANUP.md §4`) |
-| `overscroll-behavior: contain` | — | Отсутствует в `style.css` (см. `TZ-UX-SPEC-CLEANUP.md §4`) |
+| `touch-action: manipulation` | — | Отсутствует в `style.css` |
+| `-webkit-tap-highlight-color` | — | Отсутствует в `style.css` |
+| `overscroll-behavior: contain` | — | Отсутствует в `style.css` |
 | Drag/swipe need tap/click alternative | OK | Все жесты имеют альтернативы |
 
 ### 2.8. Dark Mode & Theming
@@ -207,7 +207,7 @@
 
 **Соответствие рекомендациям:** высокое (большинство применимых правил соблюдены).
 
-**Известные расхождения:** см. `tasks/TZ-UX-SPEC-CLEANUP.md §4` (5 пунктов: `text-wrap: balance`, `touch-action`, `-webkit-tap-highlight-color`, `overscroll-behavior`, `color-scheme`).
+**Известные расхождения:** см. §2.4/§2.7 (5 пунктов: `text-wrap: balance`, `touch-action`, `-webkit-tap-highlight-color`, `overscroll-behavior`, `color-scheme`).
 
 **Ключевые концепты:**
 1. Дизайн из предметной области (код/текст)

@@ -3,26 +3,34 @@
 
 :root {
   color-scheme: dark; /* тёмные нативные контролы/скроллбары (Web Interface Guidelines) */
-  /* поверхности и текст */
-  --bg-0: #0d0e12;
-  --bg-1: #141519;
-  --bg-2: #191a20;
-  --bg-3: #1f2028;
-  --line: #24262f;
-  --line-soft: #1c1e26;
-  --fg: #e6e7ee;
-  --fg-dim: #9297a8;
-  /* M9: поднято для контраста ≥4.5:1 на --bg-0/--bg-1/--bg-2/--bg-3. */
-  --fg-mute: #8a90a4;
+  /* поверхности и текст (ADR-0024: холодные глубокие тона с синим подтоном) */
+  --bg-0: #111318;
+  --bg-1: #161920;
+  --bg-2: #1c1f28;
+  --bg-3: #242836;
+  --line: #2e3348;
+  --line-soft: #232736;
+  --fg: #e8eaf0;
+  --fg-dim: #a0a6bd;
+  /* WCAG AA ≥4.5:1 на --bg-0..--bg-3. */
+  --fg-mute: #8a90b0;
   --head: #ffffff;
-  --body: #ced0db;
-  --accent: #7c5cff;
-  --accent-2: #5b8cff;
-  --accent-soft: rgba(124, 92, 255, 0.12);
-  --green: #4ade80;
+  --body: #d0d3e0;
+  --accent: #9d8fff;
+  --accent-2: #6ea8fe;
+  --accent-soft: rgba(157, 143, 255, 0.14);
+  --green: #34d399;
   --amber: #fbbf24;
   --red: #f87171;
   --gutter: #0f1014;
+
+  /* Семантические токены (ADR-0024 §2.2): намерение → статусный цвет */
+  --success: var(--green);
+  --warning: var(--amber);
+  --error: var(--red);
+  --info: var(--accent-2);
+  --disabled: #6b7280;
+  --link: var(--accent-2);
 
   /* метрики оболочки */
   --h-toolbar: 36px;
@@ -33,18 +41,18 @@
   --r-md: 7px;
   --r-lg: 12px;
 
-  /* геометрия редактора — общая для #editor и #gutter, иначе номера «поедут» */
-  --ed-fs: 13.5px;
-  --ed-lh: 23px;
-  --ed-pad-y: 16px;
+  /* геометрия редактора — общая для #editor и #gutter, иначе номера «поедут» (ADR-0024 §2.3) */
+  --ed-fs: 14.5px;
+  --ed-lh: 26px;
+  --ed-pad-y: 20px;
 
   /* токены §11.1 (idea7): акцент-rgb и цвет инлайн-кода */
-  --accent-rgb: 124, 92, 255;
+  --accent-rgb: 157, 143, 255;
   --code-fg: #e9b3ff;
 
-  /* поповеры/диалоги/тосты (§4, §11.1 шаг 3) */
-  --popover: #1a1b22;
-  --pop-border: #2a2c36;
+  /* поповеры/диалоги/тосты (§4, §11.1 шаг 3; ADR-0024: синхронизированы с --bg-*) */
+  --popover: #181b24;
+  --pop-border: #2e3348;
   --shadow-lg: 0 20px 60px rgba(0, 0, 0, 0.55);
   --shadow-sm: 0 6px 18px rgba(0, 0, 0, 0.35);
   --pc: var(--accent); /* цвет плагина; core-пункты наследуют акцент */
@@ -248,7 +256,7 @@ label.tbtn:has(> input:focus-visible) { outline: 2px solid var(--accent); outlin
 }
 /* Счётчик в шапке дровера; .warn — «N с проблемой» (есть failed/quarantined). */
 .side-count { color: var(--fg-mute); font-weight: 500; font-size: 11px; }
-.side-count.warn { color: var(--amber); }
+.side-count.warn { color: var(--warning); }
 .side-empty { padding: 10px 12px; color: var(--fg-mute); font-size: 12px; }
 
 /* ===== Менеджер плагинов (H2, Фаза 5) ===== */
@@ -300,9 +308,9 @@ label.tbtn:has(> input:focus-visible) { outline: 2px solid var(--accent); outlin
   background: currentColor;
   flex-shrink: 0;
 }
-.pl-badge.active { color: var(--green); }
-.pl-badge.failed { color: var(--red); }
-.pl-badge.quarantined { color: var(--amber); }
+.pl-badge.active { color: var(--success); }
+.pl-badge.failed { color: var(--error); }
+.pl-badge.quarantined { color: var(--warning); }
 .pl-badge.stopped { color: var(--fg-mute); }
 
 /* ===== Инфо-кнопка плагина: формулировки границы изоляции (F38-notices) ===== */
@@ -453,9 +461,9 @@ label.tbtn:has(> input:focus-visible) { outline: 2px solid var(--accent); outlin
 .pl-perm-state { flex-shrink: 0; color: var(--fg-mute); }
 /* Выданное право — зелёное состояние + слово «выдано»; акцент не как мелкий текст. */
 .pl-perm:has(> input.pl-grant:checked) .pl-perm-name { color: var(--fg); }
-.pl-perm:has(> input.pl-grant:checked) .pl-perm-state { color: var(--green); }
-.pl-consent-hint { color: var(--amber); font-size: 11px; line-height: 1.35; }
-.pl-notice { color: var(--amber); font-size: 11px; line-height: 1.35; }
+.pl-perm:has(> input.pl-grant:checked) .pl-perm-state { color: var(--success); }
+.pl-consent-hint { color: var(--warning); font-size: 11px; line-height: 1.35; }
+.pl-notice { color: var(--warning); font-size: 11px; line-height: 1.35; }
 /* Разделитель не нужен: строки-карточки уже отделены border-bottom. */
 .pl-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 /* База --bg-2, hover светлит до --bg-3 (как .tbtn) — инверсия против старого вида. */
@@ -484,8 +492,8 @@ label.tbtn:has(> input:focus-visible) { outline: 2px solid var(--accent); outlin
 /* Bulk-кнопки согласия компактнее: в шапке секции дорога горизонталь. */
 .pl-perms-bulk button { min-height: 22px; padding: 2px 8px; font-size: 11px; }
 /* Кнопка «Удалить» — деструктивное действие: красный акцент. */
-.pl-remove { color: var(--red, #d33); }
-.pl-remove:hover:not(:disabled) { color: #fff; background: var(--red, #d33); border-color: var(--red, #d33); }
+.pl-remove { color: var(--error, #d33); }
+.pl-remove:hover:not(:disabled) { color: #fff; background: var(--error, #d33); border-color: var(--error, #d33); }
 /* Confirm-диалог удаления плагина. */
 .pl-confirm-remove { padding: 4px 0; }
 .pl-confirm-text { margin: 0 0 12px; font-size: 12px; line-height: 1.5; color: var(--fg); }
@@ -503,7 +511,7 @@ label.tbtn:has(> input:focus-visible) { outline: 2px solid var(--accent); outlin
 }
 .pl-confirm-buttons button:hover { background: var(--bg-3); }
 .pl-confirm-cancel:hover { background: var(--bg-3); }
-.pl-confirm-ok { color: #fff; background: var(--red, #d33); border-color: var(--red, #d33); }
+.pl-confirm-ok { color: #fff; background: var(--error, #d33); border-color: var(--error, #d33); }
 .pl-confirm-ok:hover { background: #b22; border-color: #b22; }
 /* Панель плагинов: чуть больше воздуха, чем у общего `.side-empty` (референс idea8). */
 .pl-empty { padding: 16px 12px; }
@@ -556,7 +564,43 @@ label.tbtn:has(> input:focus-visible) { outline: 2px solid var(--accent); outlin
   background: var(--accent);
 }
 .tab .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tab .dirty { width: 6px; height: 6px; border-radius: 50%; background: var(--amber); flex-shrink: 0; }
+.tab .dirty { width: 6px; height: 6px; border-radius: 50%; background: var(--warning); flex-shrink: 0; }
+.tab .ficon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  background: var(--bg-2);
+  color: var(--fg-dim);
+  font-size: 10px;
+  font-weight: 700;
+  flex-shrink: 0;
+  user-select: none;
+}
+.tab .close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--fg-mute);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
+}
+.tab:hover .close,
+.tab:focus-within .close { opacity: 1; }
+.tab .close:hover { background: var(--bg-2); color: var(--fg); }
+.tab .close:focus-visible { opacity: 1; outline: 1px solid var(--accent); outline-offset: -1px; }
 
 /* ===================== ПАНЕЛИ ===================== */
 .panes { flex: 1; display: flex; min-height: 0; overflow: hidden; }
@@ -688,7 +732,7 @@ label.tbtn:has(> input:focus-visible) { outline: 2px solid var(--accent); outlin
   white-space: nowrap;
 }
 .stat.accent { color: var(--accent); font-weight: 600; }
-.stat-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+.stat-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--success); }
 #stat-msg {
   color: var(--accent);
   max-width: 360px;
@@ -838,8 +882,8 @@ label.tbtn:has(> input:focus-visible) { outline: 2px solid var(--accent); outlin
   border-radius: 50%;
   background: var(--pc);
 }
-.ipbtn.has-problem .pdot { background: var(--red); animation: drawer-pulse 2s ease-in-out infinite; }
-.ipbtn.has-problem .cnt { background: var(--amber); color: #1a1400; }
+.ipbtn.has-problem .pdot { background: var(--error); animation: drawer-pulse 2s ease-in-out infinite; }
+.ipbtn.has-problem .cnt { background: var(--warning); color: #1a1400; }
 @keyframes drawer-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
@@ -897,7 +941,7 @@ label.tbtn:has(> input:focus-visible) { outline: 2px solid var(--accent); outlin
 .markdown-body h2 { font-size: 19px; margin: 24px 0 10px; }
 .markdown-body h3 { color: var(--head); font-size: 15px; margin: 18px 0 8px; }
 .markdown-body p { margin: 0 0 10px; }
-.markdown-body a { color: var(--accent-2); text-decoration: none; border-bottom: 1px dashed rgba(91, 140, 255, 0.35); }
+.markdown-body a { color: var(--link); text-decoration: none; border-bottom: 1px dashed rgba(91, 140, 255, 0.35); }
 .markdown-body a:hover { color: var(--accent); border-bottom-color: var(--accent); }
 .markdown-body code {
   font-family: "Cascadia Code", ui-monospace, Consolas, monospace;
@@ -1312,7 +1356,7 @@ th.filtered .col-filter-btn { color: var(--accent); font-weight: 700; }
 }
 .toast-show { opacity: 1; transform: none; }
 .toast-sticky { pointer-events: auto; }
-.toast-info { border-left-color: var(--accent-2); }
-.toast-success { border-left-color: var(--green); }
-.toast-warning { border-left-color: var(--amber); }
-.toast-error { border-left-color: var(--red); }
+.toast-info { border-left-color: var(--info); }
+.toast-success { border-left-color: var(--success); }
+.toast-warning { border-left-color: var(--warning); }
+.toast-error { border-left-color: var(--error); }

@@ -160,6 +160,9 @@ pub struct DocumentStore {
     docs: HashMap<DocumentId, Document>,
     order: Vec<DocumentId>,
     next_id: u64,
+    /// Активный документ (для мультивкладок, п.11.1.1). Пока дублирует состояние
+    /// на TS-стороне, но контракт закладывается на будущее.
+    active_id: Option<DocumentId>,
 }
 
 impl DocumentStore {
@@ -231,10 +234,44 @@ impl DocumentStore {
     pub fn close(&mut self, id: &DocumentId) -> bool {
         if self.docs.remove(id).is_some() {
             self.order.retain(|x| x != id);
+            // Если закрыли активный документ — сбрасываем указатель.
+            if self.active_id.as_ref() == Some(id) {
+                self.active_id = None;
+            }
             true
         } else {
             false
         }
+    }
+
+    /// Возвращает метаданные всех документов в порядке открытия.
+    ///
+    /// Нужен для мультивкладок (п.11.1.1): фронт получает список вкладок
+    /// без необходимости отслеживать порядок на своей стороне.
+    pub fn list(&self) -> Vec<DocMeta> {
+        self.order
+            .iter()
+            .filter_map(|id| self.docs.get(id).map(|doc| doc.meta()))
+            .collect()
+    }
+
+    /// Устанавливает активный документ (для мультивкладок, п.11.1.1).
+    ///
+    /// Возвращает `true`, если документ найден и установлен активным.
+    /// Пока активный документ также хранится на TS-стороне — эта функция
+    /// закладывает контракт для будущего перехода состояния в Rust.
+    pub fn activate(&mut self, id: &DocumentId) -> bool {
+        if self.docs.contains_key(id) {
+            self.active_id = Some(id.clone());
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Возвращает id активного документа, если он установлен.
+    pub fn active_id(&self) -> Option<&DocumentId> {
+        self.active_id.as_ref()
     }
 
     /// Правка диапазона в **байтовых** смещениях UTF-8: заменяет `[start, stop)` на `text`.
@@ -401,5 +438,67 @@ mod tests {
         assert!(store.apply_edit(&id, 2, 1, "x").is_none(), "start > stop");
         // Корректные границы проходят.
         assert_eq!(store.apply_edit(&id, 0, 2, "e"), Some(1));
+    }
+
+    #[test]
+    fn list_returns_all_documents_in_open_order() {
+        let mut store = DocumentStore::default();
+        let a = store.create("a".into()).id;
+        let b = store.create("b".into()).id;
+        let c = store.create("c".into()).id;
+
+        let list = store.list();
+        assert_eq!(list.len(), 3);
+        assert_eq!(list[0].id, a);
+        assert_eq!(list[1].id, b);
+        assert_eq!(list[2].id, c);
+    }
+
+    #[test]
+    fn list_excludes_closed_documents() {
+        let mut store = DocumentStore::default();
+        let a = store.create("a".into()).id;
+        let b = store.create("b".into()).id;
+        store.close(&a);
+
+        let list = store.list();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].id, b);
+    }
+
+    #[test]
+    fn activate_sets_active_id() {
+        let mut store = DocumentStore::default();
+        let a = store.create("a".into()).id;
+        let b = store.create("b".into()).id;
+
+        assert!(store.activate(&a));
+        assert_eq!(store.active_id(), Some(&a));
+
+        assert!(store.activate(&b));
+        assert_eq!(store.active_id(), Some(&b));
+    }
+
+    #[test]
+    fn activate_rejects_unknown_id() {
+        let mut store = DocumentStore::default();
+        let a = store.create("a".into()).id;
+        let unknown = DocumentId::new("doc-999");
+
+        assert!(!store.activate(&unknown));
+        assert_eq!(store.active_id(), None, "не сбрасываем активный при ошибке");
+
+        // Активный документ можно установить после неудачной попытки.
+        assert!(store.activate(&a));
+    }
+
+    #[test]
+    fn close_resets_active_id() {
+        let mut store = DocumentStore::default();
+        let a = store.create("a".into()).id;
+        store.activate(&a);
+
+        store.close(&a);
+        assert_eq!(store.active_id(), None);
     }
 }

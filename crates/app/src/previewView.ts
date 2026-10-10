@@ -88,29 +88,29 @@ export const previewViewProvider: HtmlViewProvider = {
 
     // Copy HTML: автономный HTML-фрагмент для буфера обмена. Вместо копирования
     // текущего innerHTML (тёмная тема, классы приложения) собираем документ со
-    // встроенными стилями: белый фон, чёрный текст. Один набор правил — и для
-    // Markdown-превью, и для плагинных view. Frontmatter (YAML-шапка) копируется
-    // как есть — таблицей.
+    // встроенными стилями: тёмная палитра приложения (ADR-0024 §2.4 — единая тема,
+    // без дублирования светлой). Один набор правил — и для Markdown-превью, и для
+    // плагинных view. Frontmatter (YAML-шапка) копируется как есть — таблицей.
     const COPY_CSS = `
-      h1 { font-size: 26px; font-weight: 700; color: #000; margin: 0 0 14px; border-bottom: 1px solid #ddd; padding-bottom: 0.2em; }
-      h2 { font-size: 19px; font-weight: 700; color: #000; margin: 24px 0 10px; border-bottom: 1px solid #ddd; padding-bottom: 0.2em; }
-      h3 { font-size: 15px; font-weight: 700; color: #000; margin: 18px 0 8px; }
-      h4, h5, h6 { font-size: 14px; font-weight: 700; color: #000; margin: 16px 0 6px; }
-      p { margin: 0 0 10px; color: #000; line-height: 1.7; }
-      a { color: #0066cc; text-decoration: underline; }
-      strong { font-weight: 700; color: #000; }
+      h1 { font-size: 26px; font-weight: 700; color: #ffffff; margin: 0 0 14px; border-bottom: 1px solid #2e3348; padding-bottom: 0.2em; }
+      h2 { font-size: 19px; font-weight: 700; color: #ffffff; margin: 24px 0 10px; border-bottom: 1px solid #2e3348; padding-bottom: 0.2em; }
+      h3 { font-size: 15px; font-weight: 700; color: #ffffff; margin: 18px 0 8px; }
+      h4, h5, h6 { font-size: 14px; font-weight: 700; color: #ffffff; margin: 16px 0 6px; }
+      p { margin: 0 0 10px; color: #d0d3e0; line-height: 1.7; }
+      a { color: #6ea8fe; text-decoration: underline; }
+      strong { font-weight: 700; color: #e8eaf0; }
       em { font-style: italic; }
-      code { font-family: "Cascadia Code", Consolas, monospace; background: #f5f5f5; color: #333; padding: 2px 6px; border-radius: 4px; font-size: 12.5px; }
-      pre { background: #f5f5f5; border: 1px solid #ddd; border-radius: 8px; padding: 14px 18px; margin: 12px 0 18px; overflow-x: auto; }
-      pre code { background: transparent; padding: 0; color: #333; }
-      blockquote { margin: 14px 0; padding: 4px 14px; color: #555; background: #f9f9f9; border-left: 3px solid #0066cc; border-radius: 0 6px 6px 0; }
-      ul, ol { padding-left: 22px; margin: 8px 0 14px; color: #000; }
+      code { font-family: "Cascadia Code", Consolas, monospace; background: #242836; color: #e9b3ff; padding: 2px 6px; border-radius: 4px; font-size: 12.5px; }
+      pre { background: #161920; border: 1px solid #232736; border-radius: 8px; padding: 14px 18px; margin: 12px 0 18px; overflow-x: auto; }
+      pre code { background: transparent; padding: 0; color: #a0a6bd; }
+      blockquote { margin: 14px 0; padding: 4px 14px; color: #a0a6bd; background: rgba(157, 143, 255, 0.14); border-left: 3px solid #9d8fff; border-radius: 0 6px 6px 0; }
+      ul, ol { padding-left: 22px; margin: 8px 0 14px; color: #d0d3e0; }
       li { margin: 4px 0; }
-      hr { border: none; border-top: 1px solid #ddd; margin: 22px 0; }
+      hr { border: none; border-top: 1px solid #2e3348; margin: 22px 0; }
       img { max-width: 100%; }
       table { border-collapse: collapse; margin: 1em 0; width: auto; max-width: 100%; font-size: 12.5px; }
-      th, td { padding: 6px 13px; text-align: left; border: 1px solid #ddd; color: #000; }
-      th { background: #f5f5f5; font-weight: 600; }
+      th, td { padding: 6px 13px; text-align: left; border: 1px solid #2e3348; color: #d0d3e0; }
+      th { background: #1c1f28; font-weight: 600; }
       input[type="checkbox"] { margin-right: 6px; }
     `.trim();
     const buildCopyHtml = (source: HTMLElement): string => {
@@ -134,7 +134,7 @@ export const previewViewProvider: HtmlViewProvider = {
         for (const el of clone.querySelectorAll<HTMLElement>(sel)) el.remove();
       }
       return [
-        '<div style="background: #fff; color: #000; font-family: -apple-system, \'Segoe UI\', system-ui, Roboto, Arial, sans-serif; line-height: 1.7; padding: 16px;">',
+        '<div style="background: #111318; color: #e8eaf0; font-family: -apple-system, \'Segoe UI\', system-ui, Roboto, Arial, sans-serif; line-height: 1.7; padding: 16px;">',
         `<style>${COPY_CSS}</style>`,
         clone.innerHTML,
         "</div>",

@@ -138,7 +138,7 @@ export function reloadPlugin(id: string): Promise<void> {
   return invoke<void>("reload_plugin", { id });
 }
 
-/** Полностью удаляет плагин: останавливает child, снимает views, удаляет каталог и настройки (п.9 TZ-UX-SPEC-CLEANUP). */
+/** Полностью удаляет плагин: останавливает child, снимает views, удаляет каталог и настройки. */
 export function removePlugin(id: string): Promise<void> {
   return invoke<void>("remove_plugin", { id });
 }

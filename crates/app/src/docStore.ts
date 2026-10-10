@@ -2,7 +2,7 @@
 //
 // Чистый модуль без DOM: ввод приходит из editorView (`setText`), HTML уходит
 // в `onRender` (в Фазе 4 — в previewView.applyRender). Рендер и его кэш
-// принадлежат Rust; здесь — дебаунс IPC, защита от гонки ответов и подписки.
+// принадлежат Rust; здесь — дебаунс IPC, защита от гонок ответов и подписки.
 // Никаких обращений к `document`/`window`.
 
 import {
@@ -19,13 +19,15 @@ import type { DocumentId } from "./ids";
 import type { DocumentSnapshot, RenderResult } from "./tauri";
 
 /** Проекция документа: зеркало Rust-стора + буфер редактора и dirty. */
-export interface DocState {
-  id: DocumentId | null;
+export interface Tab {
+  id: DocumentId;
   path: string | null;
   rev: number;
   /** Актуальный буфер редактора (обновляется синхронно вводу, до IPC). */
   text: string;
   dirty: boolean;
+  /** Отображаемое имя (baseName пути или «безымянный»). */
+  name: string;
 }
 
 export interface DocStoreOptions {
@@ -38,11 +40,16 @@ export interface DocStoreOptions {
 }
 
 export interface DocStore {
-  state(): DocState;
-  /** Подписка на изменение проекции; возвращает unsubscribe (§5.6). */
-  subscribe(cb: (s: DocState) => void): () => void;
+  /** Список всех открытых вкладок. */
+  tabs(): Tab[];
+  /** ID активной вкладки или `null`, если нет открытых. */
+  activeId(): DocumentId | null;
+  /** Активная вкладка или `null`. */
+  active(): Tab | null;
+  /** Подписка на изменение списка вкладок/активной вкладки; возвращает unsubscribe (§5.6). */
+  subscribe(cb: (tabs: Tab[], activeId: DocumentId | null) => void): () => void;
 
-  /** Текущий документ как снапшот для ViewContext (§5.4) или `null`. */
+  /** Текущий активный документ как снапшот для ViewContext (§5.4) или `null`. */
   snapshot(): DocumentSnapshot | null;
   /** Подписка на снапшоты созданного документа (ViewContext.onDocument); unsubscribe. */
   onDocument(cb: (d: DocumentSnapshot) => void): () => void;
@@ -52,37 +59,60 @@ export interface DocStore {
    */
   renderText(text: string, mapped: boolean): Promise<RenderResult>;
 
-  /** Правка из редактора: сразу в проекцию + dirty + дебаунс IPC-рендера. */
+  /** Правка из редактора: сразу в активную вкладку + dirty + дебаунс IPC-рендера. */
   setText(text: string): void;
-  /** Отменить дебаунс и немедленно отправить текст в Rust (перед save); ошибку пробрасывает. */
+  /** Отменить дебаунс и немедленно отправить текст активной вкладки в Rust. */
   flush(): Promise<void>;
-  /** Повторный рендер с текущим `mapped` (первый рендер, переключение инспектора). */
+  /** Повторный рендер активной вкладки с текущим `mapped`. */
   reload(): void;
   /**
    * Внешняя правка документа (событие `document-updated`): pull-снапшот из Rust
-   * и применение к проекции. Устаревшие/чужие события игнорируются.
+   * и применение к соответствующей вкладке. Устаревшие/чужие события игнорируются.
    */
   applyHostUpdate(hostDocId: string, rev: number): void;
 
+  /** Создать новую вкладку (не закрывая существующие). */
   newDocument(text?: string): Promise<void>;
+  /** Открыть файл в новой вкладке (не закрывая существующие). */
   open(path: string): Promise<void>;
+  /** Сохранить активную вкладку. */
   save(path?: string): Promise<void>;
+  /** Переключиться на вкладку по ID. */
+  switchTab(id: DocumentId): void;
+  /** Закрыть вкладку по ID + переключиться на соседнюю. */
+  closeTab(id: DocumentId): Promise<void>;
 }
 
 /** Дебаунс IPC-рендера: не спамить `update_document` на каждое нажатие. */
 const DEBOUNCE_MS = 120;
 
-const EMPTY: DocState = { id: null, path: null, rev: 0, text: "", dirty: false };
+/** Имя файла из пути (для таба-заглушки). */
+function baseName(p: string): string {
+  const i = Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\"));
+  return i >= 0 ? p.slice(i + 1) : p;
+}
+
+function makeTab(snap: DocumentSnapshot): Tab {
+  return {
+    id: snap.id,
+    path: snap.path,
+    rev: snap.rev,
+    text: snap.text,
+    dirty: false,
+    name: snap.path ? baseName(snap.path) : "безымянный",
+  };
+}
 
 export function createDocStore(opts: DocStoreOptions): DocStore {
-  let st: DocState = { ...EMPTY };
+  let tabs: Tab[] = [];
+  let activeId: DocumentId | null = null;
   // Владелец кэша и ревизии — Rust; `lastRev` лишь отбрасывает устаревшие ответы IPC.
   let lastRev = -1;
   let debounceTimer = 0;
-  const subs = new Set<(s: DocState) => void>();
+  const subs = new Set<(tabs: Tab[], activeId: DocumentId | null) => void>();
 
   function notify(): void {
-    for (const cb of subs) cb(st);
+    for (const cb of subs) cb(tabs, activeId);
   }
 
   function schedule(): void {
@@ -93,18 +123,22 @@ export function createDocStore(opts: DocStoreOptions): DocStore {
   function applyRes(res: RenderResult, source: string): void {
     if (res.rev < lastRev) return; // устаревший ответ — не трогаем DOM
     lastRev = res.rev;
-    st = { ...st, rev: res.rev };
+    if (activeId) {
+      tabs = tabs.map((t) => (t.id === activeId ? { ...t, rev: res.rev } : t));
+    }
     opts.onRender(res, source);
     notify();
   }
 
-  /** Отправляет текущий текст в Rust; ошибки пробрасываются вызывающему. */
+  /** Отправляет текст активной вкладки в Rust; ошибки пробрасываются вызывающему. */
   async function pushText(): Promise<void> {
-    const id = st.id;
+    const id = activeId;
     if (!id) return;
-    const source = st.text;
+    const tab = tabs.find((t) => t.id === id);
+    if (!tab) return;
+    const source = tab.text;
     const res = await ipcUpdate(id, source, opts.renderMapped());
-    if (id !== st.id) return; // документ сменился, пока ждали
+    if (id !== activeId) return; // вкладка сменилась, пока ждали
     applyRes(res, source);
   }
 
@@ -120,64 +154,80 @@ export function createDocStore(opts: DocStoreOptions): DocStore {
   function applySnapshot(snap: DocumentSnapshot): void {
     clearTimeout(debounceTimer);
     lastRev = -1;
-    st = { id: snap.id, path: snap.path, rev: snap.rev, text: snap.text, dirty: false };
+    const tab = makeTab(snap);
+    tabs = [...tabs, tab];
+    activeId = snap.id;
     notify();
   }
 
+  async function newDocument(text = ""): Promise<void> {
+    applySnapshot(await ipcNew(text));
+    reload();
+  }
+
   function reload(): void {
-    const id = st.id;
+    const id = activeId;
     if (!id) return;
+    const tab = tabs.find((t) => t.id === id);
+    if (!tab) return;
     clearTimeout(debounceTimer);
     void (async () => {
       try {
         const res = await ipcRender(id, opts.renderMapped());
-        if (id !== st.id) return;
-        applyRes(res, st.text);
+        if (id !== activeId) return;
+        applyRes(res, tab.text);
       } catch (e) {
-        if (id !== st.id) return;
+        if (id !== activeId) return;
         lastRev = -1;
         opts.onStatus(`Ошибка рендера: ${errorMessage(e)}`);
       }
     })();
   }
 
-  function toSnapshot(s: DocState): DocumentSnapshot | null {
-    if (!s.id) return null;
-    return { id: s.id, path: s.path, rev: s.rev, text: s.text, dirty_hint: s.dirty };
+  function toSnapshot(tab: Tab | null): DocumentSnapshot | null {
+    if (!tab) return null;
+    return { id: tab.id, path: tab.path, rev: tab.rev, text: tab.text, dirty_hint: tab.dirty };
   }
 
   return {
-    state: () => st,
+    tabs: () => tabs,
+    activeId: () => activeId,
+    active: () => tabs.find((t) => t.id === activeId) ?? null,
 
     subscribe(cb) {
       subs.add(cb);
       return () => subs.delete(cb);
     },
 
-    snapshot: () => toSnapshot(st),
+    snapshot: () => toSnapshot(tabs.find((t) => t.id === activeId) ?? null),
 
     onDocument(cb) {
       // ViewContext-подписка: доставляем только созданный документ.
-      const inner = (s: DocState): void => {
-        const snap = toSnapshot(s);
-        if (snap) cb(snap);
+      const inner = (list: Tab[], id: DocumentId | null): void => {
+        const tab = list.find((t) => t.id === id);
+        if (tab) cb(toSnapshot(tab)!);
       };
       subs.add(inner);
       return () => subs.delete(inner);
     },
 
     async renderText(text: string, mapped: boolean): Promise<RenderResult> {
-      const id = st.id;
-      if (!id) throw new Error("Документ не создан — рендер недоступен");
+      const id = activeId;
+      if (!id) throw new Error("Документ не создан — рендер недоступно");
+      const tab = tabs.find((t) => t.id === id);
+      if (!tab) throw new Error("Документ не создан — рендер недоступно");
       // Тот же текст, что в сторе → render_document (текст не меняется).
       // Иначе update_document: стор применит правку — осознанный путь edit/render.
-      if (text === st.text) return ipcRender(id, mapped);
+      if (text === tab.text) return ipcRender(id, mapped);
       return ipcUpdate(id, text, mapped);
     },
 
     setText(text: string): void {
-      if (text === st.text) return;
-      st = { ...st, text, dirty: true };
+      const id = activeId;
+      if (!id) return;
+      const tab = tabs.find((t) => t.id === id);
+      if (!tab || text === tab.text) return;
+      tabs = tabs.map((t) => (t.id === id ? { ...t, text, dirty: true } : t));
       notify();
       schedule();
     },
@@ -190,53 +240,92 @@ export function createDocStore(opts: DocStoreOptions): DocStore {
     reload,
 
     applyHostUpdate(hostDocId: string, rev: number): void {
-      const id = st.id;
-      if (!id || id !== hostDocId) return; // событие о чужом/неизвестном документе
-      if (rev <= st.rev) return; // устаревшее событие или эхо собственной правки
+      const tab = tabs.find((t) => t.id === hostDocId);
+      if (!tab) return; // событие о чужом/неизвестном документе
+      if (rev <= tab.rev) return; // устаревшее событие или эхо собственной правки
       // Внешняя (плагинная) правка перекрывает отложенный push: команду вызвал
       // пользователь, её результат авторитетнее неотправленного локального ввода.
-      clearTimeout(debounceTimer);
+      // Отменяем дебаунс только у активной вкладки: у фоновой он относится к
+      // собственному вводу и должен отработать как обычно.
+      const isActive = tab.id === activeId;
+      if (isActive) clearTimeout(debounceTimer);
       void (async () => {
         try {
-          const snap = await documentSnapshot(id);
-          if (id !== st.id) return; // документ сменился, пока ждали ответ
+          const snap = await documentSnapshot(tab.id);
           if (!snap || snap.rev < rev) return; // снапшот устарел или документ исчез
           // Держим `lastRev` на новой ревизии: устаревший ответ IPC (rev < snap.rev)
           // не должен откатить `st` и перерисовать DOM старым текстом (сброс в -1
           // эту защиту инвертировал бы).
           lastRev = snap.rev;
           // dirty=true: правка пришла от плагина и ещё не записана в файл.
-          st = { id: snap.id, path: snap.path, rev: snap.rev, text: snap.text, dirty: true };
+          tabs = tabs.map((t) =>
+            t.id === tab.id
+              ? { ...t, rev: snap.rev, text: snap.text, dirty: true }
+              : t
+          );
           notify();
-          reload(); // перерисовать HTML из нового текста (textarea подтянет editorView)
+          if (isActive) {
+            reload(); // перерисовать HTML из нового текста (textarea подтянет editorView)
+          }
         } catch (e) {
           opts.onStatus(`Внешняя правка: ${errorMessage(e)}`);
         }
       })();
     },
 
-    async newDocument(text = ""): Promise<void> {
-      const previous = st.id;
-      applySnapshot(await ipcNew(text));
-      if (previous) void ipcClose(previous).catch(() => {});
-      reload();
-    },
+    newDocument,
 
     async open(path: string): Promise<void> {
-      const previous = st.id;
       applySnapshot(await ipcOpen(path));
-      if (previous) void ipcClose(previous).catch(() => {});
       reload();
     },
 
     async save(path?: string): Promise<void> {
-      if (!st.id) throw new Error("Документ не создан — сохранение недоступно");
-      await pushText(); // текст редактора → Rust до записи (ошибку пробрасываем)
-      const id = st.id;
+      const id = activeId;
       if (!id) throw new Error("Документ не создан — сохранение недоступно");
+      await pushText(); // текст редактора → Rust до записи (ошибку пробрасываем)
+      const tab = tabs.find((t) => t.id === id);
+      if (!tab) throw new Error("Документ не создан — сохранение недоступно");
       const meta = await ipcSave(id, path);
-      st = { ...st, path: meta.path, dirty: false };
+      if (id !== activeId) return; // вкладка сменилась, пока ждали записи
+      tabs = tabs.map((t) =>
+        t.id === id
+          ? { ...t, path: meta.path, dirty: false, name: meta.path ? baseName(meta.path) : t.name }
+          : t
+      );
       notify();
+    },
+
+    switchTab(id: DocumentId): void {
+      if (!tabs.some((t) => t.id === id)) return;
+      if (activeId === id) return;
+      clearTimeout(debounceTimer);
+      lastRev = -1;
+      activeId = id;
+      notify();
+      reload();
+    },
+
+    async closeTab(id: DocumentId): Promise<void> {
+      const idx = tabs.findIndex((t) => t.id === id);
+      if (idx === -1) return;
+      const wasActive = activeId === id;
+      tabs = tabs.filter((t) => t.id !== id);
+      if (wasActive) {
+        // Переключаемся на соседнюю: предыдущую, если есть, иначе следующую.
+        const next = tabs[Math.min(idx, tabs.length - 1)] ?? null;
+        activeId = next?.id ?? null;
+        lastRev = -1;
+        clearTimeout(debounceTimer);
+      }
+      void ipcClose(id).catch((e) => opts.onStatus(`Ошибка закрытия: ${errorMessage(e)}`));
+      if (tabs.length === 0) {
+        // Закрыта последняя вкладка — открываем пустую, чтобы редактор не оставался пустым.
+        await newDocument();
+        return;
+      }
+      notify();
+      if (wasActive && activeId) reload();
     },
   };
 }

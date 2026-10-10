@@ -8,11 +8,12 @@
 // Панели — дерево layout (MAX_PANES = 2). Ядро Markdown — `md-core` (Rust).
 
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { confirm } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
-import { createDocStore } from "./docStore";
+import { createDocStore, type Tab } from "./docStore";
 import { createRenderIndex } from "./renderIndex";
 import { createViewRegistry, type ViewContext } from "./viewRegistry";
-import { asPaneId, asViewId, newPaneId, newViewId } from "./ids";
+import { asPaneId, asViewId, newPaneId, newViewId, type DocumentId } from "./ids";
 import { createEditorView } from "./editorView";
 import { previewViewProvider, type PreviewView, type PreviewViewOptions } from "./previewView";
 import { createLinkController } from "./linkController";
@@ -42,14 +43,7 @@ const panesEl = document.getElementById("panes") as HTMLElement;
 const statInspect = document.getElementById("stat-inspect") as HTMLElement;
 const btnInspect = document.getElementById("btn-inspect") as HTMLButtonElement;
 const gutterEl = document.getElementById("gutter") as HTMLElement;
-const tabName = document.getElementById("tab-name") as HTMLElement;
-const tabDirty = document.getElementById("tab-dirty") as HTMLElement;
-
-/** Имя файла из пути (для таба-заглушки). */
-function baseName(p: string): string {
-  const i = Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\"));
-  return i >= 0 ? p.slice(i + 1) : p;
-}
+const tabStrip = document.getElementById("tab-strip") as HTMLElement;
 
 // Дровер плагинов (вариант C): постоянный DOM, модальность — в drawer.ts.
 // Создаётся до менеджера/статусбара: они монтируются в drawer.content.
@@ -243,15 +237,149 @@ const editorView = createEditorView(editor, store, () => {
   inspector.onEditorActivity();
 });
 
+/** Иконка типа файла по имени (расширение). */
+function fileIcon(name: string): string {
+  const dot = name.lastIndexOf(".");
+  const ext = dot >= 0 ? name.slice(dot + 1).toLowerCase() : "";
+  switch (ext) {
+    case "md":
+    case "markdown":
+    case "mdown":
+    case "mkd":
+      return "M↓";
+    case "txt":
+      return "T";
+    default:
+      return "•";
+  }
+}
+
+/** Закрытие вкладки с подтверждением при несохранённых изменениях. */
+async function closeTabWithConfirm(id: DocumentId): Promise<void> {
+  const tab = store.tabs().find((t) => t.id === id);
+  if (!tab) return;
+  if (tab.dirty) {
+    const ok = await confirm(`«${tab.name}» — несохранённые изменения будут потеряны. Закрыть?`, {
+      title: "darmark",
+      kind: "warning",
+    });
+    if (!ok) return;
+  }
+  await store.closeTab(id);
+}
+
+/** Создаёт DOM-элемент вкладки с обработчиками. */
+function createTabElement(tab: Tab): HTMLElement {
+  const el = document.createElement("div");
+  el.className = "tab";
+  el.dataset.id = tab.id;
+  el.setAttribute("role", "tab");
+  el.tabIndex = 0;
+
+  // Иконка типа файла
+  const ficon = document.createElement("span");
+  ficon.className = "ficon";
+  ficon.setAttribute("aria-hidden", "true");
+  el.appendChild(ficon);
+
+  // Имя файла
+  const name = document.createElement("span");
+  name.className = "name";
+  el.appendChild(name);
+
+  // Кнопка закрытия
+  const close = document.createElement("button");
+  close.className = "close";
+  close.type = "button";
+  close.title = "Закрыть";
+  close.tabIndex = -1; // кнопка закрытия не в порядке табуляции
+  el.appendChild(close);
+
+  // Обработчики
+  el.addEventListener("click", (e) => {
+    if (e.target === close) return; // клик по кнопке закрытия обрабатывается отдельно
+    store.switchTab(tab.id);
+  });
+  el.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      store.switchTab(tab.id);
+    }
+  });
+  close.addEventListener("click", (e) => {
+    e.stopPropagation();
+    void closeTabWithConfirm(tab.id);
+  });
+
+  return el;
+}
+
+/** Обновляет содержимое существующего элемента вкладки (имя, dirty, активность). */
+function updateTabElement(el: HTMLElement, tab: Tab, activeId: DocumentId | null): void {
+  el.setAttribute("aria-selected", String(tab.id === activeId));
+
+  const ficon = el.querySelector(".ficon");
+  if (ficon) ficon.textContent = fileIcon(tab.name);
+
+  const name = el.querySelector(".name");
+  if (name) name.textContent = tab.name;
+
+  // Dirty-точка: добавляем/удаляем при необходимости
+  let dirty = el.querySelector(".dirty");
+  if (tab.dirty && !dirty) {
+    dirty = document.createElement("span");
+    dirty.className = "dirty";
+    dirty.setAttribute("aria-hidden", "true");
+    const close = el.querySelector(".close");
+    if (close) el.insertBefore(dirty, close);
+    else el.appendChild(dirty);
+  } else if (!tab.dirty && dirty) {
+    dirty.remove();
+  }
+
+  const close = el.querySelector(".close") as HTMLElement | null;
+  if (close) close.setAttribute("aria-label", `Закрыть ${tab.name}`);
+}
+
+/**
+ * Рендерит полосу вкладок с диффингом: обновляет существующие элементы,
+ * добавляет новые и удаляет лишние — не пересоздаёт DOM целиком при
+ * каждом изменении текста или dirty-флага.
+ */
+function renderTabStrip(tabs: Tab[], activeId: DocumentId | null): void {
+  // Собираем существующие элементы по data-id
+  const existing = new Map<string, HTMLElement>();
+  for (const el of Array.from(tabStrip.children) as HTMLElement[]) {
+    const id = el.dataset.id;
+    if (id) existing.set(id, el);
+  }
+
+  const seen = new Set<string>();
+  for (const tab of tabs) {
+    seen.add(tab.id);
+    let el = existing.get(tab.id);
+    if (!el) {
+      el = createTabElement(tab);
+      tabStrip.appendChild(el);
+    }
+    updateTabElement(el, tab, activeId);
+  }
+
+  // Удаляем элементы закрытых вкладок
+  for (const [id, el] of existing) {
+    if (!seen.has(id)) el.remove();
+  }
+}
+
 let prevText = "";
-store.subscribe((s) => {
-  if (s.text !== prevText) {
-    prevText = s.text;
+store.subscribe((tabs, activeId) => {
+  const active = tabs.find((t) => t.id === activeId) ?? null;
+  if (active && active.text !== prevText) {
+    prevText = active.text;
     previewView.invalidate(); // индекс устарел до нового рендера
   }
   gutter.update(); // номера строк следуют за текстом редактора
-  tabName.textContent = s.path ? baseName(s.path) : "безымянный";
-  tabDirty.hidden = !s.dirty;
+  renderTabStrip(tabs, activeId);
   status.updateTitle();
   status.updateStatus();
 });
@@ -327,7 +455,7 @@ createShell({
     setPreviewVisible,
     setSyncEnabled: (on) => link.setSyncEnabled(on),
     setActivePane: (p) => paneHost.setActive(p),
-    isDirty: () => store.state().dirty,
+    isDirty: () => store.active()?.dirty ?? false,
     palette: () => {
       // Взаимоисключение модальных слоёв: открытие палитры закрывает дровер
       // (обратное не требуется — триггер палитры инертен, пока дровер открыт).
@@ -340,7 +468,7 @@ createShell({
     },
     reloadPlugins: () =>
       void pluginManager
-        .reloadForDocument(store.state().path)
+        .reloadForDocument(store.active()?.path ?? null)
         .catch((e) => status.flash(`Плагины: ${errorMessage(e)}`)),
     flash: (m) => status.flash(m),
   },
