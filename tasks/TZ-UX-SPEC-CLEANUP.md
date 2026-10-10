@@ -19,7 +19,7 @@
 
 Из `UX-spec.md §2` + `docs/DESIGN_DOC.md §13.2`:
 
-> **Миграция ADR-0024** (`tasks/TZ-PLUGIN-DRAWER.md`): управление плагинами переезжает в правый
+> **Миграция ADR-0024:** управление плагинами переезжает в правый
 > модальный дровер; триггер `#tb-plugins` в тулбаре; левые `rail`/`sidebar` упраздняются
 > (`sidebar.ts` удаляется). Удаляются `#rail-plugins`, `#panel-plugins`, `#rail-logs`;
 > сохраняются `#plugin-manager` (в `#drawer-body`) и `#side-count` (в `.drawer-head`).
@@ -31,7 +31,7 @@
 `view-switch, plugin-view, plugin-manager, side-count, format-group, e2e-marker, gutter, tab-name, tab-dirty`
 
 ### Новые id (ADR-0024 — дровер плагинов)
-`tb-plugins, tb-plugins-cnt, tb-plugins-dot, drawer, drawer-title, drawer-body, drawer-close, drawer-reload-all, drawer-install, backdrop, sb-logs, log-badge`
+`tb-plugins, tb-plugins-cnt, tb-plugins-dot, drawer, drawer-title, drawer-body, drawer-close, backdrop, sb-logs, log-badge`
 
 ### Селекторы
 `#preview .md-block[data-md]`, `.table-enhanced`, `.table-enhanced tbody tr`, `.table-enhanced td[data-md]`, `.table-count`, `.table-scroll`, `.col-filter-btn`, `.col-filter-menu`, `.col-filter-item`, `.inspect-active`, `.inspect-col`, `tr.inspect-row`, `.vtab.core`, `.vtab.plugin[data-view]`, `.pl-item[data-plugin]`, `.pl-badge`, `input.pl-enabled`, `button.pl-reload`
@@ -137,7 +137,6 @@
 | `ideas/UI-IDEAS.md` | Бэклог идей (IDEA-005 и др.) |
 | `docs/DESIGN_DOC.md` §5/§13.2 | Нормативная модель и контракты |
 | `tasks/TZ-UX-SPEC-CLEANUP.md` | Этот документ (включая плагинный UX, §11) |
-| `tasks/TZ-PLUGIN-DRAWER.md` | ТЗ: управление плагинами — триггер в тулбаре + правый дровер (вариант C) |
 | `crates/app` | Источник истины об интерфейсе |
 
 ---
@@ -146,9 +145,8 @@
 
 > Перенесено из `tasks/TZ-UI-PANEL.md` (удалён после реализации Фаз 1–4, коммиты `bb5593f..18957d4`).
 >
-> **Планируемое изменение размещения:** панель плагинов переезжает в правый дровер, триггер — в
-> тулбар, левые `rail`/`sidebar` упраздняются. Зафиксировано в `tasks/TZ-PLUGIN-DRAWER.md`
-> (затрагивает §1 и §9 этого документа).
+> **Изменение размещения (реализовано, ADR-0024):** панель плагинов переехала в правый дровер,
+> триггер — в тулбар, левые `rail`/`sidebar` упразднены (см. §1 этого документа).
 
 ### 9.1. Замороженные e2e-контракты панели плагинов
 

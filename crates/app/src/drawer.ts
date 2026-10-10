@@ -1,4 +1,4 @@
-// drawer.ts — правый модальный дровер (TZ-PLUGIN-DRAWER.md, вариант C).
+// drawer.ts — правый модальный дровер (ADR-0024, вариант C).
 //
 // Глубокий модуль: маленький интерфейс (open/close/toggle/isOpen/content/
 // dispose), много скрытого поведения — фокус-трап, Esc (capture +
@@ -152,7 +152,7 @@ export function createDrawer(opts: DrawerOptions): Drawer {
     }
   }
 
-  // Клик по триггеру привязывает shell.ts (TZ-PLUGIN-DRAWER.md §5.1): не дублируем.
+  // Клик по триггеру привязывает shell.ts (ADR-0024): не дублируем.
   closeButton.addEventListener("click", hide);
   backdrop.addEventListener("click", hide);
   // Escape — на window с capture: как в dialog.ts, чтобы событие не дошло

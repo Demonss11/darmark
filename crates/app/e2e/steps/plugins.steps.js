@@ -80,7 +80,7 @@ Then("плагинный маркер равен {string}", async (expected) => 
 
 // ---------- Менеджер плагинов (H2, Фаза 5) ----------
 //
-// Панель плагинов живёт в правом модальном дровере (TZ-PLUGIN-DRAWER.md):
+// Панель плагинов живёт в правом модальном дровере (ADR-0024):
 // триггер — кнопка `#tb-plugins` в тулбаре, открытый дровер помечен классом
 // `.open` на `#drawer`. Тумблер вкл/выкл — настоящий `<input class="pl-enabled">`
 // внутри `.pl-item[data-plugin=...]`; его click порождает change → IPC.
@@ -184,7 +184,7 @@ When("я перезагружаю плагин {string}", async (pluginId) => {
   if (!ok) throw new Error(`Кнопка «Перезагрузить» плагина ${pluginId} недоступна`);
 });
 
-// ---------- Дровер плагинов (TZ-PLUGIN-DRAWER.md) ----------
+// ---------- Дровер плагинов (ADR-0024) ----------
 //
 // Правый модальный дровер: триггер `#tb-plugins` в тулбаре, закрытие по Esc,
 // клику по подложке `#backdrop` и кнопке `#drawer-close`. Фокус возвращается
@@ -218,6 +218,35 @@ Then("дровер плагинов закрыт", async () => {
         return !!drawer && !drawer.classList.contains("open") && drawer.hidden;
       }),
     { timeout: 5000, timeoutMsg: "Дровер плагинов не закрылся" }
+  );
+});
+
+// Счётчик/индикатор триггера `#tb-plugins` (ADR-0024): число
+// активных и флаг проблем сверяем с фактическим списком в менеджере.
+Then("счётчик триггера плагинов соответствует списку", async () => {
+  await browser.waitUntil(
+    async () =>
+      browser.execute(() => {
+        const trigger = document.getElementById("tb-plugins");
+        const cnt = document.getElementById("tb-plugins-cnt");
+        if (!trigger || !cnt) return false;
+        let active = 0;
+        let problems = 0;
+        document.querySelectorAll("#plugin-manager .pl-item .pl-badge").forEach((badge) => {
+          if (badge.classList.contains("active")) active += 1;
+          if (
+            badge.classList.contains("failed") ||
+            badge.classList.contains("quarantined")
+          ) {
+            problems += 1;
+          }
+        });
+        return (
+          cnt.textContent === String(active) &&
+          trigger.classList.contains("has-problem") === (problems > 0)
+        );
+      }),
+    { timeout: 5000, timeoutMsg: "Счётчик/индикатор триггера не совпал со списком плагинов" }
   );
 });
 

@@ -614,8 +614,8 @@ scan(plugins_dir) -> validate(manifest) -> load(src) -> on_activate(ctx)
 - **Плагинные контракты (миграция ADR-0024):** `#plugin-manager` и `#side-count` сохраняются
   (`#plugin-manager` переезжает в `#drawer-body`, `#side-count` — в `.drawer-head`); удаляются
   `#rail-plugins`, `#panel-plugins`, `#rail-logs`; добавляются `#tb-plugins`, `#tb-plugins-cnt`,
-  `#tb-plugins-dot`, `#drawer`, `#drawer-title`, `#drawer-body`, `#drawer-close`,
-  `#drawer-reload-all`, `#drawer-install`, `#backdrop`, `#sb-logs`, `#log-badge`.
+  `#tb-plugins-dot`, `#drawer`, `#drawer-title`, `#drawer-body`, `#drawer-close`, `#backdrop`,
+  `#sb-logs`, `#log-badge`.
 
 > Имя продукта (D8) обязано быть согласовано в начале строки; стартовый текст, e2e-фикстуры и шаги правятся синхронно.
 
@@ -667,7 +667,7 @@ scan(plugins_dir) -> validate(manifest) -> load(src) -> on_activate(ctx)
 | 20 | Результат измерений — таблица FINDINGS | §16 | D15 |
 | 21 | Изоляция плагина: отдельный child-процесс | §0, §6, §10, §11.4, §14 | D16; F18, F21, F22–F24, F30–F31, F34, F36 |
 | 22 | Контракт ViewProvider: два тира (тир-1 `HtmlViewProvider` plugin-safe, тир-2 `DomViewProvider`) | §5.3, §5.4, §9.4, §11.2 | — |
-| 24 | Плагины: триггер в тулбаре + правый дровер (вариант C) | §5.5, §13.2 | `tasks/TZ-PLUGIN-DRAWER.md` |
+| 24 | Плагины: триггер в тулбаре + правый дровер (вариант C) | §5.5, §13.2 | ADR-0024 |
 
 ---
 

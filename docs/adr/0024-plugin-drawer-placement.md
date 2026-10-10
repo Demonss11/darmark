@@ -2,8 +2,8 @@
 
 - **Статус:** **Принят**
 - **Дата:** 10.10.2026
-- **Основание:** `tasks/TZ-PLUGIN-DRAWER.md` (прототип `ideas/front_plugins-drawer-c.html`, C-v2);
-  прототип размещения `ideas/front_plugins-placement.html`; `docs/adr/0021-*`, `docs/adr/0023-*`;
+- **Основание:** прототип `ideas/front_plugins-drawer-c.html` (C-v2); прототип размещения
+  `ideas/front_plugins-placement.html`; `docs/adr/0021-*`, `docs/adr/0023-*`;
   `tasks/TZ-UX-SPEC-CLEANUP.md` §1, §9
 - **Связанные:** `docs/DESIGN_DOC.md` §5.5, §13.2, §16; `crates/app/src/main.ts`, `shell.ts`, `dialog.ts`
   (переиспользование примитивов), `drawer.ts` (замена `sidebar.ts`)
@@ -101,7 +101,6 @@ Ctrl+K (палитра) и дровер взаимоисключены: откр
 
 ## 5. Ссылки
 
-- ТЗ: `tasks/TZ-PLUGIN-DRAWER.md` (§4.1 судьба контрактов, §5 модуль `drawer.ts`, §11 e2e-миграция)
 - `tasks/TZ-UX-SPEC-CLEANUP.md` §1 (контракты), §9 (панель плагинов), §11 (инфо-кнопка)
 - `docs/DESIGN_DOC.md` §5.5 (модульная карта), §13.2 (контракты), §16 (реестр ADR)
 - `docs/adr/0021-*` (изоляция плагина), `docs/adr/0023-*` (плагинный runtime)

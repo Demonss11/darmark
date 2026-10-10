@@ -154,18 +154,31 @@ function problemSuffix(n: number): string {
  * «0», как в референсе. Узел может отсутствовать — молча выходим.
  */
 function updatePluginCount(list: PluginInfo[]): void {
-  const countEl = document.getElementById("side-count");
-  if (!countEl) return;
   const problems = list.filter(
     (info) => info.status.state === "failed" || info.status.state === "quarantined"
   ).length;
-  if (problems > 0) {
-    countEl.textContent = `${problems} ${problemSuffix(problems)}`;
-    countEl.classList.add("warn");
-    return;
+
+  const countEl = document.getElementById("side-count");
+  if (countEl) {
+    if (problems > 0) {
+      countEl.textContent = `${problems} ${problemSuffix(problems)}`;
+      countEl.classList.add("warn");
+    } else {
+      countEl.textContent = String(list.length);
+      countEl.classList.remove("warn");
+    }
   }
-  countEl.textContent = String(list.length);
-  countEl.classList.remove("warn");
+
+  // Триггер дровера в тулбаре: число активных + флаг проблем (ADR-0024).
+  // Точка `.pdot` краснеет через `.has-problem`.
+  const triggerEl = document.getElementById("tb-plugins");
+  const triggerCnt = document.getElementById("tb-plugins-cnt");
+  if (triggerEl) triggerEl.classList.toggle("has-problem", problems > 0);
+  if (triggerCnt) {
+    triggerCnt.textContent = String(
+      list.filter((info) => info.status.state === "active").length
+    );
+  }
 }
 
 // Менеджер плагинов (Фаза 5): список/статусы/вкл-выкл/перезагрузка в дровере
