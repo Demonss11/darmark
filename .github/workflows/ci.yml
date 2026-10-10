@@ -26,16 +26,19 @@ jobs:
           cache: npm
           cache-dependency-path: crates/app/package-lock.json
 
+      # Сайдкары обязаны существовать ДО компиляции крейта `darmark`: build.rs
+      # (`tauri-build`) копирует `bundle.externalBin` рядом с бинарником и падает,
+      # если файла `binaries/<name>-<triple>.exe` нет. Стейдж — debug (быстрее).
+      - name: stage sidecars (для build.rs darmark)
+        working-directory: crates/app
+        run: node scripts/prepare-sidecars.mjs --profile debug
+
       # Прототипные крейты (lua-*) исключены намеренно: у них свои правила/зависимости.
       - name: rustfmt
         run: cargo fmt -p md-core -p darmark -- --check
 
       - name: clippy
         run: cargo clippy -p md-core -p darmark --all-targets -- -D warnings
-
-      # Тесты darmark включают Supervisor, который гоняет child-бинарник из target/debug.
-      - name: build plugin-host (для тестов Supervisor)
-        run: cargo build -p plugin-host
 
       - name: tests
         run: cargo test -p md-core -p darmark
@@ -73,13 +76,17 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: rustfmt
-        run: cargo fmt -p plugin-proto -p plugin-host -- --check
+        run: cargo fmt -p plugin-proto -p plugin-host -p plugin-cli -- --check
 
       - name: clippy
-        run: cargo clippy -p plugin-proto -p plugin-host --all-targets -- -D warnings
+        run: cargo clippy -p plugin-proto -p plugin-host -p plugin-cli --all-targets -- -D warnings
 
       - name: tests
-        run: cargo test -p plugin-proto -p plugin-host
+        run: cargo test -p plugin-proto -p plugin-host -p plugin-cli
+
+      # Smoke: CLI проверяет эталонный плагин в песочнице (ожидается код 0).
+      - name: plugin-cli smoke (test plugins/word-count)
+        run: cargo run -p plugin-cli -- test plugins/word-count
 
       # Артефакт child для дистрибутива + отдельный бюджет размера (Фаза 6).
       - name: build child release
