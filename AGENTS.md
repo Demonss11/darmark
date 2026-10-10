@@ -42,7 +42,15 @@ Tauri 2 + vanilla TypeScript/Vite на фронте + чистое Rust-ядро
   бюджеты watchdog (`limits.rs`). **Без mlua и без Tauri** — линкуется и в GUI-хост, и в child.
 - `crates/plugin-host/` — child-процесс `darmark-plugin-host` с Lua 5.5 (mlua, vendored). Единственный
   крейт с `mlua`; `src-tauri` его **не** линкует (D6/ADR-0021, проверяется CI: `cargo tree -p darmark`
-  без `mlua`). Здесь песочница (D17), `host.*`/`md.*`/`json.*` и stdio-цикл конверта.
+  без `mlua`). Здесь песочница (D17), `host.*`/`md.*`/`json.*` и stdio-цикл конверта. Крейт даёт и
+  lib-target (`lib.rs`: `bindings`/`sandbox`/`selftest`) — им пользуется `plugin-cli`.
+- `crates/plugin-cli/` — CLI разработчика плагинов `darmark-plugin` (бинарник; Фаза 1 H3):
+  `test <path>` (манифест, entry, прогон в песочнице; текст/JSON) и `init <dir>` (шаблон из
+  `templates/plugin/`). Команды локального каталога (`src/catalog.rs`): `list [--json]`,
+  `install <id>`, `link <id>` (junction/symlink), `remove <id>`, `update [<id>]` — работают с
+  `plugins/index.json` (`schema_version: 1`; `id`/`path`/`description`, метаданные — из `plugin.json`)
+  и каталогом приложения (`--repo`/`--dest`, env `DARMARK_PLUGIN_REPO`/`DARMARK_PLUGINS_DIR`).
+  Линкует `plugin-host` как библиотеку — mlua остаётся вне GUI-хоста (D6/ADR-0021).
 - `crates/lua-proto/`, `crates/lua-rpc-spike/` — **прототип** (источник переноса блоков и фикстур
   `crash`/`hang`/`chatty`/`edit`), в продукт не линкуются; держатся в workspace до Фазы 2.
 
@@ -51,15 +59,26 @@ Tauri 2 + vanilla TypeScript/Vite на фронте + чистое Rust-ядро
 Из корня репозитория, если не указано иное:
 
 - `cargo test -p md-core` — юнит-тесты ядра; быстро, без GUI. Запускать после любых правок Rust.
-- `cargo check -p darmark` — компиляция Tauri-шелла.
-- `cargo test -p plugin-proto -p plugin-host` — плагинные крейты (H2). `plugin-host` тянет `mlua`
-  (vendored) — первая сборка долгая. `cargo run -p plugin-host -- --self-test <plugin.lua>` — прогон
-  плагина в песочнице без GUI. Guard инварианта: `cargo tree -p darmark | Select-String mlua` пусто.
+- `cargo check -p darmark` / `cargo test -p darmark` — компиляция/тесты Tauri-шелла.
+  **Предусловие:** должен существовать `crates/app/src-tauri/binaries/` с сайдкарами
+  (`darmark-plugin-host-<triple>.exe`, `darmark-plugin-<triple>.exe`) — build.rs (`tauri-build`)
+  копирует `bundle.externalBin` рядом с бинарником и падает, если файла нет. Застейджить:
+  `cd crates/app; npm run sidecars:dev` (debug) или `npm run sidecars` (release). Команды
+  `npx tauri dev`/`npx tauri build` стейджат сами (beforeDev/BeforeBuildCommand), CI — тоже.
+- `cargo test -p plugin-proto -p plugin-host -p plugin-cli` — плагинные крейты (H2) и CLI (H3).
+  `plugin-host` тянет `mlua` (vendored) — первая сборка долгая. `cargo run -p plugin-host -- --self-test
+  <plugin.lua>` — прогон плагина в песочнице без GUI. `cargo run -p plugin-cli -- test plugins/word-count`
+  — проверка плагина CLI (манифест/entry/песочница); `... -- init <dir>` — шаблон нового плагина.
+  Guard инварианта: `cargo tree -p darmark | Select-String mlua` пусто.
 - `cd crates/app; npm install; npm run build` — `tsc && vite build`; `tsc` **валит сборку на любой
   ошибке типов**. Запускать после правок TS (отдельного typecheck-скрипта нет).
 - `npm run dev` — Vite dev-сервер на фиксированном `:5173` (`strictPort`, чтобы Tauri dev не «уплывал»).
 - `npx tauri dev` — полноценный GUI; требует WebView2 + VS Build Tools (C++). Не запускать без запроса.
-- `npx tauri build` — релизный NSIS-установщик в `src-tauri/target/release/bundle/nsis/`.
+- `npx tauri build` — релизный NSIS-установщик в `target/release/bundle/nsis/`.
+  `beforeBuildCommand` дополнительно гоняет `npm run sidecars` (`crates/app/scripts/prepare-sidecars.mjs`):
+  собирает release-бинарники `plugin-host`/`plugin-cli` и раскладывает их как Tauri sidecar-ы
+  (`externalBin`), чтобы `darmark-plugin-host.exe` (child для плагинов) и `darmark-plugin.exe` (CLI)
+  попали в установщик рядом с `darmark.exe`.
 - `cd crates/app; npm run test:e2e` — GUI E2E (Cucumber + WebdriverIO поверх release-бинарника).
   Требует `cargo install tauri-driver --locked` и собранный `target/release/darmark.exe`
   (`npx tauri build --no-bundle`). Фичи/шаги — `crates/app/e2e/` (в т.ч. `frontmatter.feature` —

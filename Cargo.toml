@@ -8,6 +8,7 @@ members = [
   "crates/app/src-tauri",
   "crates/plugin-proto",
   "crates/plugin-host",
+  "crates/plugin-cli",
   "crates/lua-proto",
   "crates/lua-rpc-spike",
 ]

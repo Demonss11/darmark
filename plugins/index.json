@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "plugins": [
+    { "id": "word-count", "path": "word-count", "description": "Счётчик слов/символов в статусбаре" },
+    { "id": "export-html", "path": "export-html", "description": "Экспорт предпросмотра в HTML-файл" },
+    { "id": "format-selection", "path": "format-selection", "description": "Markdown-обёртки над выделением" },
+    { "id": "todo-lens", "path": "todo-lens", "description": "Список задач - [ ] / - [x] с группировкой по заголовкам" }
+  ]
+}

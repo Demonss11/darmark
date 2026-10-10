@@ -16,24 +16,19 @@
 //!
 //! GUI-хост (`src-tauri`) **не** линкует этот крейт: child спавнится как внешний exe (D6/ADR-0021).
 
-mod bindings;
-mod sandbox;
-
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::{Arc, Mutex};
 
 use mlua::{Function, Table};
+use plugin_host::bindings::{self, HostApi};
+use plugin_host::sandbox;
+use plugin_host::selftest;
+use plugin_host::{read_plugin_manifest_source, DEFAULT_PLUGIN_ID};
 use plugin_proto::envelope::{self, PluginError, ToChild, ToHost};
-use plugin_proto::manifest::Manifest;
 use plugin_proto::MAX_PLUGIN_SOURCE_BYTES;
 use serde_json::{json, Value};
-
-use bindings::HostApi;
-
-/// Заглушка plugin_id до Фазы 3 (id берётся из манифеста): хост всегда передаёт его в `load`.
-const DEFAULT_PLUGIN_ID: &str = "plugin";
 
 // ─── stdio-транспорт ────────────────────────────────────────────────────
 
@@ -290,9 +285,11 @@ fn run_stdio() -> ExitCode {
 
 // ─── self-test (dev) ────────────────────────────────────────────────────
 
-/// Хост-заглушка для `--self-test`: лог в stderr, документных вызовов нет.
+/// Хост-заглушка для тестов: лог в stderr, host-call'ы отклоняются.
+#[cfg(test)]
 struct StderrHost;
 
+#[cfg(test)]
 impl HostApi for StderrHost {
     fn call(&self, method: &str, _args: Value) -> Result<Value, PluginError> {
         Err(PluginError::protocol(format!(
@@ -307,87 +304,7 @@ impl HostApi for StderrHost {
     fn emit(&self, _kind: &str, _payload: Value) {}
 }
 
-fn plugin_id_of(path: &Path) -> String {
-    path.file_stem()
-        .map(|s| s.to_string_lossy().into_owned())
-        .unwrap_or_else(|| DEFAULT_PLUGIN_ID.to_string())
-}
-
-/// Читает исходник плагина, **сначала** проверяя фактическую длину прочитанного буфера
-/// (защита от роста файла между проверкой и чтением — TOCTOU).
-fn read_plugin_source(path: &Path) -> Result<String, String> {
-    let bytes = std::fs::read(path).map_err(|e| format!("не читается {}: {e}", path.display()))?;
-    if bytes.len() as u64 > MAX_PLUGIN_SOURCE_BYTES {
-        return Err(format!(
-            "плагин больше {} КБ ({} байт)",
-            MAX_PLUGIN_SOURCE_BYTES / 1024,
-            bytes.len()
-        ));
-    }
-    String::from_utf8(bytes).map_err(|e| format!("{}: не UTF-8: {e}", path.display()))
-}
-
-fn load_and_activate(path: &Path) -> Result<(), String> {
-    let source = read_plugin_source(path)?;
-    let plugin_id = plugin_id_of(path);
-
-    let lua = sandbox::create().map_err(|e| format!("не создать Lua-состояние: {e}"))?;
-    bindings::register(&lua, &plugin_id, Arc::new(StderrHost))
-        .map_err(|e| format!("не зарегистрировать host: {e}"))?;
-
-    lua.load(source.as_str())
-        .set_name(plugin_id.as_str())
-        .exec()
-        .map_err(|e| format!("ошибка загрузки {plugin_id}: {e}"))?;
-
-    let activate: Function = lua
-        .globals()
-        .get("on_activate")
-        .map_err(|_| format!("{plugin_id}: отсутствует on_activate"))?;
-    let ctx =
-        bindings::make_context(&lua, &plugin_id).map_err(|e| format!("не создать ctx: {e}"))?;
-    // Один ctx на весь цикл: состояние из on_activate доживает до on_deactivate (§6.2).
-    activate
-        .call::<()>(ctx.clone())
-        .map_err(|e| format!("{plugin_id}: on_activate упал: {e}"))?;
-
-    if let Ok(deactivate) = lua.globals().get::<Function>("on_deactivate") {
-        deactivate
-            .call::<()>(ctx)
-            .map_err(|e| format!("{plugin_id}: on_deactivate упал: {e}"))?;
-    }
-
-    eprintln!("[child] {plugin_id}: on_activate вызван, sandbox активен");
-    Ok(())
-}
-
 // ─── dev-режим `--serve-plugin` (Фаза 6) ────────────────────────────────
-
-/// Разбирает `<path>` для `--serve-plugin`: каталог плагина (с `plugin.json`) или `.lua`-файл.
-///
-/// Возвращает `(plugin_id, source)`. Для каталога манифест валидируется
-/// ([`Manifest::from_json`]) **до** чтения `.lua`; `entry` безопасен (его проверяет сам манифест).
-fn read_plugin_manifest_source(path: &Path) -> Result<(String, String), String> {
-    if path.is_dir() {
-        let manifest_path = path.join("plugin.json");
-        let bytes = std::fs::read(&manifest_path)
-            .map_err(|e| format!("не читается {}: {e}", manifest_path.display()))?;
-        let manifest =
-            Manifest::from_json(&bytes).map_err(|e| format!("{}: {e}", manifest_path.display()))?;
-        // `manifest.entry` — безопасное имя `.lua` (валидировано манифестом).
-        let entry_path = path.join(&manifest.entry);
-        let source = read_plugin_source(&entry_path)?;
-        Ok((manifest.id, source))
-    } else if path.is_file() {
-        let source = read_plugin_source(path)?;
-        Ok((plugin_id_of(path), source))
-    } else {
-        Err(format!(
-            "{}: ожидается каталог плагина с plugin.json или .lua-файл",
-            path.display()
-        ))
-    }
-}
 
 /// `--serve-plugin <path>`: загрузка + активация плагина с диска и вход в штатный stdio-цикл.
 ///
@@ -491,8 +408,18 @@ fn print_usage() {
 fn main() -> ExitCode {
     match parse_mode() {
         Ok(Mode::Stdio) => run_stdio(),
-        Ok(Mode::SelfTest(path)) => match load_and_activate(&path) {
-            Ok(()) => ExitCode::SUCCESS,
+        Ok(Mode::SelfTest(path)) => match selftest::self_test(&path) {
+            Ok(report) => {
+                // Логи песочницы печатаем в stderr (прежнее поведение `--self-test`).
+                for line in &report.logs {
+                    eprintln!("[child] {}: {line}", report.plugin_id);
+                }
+                eprintln!(
+                    "[child] {}: on_activate вызван, sandbox активен",
+                    report.plugin_id
+                );
+                ExitCode::SUCCESS
+            }
             Err(message) => {
                 eprintln!("[child] ошибка: {message}");
                 ExitCode::FAILURE
@@ -520,19 +447,25 @@ mod tests {
 
     #[test]
     fn self_test_runs_hello_fixture() {
-        load_and_activate(&fixture("hello.lua")).expect("hello.lua должен активироваться");
+        selftest::self_test(&fixture("hello.lua")).expect("hello.lua должен активироваться");
     }
 
     #[test]
     fn missing_on_activate_is_reported() {
-        let err = load_and_activate(&fixture("no-activate.lua")).unwrap_err();
+        let err = selftest::self_test(&fixture("no-activate.lua")).unwrap_err();
         assert!(err.contains("on_activate"), "err: {err}");
     }
 
     #[test]
     fn plugin_id_from_stem_for_self_test() {
-        assert_eq!(plugin_id_of(Path::new("word-count/main.lua")), "main");
-        assert_eq!(plugin_id_of(Path::new("word-count.lua")), "word-count");
+        assert_eq!(
+            plugin_host::plugin_id_of(Path::new("word-count/main.lua")),
+            "main"
+        );
+        assert_eq!(
+            plugin_host::plugin_id_of(Path::new("word-count.lua")),
+            "word-count"
+        );
     }
 
     #[test]

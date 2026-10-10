@@ -8,6 +8,9 @@
 Плагин исполняется в **отдельном процессе** и не видит DOM: единственный доступ к приложению —
 host-функции и события (notify-only + pull).
 
+Заготовку плагина создаёт **`darmark-plugin init <dir>`**, а проверяет **`darmark-plugin test <dir>`**
+(манифест + entry + прогон в песочнице) — см. §6.
+
 ---
 
 ## 1. Манифест `plugin.json`
@@ -183,10 +186,77 @@ json.decode(s)                 -> value
 ## 6. Отладка
 
 ```text
+darmark-plugin test <path>          # проверка плагина: манифест + entry + прогон в песочнице
+darmark-plugin init <dir>           # создать шаблон плагина (plugin.json, main.lua, README.md)
 darmark-plugin-host --self-test <plugin.lua>   # загрузить+активировать, лог в stderr
 darmark-plugin-host --serve-plugin <path>      # load+activate и stdio-конверт (dev-хост)
 darmark --debug-plugin <path>                  # запуск плагина без %APPDATA% (debug-сборка)
 ```
+
+### CLI разработчика `darmark-plugin` (Фаза 1 H3)
+
+Отдельный бинарник `darmark-plugin` (крейт `plugin-cli`) — для проверки и создания плагинов вне GUI.
+
+- **`darmark-plugin test <path> [--json] [--verbose]`** — `<path>` это каталог плагина или `.lua`-файл.
+  Последовательно проверяет: **манифест** (`plugin.json`: id/name/version/`api_version`/`entry`/permissions),
+  **entry** (существует, читается, ≤ 1 МиБ, UTF-8, объявлена `on_activate`) и **прогон в песочнице**
+  (реальный `load` + `on_activate` + `on_deactivate` в изолированном Lua через `plugin-host`).
+  Код выхода `0` — все проверки пройдены, `1` — есть ошибки (ранний провал манифеста/entry
+  пропускает последующие шаги). `--json` — машинночитаемый отчёт одним объектом, `--verbose` —
+  подробности в stderr. host-call'ы в этом режиме отклоняются (документа нет) — это проверка
+  загрузки/активации, а не полноценный прогон с документом.
+- **`darmark-plugin init <dir> [--id <id>] [--name <name>] [--force]`** — разворачивает шаблон
+  (`plugin.json`, `main.lua`, `README.md`) с подстановкой `id`/имени из имени каталога (или
+  `--id`/`--name`). Без `--force` существующие файлы не перезаписываются.
+
+### Локальный каталог плагинов `plugins/index.json`
+
+Каталог доступных плагинов — версионируемый `index.json` в каталоге плагинов репозитория
+(`plugins/index.json`). Запись каталога несёт только `id`, относительный `path` (от каталога
+репозитория) и `description`; `name`/`version`/`permissions` берутся из `plugin.json` при загрузке
+каталога (не дублируются):
+
+```json
+{
+  "schema_version": 1,
+  "plugins": [
+    { "id": "word-count", "path": "word-count", "description": "Счётчик слов/символов в статусбаре" }
+  ]
+}
+```
+
+При загрузке каталога для каждой записи проверяются: безопасность `id` и `path` (без `..`, `:`,
+абсолютных путей), наличие и валидность `<repo>/<path>/plugin.json` (`Manifest::from_json`) и
+совпадение `id` записи с `manifest.id`. `schema_version` обязан быть `1`.
+
+```text
+darmark-plugin list [--repo <dir>] [--json]                 # доступные плагины (таблица/JSON-массив)
+darmark-plugin install <id> [--repo <dir>] [--dest <dir>] [--force]  # копия в каталог приложения
+darmark-plugin link <id> [--repo <dir>] [--dest <dir>] [--force]     # ссылка на источник (разработка)
+darmark-plugin remove <id> [--dest <dir>]                   # удалить установленное
+darmark-plugin update [<id>] [--repo <dir>] [--dest <dir>]  # обновить копии до версии каталога
+```
+
+- **`install`** копирует каталог `<repo>/<path>` → `<dest>/<id>` (манифест перечитывается и
+  валидируется перед копированием). Существующая цель без `--force` — ошибка; с `--force` —
+  удаляется и копируется заново.
+- **`link`** создаёт **junction** на Windows (`mklink /J`, без прав администратора) или symlink на
+  Unix — источник общий, правки в репозитории сразу видны в приложении.
+- **`remove`** удаляет `<dest>/<id>`: ссылку/junction — как точку монтирования (`fs::remove_dir`,
+  цель не затрагивается), обычный каталог — целиком.
+- **`update`** переустанавливает копии, у которых версия в источнике отличается от установленной;
+  ссылки пропускаются (источник общий). Без `<id>` — все установленные плагины каталога.
+
+**Разрешение путей по умолчанию:**
+
+- `--repo` — явный аргумент → env **`DARMARK_PLUGIN_REPO`** → ближайший предок (включая CWD) с
+  `plugins/index.json` → `<cwd>/plugins`. Принимается и каталог-репозиторий (`<dir>/plugins/index.json`),
+  и сам каталог плагинов (`<dir>/index.json`).
+- `--dest` — явный аргумент → env **`DARMARK_PLUGINS_DIR`** → `%APPDATA%/darmark/plugins` (тот же
+  каталог, что сканирует GUI-хост).
+
+Инвариант сборки: `darmark-plugin` линкует `plugin-host` **как библиотеку** (mlua), но GUI-хост
+`darmark` — нет (D6/ADR-0021; CI проверяет `cargo tree -p darmark`).
 
 В `--serve-plugin`/`--debug-plugin` конверт идёт поверх **назначенного stdio**: host-call'ы
 плагина обслуживает разработчик (mock-хост). Формат кадра — `u32 LE длина || JSON`.

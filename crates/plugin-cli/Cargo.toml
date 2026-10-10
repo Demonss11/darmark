@@ -1,0 +1,20 @@
+[package]
+name = "plugin-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "CLI разработчика плагинов darmark: проверка (test) и создание шаблона (init)"
+
+# Отдельный крейт, а не команда в darmark: GUI-хост не должен линковать mlua
+# (D6/ADR-0021). Песочницу CLI берёт у plugin-host как библиотеку.
+[[bin]]
+name = "darmark-plugin"
+path = "src/main.rs"
+
+[dependencies]
+plugin-proto = { path = "../plugin-proto" }
+plugin-host = { path = "../plugin-host" }
+serde_json = "1"
+
+[dev-dependencies]
+tempfile = "3"

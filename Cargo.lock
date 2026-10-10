@@ -2626,6 +2626,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "plugin-cli"
+version = "0.1.0"
+dependencies = [
+ "plugin-host",
+ "plugin-proto",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "plugin-host"
 version = "0.1.0"
 dependencies = [
