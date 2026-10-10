@@ -108,6 +108,10 @@ export interface PluginCommandInfo {
 /** Проекция плагина для менеджера (IPC-команда `list_plugins`, Фаза 5). */
 export interface PluginInfo {
   id: string;
+  /** Человекочитаемое имя из манифеста (для головы карточки, S12a). */
+  name: string;
+  /** Версия из манифеста (для головы карточки, S12a). */
+  version: string;
   status: PluginStatus;
   /** Запрашиваемые плагином права из манифеста (декларация). */
   permissions: string[];

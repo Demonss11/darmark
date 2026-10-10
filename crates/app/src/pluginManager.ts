@@ -57,9 +57,56 @@ const STATUS_LABELS: Record<PluginStatus["state"], string> = {
   stopped: "остановлен",
 };
 
+/**
+ * Порог автоотключения (карантина) — зеркало `QUARANTINE_THRESHOLD` в Rust-хосте.
+ * Нужен только для текста подсказки (S12c): логику сброса держит хост, не фронт.
+ */
+const QUARANTINE_THRESHOLD = 3;
+
+/**
+ * Человекочитаемые описания прав (S12b). Единое место маппинга: `renderConsent`
+ * берёт подпись отсюда, сырой токен показывается вторично. Фолбэк — сам токен,
+ * чтобы неизвестное право не исчезало из UI (см. `permissionLabel`).
+ */
+const PERMISSION_LABELS: Record<string, string> = {
+  "document:read": "Чтение документа",
+  "document:write": "Правка документа",
+  "view:create": "Своя вкладка в предпросмотре",
+  "view:modify": "Запись в свою вкладку",
+  "ui:statusbar": "Сообщения в статусбар",
+};
+
+/** Человекочитаемое описание права; фолбэк — сырой токен. */
+function permissionLabel(permission: string): string {
+  return PERMISSION_LABELS[permission] ?? permission;
+}
+
 /** Сообщение статуса, если оно есть (`failed`), иначе `null`. */
 function statusMessage(status: PluginStatus): string | null {
   return status.state === "failed" ? status.message : null;
+}
+
+/**
+ * Подсказка восстановления для проблемных состояний (S12c): у `failed` и
+ * `quarantined` — что делать дальше. У карантина сброс — это тумблер
+ * (`set_plugin_enabled` снимает карантин), отдельной кнопки нет.
+ */
+function stateHint(status: PluginStatus): string | null {
+  if (status.state === "failed") return "Исправьте код плагина и нажмите «Перезагрузить».";
+  if (status.state === "quarantined") {
+    return `Автоотключён после ${QUARANTINE_THRESHOLD} падений подряд. Исправьте и включите тумблером — карантин сбросится.`;
+  }
+  return null;
+}
+
+/**
+ * Первая notice о доступе к документу — для инлайн-`.pl-boundary` рядом с
+ * согласием (S12b). Эвристика по слову «документ»: строки приходят из Rust-ядра
+ * (`permission_notices`). Общая памятка об изоляции остаётся в поповере и здесь
+ * не дублируется, поэтому берём именно документную notice.
+ */
+function documentBoundaryNotice(info: PluginInfo): string | null {
+  return info.notices.find((notice) => notice.toLowerCase().includes("документ")) ?? null;
 }
 
 function el(tag: string, className?: string): HTMLElement {
@@ -129,6 +176,56 @@ function chevronIcon(): SVGSVGElement {
 
   svg.append(polyline);
   return svg;
+}
+
+/**
+ * Щит как inline SVG — маркер граничной notice о доступе к документу (S12b).
+ * CSP `default-src 'self'` разрешает inline-контент; внешних ассетов нет.
+ */
+function shieldIcon(): SVGSVGElement {
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("width", "14");
+  svg.setAttribute("height", "14");
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", "1.8");
+
+  const outline = document.createElementNS(NS, "path");
+  outline.setAttribute("d", "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z");
+  const check = document.createElementNS(NS, "polyline");
+  check.setAttribute("points", "9 12 11 14 15 10");
+
+  svg.append(outline, check);
+  return svg;
+}
+
+/**
+ * Идентичность плагина (S12a): человекочитаемое имя из манифеста + версия
+ * первичны, сырой `id` — вторично мелким моно. Пустое имя деградирует к `id`.
+ */
+function renderIdentity(info: PluginInfo): HTMLElement {
+  const ident = el("div", "pl-ident");
+  ident.title = info.id;
+
+  const name = el("span", "pl-name");
+  name.textContent = info.name || info.id;
+  ident.append(name);
+
+  if (info.version) {
+    const version = el("span", "pl-version");
+    version.textContent = `· ${info.version}`;
+    ident.append(version);
+  }
+
+  const id = el("span", "pl-id");
+  id.textContent = info.id;
+  id.title = `id: ${info.id}`;
+  ident.append(id);
+
+  return ident;
 }
 
 /** Кнопка-иконка «инфо» о границах изоляции плагина (в `.pl-item-head`). */
@@ -242,15 +339,19 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
       checkbox.className = "pl-grant";
       checkbox.dataset.permission = permission;
       checkbox.checked = granted.has(permission);
+      // В aria-label — человекочитаемое право (S12b), сам токен остаётся в data-атрибуте.
       checkbox.setAttribute(
         "aria-label",
-        `${checkbox.checked ? "Снять" : "Выдать"} разрешение ${permission}`
+        `${checkbox.checked ? "Снять" : "Выдать"} разрешение ${permissionLabel(permission)}`
       );
       const name = el("span", "pl-perm-name");
-      name.textContent = permission;
+      name.textContent = permissionLabel(permission);
+      const token = el("span", "pl-perm-token");
+      token.textContent = permission;
+      token.title = permission;
       const state = el("span", "pl-perm-state");
       state.textContent = checkbox.checked ? "выдано" : "отклонено";
-      row.append(checkbox, name, state);
+      row.append(checkbox, name, token, state);
       section.append(row);
     }
 
@@ -260,6 +361,19 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
       const hint = el("div", "pl-consent-hint");
       hint.textContent = `Не выдано: ${missing.join(", ")}. Плагин не сможет их использовать.`;
       section.append(hint);
+    }
+
+    // Граничная notice о доступе к документу — инлайн, коротко (S12b): общая
+    // памятка об изоляции остаётся в поповере и здесь не дублируется.
+    const boundaryNotice = documentBoundaryNotice(info);
+    if (boundaryNotice) {
+      const boundary = el("div", "pl-boundary");
+      const icon = el("span", "ic");
+      icon.append(shieldIcon());
+      const text = el("span", "pl-boundary-text");
+      text.textContent = boundaryNotice;
+      boundary.append(icon, text);
+      section.append(boundary);
     }
 
     return section;
@@ -282,14 +396,10 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     toggle.setAttribute("aria-label", `${info.enabled ? "Выключить" : "Включить"} плагин ${info.id}`);
     toggleLabel.append(toggle);
 
-    const name = el("span", "pl-name");
-    name.textContent = info.id;
-    name.title = info.id;
-
     const open = expanded.has(info.id);
 
-    // Порядок головы: тумблер → имя → инфо (если notices) → бейдж → шеврон.
-    head.append(toggleLabel, name);
+    // Порядок головы: тумблер → идентичность → инфо (если notices) → бейдж → шеврон.
+    head.append(toggleLabel, renderIdentity(info));
     // Инфо-кнопка — только при непустых notices: пустой поповер бессмыслен.
     const infoPopover = info.notices.length > 0 ? renderInfoPopover(info) : null;
     if (infoPopover) {
@@ -304,13 +414,21 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     const body = el("div", "pl-item-body");
     body.id = bodyId(info.id);
 
-    // Порядок тела: критичное выше рутины — fail-notice → actions → consent.
+    // Порядок тела: критичное выше рутины — fail-notice/state-hint → actions → consent.
     // Статус `failed` несёт сообщение — показываем его первым.
     const failMessage = statusMessage(info.status);
     if (failMessage) {
       const node = el("div", "pl-notice");
       node.textContent = failMessage;
       body.append(node);
+    }
+
+    // S12c: подсказка восстановления для `failed`/`quarantined` — рядом с причиной.
+    const hintText = stateHint(info.status);
+    if (hintText) {
+      const hint = el("div", "pl-state-hint");
+      hint.textContent = hintText;
+      body.append(hint);
     }
 
     const actions = el("div", "pl-actions");

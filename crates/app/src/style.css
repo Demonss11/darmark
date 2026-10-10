@@ -280,7 +280,7 @@ label.tbtn:has(> input:focus-visible) { outline: 2px solid var(--accent); outlin
 .pl-toggle { display: inline-flex; align-items: center; cursor: pointer; flex-shrink: 0; }
 .pl-toggle input { margin: 0; accent-color: var(--accent); cursor: pointer; }
 .pl-name {
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -464,6 +464,73 @@ label.tbtn:has(> input:focus-visible) { outline: 2px solid var(--accent); outlin
 .pl-perm:has(> input.pl-grant:checked) .pl-perm-state { color: var(--success); }
 .pl-consent-hint { color: var(--warning); font-size: 11px; line-height: 1.35; }
 .pl-notice { color: var(--warning); font-size: 11px; line-height: 1.35; }
+
+/* ===== S12a — идентичность плагина: имя из манифеста + версия, id вторично =====
+   Две строки: [имя · версия] и [id мелким моно]. `.pl-ident` — распорка головы:
+   занимает свободное место, прижимая инфо/бейдж/шеврон вправо. */
+.pl-ident {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 6px;
+  row-gap: 1px;
+}
+/* Имя не тянется на всю ширину — иначе версия уедет на вторую строку. */
+.pl-version {
+  flex: 0 0 auto;
+  font-size: 10.5px;
+  color: var(--fg-mute);
+  font-variant-numeric: tabular-nums;
+}
+/* id всегда на отдельной строке: flex-basis 100% вынуждает перенос. */
+.pl-id {
+  flex-basis: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: "Cascadia Code", ui-monospace, Consolas, monospace;
+  font-size: 10px;
+  color: var(--fg-mute);
+  opacity: 0.85;
+}
+
+/* ===== S12b — права: человекочитаемое имя + сырой токен вторично ===== */
+.pl-perm-token {
+  flex-shrink: 0;
+  font-family: "Cascadia Code", ui-monospace, Consolas, monospace;
+  font-size: 10px;
+  color: var(--fg-mute);
+  opacity: 0.85;
+}
+/* Граничная notice о доступе к документу — инлайн рядом с согласием (S12b).
+   Нейтральная справка, а не предупреждение: не наследует янтарный `.pl-notice`. */
+.pl-boundary {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 2px;
+  padding: 6px 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-sm);
+  background: var(--bg-2);
+  color: var(--fg-dim);
+  font-size: 11px;
+  line-height: 1.4;
+}
+.pl-boundary .ic {
+  display: inline-flex;
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--accent-2);
+}
+.pl-boundary .ic svg { display: block; width: 14px; height: 14px; }
+.pl-boundary-text { min-width: 0; overflow-wrap: break-word; }
+
+/* ===== S12c — состояния: причина + что делать (failed/quarantined) ===== */
+.pl-state-hint { font-size: 11px; line-height: 1.4; color: var(--fg-dim); }
 /* Разделитель не нужен: строки-карточки уже отделены border-bottom. */
 .pl-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 /* База --bg-2, hover светлит до --bg-3 (как .tbtn) — инверсия против старого вида. */
