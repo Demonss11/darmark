@@ -27,6 +27,9 @@ export interface Tab {
   rev: number;
   /** Актуальный буфер редактора (обновляется синхронно вводу, до IPC). */
   text: string;
+  /** Текст на момент последнего сохранения/открытия — база для вывода `dirty`. */
+  savedText: string;
+  /** Производное от `text !== savedText`: незаписанные в файл изменения (§4.2). */
   dirty: boolean;
   /** Отображаемое имя (baseName пути или «безымянный»). */
   name: string;
@@ -116,6 +119,7 @@ function makeTab(snap: DocumentSnapshot): Tab {
     path: snap.path,
     rev: snap.rev,
     text: snap.text,
+    savedText: snap.text,
     dirty: false,
     name: snap.path ? baseName(snap.path) : "безымянный",
   };
@@ -148,16 +152,22 @@ export function createDocStore(opts: DocStoreOptions): DocStore {
     notify();
   }
 
-  /** Отправляет текст активной вкладки в Rust; ошибки пробрасываются вызывающему. */
-  async function pushText(): Promise<void> {
+  /**
+   * Отправляет текст активной вкладки в Rust; ошибки пробрасываются вызывающему.
+   * Возвращает отправленный текст (или `null`, если документа нет) — `save`
+   * использует именно его как точку отсчёта `savedText`, а не буфер, который
+   * мог измениться, пока ждали запись.
+   */
+  async function pushText(): Promise<string | null> {
     const id = activeId;
-    if (!id) return;
+    if (!id) return null;
     const tab = tabs.find((t) => t.id === id);
-    if (!tab) return;
+    if (!tab) return null;
     const source = tab.text;
     const res = await ipcUpdate(id, source, opts.renderMapped());
-    if (id !== activeId) return; // вкладка сменилась, пока ждали
+    if (id !== activeId) return source; // вкладка сменилась, пока ждали
     applyRes(res, source);
+    return source;
   }
 
   async function renderCurrent(): Promise<void> {
@@ -233,9 +243,12 @@ export function createDocStore(opts: DocStoreOptions): DocStore {
       if (res.rev < lastRev) return null; // устаревший ответ (гонка двух отмен подряд)
       // Держим `lastRev` на новой ревизии: устаревший ответ IPC не откатит текст.
       lastRev = res.rev;
-      // dirty не сбрасываем: отмена меняет текст, а факт «не записано в файл» неизвестен.
+      // dirty выводим из сравнения с сохранённым текстом: отмена до последнего
+      // сохранения должна вернуть вкладку в чистое состояние (§4.2).
       tabs = tabs.map((t) =>
-        t.id === id ? { ...t, text: res.text, rev: res.rev, dirty: true } : t
+        t.id === id
+          ? { ...t, text: res.text, rev: res.rev, dirty: res.text !== t.savedText }
+          : t
       );
       notify();
       reload(); // перерисовать HTML из нового текста
@@ -292,7 +305,9 @@ export function createDocStore(opts: DocStoreOptions): DocStore {
       if (!id) return;
       const tab = tabs.find((t) => t.id === id);
       if (!tab || text === tab.text) return;
-      tabs = tabs.map((t) => (t.id === id ? { ...t, text, dirty: true } : t));
+      tabs = tabs.map((t) =>
+        t.id === id ? { ...t, text, dirty: text !== t.savedText } : t
+      );
       notify();
       schedule();
     },
@@ -325,10 +340,11 @@ export function createDocStore(opts: DocStoreOptions): DocStore {
           // не должен откатить `st` и перерисовать DOM старым текстом (сброс в -1
           // эту защиту инвертировал бы).
           lastRev = snap.rev;
-          // dirty=true: правка пришла от плагина и ещё не записана в файл.
+          // dirty выводим из сравнения: плагин мог вернуть текст, совпадающий
+          // с сохранённым, — тогда вкладка снова чистая.
           tabs = tabs.map((t) =>
             t.id === tab.id
-              ? { ...t, rev: snap.rev, text: snap.text, dirty: true }
+              ? { ...t, rev: snap.rev, text: snap.text, dirty: snap.text !== t.savedText }
               : t
           );
           notify();
@@ -351,14 +367,23 @@ export function createDocStore(opts: DocStoreOptions): DocStore {
     async save(path?: string): Promise<void> {
       const id = activeId;
       if (!id) throw new Error("Документ не создан — сохранение недоступно");
-      await pushText(); // текст редактора → Rust до записи (ошибку пробрасываем)
+      // Текст редактора → Rust до записи; именно отправленный текст становится
+      // точкой отсчёта dirty, а не буфер, который мог измениться за время записи.
+      const savedText = await pushText(); // ошибку пробрасываем
       const tab = tabs.find((t) => t.id === id);
       if (!tab) throw new Error("Документ не создан — сохранение недоступно");
       const meta = await ipcSave(id, path);
       if (id !== activeId) return; // вкладка сменилась, пока ждали записи
+      const base = savedText ?? tab.text;
       tabs = tabs.map((t) =>
         t.id === id
-          ? { ...t, path: meta.path, dirty: false, name: meta.path ? baseName(meta.path) : t.name }
+          ? {
+              ...t,
+              path: meta.path,
+              savedText: base,
+              dirty: t.text !== base,
+              name: meta.path ? baseName(meta.path) : t.name,
+            }
           : t
       );
       notify();

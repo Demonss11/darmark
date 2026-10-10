@@ -62,6 +62,26 @@ export function bytesToUnits(maps: UnitMaps, b: number): number {
   return maps.b2u[i]!;
 }
 
+/**
+ * UTF-16-индекс, соответствующий байтовому (UTF-8) смещению `byte` в `text`.
+ * Однопроходный скан без аллокации префиксных карт: для редких разовых
+ * переводов (выделение после undo/redo) строить полные `UnitMaps` дороже
+ * самого перевода. Семантика совпадает с `bytesToUnits`: смещение за концом
+ * текста → его длина в UTF-16, смещение не на границе символа округляется
+ * вниз до начала символа (многобайтные code points и суррогатные пары учтены).
+ */
+export function byteToUtf16(text: string, byte: number): number {
+  let consumed = 0; // сколько байт UTF-8 уже пройдено
+  let unit = 0; // сколько UTF-16 code units уже пройдено
+  for (const ch of text) {
+    const bl = utf8ByteLength(ch.codePointAt(0)!);
+    if (byte < consumed + bl) return unit; // byte внутри текущего символа → его начало
+    consumed += bl;
+    unit += ch.length; // суррогатная пара — 2 code units
+  }
+  return unit; // byte за концом текста → полная длина в UTF-16
+}
+
 export function unitsToBytes(maps: UnitMaps, u: number): number {
   const i = Math.min(Math.max(u, 0), maps.u2b.length - 1);
   return maps.u2b[i]!;

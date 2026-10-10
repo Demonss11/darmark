@@ -6,7 +6,7 @@
 // владелец undo-стека — Rust (D5/ADR-0028), иначе два стека разъедутся.
 
 import type { DocStore } from "./docStore";
-import { buildUnitMaps, bytesToUnits } from "./mapping";
+import { byteToUtf16 } from "./mapping";
 
 export interface EditorView {
   focus(): void;
@@ -24,14 +24,15 @@ export function createEditorView(
   // Применяет результат undo/redo: Rust отдаёт выделение в байтах UTF-8, а
   // textarea оперирует UTF-16 code units — конвертируем по тексту результата
   // (тот же текст, что уже подтянут в `host.value` из проекции стора).
+  // Однопроходного перевода достаточно: undo/redo редки, а полные карты на
+  // весь документ ради одного выделения были бы лишней аллокацией O(n).
   async function applyHistory(
     run: () => Promise<{ start: number; end: number } | null>
   ): Promise<void> {
     const range = await run();
     if (!range) return; // нечего отменять/повторять — стор тихо вернул null
-    const maps = buildUnitMaps(host.value);
-    const start = bytesToUnits(maps, range.start);
-    const end = bytesToUnits(maps, range.end);
+    const start = byteToUtf16(host.value, range.start);
+    const end = byteToUtf16(host.value, range.end);
     host.setSelectionRange(start, end);
     onSelection();
   }
