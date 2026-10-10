@@ -135,8 +135,11 @@ pub struct Document {
     pub redo: Vec<EditOp>,
 }
 
-pub struct EditOp { pub rev: u64, pub range: (usize, usize), pub text: String }
+// D5 (ADR-0028): операция — замена байтового диапазона UTF-8.
+pub struct EditOp { pub start: usize, pub removed: String, pub inserted: String }
 pub struct RenderCache { pub mapped: bool, pub rev: u64, pub html: String }
+// Результат undo/redo: текст после операции + диапазон результата для выделения.
+pub struct UndoResult { pub text: String, pub rev: u64, pub start: usize, pub end: usize }
 ```
 
 ### 4.2. Кто чем владеет
@@ -164,10 +167,13 @@ pub struct RenderCache { pub mapped: bool, pub rev: u64, pub html: String }
 | `render_document` | `(id, mapped) -> RenderResult` |
 | `save_document` | `(id, path?) -> DocMeta` |
 | `close_document` | `(id) -> ()` |
+| `undo_document` | `(id) -> UndoResult` |
+| `redo_document` | `(id) -> UndoResult` |
 
 ```rust
 pub struct DocMeta { pub id: DocumentId, pub path: Option<String>, pub rev: u64, pub dirty_hint: bool }
 pub struct RenderResult { pub html: String, pub rev: u64, pub changed: bool }
+pub struct UndoResult { pub text: String, pub rev: u64, pub start: usize, pub end: usize }
 ```
 `changed: false` при неизменной `rev`; TS при `changed: false` **не трогает DOM**.
 
@@ -687,6 +693,7 @@ scan(plugins_dir) -> validate(manifest) -> load(src) -> on_activate(ctx)
 | 25 | Ре-дизайн палитры и типографики: семантические токены, WCAG AA | §5, §13.2 | ADR-0025 |
 | 26 | Локальный каталог плагинов: `plugins/index.json` + CLI `install/link/remove/update` (Фаза 2a H3) | §7.1, §10 | ADR-0026 |
 | 27 | Политика совместимости `HOST_API_VERSION`: мажор — только несовместимые изменения, двухступенчатая депрекация (Фаза 3 H3, S15) | §7.2, §8 | ADR-0027 |
+| 28 | Rust-undo: diff-модель `EditOp {start, removed, inserted}`, единый стек ввода/`apply_edit`, команды `undo_document`/`redo_document` (D5, S16) | §4.1, §4.2, §4.3 | ADR-0028 |
 
 ---
 
