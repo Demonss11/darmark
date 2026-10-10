@@ -40,6 +40,10 @@ pub fn effective_permissions(manifest: &[String], granted: &[String]) -> Vec<Str
 /// Один плагин и его child-процесс.
 pub struct PluginRuntime {
     pub id: String,
+    /// Человекочитаемое имя из манифеста (`plugin.json`) — для менеджера UI (S12a).
+    pub name: String,
+    /// Версия из манифеста (`plugin.json`) — для менеджера UI (S12a).
+    pub version: String,
     /// Запрашиваемые плагином права из манифеста (а не фактические — их даёт [`Self::effective`]).
     pub permissions: Vec<String>,
     /// Согласованные пользователем права (подмножество `permissions`, §8/§12, Фаза 5).
@@ -82,6 +86,8 @@ impl PluginRuntime {
     ) -> Self {
         Self {
             id: id.into(),
+            name: String::new(),
+            version: String::new(),
             permissions,
             granted: Vec::new(),
             status: PluginStatus::Stopped,
@@ -99,6 +105,13 @@ impl PluginRuntime {
             progress: Duration::from_millis(PROGRESS_TIMEOUT_MS),
             deadline: Duration::from_millis(DEADLINE_MS),
         }
+    }
+
+    /// Задаёт человекочитаемые `name`/`version` из манифеста (IPC-проекция `PluginInfo`, S12a).
+    pub fn with_identity(mut self, name: impl Into<String>, version: impl Into<String>) -> Self {
+        self.name = name.into();
+        self.version = version.into();
+        self
     }
 
     /// Переопределяет бюджеты watchdog (тесты/`config.json` в Фазе 3).
@@ -307,6 +320,8 @@ impl PluginManager {
             .values()
             .map(|p| PluginInfo {
                 id: p.id.clone(),
+                name: p.name.clone(),
+                version: p.version.clone(),
                 status: p.status.clone(),
                 permissions: p.permissions.clone(),
                 granted_permissions: p.granted().to_vec(),
@@ -455,6 +470,10 @@ pub fn load_plugins(
         );
         let contributes = discovered.manifest.contributes.views.clone();
         let commands = discovered.manifest.contributes.commands.clone();
+        // Человекочитаемые имя/версия — в IPC-проекцию `PluginInfo` (S12a). Берём до
+        // перемещения `source`, чтобы не полагаться на частичные перемещения `discovered`.
+        let name = discovered.manifest.name.clone();
+        let version = discovered.manifest.version.clone();
         // Тир-1 view регистрируются в общем реестре только для включённых плагинов И только
         // при выданном `view:create` (F44/S4, deny-by-default, как `document:*`). У выключенного
         // (config.json) или без права не должно быть пустой вкладки. `runtime.views` хранит
@@ -475,6 +494,7 @@ pub fn load_plugins(
             contributes,
             commands,
         )
+        .with_identity(name, version)
         .with_entry_path(discovered.entry_path)
         .with_dir(discovered.dir)
         .with_granted(granted);

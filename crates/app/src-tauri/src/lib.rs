@@ -119,6 +119,10 @@ pub struct CommandInfo {
 #[derive(Clone, Debug, serde::Serialize)]
 pub struct PluginInfo {
     pub id: String,
+    /// Человекочитаемое имя плагина из манифеста (S12a); фолбэк на `id` — на стороне фронта.
+    pub name: String,
+    /// Версия плагина из манифеста (S12a).
+    pub version: String,
     pub status: PluginStatus,
     /// Запрашиваемые плагином права из манифеста (декларация).
     pub permissions: Vec<String>,

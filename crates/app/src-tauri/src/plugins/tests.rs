@@ -454,6 +454,36 @@ fn loader_takes_manifest_permissions_and_settings_state() {
     );
 }
 
+/// S12a: `list_plugins` проецирует человекочитаемые `name`/`version` из манифеста, а не
+/// выводит их из `id` (фикстура намеренно даёт имя и версию, отличные от id).
+#[test]
+fn loader_projects_name_and_version_from_manifest() {
+    let dir = tempfile::tempdir().unwrap();
+    let manifest = r#"{"id":"word-count","name":"Word Count","version":"2.3.1","api_version":1,"entry":"main.lua"}"#;
+    write_plugin(
+        dir.path(),
+        "word-count",
+        manifest,
+        Some("function on_activate(ctx) end"),
+    );
+
+    let store = store_with_doc("x");
+    let result = load_plugins(
+        dir.path(),
+        &PathBuf::from("darmark-plugin-host.exe"),
+        services(&store),
+        &SettingsStore::default(),
+        views(),
+    );
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
+
+    let list = result.manager.list_plugins();
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0].id, "word-count");
+    assert_eq!(list[0].name, "Word Count", "name из манифеста");
+    assert_eq!(list[0].version, "2.3.1", "version из манифеста");
+}
+
 #[test]
 fn loader_defaults_to_enabled() {
     let dir = tempfile::tempdir().unwrap();
@@ -1797,6 +1827,8 @@ fn plugin_info_serializes_frontend_contract() {
     // `keybinding: null` для команды без привязки — проверяем форму JSON.
     let info = crate::PluginInfo {
         id: "p".to_string(),
+        name: "Плагин".to_string(),
+        version: "1.2.3".to_string(),
         status: crate::PluginStatus::Failed {
             message: "boom".to_string(),
         },
@@ -1813,6 +1845,8 @@ fn plugin_info_serializes_frontend_contract() {
     let value = serde_json::to_value(&info).unwrap();
     assert_eq!(value["status"]["state"], "failed");
     assert_eq!(value["status"]["message"], "boom");
+    assert_eq!(value["name"], "Плагин", "name — в IPC-контракт (S12a)");
+    assert_eq!(value["version"], "1.2.3", "version — в IPC-контракт (S12a)");
     assert_eq!(value["enabled"], false);
     assert_eq!(value["permissions"][0], "document:read");
     assert_eq!(value["granted_permissions"][0], "document:read");
