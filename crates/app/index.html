@@ -104,6 +104,16 @@
           <kbd>Ctrl+K</kbd>
         </button>
 
+        <!-- триггер дровера плагинов: icon + счётчик активных + точка проблемы -->
+        <button class="ipbtn" id="tb-plugins" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="drawer" aria-label="Плагины">
+          <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z" />
+            <line x1="16" y1="8" x2="2" y2="22" />
+          </svg>
+          <span class="cnt" id="tb-plugins-cnt">0</span>
+          <span class="pdot" id="tb-plugins-dot" aria-hidden="true"></span>
+        </button>
+
         <div class="div-v"></div>
 
         <!-- тумблеры (id сохранены: e2e кликает #chk-*) -->
@@ -150,34 +160,6 @@
 
       <!-- ============ РАБОЧАЯ ОБЛАСТЬ ============ -->
       <div class="workspace">
-        <!-- rail -->
-        <nav class="rail">
-          <button type="button" class="rail-btn active" id="rail-plugins" title="Плагины" aria-label="Плагины" aria-pressed="true">
-            <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-              <path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z" />
-              <line x1="16" y1="8" x2="2" y2="22" />
-            </svg>
-          </button>
-          <div class="spacer"></div>
-          <button type="button" class="rail-btn" id="rail-logs" title="Журнал — скоро" aria-label="Журнал">
-            <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-              <polyline points="4 17 10 11 4 5" />
-              <line x1="12" y1="19" x2="20" y2="19" />
-            </svg>
-          </button>
-        </nav>
-
-        <!-- сворачиваемый sidebar -->
-        <aside class="sidebar" id="sidebar">
-          <div class="side-panel" id="panel-plugins">
-            <div class="side-head"><span class="side-title">Плагины <span class="side-count" id="side-count"></span></span></div>
-            <div class="pl-panel">
-              <!-- контейнер менеджера плагинов (H2, Фаза 5); заполняет pluginManager.ts -->
-              <div id="plugin-manager"></div>
-            </div>
-          </div>
-        </aside>
-
         <!-- main -->
         <main class="main" id="main-content" tabindex="-1">
           <!-- Видимого заголовка в UI нет — даём скринридерам точку входа в main. -->
@@ -250,6 +232,15 @@
       <footer id="statusbar" class="statusbar">
         <span class="stat"><span class="stat-dot" aria-hidden="true"></span><span id="stat-state">Готов</span></span>
         <span class="stat" id="stat-msg" role="status" aria-live="polite"></span>
+        <!-- Журнал: точка входа из статусбара (Фаза 3, заглушка — панель H3) -->
+        <button class="stat clickable" id="sb-logs" type="button" title="Журнал и события" aria-label="Журнал и события">
+          <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="12" height="12">
+            <polyline points="4 17 10 11 4 5" />
+            <line x1="12" y1="19" x2="20" y2="19" />
+          </svg>
+          <span>Журнал</span>
+          <span class="badge" id="log-badge" hidden>0</span>
+        </button>
         <span class="plugin-status" id="plugin-status" role="group" aria-label="Плагины"></span>
         <span id="plugin-announcer" class="visually-hidden" role="status" aria-live="polite"></span>
         <span class="spacer"></span>
@@ -259,6 +250,38 @@
         <span class="stat accent" id="stat-inspect" hidden role="status" aria-live="polite"></span>
       </footer>
     </div>
+    <!-- Дровер плагинов и его backdrop: прямые дети body, чтобы `inert` на #app
+         не глушил сам дровер (модальность — drawer.ts). -->
+    <div class="drawer-backdrop" id="backdrop"></div>
+    <aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title" hidden>
+      <div class="drawer-head">
+        <span class="side-title" id="drawer-title">Плагины</span>
+        <span class="side-count" id="side-count"></span>
+        <button class="tbtn tbtn-sm" id="drawer-reload-all" type="button" title="Перезагрузить все" aria-label="Перезагрузить все плагины">
+          <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <polyline points="23 4 23 9 18 9" />
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+          </svg>
+        </button>
+        <button class="tbtn tbtn-sm" id="drawer-install" type="button" title="Установить плагин" aria-label="Установить плагин">
+          <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+        </button>
+        <button class="tbtn tbtn-sm" id="drawer-close" type="button" title="Закрыть (Esc)" aria-label="Закрыть">
+          <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+      <div class="drawer-body" id="drawer-body">
+        <!-- контейнер менеджера плагинов (H2); заполняет pluginManager.ts -->
+        <div id="plugin-manager"></div>
+      </div>
+    </aside>
+
     <!-- Модальные диалоги и тост-хост: прямые дети body, чтобы `inert` на #app
          не глушил их (dialog.ts открывает оверлеи в #modal-root). -->
     <div id="modal-root" class="modal-root"></div>

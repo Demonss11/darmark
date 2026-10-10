@@ -145,9 +145,12 @@ export interface DrawerOptions {
 - закрытие по `Esc`, клику по `#backdrop`, кнопке `#drawer-close`, повторному клику по триггеру;
 - класс `.open` на `#drawer` (e2e проверяет класс, **не** `transform`/`transition`).
 
-**Переиспользование:** примитивы focus-trap/inert из `dialog.ts` вынести в общий хелпер и
-переиспользовать; если расширение `dialog.ts` рискованно — локальная реализация по образцу
-прототипа. Зафиксировать выбор при реализации.
+**Реализация модальности (зафиксировано):** дровер — **постоянный DOM** (`#drawer` + `#backdrop`
+как прямые дети `body`), а не транзитный оверлей `openDialog`. Причина: `#plugin-manager` и
+`#side-count` обязаны существовать постоянно (состояние раскрытия карточек, счётчик), а
+`openDialog` создаёт и удаляет DOM на каждый показ. Из `dialog.ts` переиспользуются **примитивы**
+(не `openDialog`): feature-detect `inert` и логика focus-trap; `inert` ставится на `#app`, пока
+дровер открыт.
 
 **Не обобщать** с `sidebar.ts` (`side: left|right`): левая панель — `collapsed`+rail, правая —
 `fixed`+backdrop; обобщение усложнит интерфейс.
@@ -235,7 +238,9 @@ export interface DrawerOptions {
 - Триггер: `aria-haspopup="dialog"`, `aria-expanded`, `aria-label="Плагины"` (+ счётчики при проблемах).
 - Дровер: `role="dialog"`, `aria-modal="true"`, `aria-labelledby="drawer-title"`.
 - Focus-trap; начальный фокус — `#drawer-close`; возврат фокуса на `#tb-plugins` при закрытии.
-- Закрытие: `Esc`, `#backdrop`, `#drawer-close`, повторный клик по триггеру.
+- Закрытие: `Esc`, `#backdrop`, `#drawer-close`. При модальном `inert` на `#app` триггер
+  недоступен, пока дровер открыт (повторный клик по нему не используется); `aria-expanded`
+  на триггере синхронизируется.
 - `inert` на `#app`, пока дровер открыт.
 - Порядок Tab: close → reload-all → install → карточки по порядку.
 

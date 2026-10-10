@@ -1,13 +1,14 @@
 // shell.ts — привязка оболочки к DOM: кнопки тулбара, горячие клавиши, тумблеры
-// предпросмотра/синхронизации, формат-группа и палитра, заглушка журнала, фокус
-// активной панели, закрытие окна. Логики домена здесь нет — только вызовы команд
-// из main.ts. Хоткеи глушатся, пока открыт модальный диалог (dialog.ts).
+// предпросмотра/синхронизации, формат-группа, палитра, триггер дровера плагинов,
+// журнал-заглушка, фокус активной панели, закрытие окна. Логики домена здесь
+// нет — только вызовы команд из main.ts. Хоткеи глушатся, пока открыт модальный
+// диалог (dialog.ts).
 
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import type { PaneId } from "./ids";
 import type { FormatActions } from "./formatActions";
-import type { Sidebar } from "./sidebar";
+import type { Drawer } from "./drawer";
 import { isModalOpen } from "./dialog";
 import { openDevtools } from "./tauri";
 
@@ -34,8 +35,8 @@ export interface ShellOptions {
   commands: ShellCommands;
   /** Действия форматирования над выделением редактора. */
   format: FormatActions;
-  /** Rail + сворачиваемый sidebar. */
-  sidebar: Sidebar;
+  /** Правый модальный дровер плагинов. */
+  drawer: Drawer;
   inspectorActive(): boolean;
   editorPane: PaneId;
   previewPane: PaneId;
@@ -74,10 +75,10 @@ export function createShell(opts: ShellOptions): void {
 
   // Палитра команд открывается по кнопке и Ctrl+K (обработчик в shell keydown).
   byId<HTMLButtonElement>("palette-trigger").addEventListener("click", commands.palette);
-  byId<HTMLButtonElement>("rail-logs").addEventListener("click", () => commands.flash("Журнал — скоро"));
-
-  // Rail ↔ sidebar: повторный клик по активной панели сворачивает sidebar.
-  byId<HTMLButtonElement>("rail-plugins").addEventListener("click", () => opts.sidebar.toggle("plugins"));
+  // Дровер плагинов: триггер в тулбаре (повторный клик закрывает).
+  byId<HTMLButtonElement>("tb-plugins").addEventListener("click", () => opts.drawer.toggle());
+  // «Журнал» — точка входа из статусбара (Фаза 3, заглушка; панель — H3).
+  byId<HTMLButtonElement>("sb-logs").addEventListener("click", () => commands.flash("Журнал — скоро"));
 
   // Активная панель (фокус) — для визуализации Pane/View.
   editor.addEventListener("focus", () => commands.setActivePane(opts.editorPane));

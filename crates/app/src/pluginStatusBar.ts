@@ -43,7 +43,7 @@ export interface PluginStatusBarOptions {
   hasView(pluginId: string): boolean;
   /** Клик по элементу: открыть представление плагина (no-op, если его нет). */
   onActivate(pluginId: string): void;
-  /** Клик по «+N»: раскрыть панель «Плагины». */
+  /** Клик по «+N»: открыть дровер «Плагины». */
   onShowPanel(): void;
 }
 

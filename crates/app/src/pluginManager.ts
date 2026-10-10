@@ -1,4 +1,4 @@
-// pluginManager.ts — менеджер плагинов в панели `#panel-plugins` (H2, Фаза 5).
+// pluginManager.ts — менеджер плагинов в дровере `#drawer-body` (H2, Фаза 5).
 //
 // Контроллер показывает снимок плагинов из Rust-хоста (команда `list_plugins`):
 // статус, тумблер вкл/выкл, «Перезагрузить», инлайн-согласие на permissions
@@ -39,7 +39,7 @@ export interface PluginManager {
 }
 
 export interface PluginManagerOptions {
-  /** Контейнер менеджера (`#plugin-manager` внутри `.pl-panel`). */
+  /** Контейнер менеджера (`#plugin-manager` внутри `#drawer-body`). */
   root: HTMLElement;
   /** Сообщение в статусбар (ошибки IPC/действий). */
   status(msg: string): void;
@@ -603,6 +603,10 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
   /** Escape закрывает поповер и возвращает фокус на кнопку. */
   function onDocumentKeydown(e: KeyboardEvent): void {
     if (e.key !== "Escape" || !openInfoButton) return;
+    // Поповер — верхний слой: поглощаем Escape, чтобы он не закрыл дровер
+    // (drawer.ts отдаёт событие вложенному слою) и не выключил инспектор.
+    e.preventDefault();
+    e.stopPropagation();
     closeAllInfoPopovers()?.focus();
   }
 

@@ -80,25 +80,29 @@ Then("плагинный маркер равен {string}", async (expected) => 
 
 // ---------- Менеджер плагинов (H2, Фаза 5) ----------
 //
-// Панель плагинов скрыта, пока активна панель «Файлы»: открываем её кликом по
-// rail-кнопке (если уже видима — не трогаем, иначе клик свернул бы sidebar).
-// Тумблер вкл/выкл — настоящий `<input class="pl-enabled">` внутри
-// `.pl-item[data-plugin=...]`; его click порождает change → IPC.
+// Панель плагинов живёт в правом модальном дровере (TZ-PLUGIN-DRAWER.md):
+// триггер — кнопка `#tb-plugins` в тулбаре, открытый дровер помечен классом
+// `.open` на `#drawer`. Тумблер вкл/выкл — настоящий `<input class="pl-enabled">`
+// внутри `.pl-item[data-plugin=...]`; его click порождает change → IPC.
 
-/// Показывает панель плагинов: клик по rail-кнопке, если панель скрыта. Общий
+/// Показывает панель плагинов: клик по `#tb-plugins`, если дровер закрыт. Общий
 /// помощник для шага «я открываю панель плагинов» и Given о загрузке плагина без
 /// view (его статус виден только в менеджере).
 async function openPluginsPanel() {
-  const visible = await browser.execute(() => {
-    const panel = document.getElementById("panel-plugins");
-    if (panel && !panel.hidden) return true;
-    document.getElementById("rail-plugins")?.click();
-    return !document.getElementById("panel-plugins")?.hidden;
+  const open = await browser.execute(() => {
+    const drawer = document.getElementById("drawer");
+    if (!drawer) return false;
+    if (!drawer.classList.contains("open")) {
+      document.getElementById("tb-plugins")?.click();
+    }
+    return drawer.classList.contains("open");
   });
-  if (!visible) {
+  if (!open) {
     await browser.waitUntil(
       async () =>
-        browser.execute(() => !document.getElementById("panel-plugins")?.hidden),
+        browser.execute(
+          () => document.getElementById("drawer")?.classList.contains("open")
+        ),
       { timeout: 5000, timeoutMsg: "Панель плагинов не открылась" }
     );
   }
@@ -178,6 +182,43 @@ When("я перезагружаю плагин {string}", async (pluginId) => {
     return true;
   }, pluginId);
   if (!ok) throw new Error(`Кнопка «Перезагрузить» плагина ${pluginId} недоступна`);
+});
+
+// ---------- Дровер плагинов (TZ-PLUGIN-DRAWER.md) ----------
+//
+// Правый модальный дровер: триггер `#tb-plugins` в тулбаре, закрытие по Esc,
+// клику по подложке `#backdrop` и кнопке `#drawer-close`. Фокус возвращается
+// на триггер. Проверяем класс `.open`, не getComputedStyle (анимация).
+
+When("я кликаю по кнопке {string}", async (selector) => {
+  const ok = await browser.execute((s) => {
+    const el = document.querySelector(s);
+    if (!el) return false;
+    el.click();
+    return true;
+  }, selector);
+  if (!ok) throw new Error(`Элемент ${selector} не найден`);
+});
+
+Then("дровер плагинов открыт", async () => {
+  await browser.waitUntil(
+    async () =>
+      browser.execute(
+        () => document.getElementById("drawer")?.classList.contains("open")
+      ),
+    { timeout: 5000, timeoutMsg: "Дровер плагинов не открылся" }
+  );
+});
+
+Then("дровер плагинов закрыт", async () => {
+  await browser.waitUntil(
+    async () =>
+      browser.execute(() => {
+        const drawer = document.getElementById("drawer");
+        return !!drawer && !drawer.classList.contains("open") && drawer.hidden;
+      }),
+    { timeout: 5000, timeoutMsg: "Дровер плагинов не закрылся" }
+  );
 });
 
 // ---------- Плагинная правка документа (BUG-002, часть A) ----------

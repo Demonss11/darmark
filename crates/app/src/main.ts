@@ -24,7 +24,7 @@ import { createPluginManager } from "./pluginManager";
 import { createPluginStatusBar } from "./pluginStatusBar";
 import { createFileActions } from "./fileActions";
 import { createShell } from "./shell";
-import { createSidebar } from "./sidebar";
+import { createDrawer } from "./drawer";
 import { createGutter } from "./gutter";
 import { createFormatActions } from "./formatActions";
 import { START_TEXT } from "./sampleDocument";
@@ -42,7 +42,6 @@ const panesEl = document.getElementById("panes") as HTMLElement;
 const statInspect = document.getElementById("stat-inspect") as HTMLElement;
 const btnInspect = document.getElementById("btn-inspect") as HTMLButtonElement;
 const gutterEl = document.getElementById("gutter") as HTMLElement;
-const sidebarEl = document.getElementById("sidebar") as HTMLElement;
 const tabName = document.getElementById("tab-name") as HTMLElement;
 const tabDirty = document.getElementById("tab-dirty") as HTMLElement;
 
@@ -52,15 +51,14 @@ function baseName(p: string): string {
   return i >= 0 ? p.slice(i + 1) : p;
 }
 
-// Rail + сворачиваемый sidebar (plugins по умолчанию).
-const sidebar = createSidebar({
-  sidebar: sidebarEl,
-  panels: {
-    plugins: document.getElementById("panel-plugins") as HTMLElement,
-  },
-  rail: {
-    plugins: document.getElementById("rail-plugins") as HTMLElement,
-  },
+// Дровер плагинов (вариант C): постоянный DOM, модальность — в drawer.ts.
+// Создаётся до менеджера/статусбара: они монтируются в drawer.content.
+const drawer = createDrawer({
+  root: document.getElementById("drawer") as HTMLElement,
+  trigger: document.getElementById("tb-plugins") as HTMLElement,
+  closeButton: document.getElementById("drawer-close") as HTMLButtonElement,
+  backdrop: document.getElementById("backdrop") as HTMLElement,
+  title: "Плагины",
 });
 const gutter = createGutter(editor, gutterEl);
 const format = createFormatActions(editor);
@@ -137,7 +135,7 @@ const pluginStatus = createPluginStatusBar({
     if (chk && !chk.checked) chk.click();
     pluginViews.openPlugin(id);
   },
-  onShowPanel: () => sidebar.setPanel("plugins"),
+  onShowPanel: () => drawer.open(),
 });
 
 // Склонение «с проблемой/с проблемами» в счётчике панели: 1-4 (кроме 11-14) —
@@ -151,9 +149,9 @@ function problemSuffix(n: number): string {
 }
 
 /**
- * Счётчик плагинов в шапке панели (`#side-count`): число загруженных, либо
+ * Счётчик плагинов в шапке дровера (`#side-count`): число загруженных, либо
  * «N с проблемой» (+ амбер-класс) при `failed`/`quarantined`. Пустой каталог —
- * «0», как в референсе. Панель/узел может отсутствовать — молча выходим.
+ * «0», как в референсе. Узел может отсутствовать — молча выходим.
  */
 function updatePluginCount(list: PluginInfo[]): void {
   const countEl = document.getElementById("side-count");
@@ -170,16 +168,17 @@ function updatePluginCount(list: PluginInfo[]): void {
   countEl.classList.remove("warn");
 }
 
-// Менеджер плагинов (Фаза 5): список/статусы/вкл-выкл/перезагрузка в панели
-//    `#panel-plugins`. Данные — из Rust-хоста (`list_plugins`), изменения приходят
-//    событием `plugins-changed`. Ошибка IPC глушится в контроллере.
+// Менеджер плагинов (Фаза 5): список/статусы/вкл-выкл/перезагрузка в дровере
+//    (`#plugin-manager` внутри `#drawer-body`). Данные — из Rust-хоста
+//    (`list_plugins`), изменения приходят событием `plugins-changed`.
+//    Ошибка IPC глушится в контроллере.
 const pluginManager = createPluginManager({
-  root: document.getElementById("plugin-manager") as HTMLElement,
+  root: drawer.content,
   status: (msg) => status.flash(msg),
   onPlugins: (list) => {
     lastPlugins = list;
     pluginStatus.render(list);
-    // Счётчик в шапке панели владеет chrome-ом композиционный корень, не контроллер.
+    // Счётчик в шапке дровера владеет композиционный корень, не контроллер.
     updatePluginCount(list);
   },
 });
@@ -317,6 +316,9 @@ createShell({
     setActivePane: (p) => paneHost.setActive(p),
     isDirty: () => store.state().dirty,
     palette: () => {
+      // Взаимоисключение модальных слоёв: открытие палитры закрывает дровер
+      // (обратное не требуется — триггер палитры инертен, пока дровер открыт).
+      drawer.close();
       palette.toggle();
       // a11y: отражаем состояние палитры на её триггере.
       document
@@ -330,7 +332,7 @@ createShell({
     flash: (m) => status.flash(m),
   },
   format,
-  sidebar,
+  drawer,
   inspectorActive: () => inspector.isActive(),
   editorPane: EDITOR_PANE,
   previewPane: PREVIEW_PANE,

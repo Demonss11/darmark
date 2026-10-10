@@ -19,11 +19,19 @@
 
 Из `UX-spec.md §2` + `docs/DESIGN_DOC.md §13.2`:
 
+> **Миграция ADR-0024** (`tasks/TZ-PLUGIN-DRAWER.md`): управление плагинами переезжает в правый
+> модальный дровер; триггер `#tb-plugins` в тулбаре; левые `rail`/`sidebar` упраздняются
+> (`sidebar.ts` удаляется). Удаляются `#rail-plugins`, `#panel-plugins`, `#rail-logs`;
+> сохраняются `#plugin-manager` (в `#drawer-body`) и `#side-count` (в `.drawer-head`).
+
 ### id
 `app, toolbar, panes, statusbar, editor, preview, btn-new, btn-open, btn-save, btn-save-as, file-label, toggle-preview, toggle-sync, btn-inspect, chk-preview, chk-sync, stat-msg, stat-pos, stat-size, stat-inspect`
 
 ### Де-факто id (используются спеками)
-`view-switch, plugin-view, plugin-manager, panel-plugins, rail-plugins, format-group, e2e-marker, gutter, tab-name, tab-dirty`
+`view-switch, plugin-view, plugin-manager, side-count, format-group, e2e-marker, gutter, tab-name, tab-dirty`
+
+### Новые id (ADR-0024 — дровер плагинов)
+`tb-plugins, tb-plugins-cnt, tb-plugins-dot, drawer, drawer-title, drawer-body, drawer-close, drawer-reload-all, drawer-install, backdrop, sb-logs, log-badge`
 
 ### Селекторы
 `#preview .md-block[data-md]`, `.table-enhanced`, `.table-enhanced tbody tr`, `.table-enhanced td[data-md]`, `.table-count`, `.table-scroll`, `.col-filter-btn`, `.col-filter-menu`, `.col-filter-item`, `.inspect-active`, `.inspect-col`, `tr.inspect-row`, `.vtab.core`, `.vtab.plugin[data-view]`, `.pl-item[data-plugin]`, `.pl-badge`, `input.pl-enabled`, `button.pl-reload`

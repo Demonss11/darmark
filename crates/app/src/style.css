@@ -28,8 +28,7 @@
   --h-toolbar: 36px;
   --h-tabs: 32px;
   --h-status: 24px;
-  --w-rail: 44px;
-  --w-sidebar: 224px;
+  --w-drawer: 440px;
   --r-sm: 5px;
   --r-md: 7px;
   --r-lg: 12px;
@@ -173,7 +172,7 @@ body {
 }
 .file-chip .fname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); }
 
-/* иконочные кнопки тулбара/rail/sidebar */
+/* иконочные кнопки тулбара/дровера */
 .tbtn {
   display: inline-flex;
   align-items: center;
@@ -237,58 +236,8 @@ label.tbtn:has(> input:focus-visible) { outline: 2px solid var(--accent); outlin
 /* ===================== РАБОЧАЯ ОБЛАСТЬ ===================== */
 .workspace { display: flex; flex: 1; min-height: 0; }
 
-.rail {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1px;
-  width: var(--w-rail);
-  padding: 6px 0;
-  background: var(--bg-1);
-  border-right: 1px solid var(--line-soft);
-  flex-shrink: 0;
-}
-.rail-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  padding: 0;
-  border: none;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--fg-mute);
-  cursor: pointer;
-  transition: background 0.12s, color 0.12s;
-}
-.rail-btn:hover { background: var(--bg-3); color: var(--fg); }
-.rail-btn.active,
-.rail-btn[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
-.rail-btn:disabled { opacity: 0.4; cursor: default; }
-.rail-btn:disabled:hover { background: transparent; color: var(--fg-mute); }
-.rail-btn svg { width: 17px; height: 17px; }
-
-.sidebar {
-  width: var(--w-sidebar);
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
-  background: var(--bg-1);
-  border-right: 1px solid var(--line-soft);
-  flex-shrink: 0;
-  transition: width 0.15s ease, opacity 0.15s;
-}
-.sidebar.collapsed { width: 0; border-right-color: transparent; opacity: 0; }
-.side-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 12px 6px;
-  flex-shrink: 0;
-}
-/* inline-flex+baseline: счётчик встаёт на базовую линию заголовка (заполняется в Фазе 3). */
+/* inline-flex+baseline: счётчик встаёт на базовую линию заголовка (заполняется
+   композиционным корнем — updatePluginCount в main.ts). */
 .side-title {
   display: inline-flex;
   align-items: baseline;
@@ -297,11 +246,9 @@ label.tbtn:has(> input:focus-visible) { outline: 2px solid var(--accent); outlin
   font-weight: 600;
   color: var(--fg-mute);
 }
-/* Счётчик в шапке панели; .warn — «N с проблемой» (есть failed/quarantined). */
+/* Счётчик в шапке дровера; .warn — «N с проблемой» (есть failed/quarantined). */
 .side-count { color: var(--fg-mute); font-weight: 500; font-size: 11px; }
 .side-count.warn { color: var(--amber); }
-.side-panel { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
-.pl-panel { flex: 1; overflow-y: auto; padding: 2px 0 10px; }
 .side-empty { padding: 10px 12px; color: var(--fg-mute); font-size: 12px; }
 
 /* ===== Менеджер плагинов (H2, Фаза 5) ===== */
@@ -387,14 +334,14 @@ label.tbtn:has(> input:focus-visible) { outline: 2px solid var(--accent); outlin
 .pl-info:hover { background: var(--bg-3); color: var(--fg); }
 .pl-info[aria-expanded="true"] { background: var(--accent-soft); color: var(--pc); }
 .pl-info:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-/* Поповер: absolute к `.pl-item-head` (right:0 — чтобы не вылезал за узкий sidebar). */
+/* Поповер: absolute к `.pl-item-head` (right:0 — чтобы не вылезал за край дровера). */
 .pl-info-pop {
   position: absolute;
   top: calc(100% + 4px);
   right: 0;
   z-index: 100;
-  /* Ограничиваем по ширине sidebar, иначе в 224px поповер обрезается краем. */
-  max-width: min(300px, calc(var(--w-sidebar) - 24px));
+  /* Ограничиваем по ширине дровера, иначе в 440px поповер обрезается краем. */
+  max-width: min(300px, calc(var(--w-drawer) - 24px));
   padding: 10px 12px;
   background: var(--popover);
   border: 1px solid var(--pop-border);
@@ -784,6 +731,120 @@ label.tbtn:has(> input:focus-visible) { outline: 2px solid var(--accent); outlin
 }
 .ps-more:hover { background: var(--bg-3); color: var(--fg-dim); }
 .ps-more:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* ===================== ДРОВЕР ПЛАГИНОВ (drawer.ts) ===================== */
+.drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: var(--w-drawer);
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  background: var(--popover);
+  border-left: 1px solid var(--pop-border);
+  transform: translateX(100%);
+  transition: transform 0.22s cubic-bezier(0.2, 0.9, 0.3, 1);
+  box-shadow: var(--shadow-lg);
+}
+.drawer.open { transform: none; }
+.drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(0, 0, 0, 0.42);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s;
+}
+.drawer-backdrop.open { opacity: 1; pointer-events: auto; }
+.drawer-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 10px 8px 14px;
+  border-bottom: 1px solid var(--line-soft);
+  flex-shrink: 0;
+}
+.drawer-head .side-title { flex: 1; }
+.drawer-body { flex: 1; overflow-y: auto; padding: 2px 0 24px; }
+
+/* Триггер дровера в тулбаре: icon-only + счётчик активных + точка проблемы */
+.ipbtn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--fg-dim);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.12s, color 0.12s;
+}
+.ipbtn:hover { background: var(--bg-3); color: var(--fg); }
+.ipbtn.active { background: var(--accent-soft); color: var(--accent); }
+.ipbtn svg { width: 15px; height: 15px; }
+.ipbtn .cnt {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  min-width: 13px;
+  height: 13px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: var(--pc);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--bg-1);
+}
+.ipbtn .pdot {
+  position: absolute;
+  bottom: 2px;
+  left: 3px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--pc);
+}
+.ipbtn.has-problem .pdot { background: var(--red); animation: drawer-pulse 2s ease-in-out infinite; }
+.ipbtn.has-problem .cnt { background: var(--amber); color: #1a1400; }
+@keyframes drawer-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* Журнал в статусбаре (Фаза 3, заглушка) */
+.stat.clickable {
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.stat.clickable:hover { background: var(--bg-3); color: var(--fg-dim); }
+.badge {
+  padding: 0 5px;
+  border-radius: 7px;
+  background: var(--bg-3);
+  color: var(--fg-dim);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+/* Узкое окно: дровер на всю ширину */
+@media (max-width: 900px) {
+  .drawer { width: 100vw; border-left: none; }
+}
 
 /* ===================== РЕЖИМ ИНСПЕКТОРА ===================== */
 /* outline, а не border — не сдвигает layout и не конфликтует с таблицами */
