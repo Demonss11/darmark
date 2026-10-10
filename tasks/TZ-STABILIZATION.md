@@ -24,7 +24,7 @@
 | # | Что | Статус |
 |---|---|---|
 | S7 | Релизный workflow: тег `v*` → сборка (sidecars + NSIS) → артефакт/Release | сделано |
-| S8 | Smoke установщика на чистой машине (`@manual`): child рядом с exe, плагины работают, uninstall | план |
+| S8 | Smoke установщика: child рядом с exe, плагины работают, uninstall | сделано (silent-install на dev-машине; чистая VM — @manual) |
 | S9 | Бюджет размера: учесть установщик (darmark.exe + сайдкары), а не только exe | сделано |
 
 ## P1 — UX
@@ -59,7 +59,7 @@
 
 - [x] S1–S3 (F40/F41/F42) исправлены и под тестами (`cargo test -p darmark`).
 - [x] F44 (`view:create` гейтит регистрацию view) и F43 (хранилище + `get_setting`/`set_setting`) — сделано; [ ] рендер UI-схемы `contributes.settings` — отдельно.
-- [x] Релизный workflow (`release.yml`); [ ] установщик проверен на чистой машине (S8).
+- [x] Релизный workflow (`release.yml`); [x] smoke установщика (silent-install: 3 exe рядом, child запускается, uninstall чистый); [ ] чистая VM — `@manual` перед релизом.
 - [ ] UX-решение по представлениям принято и (при «панели») реализовано.
 - [ ] E2E зелёные (debug + release).
 - [x] ADR `HOST_API_VERSION` принят (ADR-0027).

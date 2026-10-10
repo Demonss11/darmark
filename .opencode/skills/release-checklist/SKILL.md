@@ -78,6 +78,22 @@ description: >
    - Release exe: `target/release/darmark.exe`.
    - Сайдкары в бандле: `darmark-plugin-host.exe` (≈0.9 МБ) и `darmark-plugin.exe` (≈0.9 МБ).
 
+7. **Smoke установщика (S8)**
+
+   Наименее инвазивно — silent-install в temp (система меняется обратимо):
+
+   ```powershell
+   $setup = Get-ChildItem target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
+   $dir = Join-Path $env:TEMP "darmark-smoke"
+   Start-Process $setup.FullName -ArgumentList "/S","/D=$dir" -Wait
+   # рядом должны лежать darmark.exe, darmark-plugin-host.exe, darmark-plugin.exe, uninstall.exe
+   cmd /c "`"$dir\darmark.exe`" --debug-plugin <путь-к-плагину> < NUL"   # exit 0, child из sidecar
+   & "$dir\darmark-plugin.exe" test <путь-к-плагину>                     # exit 0
+   Start-Process "$dir\uninstall.exe" -ArgumentList "/S" -Wait          # каталог и следы удаляются
+   ```
+
+   Полная чистая VM и ручные диалоги — `@manual`.
+
 ## Что гонять перед tauri build
 
 Обязательно (эквивалент CI):
