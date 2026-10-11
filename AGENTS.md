@@ -7,6 +7,9 @@ Tauri 2 + vanilla TypeScript/Vite на фронте + чистое Rust-ядро
 
 ## Структура и границы
 
+- `DESIGN.md` (корень) — визуальная идентичность для агентов: CSS-токены и правила оформления.
+  **Читать перед UI-правками.** Нормативный layout/контракты — `docs/DESIGN_DOC.md`;
+  бэклог идей — `ideas/BACKLOG.md`; решения — ADR в `docs/adr/`.
 - `crates/md-core/` — чистое ядро markdown→HTML (pulldown-cmark 0.13). **Без Tauri/GUI-зависимостей**;
   должно оставаться переиспользуемым в CLI/тестах. Здесь `to_html()`/`to_html_with()`/`to_html_mapped()`,
   XSS-санитайзер, рендер ведущей YAML-шапки в «таблицу-таблиц» (`frontmatter.rs`) и юнит-тесты.
