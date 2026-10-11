@@ -284,6 +284,7 @@ export interface ViewContext {
 | `pluginViews.ts` | тир-1 представления плагинов |
 | `pluginStatusBar.ts` | per-plugin статусбар |
 | `pluginColor.ts` | цвета плагинов |
+| `logPanel.ts` | панель-консоль журнала: буфер, подписка на события, рендер (ADR-0029) |
 | `sampleDocument.ts` | стартовый документ |
 
 `linkController` строит **один** `RenderIndex` на `rev` и раздаёт его inspector и scrollsync.
@@ -628,6 +629,9 @@ scan(plugins_dir) -> validate(manifest) -> load(src) -> on_activate(ctx)
   `#rail-plugins`, `#panel-plugins`, `#rail-logs`; добавляются `#tb-plugins`, `#tb-plugins-cnt`,
   `#tb-plugins-dot`, `#drawer`, `#drawer-title`, `#drawer-body`, `#drawer-close`, `#backdrop`,
   `#sb-logs`, `#log-badge`.
+- **Контракты панели журнала (ADR-0029):** слот `#sb-logs` и бейдж `#log-badge` в статусбаре
+  сохраняются; аддитивно добавляются `#logs-panel`, `#logs-resize`, `#logs-collapse`,
+  `#logs-list`, `#logs-clear`.
 - **Инварианты скролла и переключения view:** `#editor` и `#preview` — сами скролл-контейнеры
   (e2e читает их `scrollTop`); переключение view — `hidden`-toggle уже смонтированных узлов,
   не пересоздание DOM.
@@ -694,6 +698,7 @@ scan(plugins_dir) -> validate(manifest) -> load(src) -> on_activate(ctx)
 | 26 | Локальный каталог плагинов: `plugins/index.json` + CLI `install/link/remove/update` (Фаза 2a H3) | §7.1, §10 | ADR-0026 |
 | 27 | Политика совместимости `HOST_API_VERSION`: мажор — только несовместимые изменения, двухступенчатая депрекация (Фаза 3 H3, S15) | §7.2, §8 | ADR-0027 |
 | 28 | Rust-undo: diff-модель `EditOp {start, removed, inserted}`, единый стек ввода/`apply_edit`, команды `undo_document`/`redo_document` (D5, S16) | §4.1, §4.2, §4.3 | ADR-0028 |
+| 29 | Журнал: сворачивающаяся панель-консоль над `#statusbar` (исключение из паттерна дровера) | §5.5, §13.2 | ADR-0029 |
 
 ---
 
