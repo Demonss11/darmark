@@ -53,6 +53,8 @@
 - **F53** — `windows` уже в дереве `darmark` → маргинальная цена по размеру ≈0; `sysinfo` — новая
   зависимость (+57 КиБ standalone, +21 КиБ сверх winapi).
 - **F54** — семантика совпадает: «RSS» == `WorkingSetSize`, «virtual» == `PrivateUsage`.
+  **Уточнение (правка 11.10.2026):** спайк не измерял `PrivateWorkingSetSize` (EX2); UI-метрика
+  главного процесса переведена на приватный рабочий набор — см. §2.1 п. 3.
 
 **Оговорки спайка** (учитывать при реализации): числа WinAPI — «порядок величины» (разброс ~×2);
 WebView2/event-loop напрямую не тестировался (AC-19 — ручной GUI-прогон); замеры — на idle child'ах;
@@ -69,20 +71,24 @@ WebView2/event-loop напрямую не тестировался (AC-19 — р
 ### 2.1. Источник данных
 
 1. Источник — **WinAPI** через крейт `windows` (уже в дереве `darmark`, `windows 0.62.2`):
-   `OpenProcess`/`CloseHandle`, `K32GetProcessMemoryInfo` (`PROCESS_MEMORY_COUNTERS_EX`),
+   `OpenProcess`/`CloseHandle`, `K32GetProcessMemoryInfo` (`PROCESS_MEMORY_COUNTERS_EX`/`EX2`),
    `GetProcessTimes`, `GetProcessHandleCount`. Хост **не добавляет новых крейтов** (D6/§14).
 2. `windows` подключается **прямой зависимостью** `crates/app/src-tauri/Cargo.toml` с **минимальным**
    набором фич (`Win32_Foundation`, `Win32_System_ProcessStatus`, `Win32_System_Threading`), только
    под `#[cfg(windows)]`. Рост `cargo tree -p darmark` и размера release-exe не допускается
    (F53; size-gate §14).
-3. Основная метрика ОЗУ **зависит от класса процесса** (уточнение п. 21): для child'а плагина —
-   **`PrivateUsage`** (**private/commit**) — та же величина, которую ограничивает Job Object
-   (`JOB_OBJECT_LIMIT_PROCESS_MEMORY`); для главного процесса — **рабочий набор**
-   (`WorkingSetSize`) — «ОЗУ» в UI (лимита Job Object у него нет). Вторая метрика (рабочий набор
-   для плагина / commit для главного) и `PeakWorkingSetSize`/`PeakPagefileUsage` — опционально в
-   детали. Обе — из **одного** вызова `K32GetProcessMemoryInfo` (`PROCESS_MEMORY_COUNTERS_EX`),
-   стоимость не растёт (F54). CPU % — производная `GetProcessTimes` (kernel+user) между тиками по
-   wall-clock; хендлы — `GetProcessHandleCount`.
+3. Основная метрика ОЗУ **зависит от класса процесса** (уточнение п. 21; правка 11.10.2026): для
+   child'а плагина — **`PrivateUsage`** (**private/commit**) — та же величина, которую ограничивает
+   Job Object (`JOB_OBJECT_LIMIT_PROCESS_MEMORY`); для главного процесса — **приватный рабочий
+   набор** (`PROCESS_MEMORY_COUNTERS_EX2.PrivateWorkingSetSize`) — то же число, что показывает
+   Диспетчер задач в колонке «Память» (лимита Job Object у него нет). Полный `WorkingSetSize`
+   включает разделяемые страницы DLL и завышает цифру (замер: 24.5 МБ против 3.84 МБ), поэтому
+   служит только **фолбэком**, если EX2-хвост не заполнен (старая ОС / неизвестный `cb` →
+   `PrivateWorkingSetSize == 0`: берём `WorkingSetSize`, а не лживый ноль — F51). Вторая метрика
+   (рабочий набор для плагина / commit для главного) и `PeakWorkingSetSize`/`PeakPagefileUsage` —
+   опционально в детали. Метрики — из **одного** вызова `K32GetProcessMemoryInfo`
+   (`PROCESS_MEMORY_COUNTERS_EX`/`EX2`), стоимость не растёт (F54). CPU % — производная
+   `GetProcessTimes` (kernel+user) между тиками по wall-clock; хендлы — `GetProcessHandleCount`.
 4. `sysinfo` **отклонён как база** (см. §4) и в продукт (хост и child) **не вводится**.
 
 ### 2.2. Мониторируемые процессы и границы
@@ -125,8 +131,9 @@ WebView2/event-loop напрямую не тестировался (AC-19 — р
 16. Контракт `resource-metrics`:
     `{ ts, main: { mem_bytes, cpu_percent?, handles? },
        children: [ { plugin_id, pid, mem_bytes, mem_limit_bytes, cpu_percent?, handles? } ] }`.
-    `ts` — `Date.now()` на Rust-стороне; `mem_bytes` — рабочий набор для **главного**, private/commit
-    (`PrivateUsage`) для **child'а** (п. 3, п. 21); `mem_limit_bytes` — лимит Job Object плагина
+    `ts` — `Date.now()` на Rust-стороне; `mem_bytes` — приватный рабочий набор
+    (`PrivateWorkingSetSize`, как в Диспетчере задач; фолбэк на `WorkingSetSize`) для **главного**,
+    private/commit (`PrivateUsage`) для **child'а** (п. 3, п. 21); `mem_limit_bytes` — лимит Job Object плагина
     (private/commit, знаменатель порогов и прогресс-бара, §2.5 п. 21), у главного отсутствует;
     формат «N МБ» — на фронте; `cpu_percent`/`handles` опциональны (фронт рендерит, если есть).
 17. Изменения **аддитивны**: мажор `HOST_API_VERSION` **не поднимается**; контракт host↔child, набор
@@ -155,8 +162,8 @@ WebView2/event-loop напрямую не тестировался (AC-19 — р
       (`.warn` = 75% = 48 МБ, `.crit` = 90% = 58 МБ при дефолтных 64 МБ), рядом в UI показывается
       лимит (`24 / 64 МБ`), прогресс-бар = `commit / лимит`; пороги масштабируются при смене
       бюджета (per-plugin `with_mem_bytes`, Фаза 3 `config.json`);
-    - **главный процесс** (Job Object нет) — рабочий набор (`WorkingSetSize`), `.warn` 800 МБ /
-      `.crit` 1.5 ГБ.
+    - **главный процесс** (Job Object нет) — приватный рабочий набор (`PrivateWorkingSetSize`, как
+      в Диспетчере задач; фолбэк на `WorkingSetSize`), `.warn` 800 МБ / `.crit` 1.5 ГБ.
     Обе величины берутся из того же вызова `K32GetProcessMemoryInfo` (§2.1 п. 3) — стоимость не
     растёт. **Бюджет Job Object (64 МБ) не пересматривается**; обоснование и замер фактического
     commit-базлайна плагинов — `TZ-RESOURCE-MON §6.5`/§10 №4.
@@ -206,7 +213,8 @@ WebView2/event-loop напрямую не тестировался (AC-19 — р
 - **Правки `supervisor.rs`/`manager.rs`** (PID-геттеры) — необходимы, т.к. PID наружу не выходят.
 - **Пороги/единицы согласованы** (п. 21, уточнение 11.10.2026): для плагина порожатся
   private/commit как **доли лимита Job Object** (warn 75% / crit 90%), для главного процесса —
-  рабочий набор. Прежнее рассогласование «пороги по рабочему набору vs committed-лимит» снято.
+  приватный рабочий набор (как в Диспетчере задач). Прежнее рассогласование «пороги по рабочему
+  набору vs committed-лимит» снято.
   Остаётся **замер** фактического commit-базлайна штатных плагинов (`TZ-RESOURCE-MON §10` №4) —
   подтвердить, что warn 75% не горит постоянно.
 - **Оговорки спайка:** AC-19 — только ручная проверка; абсолютные числа — порядок величины.

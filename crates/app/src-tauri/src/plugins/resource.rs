@@ -5,7 +5,9 @@
 //! Источник — WinAPI через крейт `windows` (`K32GetProcessMemoryInfo`, `GetProcessTimes`,
 //! `GetProcessHandleCount`) за [`ProcessMetrics`]. Основная метрика ОЗУ зависит от класса
 //! процесса (ADR-0031 §2.1 п.3): у **child'а** — `PrivateUsage` (private/commit, та же
-//! величина, что ограничивает Job Object), у **главного** — `WorkingSetSize` (рабочий набор).
+//! величина, что ограничивает Job Object), у **главного** — `PrivateWorkingSetSize`
+//! (`PROCESS_MEMORY_COUNTERS_EX2`, приватный рабочий набор — то, что показывает Диспетчер
+//! задач), с фолбэком на `WorkingSetSize` там, где EX2-хвост не заполнен.
 //!
 //! **Дедлок-безопасность (ADR-0031 §2.3 п.10):** снимок списка `(plugin_id, pid)` берётся
 //! неблокирующим `try_lock` `PluginManager` в потоке монитора; при занятом локе тик
@@ -26,7 +28,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use serde::Serialize;
 use windows::Win32::Foundation::{CloseHandle, FILETIME, HANDLE};
 use windows::Win32::System::ProcessStatus::{
-    K32GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS, PROCESS_MEMORY_COUNTERS_EX,
+    K32GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS, PROCESS_MEMORY_COUNTERS_EX2,
 };
 use windows::Win32::System::Threading::{
     GetProcessHandleCount, GetProcessTimes, OpenProcess, PROCESS_QUERY_INFORMATION,
@@ -43,19 +45,37 @@ const CPU_PREV_TTL: Duration = Duration::from_secs(POLL_PERIOD.as_secs() * 10);
 
 /// Сырые метрики одного процесса за один вызов провайдера.
 ///
-/// `working_set_bytes`/`private_bytes` берутся из одного `K32GetProcessMemoryInfo`
-/// (`PROCESS_MEMORY_COUNTERS_EX`); `cpu_percent`/`handles` опциональны — фронт рендерит их,
-/// если есть (TZ §4.4). Отсутствие метрики представляется `None`, а не нулём (F51).
+/// `working_set_bytes`/`private_bytes`/`private_working_set_bytes` берутся из одного
+/// `K32GetProcessMemoryInfo` (`PROCESS_MEMORY_COUNTERS_EX2`); `cpu_percent`/`handles`
+/// опциональны — фронт рендерит их, если есть (TZ §4.4). Отсутствие метрики представляется
+/// `None`, а не нулём (F51).
 #[derive(Debug, Clone, Copy, Default)]
 pub struct RawMetrics {
-    /// Рабочий набор (`WorkingSetSize`), байты.
+    /// Полный рабочий набор (`WorkingSetSize`), байты — включает разделяемые страницы (DLL).
     pub working_set_bytes: usize,
     /// Private/commit (`PrivateUsage`), байты — то, что ограничивает Job Object.
     pub private_bytes: usize,
+    /// Приватный рабочий набор (`PrivateWorkingSetSize`, `PROCESS_MEMORY_COUNTERS_EX2`), байты —
+    /// то, что показывает Диспетчер задач. `0`, если ОС не заполнила EX2-хвост: тогда
+    /// эффективное значение берётся из [`RawMetrics::private_working_set`].
+    pub private_working_set_bytes: usize,
     /// CPU % (доля одного ядра), `None` если измерить не удалось.
     pub cpu_percent: Option<f64>,
     /// Число хендлов процесса, `None` если прав на чтение не хватает.
     pub handles: Option<u32>,
+}
+
+impl RawMetrics {
+    /// Приватный рабочий набор главного процесса (как в Диспетчере задач) с фолбэком на полный
+    /// рабочий набор: `PrivateWorkingSetSize == 0` на старой ОС / при неизвестном `cb`
+    /// (EX2-хвост не заполнен) — тогда берём `WorkingSetSize`, а не лживый ноль (F51).
+    pub fn private_working_set(&self) -> usize {
+        if self.private_working_set_bytes == 0 {
+            self.working_set_bytes
+        } else {
+            self.private_working_set_bytes
+        }
+    }
 }
 
 /// Шов тестопригодности: источник «сырых» метрик процесса по PID.
@@ -66,10 +86,10 @@ pub trait ProcessMetrics: Send + Sync {
     fn read(&self, pid: u32) -> Option<RawMetrics>;
 }
 
-/// Метрики главного процесса (`WorkingSetSize`; лимита Job Object нет).
+/// Метрики главного процесса (приватный рабочий набор; лимита Job Object нет).
 #[derive(Debug, Clone, Serialize)]
 pub struct MainMetrics {
-    /// Рабочий набор, байты (TZ §4.2).
+    /// Приватный рабочий набор, байты (TZ §4.2) — как в Диспетчере задач.
     pub mem_bytes: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cpu_percent: Option<f64>,
@@ -107,8 +127,10 @@ impl ResourceSnapshot {
     /// `None` — если метрика **главного** процесса не читается (`provider.read(main_pid)`
     /// вернул `None`): отсутствующая метрика — не ноль (F51/ADR-0031 §2.3 п.11), а главный
     /// процесс практически всегда читаем, так что лживый `mem_bytes: 0` недопустим. Для главного
-    /// берётся `working_set_bytes`, для child'а — `private_bytes` (commit). Нечитаемые дети
-    /// пропускаются (не «0»). `mem_limit_bytes` — бюджет Job Object, только у детей (TZ §4.4).
+    /// берётся [`RawMetrics::private_working_set`] (приватный рабочий набор, как в Диспетчере
+    /// задач; фолбэк на полный рабочий набор при нулевом `PrivateWorkingSetSize`), для child'а —
+    /// `private_bytes` (commit). Нечитаемые дети пропускаются (не «0»). `mem_limit_bytes` — бюджет
+    /// Job Object, только у детей (TZ §4.4).
     ///
     // TODO(Фаза 3, ADR-0031 §2.5 п.21): `mem_limit_bytes` — скаляр, общий на всех детей.
     //   При пер-плагинных бюджетах (`super::supervisor::SupervisorParams::with_mem_bytes`)
@@ -140,7 +162,7 @@ impl ResourceSnapshot {
             .collect();
 
         let main = MainMetrics {
-            mem_bytes: main_raw.working_set_bytes,
+            mem_bytes: main_raw.private_working_set(),
             cpu_percent: main_raw.cpu_percent,
             handles: main_raw.handles,
         };
@@ -305,30 +327,39 @@ impl ProcessMetrics for WinProcessMetrics {
             let _ = CloseHandle(handle);
         }
 
-        let (working_set_bytes, private_bytes) = memory?;
+        let (working_set_bytes, private_bytes, private_working_set_bytes) = memory?;
         let cpu_percent = self.cpu_percent(pid, cpu);
         Some(RawMetrics {
             working_set_bytes,
             private_bytes,
+            private_working_set_bytes,
             cpu_percent,
             handles,
         })
     }
 }
 
-/// (рабочий набор, private/commit) по открытому хэндлу — один вызов `K32GetProcessMemoryInfo`.
+/// (рабочий набор, private/commit, приватный рабочий набор) по открытому хэндлу — один вызов
+/// `K32GetProcessMemoryInfo` со структурой `PROCESS_MEMORY_COUNTERS_EX2`.
+///
+/// `cb` = `size_of::<PROCESS_MEMORY_COUNTERS_EX2>()` (96 байт на 64-бит): на старых ОС, не
+/// знающих EX2-хвост, `PrivateWorkingSetSize` остаётся нулём — эффективное значение с фолбэком
+/// даёт [`RawMetrics::private_working_set`].
 ///
 /// SAFETY: `handle` — валидный хэндл с правом запроса; `counters` — локальная структура
 /// нужного размера; WinAPI пишет в неё и возвращает BOOL (не Result).
-unsafe fn memory_counter(handle: HANDLE) -> Option<(usize, usize)> {
-    let mut counters = PROCESS_MEMORY_COUNTERS_EX::default();
+unsafe fn memory_counter(handle: HANDLE) -> Option<(usize, usize, usize)> {
+    let mut counters = PROCESS_MEMORY_COUNTERS_EX2::default();
     let ok = K32GetProcessMemoryInfo(
         handle,
-        &mut counters as *mut PROCESS_MEMORY_COUNTERS_EX as *mut PROCESS_MEMORY_COUNTERS,
-        std::mem::size_of::<PROCESS_MEMORY_COUNTERS_EX>() as u32,
+        &mut counters as *mut PROCESS_MEMORY_COUNTERS_EX2 as *mut PROCESS_MEMORY_COUNTERS,
+        std::mem::size_of::<PROCESS_MEMORY_COUNTERS_EX2>() as u32,
     );
-    ok.as_bool()
-        .then_some((counters.WorkingSetSize, counters.PrivateUsage))
+    ok.as_bool().then_some((
+        counters.WorkingSetSize,
+        counters.PrivateUsage,
+        counters.PrivateWorkingSetSize,
+    ))
 }
 
 /// CPU-время (kernel + user) в единицах 100 нс по открытому хэндлу.

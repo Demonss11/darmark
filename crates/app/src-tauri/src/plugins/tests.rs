@@ -2614,15 +2614,17 @@ fn log_without_sink_is_noop() {
 //
 // Фазовый TDD-контракт (Windows-only модуль `plugins/resource.rs`, ADR-0031 §2.4 п.16, §2.6):
 //
-// * `resource::RawMetrics { working_set_bytes, private_bytes, cpu_percent, handles }` —
-//   сырые метрики одного процесса (один вызов `K32GetProcessMemoryInfo` + times/handles);
+// * `resource::RawMetrics { working_set_bytes, private_bytes, private_working_set_bytes,
+//   cpu_percent, handles }` — сырые метрики одного процесса (один вызов
+//   `K32GetProcessMemoryInfo` + times/handles);
 // * `resource::ProcessMetrics` — шов тестопригодности:
 //   `fn read(&self, pid: u32) -> Option<RawMetrics>`; `None` — недоступный/мёртвый/
 //   невалидный PID (`0`, `u32::MAX`, системный `4`): запись пропускается, не паника, не «0»;
 // * `resource::ResourceSnapshot::collect(provider, main_pid, children, mem_limit_bytes, ts)
 //   -> Option<ResourceSnapshot>`: `None`, если недоступен главный процесс (нечего показывать);
-//   для **главного** берётся `working_set_bytes`, для **child'а** — `private_bytes`
-//   (private/commit); `mem_limit_bytes` — бюджет Job Object плагина;
+//   для **главного** берётся `private_working_set_bytes` (приватный рабочий набор — как в
+//   Диспетчере задач; фолбэк на `working_set_bytes` при нулевом private WS), для **child'а** —
+//   `private_bytes` (private/commit); `mem_limit_bytes` — бюджет Job Object плагина;
 // * `resource::{ResourceSnapshot, MainMetrics, ChildMetrics}` сериализуются в контракт
 //   `{ts, main:{mem_bytes,cpu_percent?,handles?},
 //     children:[{plugin_id,pid,mem_bytes,mem_limit_bytes,cpu_percent?,handles?}]}` (TZ §4.4);
@@ -2672,10 +2674,13 @@ mod resource_metrics {
         }
     }
 
+    /// Фейковые сырые метрики: `private_working_set_bytes` совпадает с рабочим набором
+    /// (фолбэк-эквивалент), если тесту не нужно различать их явно.
     fn raw(working_set: usize, private: usize) -> RawMetrics {
         RawMetrics {
             working_set_bytes: working_set,
             private_bytes: private,
+            private_working_set_bytes: working_set,
             cpu_percent: None,
             handles: None,
         }
@@ -2702,17 +2707,19 @@ mod resource_metrics {
         }
     }
 
-    /// Сборка снимка: главный — рабочий набор, child — private/commit (ADR-0031 §2.1 п.3);
-    /// лимит Job Object плагина проброшен в `mem_limit_bytes`. Оба процесса получают метрики
-    /// из **одного** вызова провайдера — класс процесса лишь выбирает поле.
+    /// Сборка снимка: главный — приватный рабочий набор (как в Диспетчере задач), child —
+    /// private/commit (ADR-0031 §2.1 п.3); лимит Job Object плагина проброшен в
+    /// `mem_limit_bytes`. Оба процесса получают метрики из **одного** вызова провайдера —
+    /// класс процесса лишь выбирает поле.
     #[test]
-    fn collect_uses_working_set_for_main_and_private_for_child() {
+    fn collect_uses_private_working_set_for_main_and_private_for_child() {
         let provider = FakeProvider::new(vec![
             (
                 7,
                 RawMetrics {
                     working_set_bytes: 300,
                     private_bytes: 111,
+                    private_working_set_bytes: 220,
                     cpu_percent: Some(1.5),
                     handles: Some(20),
                 },
@@ -2722,6 +2729,7 @@ mod resource_metrics {
                 RawMetrics {
                     working_set_bytes: 999,
                     private_bytes: 250,
+                    private_working_set_bytes: 500,
                     cpu_percent: Some(0.5),
                     handles: Some(30),
                 },
@@ -2733,7 +2741,10 @@ mod resource_metrics {
             .expect("главный доступен — снимок есть");
 
         assert_eq!(snap.ts, 1_760_000_000_000, "ts снимка");
-        assert_eq!(snap.main.mem_bytes, 300, "главный — рабочий набор");
+        assert_eq!(
+            snap.main.mem_bytes, 220,
+            "главный — приватный рабочий набор (как Диспетчер задач)"
+        );
         assert_eq!(snap.main.cpu_percent, Some(1.5));
         assert_eq!(snap.main.handles, Some(20));
 
@@ -2748,6 +2759,29 @@ mod resource_metrics {
         assert_eq!(child.mem_limit_bytes, LIMIT, "лимит Job Object проброшен");
         assert_eq!(child.cpu_percent, Some(0.5));
         assert_eq!(child.handles, Some(30));
+    }
+
+    /// Фолбэк главного: при `PrivateWorkingSetSize == 0` (старая ОС / неизвестный `cb`,
+    /// EX2-хвост не заполнен) берётся полный `WorkingSetSize`, а не лживый ноль (F51).
+    #[test]
+    fn main_falls_back_to_working_set_when_private_working_set_is_zero() {
+        let provider = FakeProvider::new(vec![(
+            7,
+            RawMetrics {
+                working_set_bytes: 300,
+                private_bytes: 111,
+                private_working_set_bytes: 0,
+                cpu_percent: None,
+                handles: None,
+            },
+        )]);
+
+        let snap = ResourceSnapshot::collect(&provider, 7, &[], LIMIT, 1)
+            .expect("главный доступен — снимок есть");
+        assert_eq!(
+            snap.main.mem_bytes, 300,
+            "нулевой private WS → фолбэк на полный рабочий набор"
+        );
     }
 
     /// Недоступный/невалидный PID не попадает в снимок: ни паники, ни записи «0» (ADR-0031
@@ -2880,7 +2914,10 @@ mod resource_metrics {
 
         let metrics = sink.metrics.lock().unwrap().clone();
         assert_eq!(metrics.len(), 1, "один снимок на тик");
-        assert_eq!(metrics[0].main.mem_bytes, 512, "главный — рабочий набор");
+        assert_eq!(
+            metrics[0].main.mem_bytes, 512,
+            "главный — приватный рабочий набор"
+        );
         assert_eq!(
             metrics[0].children[0].mem_bytes, 77,
             "child — private/commit"
