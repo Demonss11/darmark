@@ -16,7 +16,7 @@
 | S2 | Развести сигналы IPC: `plugins-changed` — только при смене состава/статуса/карантина; `plugin-views-changed` — на `set_view_content` | F41 | сделано |
 | S3 | Удалить мёртвый код `Supervisor::poll_event`/`EventPoll` (или задокументировать назначение) | F42 | сделано |
 | S4 | `view:create`: решить и (при необходимости) гейтить регистрацию view; синхронизировать пример §6.4 DESIGN_DOC | F44 | сделано |
-| S5 | Настройки плагина (`get_setting`/`set_setting`, `contributes.settings`): реализовать хранилище+UI-схему ИЛИ явный UX «не поддерживается» | F43 | сделано (бэкенд; UI-схема — отдельно) |
+| S5 | Настройки плагина (`get_setting`/`set_setting`, `contributes.settings`): реализовать хранилище+UI-схему ИЛИ явный UX «не поддерживается» | F43 | сделано (хранилище + UI-форма, S5/S5b) |
 | S6 | Каталог: поведение `update`/`remove` для ссылок + идемпотентность `remove` | F45–F47 | сделано |
 
 ## P0 — распространение
@@ -78,7 +78,7 @@
 ## Критерии готовности
 
 - [x] S1–S3 (F40/F41/F42) исправлены и под тестами (`cargo test -p darmark`).
-- [x] F44 (`view:create` гейтит регистрацию view) и F43 (хранилище + `get_setting`/`set_setting`) — сделано; [ ] рендер UI-схемы `contributes.settings` — отдельно.
+- [x] F44 (`view:create` гейтит регистрацию view) и F43 (хранилище + `get_setting`/`set_setting` + UI-форма `contributes.settings`, S5/S5b) — сделано.
 - [x] Релизный workflow (`release.yml`); [x] smoke установщика (silent-install: 3 exe рядом, child запускается, uninstall чистый); [ ] чистая VM — `@manual` перед релизом.
 - [x] UX-решение по представлениям: вариант **D** (текущий визуал вкладок + быстрый возврат) — принято и реализовано.
 - [~] E2E: `plugins.feature`/`tabs.feature` закрыты, новые сценарии зелёные (standalone); полный прогон нестабилен из-за `tauri-driver` (см. «Открытые вопросы»).

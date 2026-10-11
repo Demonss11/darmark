@@ -122,8 +122,8 @@ on_deactivate → terminate`. Ошибка загрузки/активации �
   единый `notify` даёт лишний `list_plugins` при смене view (F41).
 - Постоянные настройки плагина (`get_setting`/`set_setting`) реализованы (F43/S5): per-plugin
   JSON-хранилище `%APPDATA%/darmark/plugin-settings/<id>.json` (scope по `_plugin_id`); UI-схема
-  `contributes.settings` пока не рендерится. `view:create` теперь гейтит регистрацию тир-1
-  представления (deny-by-default, F44/S4).
+  `contributes.settings` рендерится в менеджере (S5b, секция «Настройки»). `view:create` теперь
+  гейтит регистрацию тир-1 представления (deny-by-default, F44/S4).
 
 ---
 

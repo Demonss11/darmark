@@ -593,7 +593,7 @@ scan(plugins_dir) -> validate(manifest) -> load(src) -> on_activate(ctx)
 ## 12. Настройки, состояние, recent files
 
 - **Конфиг приложения**: `%APPDATA%/darmark/config.json`, владелец — Rust `SettingsStore`.
-- **Плагины**: `%APPDATA%/darmark/plugins/<id>/` (манифест + `.lua`); постоянные настройки плагина — `%APPDATA%/darmark/plugin-settings/<id>.json` (per-plugin JSON-объект; UI-схема `contributes.settings` пока не рендерится).
+- **Плагины**: `%APPDATA%/darmark/plugins/<id>/` (манифест + `.lua`); постоянные настройки плагина — `%APPDATA%/darmark/plugin-settings/<id>.json` (per-plugin JSON-объект; UI-схема `contributes.settings` рендерится в менеджере — секция «Настройки», S5b).
 - **Состояние окна**: размер/позиция окна, layout (дерево), открытые документы, активная панель — восстанавливается между сессиями.
 - **Recent files**: список путей + время, лимит 20.
 - Доступ плагина к настройкам: `host.get_setting(key)`, `host.set_setting(key, value)` — только своего плагина.
