@@ -16,7 +16,7 @@ use plugin_proto::envelope::PluginError;
 use plugin_proto::manifest::ViewContrib;
 use serde_json::{json, Value};
 
-use crate::{PluginInfo, PluginViewInfo};
+use crate::{PluginInfo, PluginStatus, PluginViewInfo};
 
 use super::bus::EventBus;
 use super::manager::{effective_permissions, PluginManager};
@@ -36,6 +36,18 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
+/// Состояние плагина как snake_case-строка. Держим синхронно с сериализацией
+/// [`PluginStatus`] (`#[serde(rename_all = "snake_case")]`): журнал (S11) ждёт строки
+/// `stopped`/`active`/`failed`/`quarantined`.
+fn status_state(status: &PluginStatus) -> &'static str {
+    match status {
+        PluginStatus::Stopped => "stopped",
+        PluginStatus::Active => "active",
+        PluginStatus::Failed { .. } => "failed",
+        PluginStatus::Quarantined => "quarantined",
+    }
+}
+
 /// Последний документ, для которого публиковались `document:opened`/`changed`.
 /// Нужен, чтобы после (ре)старта view-плагина переиздать ему `document:opened`:
 /// иначе вкладка, наполняемая по подписке, останется пустой.
@@ -44,6 +56,18 @@ struct LastDoc {
     id: String,
     path: Option<String>,
 }
+
+/// Канал `plugin-status-changed` (S11): `(plugin_id, old_state, new_state, message)`.
+///
+/// Состояния — snake_case [`PluginStatus`] (`stopped`/`active`/`failed`/`quarantined`).
+/// По умолчанию no-op (тесты, [`PluginHost::empty`]); подключается
+/// [`PluginHost::with_status_changed_sink`].
+pub type StatusChangedSink = Arc<dyn Fn(&str, &str, &str, Option<&str>) + Send + Sync>;
+
+/// Канал `document-event` (S11): `(type, path, rev)`. `type` — `new`/`open`/`save`/`close`.
+///
+/// По умолчанию no-op; подключается [`PluginHost::with_document_event_sink`].
+pub type DocumentEventSink = Arc<dyn Fn(&str, Option<&str>, Option<u64>) + Send + Sync>;
 
 /// Общее состояние плагинной подсистемы (один экземпляр на приложение).
 pub struct PluginHost {
@@ -74,6 +98,10 @@ pub struct PluginHost {
     /// После (ре)старта view-плагина переиздаём ему `document:opened`, чтобы
     /// вкладка, наполняемая по подписке, не осталась пустой.
     last_doc: Mutex<Option<LastDoc>>,
+    /// Канал `plugin-status-changed` (S11): переходы статуса плагина для журнала.
+    status_changed_sink: StatusChangedSink,
+    /// Канал `document-event` (S11): действия пользователя над документом (`new`/`open`/…).
+    document_event_sink: DocumentEventSink,
 }
 
 /// Максимум раундов `pump`: обработчик события может сам править документ (`apply_edit`)
@@ -107,6 +135,8 @@ impl PluginHost {
             config_path: None,
             plugin_settings: None,
             last_doc: Mutex::new(None),
+            status_changed_sink: Arc::new(|_, _, _, _| {}),
+            document_event_sink: Arc::new(|_, _, _| {}),
         }
     }
 
@@ -129,6 +159,8 @@ impl PluginHost {
             config_path: None,
             plugin_settings: None,
             last_doc: Mutex::new(None),
+            status_changed_sink: Arc::new(|_, _, _, _| {}),
+            document_event_sink: Arc::new(|_, _, _| {}),
         }
     }
 
@@ -155,6 +187,59 @@ impl PluginHost {
     pub fn with_plugins_notify(mut self, notify: Arc<dyn Fn() + Send + Sync>) -> Self {
         self.plugins_notify = notify;
         self
+    }
+
+    /// Подключает канал `plugin-status-changed` (S11): переходы статуса плагина.
+    ///
+    /// По умолчанию (без вызова) — no-op. Подключается в `setup_plugins` для эмиссии
+    /// события `plugin-status-changed` в журнал фронтенда.
+    pub fn with_status_changed_sink(mut self, sink: StatusChangedSink) -> Self {
+        self.status_changed_sink = sink;
+        self
+    }
+
+    /// Подключает канал `document-event` (S11): действия пользователя над документом.
+    ///
+    /// По умолчанию (без вызова) — no-op. Подключается в `setup_plugins`.
+    pub fn with_document_event_sink(mut self, sink: DocumentEventSink) -> Self {
+        self.document_event_sink = sink;
+        self
+    }
+
+    /// Публикует `document-event` (S11): действие пользователя над документом.
+    ///
+    /// `kind` — `new`/`open`/`save`/`close`; `path`/`rev` опциональны. Доставка — через
+    /// [`DocumentEventSink`] (Tauri-событие `document-event`), подключённый в `setup_plugins`.
+    pub fn publish_document_event(&self, kind: &str, path: Option<&str>, rev: Option<u64>) {
+        (self.document_event_sink)(kind, path, rev);
+    }
+
+    /// Снимок статуса плагина (для сравнения «до/после» при эмиссии `plugin-status-changed`).
+    fn runtime_status(&self, id: &str) -> Option<PluginStatus> {
+        lock(&self.manager)
+            .get(id)
+            .map(|runtime| runtime.status.clone())
+    }
+
+    /// Эмитит `plugin-status-changed` для одного перехода. `message` — диагностический
+    /// текст (при `failed` фолбэк на сообщение из [`PluginStatus::Failed`]).
+    fn emit_status_transition(
+        &self,
+        id: &str,
+        old: &PluginStatus,
+        new: &PluginStatus,
+        message: Option<&str>,
+    ) {
+        let fallback = match new {
+            PluginStatus::Failed { message } => Some(message.as_str()),
+            _ => None,
+        };
+        (self.status_changed_sink)(
+            id,
+            status_state(old),
+            status_state(new),
+            message.or(fallback),
+        );
     }
 
     /// Уведомляет фронтенд о смене реестра/контента представлений (`plugin-views-changed`).
@@ -319,6 +404,9 @@ impl PluginHost {
         // Отказ доставки уводит статус плагина в failed/quarantined — менеджер UI
         // должен узнать об этом сразу, а не после следующего действия пользователя.
         let mut status_changed = false;
+        // Переходы статуса копим и эмитим после отпускания блокировки `manager` (S11):
+        // sink — это Tauri-emit, под мьютексом менеджера его вызывать не следует.
+        let mut transitions: Vec<(String, PluginStatus, PluginStatus, Option<String>)> = Vec::new();
         for _ in 0..MAX_PUMP_ROUNDS {
             // Переносим отложенные `document:changed` (от плагинных apply_edit) в шину.
             {
@@ -337,15 +425,25 @@ impl PluginHost {
             let mut manager = lock(&self.manager);
             for event in &events {
                 for runtime in manager.iter_active_mut() {
+                    let old = runtime.status.clone();
                     if let Err(error) = runtime.dispatch_event(&event.name, event.payload.clone()) {
                         eprintln!(
                             "плагин {}: событие {} не доставлено: {}",
                             runtime.id, event.name, error.message
                         );
                         status_changed = true;
+                        transitions.push((
+                            runtime.id.clone(),
+                            old,
+                            runtime.status.clone(),
+                            Some(error.message),
+                        ));
                     }
                 }
             }
+        }
+        for (id, old, new, message) in &transitions {
+            self.emit_status_transition(id, old, new, message.as_deref());
         }
         if status_changed {
             // Сменился статус/карантин, но не реестр view → только `plugins-changed` (F41/S2).
@@ -377,15 +475,39 @@ impl PluginHost {
     ///
     /// Ошибка запуска одного плагина не мешает остальным и не роняет GUI (§4.7).
     pub fn start_enabled(&self) {
+        // Переходы статуса при автозапуске (S11) — копим и эмитим после manager-блокировки.
+        let mut transitions: Vec<(String, PluginStatus, PluginStatus, Option<String>)> = Vec::new();
         {
             let mut manager = lock(&self.manager);
             for runtime in manager.iter_mut() {
                 if runtime.is_enabled() {
-                    if let Err(error) = runtime.start() {
-                        eprintln!("плагин {}: не запущен: {}", runtime.id, error.message);
+                    let old = runtime.status.clone();
+                    match runtime.start() {
+                        Ok(()) => {
+                            if runtime.status != old {
+                                transitions.push((
+                                    runtime.id.clone(),
+                                    old,
+                                    runtime.status.clone(),
+                                    None,
+                                ));
+                            }
+                        }
+                        Err(error) => {
+                            eprintln!("плагин {}: не запущен: {}", runtime.id, error.message);
+                            transitions.push((
+                                runtime.id.clone(),
+                                old,
+                                runtime.status.clone(),
+                                Some(error.message),
+                            ));
+                        }
                     }
                 }
             }
+        }
+        for (id, old, new, message) in &transitions {
+            self.emit_status_transition(id, old, new, message.as_deref());
         }
         // on_activate мог править документ — доставляем отложенные события и уведомляем.
         // Состав/статусы изменились (старт) — оба сигнала.
@@ -421,12 +543,16 @@ impl PluginHost {
     /// `host.set_view_content` из `on_activate` вернул бы `unknown_view`. При выключении —
     /// наоборот: стоп, затем снятие view (нет «зомби»).
     pub fn set_enabled(&self, id: &str, enabled: bool) -> Result<(), PluginError> {
-        let (views_contrib, effective) = {
+        let (views_contrib, effective, old_status) = {
             let manager = lock(&self.manager);
             let runtime = manager
                 .get(id)
                 .ok_or_else(|| PluginError::new("unknown_plugin", format!("нет плагина {id}")))?;
-            (runtime.views.clone(), runtime.effective())
+            (
+                runtime.views.clone(),
+                runtime.effective(),
+                runtime.status.clone(),
+            )
         };
 
         // View регистрируем ДО старта child (иначе `host.set_view_content` из `on_activate`
@@ -460,6 +586,11 @@ impl PluginHost {
         }
 
         // `on_activate` мог править документ; вкл/выкл меняет состав/статус и реестр view.
+        // Диагностика (S11): переход статуса (в т.ч. отказ старта → failed/quarantined).
+        if let Some(new_status) = self.runtime_status(id) {
+            let message = result.as_ref().err().map(|e| e.message.as_str());
+            self.emit_status_transition(id, &old_status, &new_status, message);
+        }
         self.pump();
         self.notify_all();
         result
@@ -471,6 +602,7 @@ impl PluginHost {
     /// настройки и каталог с диска. Ошибка удаления файлов не откатывает удаление
     /// из реестра — плагин уже не запустится, а каталог можно удалить вручную.
     pub fn remove(&self, id: &str) -> Result<(), PluginError> {
+        let old_status = self.runtime_status(id);
         // Снимаем views до удаления из менеджера: иначе останутся «зомби»-вкладки.
         lock(&self.views).remove_plugin(id);
 
@@ -505,6 +637,10 @@ impl PluginHost {
 
         self.pump();
         // Удаление меняет и реестр view, и состав плагинов — оба сигнала.
+        // Диагностика (S11): плагин исчез из реестра — фиксируем переход в `stopped`.
+        if let Some(old) = old_status {
+            self.emit_status_transition(id, &old, &PluginStatus::Stopped, Some("плагин удалён"));
+        }
         self.notify_all();
         Ok(())
     }
@@ -514,6 +650,7 @@ impl PluginHost {
     /// Неудачная перезагрузка (синтаксис и т.п.) снимает view плагина: иначе остаётся
     /// «зомби»-вкладка со старым HTML при статусе «ошибка».
     pub fn reload(&self, id: &str) -> Result<(), PluginError> {
+        let old_status = self.runtime_status(id);
         // Для включённого плагина гарантируем contributed view в реестре ДО старта
         // child: предыдущий сбой мог снять view, а `on_activate` пишет HTML через
         // `set_view_content` — иначе `unknown_view` и потерянный контент. Регистрация —
@@ -528,6 +665,12 @@ impl PluginHost {
             // View перерегистрирован выше, child перезапущен: переиздаём последний
             // `document:opened`, чтобы вкладка по подписке не осталась пустой.
             self.reannounce_opened(id);
+        }
+        // reload — точка смены статуса (TZ §5.2): эмитим **всегда**, даже если итоговое
+        // состояние осталось `active` (сценарий «плагин перезагружен»).
+        if let (Some(old), Some(new)) = (old_status, self.runtime_status(id)) {
+            let message = result.as_ref().err().map(|e| e.message.as_str());
+            self.emit_status_transition(id, &old, &new, message);
         }
         self.pump();
         // reload меняет статус и перерегистрирует view — оба сигнала.
@@ -561,7 +704,7 @@ impl PluginHost {
     /// статусе «ошибка» — как у [`Self::reload`].
     pub fn set_permissions(&self, id: &str, granted: Vec<String>) -> Result<(), PluginError> {
         // Запрашиваемые права + проверка существования: unknown id → ошибка, ничего не пишем.
-        let (requested, enabled, contributes) = {
+        let (requested, enabled, contributes, old_status) = {
             let manager = lock(&self.manager);
             let runtime = manager
                 .get(id)
@@ -570,6 +713,7 @@ impl PluginHost {
                 runtime.permissions.clone(),
                 runtime.is_enabled(),
                 runtime.views.clone(),
+                runtime.status.clone(),
             )
         };
         let effective = effective_permissions(&requested, &granted);
@@ -599,6 +743,14 @@ impl PluginHost {
             self.reannounce_opened(id);
         }
 
+        // Диагностика (S11): смена прав перезапускает плагин — фиксируем переход статуса,
+        // если он случился.
+        if let Some(new_status) = self.runtime_status(id) {
+            if new_status != old_status {
+                let message = result.as_ref().err().map(|e| e.message.as_str());
+                self.emit_status_transition(id, &old_status, &new_status, message);
+            }
+        }
         self.pump();
         // Смена прав меняет статус (перезапуск) и перерегистрирует view — оба сигнала.
         self.notify_all();

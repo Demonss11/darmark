@@ -187,7 +187,7 @@ interface LogEntry {
 <section class="logs-panel" id="logs-panel" role="region" aria-label="Журнал событий" aria-labelledby="logs-title" hidden>
   <div class="logs-resize" id="logs-resize" role="separator" aria-orientation="horizontal" aria-label="Изменить высоту журнала"></div>
   <div class="logs-head">
-    <button class="logs-caret" id="logs-collapse" aria-expanded="true" aria-controls="logs-body" aria-label="Свернуть журнал">▾</button>
+    <button class="logs-caret" id="logs-collapse" aria-expanded="false" aria-controls="logs-body" aria-label="Свернуть журнал">▾</button>
     <span class="logs-title" id="logs-title">Журнал</span>
     <span class="logs-count" id="logs-count">0</span>
     <div class="logs-filter" role="group" aria-label="Фильтр событий">

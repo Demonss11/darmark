@@ -74,6 +74,18 @@ fn lock_store<'a>(
         .expect("стор документов не должен быть отравлен")
 }
 
+/// Имя файла из пути для `document-event` (S11, ТЗ §4.6).
+///
+/// В журнал фронтенда идёт **только имя** файла, не полный путь (приватность).
+/// Документ без пути (новый) → `None`.
+fn file_name(path: Option<&str>) -> Option<String> {
+    path.and_then(|p| {
+        Path::new(p)
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+    })
+}
+
 /// Информация о плагинном тир-1 представлении — контракт с фронтендом.
 ///
 /// Объявлена платформенно-нейтрально (вне `plugins`): команда `plugin_views`
@@ -195,6 +207,22 @@ impl PluginState {
             let _ = doc_id;
         }
     }
+
+    /// Публикует `document-event` (S11) — действие пользователя над документом.
+    ///
+    /// Событие идёт в журнал фронтенда (`logPanel`): `new`/`open`/`save`/`close`.
+    /// Доставку в Tauri-событие `document-event` обеспечивает sink из [`setup_plugins`].
+    /// На не-Windows — no-op: плагинной подсистемы нет.
+    fn publish_document_event(&self, kind: &str, path: Option<&str>, rev: Option<u64>) {
+        #[cfg(windows)]
+        {
+            self.host.publish_document_event(kind, path, rev);
+        }
+        #[cfg(not(windows))]
+        {
+            let _ = (kind, path, rev);
+        }
+    }
 }
 
 // ---------- команды документов (1:1 с будущими host-функциями плагинов, §4.3) ----------
@@ -209,6 +237,9 @@ fn new_document(
     let snapshot = lock_store(&store).create(text.unwrap_or_default());
     // Guard стора уже отпущен: pump может обслужить host-call к DocumentStore.
     plugins.publish_opened(snapshot.id.as_str(), snapshot.path.as_deref());
+    // §4.6: в журнал идёт только имя файла, не полный путь (приватность).
+    let name = file_name(snapshot.path.as_deref());
+    plugins.publish_document_event("new", name.as_deref(), Some(snapshot.rev));
     snapshot
 }
 
@@ -229,6 +260,9 @@ async fn open_document(
     }
     let snapshot = lock_store(&store).insert_loaded(path, text);
     plugins.publish_opened(snapshot.id.as_str(), snapshot.path.as_deref());
+    // §4.6: в журнал идёт только имя файла, не полный путь (приватность).
+    let name = file_name(snapshot.path.as_deref());
+    plugins.publish_document_event("open", name.as_deref(), Some(snapshot.rev));
     Ok(snapshot)
 }
 
@@ -240,6 +274,7 @@ async fn save_document(
     path: Option<PathBuf>,
     app: tauri::AppHandle,
     store: tauri::State<'_, Arc<Mutex<DocumentStore>>>,
+    plugins: tauri::State<'_, PluginState>,
 ) -> Result<DocMeta, CommandError> {
     // Сначала читаем путь и текст, не мутируя стор: при ошибке записи стор не «уплывёт».
     let explicit_path = path;
@@ -267,14 +302,21 @@ async fn save_document(
     }
 
     // Запись удалась — только теперь фиксируем путь в сторе.
-    let mut guard = lock_store(&store);
-    let doc = guard
-        .get_mut(&id)
-        .ok_or_else(|| CommandError::unknown_document(id.as_str()))?;
-    if let Some(p) = explicit_path {
-        doc.path = Some(p);
-    }
-    Ok(doc.meta())
+    let meta = {
+        let mut guard = lock_store(&store);
+        let doc = guard
+            .get_mut(&id)
+            .ok_or_else(|| CommandError::unknown_document(id.as_str()))?;
+        if let Some(p) = explicit_path {
+            doc.path = Some(p);
+        }
+        doc.meta()
+    };
+    // Guard отпущен: публикуем `document-event` (S11) для журнала.
+    // §4.6: в журнал идёт только имя файла, не полный путь (приватность).
+    let name = file_name(meta.path.as_deref());
+    plugins.publish_document_event("save", name.as_deref(), Some(meta.rev));
+    Ok(meta)
 }
 
 /// Закрывает документ (появляется вместе с панелями; в UI пока не вызывается).
@@ -284,9 +326,19 @@ fn close_document(
     store: tauri::State<'_, Arc<Mutex<DocumentStore>>>,
     plugins: tauri::State<'_, PluginState>,
 ) {
+    // Путь нужен для `document-event` (S11): после `close` стор его уже не помнит.
+    let path = {
+        let guard = lock_store(&store);
+        guard
+            .get(&id)
+            .and_then(|doc| doc.path.as_ref().map(|p| p.to_string_lossy().into_owned()))
+    };
     let closed = lock_store(&store).close(&id);
     if closed {
         plugins.publish_closed(id.as_str());
+        // §4.6: в журнал идёт только имя файла, не полный путь (приватность).
+        let name = file_name(path.as_deref());
+        plugins.publish_document_event("close", name.as_deref(), None);
     }
 }
 
@@ -771,9 +823,9 @@ fn setup_plugins(app: &mut tauri::App) -> Result<(), String> {
     use tauri::{Emitter, Manager};
     use tauri_plugin_dialog::DialogExt;
 
-    use plugins::host::PluginHost;
+    use plugins::host::{DocumentEventSink, PluginHost, StatusChangedSink};
     use plugins::manager::load_plugins;
-    use plugins::services::{DocumentServices, DocumentSink, Exporter, StatusSink};
+    use plugins::services::{DocumentServices, DocumentSink, Exporter, LogSink, StatusSink};
     use plugins::settings::SettingsStore;
     use plugins::supervisor::Supervisor;
     use plugins::views::PluginViews;
@@ -881,13 +933,60 @@ fn setup_plugins(app: &mut tauri::App) -> Result<(), String> {
         }
     });
 
+    // S11: переход статуса плагина → журнал фронтенда (`plugin-status-changed`).
+    let status_handle = app.handle().clone();
+    let status_changed_sink: StatusChangedSink = Arc::new(
+        move |plugin_id: &str, old_state: &str, new_state: &str, message: Option<&str>| {
+            let mut payload = serde_json::json!({
+                "plugin_id": plugin_id,
+                "old_state": old_state,
+                "new_state": new_state,
+            });
+            if let Some(message) = message {
+                payload["message"] = serde_json::Value::String(message.to_string());
+            }
+            if let Err(e) = status_handle.emit("plugin-status-changed", payload) {
+                eprintln!("не эмитить plugin-status-changed: {e}");
+            }
+        },
+    );
+
+    // S11: действие пользователя над документом → `document-event` (журнал фронтенда).
+    // Payload `{type, path?, rev?}`: путь/ревизия опускаются, если неизвестны.
+    let document_event_handle = app.handle().clone();
+    let document_event_sink: DocumentEventSink =
+        Arc::new(move |kind: &str, path: Option<&str>, rev: Option<u64>| {
+            let mut payload = serde_json::json!({ "type": kind });
+            if let Some(path) = path {
+                payload["path"] = serde_json::Value::String(path.to_string());
+            }
+            if let Some(rev) = rev {
+                payload["rev"] = serde_json::Value::from(rev);
+            }
+            if let Err(e) = document_event_handle.emit("document-event", payload) {
+                eprintln!("не эмитить document-event: {e}");
+            }
+        });
+
+    // S11: сообщения `host.log`/`print` из Lua → `log-entry` (журнал фронтенда).
+    let log_handle = app.handle().clone();
+    let log_sink: LogSink = Arc::new(move |level: &str, category: &str, message: &str| {
+        if let Err(e) = log_handle.emit(
+            "log-entry",
+            serde_json::json!({ "level": level, "category": category, "message": message }),
+        ) {
+            eprintln!("не эмитить log-entry: {e}");
+        }
+    });
+
     let mut services = DocumentServices::new(store)
         .with_views(Arc::clone(&views))
         .with_notify(Arc::clone(&views_notify))
         .with_pending_changed(Arc::clone(&pending_changed))
         .with_exporter(exporter)
         .with_status_sink(status_sink)
-        .with_document_sink(document_sink);
+        .with_document_sink(document_sink)
+        .with_log_sink(log_sink);
     if let Some(settings) = &plugin_settings {
         services = services.with_plugin_settings(Arc::clone(settings));
     }
@@ -912,6 +1011,8 @@ fn setup_plugins(app: &mut tauri::App) -> Result<(), String> {
         pending_changed,
     )
     .with_plugins_notify(plugins_notify)
+    .with_status_changed_sink(status_changed_sink)
+    .with_document_event_sink(document_event_sink)
     .with_settings(settings, config_path);
     if let Some(settings) = &plugin_settings {
         host = host.with_plugin_settings(Arc::clone(settings));
@@ -1013,5 +1114,21 @@ mod tests {
 
         write_text(&file, "content").unwrap();
         assert_eq!(fs::read_to_string(&file).unwrap(), "content");
+    }
+
+    /// ТЗ §4.6: в `document-event` уходит только имя файла, не полный путь.
+    #[test]
+    fn file_name_strips_directory() {
+        assert_eq!(file_name(None), None, "документ без пути → None");
+        assert_eq!(
+            file_name(Some(r"D:\notes\sub\note.md")).as_deref(),
+            Some("note.md"),
+            "полный путь урезается до имени файла"
+        );
+        assert_eq!(
+            file_name(Some("note.md")).as_deref(),
+            Some("note.md"),
+            "имя без каталога сохраняется"
+        );
     }
 }

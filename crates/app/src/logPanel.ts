@@ -1,9 +1,8 @@
 // logPanel.ts — панель «Журнал» (S11, ADR-0029): ring buffer событий на 200
-// записей, подписка на существующие Tauri-события, рендер записей только
+// записей, подписка на существующие и новые Tauri-события, рендер записей только
 // через textContent (без innerHTML в ленте — CSP/XSS), бейдж непрочитанных,
-// своротка до полосы-шапки. Новые Rust-события (plugin-status-changed,
-// document-event, log-entry) подключаются в Фазе 2; resize, фильтр,
-// автопрокрутка и группировка по дате — Фаза 3.
+// своротка до полосы-шапки. Resize, фильтр, автопрокрутка и группировка
+// по дате — Фаза 3.
 
 import { listen, type Event, type UnlistenFn } from "@tauri-apps/api/event";
 
@@ -216,6 +215,56 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
   });
   subscribe<unknown>("plugin-views-changed", () => {
     push("info", "system", "Представления обновлены");
+  });
+
+  // --- новые события (Фаза 2: Rust-события, §5.2 ТЗ, ADR-0029 §2.4) ---
+
+  /** Переход статуса плагина: «плагин X: active → failed» (+ message в detail). */
+  subscribe<{
+    plugin_id: string;
+    old_state: string;
+    new_state: string;
+    message?: string;
+  }>("plugin-status-changed", (event) => {
+    const { plugin_id, old_state, new_state, message } = event.payload;
+    const level = new_state === "failed" ? "error" : new_state === "quarantined" ? "warn" : "info";
+    push(level, "plugin", `Плагин «${plugin_id}»: ${old_state} → ${new_state}`, message);
+  });
+
+  /** Действие пользователя над документом: new/open/save/close (§5.2). */
+  subscribe<{
+    type: "new" | "open" | "save" | "close";
+    path?: string;
+    rev?: number;
+  }>("document-event", (event) => {
+    const { type, path, rev } = event.payload;
+    const name = path ? ` «${path}»` : "";
+    let message: string;
+    switch (type) {
+      case "new":
+        message = "Создан новый документ";
+        break;
+      case "open":
+        message = `Открыт файл${name}`;
+        break;
+      case "save":
+        message = `Сохранён файл${name}`;
+        break;
+      case "close":
+        message = `Закрыт файл${name}`;
+        break;
+    }
+    push("info", "document", message, rev !== undefined ? `rev=${rev}` : undefined);
+  });
+
+  /** Сообщение журнала от Rust (host.log из Lua, ошибки IPC). */
+  subscribe<{
+    level: "info" | "warn" | "error";
+    category: "plugin" | "document" | "system";
+    message: string;
+  }>("log-entry", (event) => {
+    const { level, category, message } = event.payload;
+    push(level, category, message);
   });
 
   return {

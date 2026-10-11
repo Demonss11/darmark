@@ -48,6 +48,10 @@ pub type StatusSink = Arc<dyn Fn(&str, &str) + Send + Sync>;
 /// `document-updated`; фронт по нему тянет снапшот командой `document_snapshot`.
 pub type DocumentSink = Arc<dyn Fn(&str, u64) + Send + Sync>;
 
+/// Канал журнала (`log-entry`, S11): `(level, category, message)`. Источник — сообщения
+/// `host.log`/`print` из Lua. Best-effort: без sink'а лог — no-op (не ошибка).
+pub type LogSink = Arc<dyn Fn(&str, &str, &str) + Send + Sync>;
+
 /// Документные host-функции поверх общего [`DocumentStore`].
 ///
 /// Держит `Arc<Mutex<DocumentStore>>` (а не `&`): host-call обслуживается синхронно в потоке
@@ -75,6 +79,8 @@ pub struct DocumentServices {
     /// Уведомление фронтенда о внешней правке (`document-updated`). Без него — no-op:
     /// GUI-путь (без sink) не эмитит событие, чтобы не было петли IPC.
     document_sink: Option<DocumentSink>,
+    /// Канал журнала (`log-entry`, S11): сообщения `host.log` из Lua. Без него — no-op.
+    log_sink: Option<LogSink>,
     /// Постоянные настройки плагинов (F43/S5): per-plugin JSON-файл. Без него
     /// `get_setting`/`set_setting` возвращают `no_settings`.
     plugin_settings: Option<Arc<Mutex<PluginSettingsStore>>>,
@@ -90,6 +96,7 @@ impl DocumentServices {
             exporter: None,
             status_sink: None,
             document_sink: None,
+            log_sink: None,
             plugin_settings: None,
         }
     }
@@ -133,6 +140,12 @@ impl DocumentServices {
     /// событие не шлёт, иначе получилась бы петля «правка → событие → перерисовка → правка».
     pub fn with_document_sink(mut self, sink: DocumentSink) -> Self {
         self.document_sink = Some(sink);
+        self
+    }
+
+    /// Подключает канал журнала (`log-entry`, S11): сообщения `host.log`/`print` из Lua.
+    pub fn with_log_sink(mut self, sink: LogSink) -> Self {
+        self.log_sink = Some(sink);
         self
     }
 
@@ -229,6 +242,24 @@ impl DocumentServices {
         Ok(json!(true))
     }
 
+    /// `log`: сообщение плагина в журнал (`log-entry`, S11).
+    ///
+    /// Источник — `host.log`/`print` из Lua (транспортный кадр `ToHost::Log` доходит сюда
+    /// через `Supervisor`). `_plugin_id` инжектится `Supervisor`. Категория плагинных
+    /// логов фиксирована (TZ §5.2) — `plugin`. Best-effort: без sink'а — no-op, не ошибка
+    /// (как `show_message`).
+    fn log(&self, args: &Value) -> Result<Value, PluginError> {
+        let level = args.get("level").and_then(Value::as_str).unwrap_or("info");
+        let message = args
+            .get("message")
+            .and_then(Value::as_str)
+            .ok_or_else(|| PluginError::new("bad_args", "log: нет строкового message"))?;
+        if let Some(sink) = &self.log_sink {
+            sink(level, "plugin", message);
+        }
+        Ok(json!(true))
+    }
+
     /// `get_setting`: читает постоянную настройку плагина (F43/S5).
     ///
     /// Scope — по внедрённому `Supervisor` `_plugin_id`: плагин видит только свои настройки.
@@ -283,6 +314,8 @@ impl HostServices for DocumentServices {
             "set_view_content" => return self.set_view_content(&args),
             "export_html" => return self.export_html(&args),
             "show_message" => return self.show_message(&args),
+            // Журнал (S11): сообщения `host.log` из Lua. Стор не трогает — как `show_message`.
+            "log" => return self.log(&args),
             // Настройки плагина (F43/S5) не трогают `DocumentStore`: скоуп — по `_plugin_id`.
             "get_setting" => return self.get_setting(&args),
             "set_setting" => return self.set_setting(&args),

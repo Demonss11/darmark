@@ -282,8 +282,13 @@ impl Supervisor {
                     }
                 }
                 Ok(Ok(ToHost::Log { level, message })) => {
-                    // Лог плагина (host.log/print) иначе терялся бы в GUI — выводим в stderr хоста.
-                    eprintln!("[plugin {level}] {message}");
+                    // Реальный путь `host.log`/`print` из Lua (S11): прогоняем через host-call
+                    // `log`, чтобы сообщение попало в `LogSink` (событие `log-entry`), а не
+                    // терялось. Best-effort: отказ/отсутствие sink'а не роняет плагин.
+                    let args = serde_json::json!({ "level": level, "message": message });
+                    let _ = self
+                        .services
+                        .handle("log", with_plugin_id(&args, &self.plugin_id));
                     last_progress = Instant::now();
                 }
                 Ok(Err(protocol)) => {
