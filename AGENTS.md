@@ -1,141 +1,64 @@
 # AGENTS.md
 
 `darmark` — лёгкий Markdown-редактор/вьюер в духе Notepad++: слева редактор, справа HTML-предпросмотр.
-Tauri 2 + vanilla TypeScript/Vite на фронте + чистое Rust-ядро Markdown. Целевая платформа — Windows.
-Документация, комментарии и UI-строки в репозитории — **на русском**;
-при правках придерживайся этого.
+Tauri 2 + vanilla TypeScript/Vite + чистое Rust-ядро Markdown. Целевая платформа — Windows.
+Документация, комментарии и UI-строки — **на русском**.
 
 ## Структура и границы
 
-- `DESIGN.md` (корень) — визуальная идентичность для агентов: CSS-токены и правила оформления.
-  **Читать перед UI-правками.** Нормативный layout/контракты — `docs/DESIGN_DOC.md`;
-  бэклог идей — `docs/BACKLOG.md`; решения — ADR в `docs/adr/`.
-- `crates/md-core/` — чистое ядро markdown→HTML (pulldown-cmark 0.13). **Без Tauri/GUI-зависимостей**;
-  должно оставаться переиспользуемым в CLI/тестах. Здесь `to_html()`/`to_html_with()`/`to_html_mapped()`,
-  XSS-санитайзер, рендер ведущей YAML-шапки в «таблицу-таблиц» (`frontmatter.rs`) и юнит-тесты.
-- `crates/app/src/` — фронтенд на чистом TS (без фреймворков): `main.ts` (композиционный корень:
-  связывает store, редактор, предпросмотр, тулбар), `docStore.ts` (проекция Rust-стора: текст/rev/
-  path/dirty, дебаунс IPC, защита от гонок), `editorView.ts` (textarea-представление),
-  `renderIndex.ts` (единый индекс на ревизию), `viewRegistry.ts` (реестр тир-1/тир-2 + `ViewContext`),
-  `previewView.ts` (тир-1 preview, единственное `preview.innerHTML`), `layout.ts` (дерево Pane/Split,
-  `MAX_PANES=2`), `paneHost.ts` (монтирование панелей), `linkController.ts` (inspector + scrollsync),
-  `statusBar.ts`/`fileActions.ts`/`shell.ts` (оболочка) + `sidebar.ts` (rail + сворачиваемый
-  sidebar idea5), `formatActions.ts` (Markdown-обёртки над выделением), `gutter.ts` (номера
-  строк редактора), `sampleDocument.ts`, `ids.ts`
-  (брендированные id §5.1), `tauri.ts` (IPC-обёртки), `tables.ts` (Excel-подобные таблицы),
-  `inspector.ts` (двусторонняя подсветка блоков), `mapping.ts` (байты ↔ UTF-16), `scrollsync.ts`
-  (синхронная прокрутка), `images.ts` (относительные src → asset-URL), `style.css`.
-- `crates/app/src-tauri/` — тонкий Tauri-шелл. Крейт/пакет — `darmark`, lib — `darmark_lib`.
-  `state.rs` — `DocumentStore` (D5: текст, rev, путь, кэш), `error.rs` — `CommandError { code, message }`.
-  Команды документов `new_document`/`open_document`/`update_document`/`render_document`/
-  `save_document`/`close_document` (рендер и кэш — в сторе, `render_markdown` удалён).
-  Файловый доступ — модель Notepad++ (путь выбирает пользователь в нативном диалоге на фронте),
-  единственная проверка — лимит 10 МБ. Подсистема плагинов (H2, `src/plugins/`, только Windows):
-  `supervisor.rs` — spawn child `darmark-plugin-host.exe`, Job Object, watchdog (прогресс+дедлайн),
-  проверка permissions и обслуживание host-call'ов; `services.rs` — range/delta к `DocumentStore`;
-  `scan.rs` — `scan(plugins/)` + валидация манифеста; `settings.rs` — `SettingsStore`
-  (`%APPDATA%/darmark/config.json`: вкл/выкл, согласие на permissions, recent files);
-  `manager.rs` — жизненный цикл, карантин N=3, `load_plugins` (scan+settings→реестр),
-  `list/set_enabled/reload`. `PluginManager` линкует `plugin-core`, но **не** `plugin-host`/`mlua`
-  (D6/ADR-0021).
-- Задачи только по фронтенду не должны трогать `md-core` и `src-tauri`
-- `crates/plugin-core/` — продуктовое ядро плагинной системы (H2): кадры транспорта
-  (`frame.rs`), serde-конверт хост↔child (`envelope.rs`), Job Object (`job.rs`), карантин
-  (`quarantine.rs`), манифест и валидация (`manifest.rs`), формулировки границы (`notices.rs`),
-  бюджеты watchdog (`limits.rs`). **Без mlua и без Tauri** — линкуется и в GUI-хост, и в child.
-- `crates/plugin-host/` — child-процесс `darmark-plugin-host` с Lua 5.5 (mlua, vendored). Единственный
-  крейт с `mlua`; `src-tauri` его **не** линкует (D6/ADR-0021, проверяется CI: `cargo tree -p darmark`
-  без `mlua`). Здесь песочница (D17), `host.*`/`md.*`/`json.*` и stdio-цикл конверта. Крейт даёт и
-  lib-target (`lib.rs`: `bindings`/`sandbox`/`selftest`) — им пользуется `plugin-cli`.
-- `crates/plugin-cli/` — CLI разработчика плагинов `darmark-plugin` (бинарник; Фаза 1 H3):
-  `test <path>` (манифест, entry, прогон в песочнице; текст/JSON) и `init <dir>` (шаблон из
-  `templates/plugin/`). Команды локального каталога (`src/catalog.rs`): `list [--json]`,
-  `install <id>`, `link <id>` (junction/symlink), `remove <id>`, `update [<id>]` — работают с
-  `plugins/index.json` (`schema_version: 1`; `id`/`path`/`description`, метаданные — из `plugin.json`)
-  и каталогом приложения (`--repo`/`--dest`, env `DARMARK_PLUGIN_REPO`/`DARMARK_PLUGINS_DIR`).
-  Линкует `plugin-host` как библиотеку — mlua остаётся вне GUI-хоста (D6/ADR-0021).
+- `crates/md-core/` — чистое ядро markdown→HTML (pulldown-cmark 0.13), **без Tauri/GUI**; XSS-санитайзер, YAML-шапка, mapping байты↔UTF-16.
+- `crates/app/src/` — фронтенд (vanilla TS): `main.ts` (композиция), `docStore.ts`, `editorView.ts`, `previewView.ts` (единственное `preview.innerHTML`), `viewRegistry.ts`/`paneHost.ts`/`layout.ts` (Pane/Split, `MAX_PANES=2`), `linkController.ts`, `logPanel.ts`/`aiPanel.ts`/`resourceMonitor.ts` (нижний док), `tauri.ts`, `style.css`.
+- `crates/app/src-tauri/` — тонкий Tauri-шелл (`darmark`/`darmark_lib`): `state.rs` (DocumentStore, D5), `error.rs` (`CommandError { code, message }`), документные и плагинные команды; `src/plugins/` — подсистема плагинов (Windows).
+- `crates/plugin-core/` — ядро плагинной системы (кадры, конверт, Job Object, карантин, манифест); **без `mlua`/Tauri**.
+- `crates/plugin-host/` — child `darmark-plugin-host` (Lua 5.5, `mlua`); единственный крейт с `mlua`.
+- `crates/plugin-cli/` — CLI `darmark-plugin` (`test`/`init`, каталог `plugins/index.json`).
+- Задачи только по фронтенду **не трогают** `md-core` и `src-tauri`.
 
 ## Команды
 
-Из корня репозитория, если не указано иное:
+Из корня, если не указано иное:
 
-- `cargo test -p md-core` — юнит-тесты ядра; быстро, без GUI. Запускать после любых правок Rust.
-- `cargo check -p darmark` / `cargo test -p darmark` — компиляция/тесты Tauri-шелла.
-  **Предусловие:** должен существовать `crates/app/src-tauri/binaries/` с сайдкарами
-  (`darmark-plugin-host-<triple>.exe`, `darmark-plugin-<triple>.exe`) — build.rs (`tauri-build`)
-  копирует `bundle.externalBin` рядом с бинарником и падает, если файла нет. Застейджить:
-  `cd crates/app; npm run sidecars:dev` (debug) или `npm run sidecars` (release). Команды
-  `npx tauri dev`/`npx tauri build` стейджат сами (beforeDev/BeforeBuildCommand), CI — тоже.
-- `cargo test -p plugin-core -p plugin-host -p plugin-cli` — плагинные крейты (H2) и CLI (H3).
-  `plugin-host` тянет `mlua` (vendored) — первая сборка долгая. `cargo run -p plugin-host -- --self-test
-  <plugin.lua>` — прогон плагина в песочнице без GUI. `cargo run -p plugin-cli -- test plugins/word-count`
-  — проверка плагина CLI (манифест/entry/песочница); `... -- init <dir>` — шаблон нового плагина.
-  Guard инварианта: `cargo tree -p darmark | Select-String mlua` пусто.
-- `cd crates/app; npm install; npm run build` — `tsc && vite build`; `tsc` **валит сборку на любой
-  ошибке типов**. Запускать после правок TS (отдельного typecheck-скрипта нет).
-- `npm run dev` — Vite dev-сервер на фиксированном `:5173` (`strictPort`, чтобы Tauri dev не «уплывал»).
-- `npx tauri dev` — полноценный GUI; требует WebView2 + VS Build Tools (C++). Не запускать без запроса.
-- `npx tauri build` — релизный NSIS-установщик в `target/release/bundle/nsis/`.
-  `beforeBuildCommand` дополнительно гоняет `npm run sidecars` (`crates/app/scripts/prepare-sidecars.mjs`):
-  собирает release-бинарники `plugin-host`/`plugin-cli` и раскладывает их как Tauri sidecar-ы
-  (`externalBin`), чтобы `darmark-plugin-host.exe` (child для плагинов) и `darmark-plugin.exe` (CLI)
-  попали в установщик рядом с `darmark.exe`.
-- `cd crates/app; npm run test:e2e` — GUI E2E (Cucumber + WebdriverIO поверх release-бинарника).
-  Требует `cargo install tauri-driver --locked` и собранный `target/release/darmark.exe`
-  (`npx tauri build --no-bundle`). Фичи/шаги — `crates/app/e2e/` (в т.ч. `frontmatter.feature` —
-  YAML-шапка как таблица; таблицы шапки не украшаются `tables.ts`).
+| Задача | Команда |
+| --- | --- |
+| Тесты ядра (без GUI) | `cargo test -p md-core` |
+| Шелл: сборка/тесты | `cargo check -p darmark` / `cargo test -p darmark` |
+| Стейджинг сайдкаров (предусловие шелла) | `cd crates/app; npm run sidecars:dev` |
+| Плагинные крейты + CLI | `cargo test -p plugin-core -p plugin-host -p plugin-cli` |
+| Прогон плагина / CLI | `cargo run -p plugin-host -- --self-test <plugin.lua>`; `cargo run -p plugin-cli -- test plugins/word-count` |
+| Guard: `mlua` вне GUI | `cargo tree -p darmark \| Select-String mlua` (пусто) |
+| Фронт (tsc strict, валит на ошибке типов) | `cd crates/app; npm install; npm run build` |
+| Dev-сервер | `npm run dev` (`:5173`, strictPort) |
+| GUI | `npx tauri dev` |
+| Релиз NSIS | `npx tauri build` (стейджит сайдкары, size-gate ≤6 МБ) |
+| E2E (нужен release-бинарник) | `npx tauri build --no-bundle`, затем `cd crates/app; npm run test:e2e` |
 
-Требования: Rust ≥ 1.80, Node ≥ 20.
+Предусловие `darmark`: `crates/app/src-tauri/binaries/` с сайдкарами (`tauri-build` падает без них). Требования: Rust ≥ 1.80, Node ≥ 20.
 
 ## Жёсткие ограничения
 
-- **Строгая CSP** (`tauri.conf.json`): `default-src 'self'`. Никаких внешних скриптов/библиотек,
-  никакого `eval`. Inline-стили разрешены.
-- **Строгий TS** (`tsconfig.json`): `strict`, `noUnusedLocals`, `noUnusedParameters`. Неиспользуемые
-  сущности ломают сборку — не создавай их.
-- **Рендер идёт на Rust-стороне.** Фронт только присваивает `preview.innerHTML` и не парсит Markdown.
-  Состояние таблиц — `WeakMap` по DOM-узлу (`tables.ts`), теряется при перерисовке; хост защищает
-  это флагом `RenderResult.changed`, но стабильного ключа на таблицу пока нет.
-- **Юнит-тестов фронтенда нет** (`vitest` не установлен); проверка фронта = `npm run build`.
-  **CI** — `.github/workflows/ci.yml` (windows-latest): `rustfmt`/`clippy`/`cargo test`
-  (`md-core`+`darmark`)/`npm run build` + size-gate (release-exe ≤ 6 МБ, D6). GUI E2E —
-  Cucumber + WebdriverIO (`crates/app/e2e/`, `npm run test:e2e`) поверх release-бинарника;
-  нативные диалоги/ОС им не покрываются — помечай `@manual`.
-- Релизный профиль (корневой `Cargo.toml`): `opt-level="s"`, LTO, `strip`, `panic=abort` ради размера.
-  Не добавляй тяжёлые зависимости без прямого согласования.
-
-## Работа с задачами
-
-- Перед реализацией **прочитай целиком** соответствующий `tasks/TZ-*.md`.
+- CSP `default-src 'self'` (`tauri.conf.json`): без внешних скриптов и `eval`; inline-стили разрешены.
+- Строгий TS (`strict`, `noUnusedLocals`, `noUnusedParameters`): неиспользуемые сущности ломают сборку.
+- Рендер Markdown — на Rust-стороне; фронт только присваивает `preview.innerHTML`.
+- Юнит-тестов фронта нет (`vitest` нет) — проверка = `npm run build`.
+- CI (`.github/workflows/ci.yml`, windows-latest): `rustfmt`/`clippy`/`cargo test`/`npm run build` + size-gate.
+- E2E не покрывает нативные диалоги/ОС — помечай сценарий `@manual`.
+- Релизный профиль (`Cargo.toml`): `opt-level="s"`, LTO, `strip`, `panic=abort`. Тяжёлые зависимости — только по согласованию.
 
 ## Конвенции
 
-- Комментарии на русском, объясняют **зачем**, а не «что». Отступ 2 пробела в TS; стандартный `rustfmt` в Rust.
+- Комментарии на русском, объясняют **зачем**; отступ 2 пробела (TS), `rustfmt` (Rust).
 - Не коммить и не пушить без прямого запроса.
+- Перед реализацией прочитай соответствующий `tasks/TZ-*.md`.
 
-## Агенты (глобальные, `~/.config/opencode/agents/`)
+## Ссылки
 
-> Установлены в глобальном конфиге OpenCode пользователя — в этом репозитории их нет.
-
-- `@code-reviewer` (read-only ревью диффов/PR до мержа: баги, безопасность, производительность, поддерживаемость),
-- `@rust-developer` (написание/рефакторинг/отладка Rust),
-- `@frontend-developer` (vanilla TS/DOM, состояние, IPC, строгая типизация, a11y),
-- `@rust-tester` (поиск важных непокрытых мест в Rust-коде и покрытие их тестами; умеет работать по TDD — тест до кода),
-- `@frontend-tester` (поиск непокрытых пользовательских сценариев и покрытие их E2E-сценариями Cucumber; нативные диалоги/ОС помечает `@manual`),
-- `@plugin-developer` (написание/сопровождение Lua-плагинов: main.lua + plugin.json под песочницу darmark),
-- `@security-reviewer` (read-only ревью безопасности: песочница, permissions, протокол host↔child, watchdog, XSS, CSP),
-- `@architect` (дизайн-ревью до кодинга: согласованность с DESIGN_DOC/ADR, оформление новых ADR),
-- `@release-engineer` (релизный процесс: прогон проверок, size-gate, сборка NSIS, сверка релизного профиля),
-- `@ui-designer` (визуальные направления и прототипы-референсы интерфейса; не пишет продуктовый код).
-
-## Навыки (глобальные, `~/.config/opencode/skills/`)
-
-- `coding-discipline` (дисциплина изменений: минимальный дифф, правки строго по месту),
-- `rust-testing` (механика написания Rust-тестов и поиска непокрытых мест),
-- `cucumber-e2e` (механика E2E-тестирования интерфейса на Gherkin + Cucumber),
-- `plugin-sandbox` (механика песочницы плагинов: plugin.json, permissions, watchdog, карантин),
-- `tauri-ipc-conventions` (инварианты IPC и фронтенда: контракт фронт↔Rust, брендированные id, защита от гонок),
-- `md-core-domain` (домен ядра Markdown: pulldown-cmark, XSS-санитайзер, YAML-шапка, mapping),
-- `release-checklist` (пошаговая релизная процедура, проверки бюджета размера),
-- `tooling-audit` (аудит агентов/навыков: frontmatter, permission, висячие ссылки, дубли, хардкод),
-- `ui-prototype` (механика прототипирования: где лежат прототипы, CSS-токены, CSP-safe, чек-лист хендоффа).
+| Что | Файл |
+| --- | --- |
+| Визуальная идентичность (токены, правила UI) | `DESIGN.md` |
+| Нормативный layout/контракты, реестр ADR | `docs/DESIGN_DOC.md` |
+| Решения | `docs/adr/` |
+| Бэклог идей | `docs/BACKLOG.md` |
+| Замеры и открытые вопросы | `docs/FINDINGS.md` |
+| API и гайд плагинов | `docs/PLUGIN_API.md`, `docs/PLUGIN_GUIDE.md` |
+| Прототипы-референсы | `docs/proto/` |
+| Производительность E2E | `docs/E2E-PERFORMANCE.md` |
