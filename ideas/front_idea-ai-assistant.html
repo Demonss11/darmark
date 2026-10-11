@@ -1,7 +1,7 @@
 <!doctype html>
 <!-- ============================================================================
   Прототип-референс: AI-ассистент — режим нижней панели-дока
-  (IDEA-013 / tasks/TZ-AI-ASSISTANT.md; ADR-0029/0030, дополнение 11.10.2026)
+  (IDEA-013 / tasks/TZ-AI-ASSISTANT.md; ADR-0029/0030/0032, дополнение 11.10.2026)
   ============================================================================
   Что это: однофайловый HTML-прототип AI-ассистента проекта darmark
   с визуальным сравнением «было-стало».
@@ -11,6 +11,16 @@
     AI-ассистент» (#mode-logs-btn / #mode-mon-btn / #mode-ai-btn) и три
     состояния видимости: hidden / collapsed / expanded. Здесь активна вкладка
     «AI-ассистент»; вкладка «Мониторинг» показана упрощённо.
+
+  ПРОВАЙДЕР (11.10.2026: OpenAI-совместимый API, ADR-0032; локальная LLM
+  отложена).
+    Ассистент ходит в облачный OpenAI-совместимый API на routerai.ru; точка
+    входа — https://routerai.ru/api/v1, модель — deepseek/deepseek-v4.1-flash.
+    Локальная LLM (Ollama) отложена. Метка модели — «routerai ·
+    deepseek-v4.1-flash»; ключ хранится в Windows Credential Manager (не в
+    файле). Настройки провайдера/base URL/модели/ключа — в поповере
+    #ai-settings-pop (поля #ai-provider, #ai-base-url, #ai-model-select,
+    #ai-key type="password").
 
   РЕДАКЦИЯ 2 — смена решения по размещению.
     Ранее AI-ассистент проектировался как ПРАВЫЙ МОДАЛЬНЫЙ ДРОВЕР 480px.
@@ -42,7 +52,8 @@
       карточка ошибки), поле ввода; диалог согласия — модальный.
 
   Показанные состояния (кнопки «состояние» слева сверху):
-    • Дифф + плагин + ошибка — в стартовой сцене чата.
+    • Дифф + плагин + состояния ошибок провайдера routerai.ru (ключ не задан,
+      401, нет соединения, 429) — в стартовой сцене чата.
     • Индикатор загрузки — при отправке сообщения.
     • Пустое состояние — кнопка «Очистить» (корзина) в шапке дока.
     • Скрытие (× → hidden), свёртка (шеврон → полоса 28px), разворот.
@@ -56,7 +67,8 @@
     `#mode-logs-btn` / `#mode-mon-btn` / `#mode-ai-btn`, тело `#mon-body`,
     строки `#mon-rows`, сводка `#mon-summary`, триггер `#sb-mon`, AI-поля
     `#ai-*` (`#ai-mode`, `#ai-skills`, `#ai-chat`, `#ai-input`, `#ai-send`,
-    `#ai-settings`, `#ai-clear`, `#ai-model`), `#sb-ai`, `#tb-ai`, `#ai-dot`,
+    `#ai-settings`, `#ai-clear`, `#ai-model`), поповер настроек `#ai-settings-pop`
+    (`#ai-provider`, `#ai-model-select`, `#ai-key`), `#sb-ai`, `#tb-ai`, `#ai-dot`,
     `#log-badge`. Рабочие имена `#bottom-dock` / `#dock-*` в продукте НЕ
     используются. Общие токены высоты: `--h-dock: 300px` (развёрнут),
     `--h-dock-bar: 28px` (свёрнут); кламп resize — 28–520px.
@@ -1028,6 +1040,80 @@
       }
       .consent-dialog .dialog-actions .btn { flex: 1; justify-content: center; padding: 7px 12px; font-size: 12px; }
 
+      /* ===================== ПОПОВЕР НАСТРОЕК AI (провайдер / base URL / модель / ключ) =====================
+         Облачный OpenAI-совместимый провайдер routerai.ru: провайдер, base URL,
+         модель и маскированный API-ключ. Ключ хранится в Windows Credential
+         Manager, а не в файле настроек. */
+      .ai-settings-pop {
+        position: fixed;
+        right: 12px;
+        bottom: 34px;
+        z-index: 650;
+        width: 320px;
+        max-width: calc(100vw - 24px);
+        background: var(--popover);
+        border: 1px solid var(--pop-border);
+        border-radius: var(--r-lg);
+        box-shadow: var(--shadow-lg);
+        overflow: hidden;
+      }
+      .ai-settings-pop .pop-head {
+        padding: 11px 14px;
+        border-bottom: 1px solid var(--line-soft);
+        color: var(--head);
+        font-size: 12.5px;
+        font-weight: 600;
+      }
+      .ai-settings-pop .pop-body {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        padding: 12px 14px;
+      }
+      .pop-row { display: flex; flex-direction: column; gap: 5px; }
+      .pop-label {
+        color: var(--fg-mute);
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+      }
+      .pop-input {
+        width: 100%;
+        padding: 6px 9px;
+        border: 1px solid var(--line);
+        border-radius: var(--r-sm);
+        background: var(--bg-2);
+        color: var(--fg);
+        font: inherit;
+        font-size: 12px;
+        outline: none;
+        transition: border-color 0.12s;
+      }
+      .pop-input:focus { border-color: var(--accent); }
+      .pop-input[readonly] { color: var(--fg-mute); background: var(--bg-1); cursor: default; }
+      .pop-input[type="password"] {
+        font-family: "Cascadia Code", ui-monospace, Consolas, monospace;
+        letter-spacing: 0.08em;
+      }
+      .pop-note {
+        margin: 0;
+        padding: 8px 9px;
+        border: 1px solid var(--line-soft);
+        border-radius: var(--r-sm);
+        background: var(--bg-1);
+        color: var(--fg-mute);
+        font-size: 10.5px;
+        line-height: 1.5;
+      }
+      .ai-settings-pop .pop-foot {
+        display: flex;
+        gap: 8px;
+        padding: 10px 14px;
+        border-top: 1px solid var(--line-soft);
+      }
+      .ai-settings-pop .pop-foot .btn { flex: 1; justify-content: center; padding: 6px 12px; font-size: 12px; }
+
       /* Reduced motion */
       @media (prefers-reduced-motion: reduce) {
         *, *::before, *::after {
@@ -1189,8 +1275,8 @@
             </svg>
           </button>
 
-          <!-- Служебная строка модели — тихо, только в режиме AI -->
-          <span class="ai-model ai-only" id="ai-model">ollama · qwen2.5:7b</span>
+          <!-- Служебная строка модели — тихо, только в режиме AI (облачный провайдер) -->
+          <span class="ai-model ai-only" id="ai-model">routerai · deepseek-v4.1-flash</span>
 
           <button class="dock-icon-btn ai-only" id="ai-settings" type="button" title="Настройки AI" aria-label="Настройки AI">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
@@ -1362,18 +1448,56 @@ end</pre>
                   </div>
                 </div>
 
-                <!-- Карточка ошибки -->
+                <!-- Состояния ошибок облачного провайдера (routerai.ru, OpenAI-совместимый) -->
                 <div class="msg assistant">
                   <span class="avatar" aria-hidden="true">AI</span>
                   <div class="msg-col">
+                    <div class="bubble">Возможные ошибки при работе через routerai.ru (OpenAI-совместимый API):</div>
+
+                    <!-- Ключ не задан -->
                     <div class="error-card" role="alert">
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>
                       <div class="error-body">
-                        <div class="error-title">Превышен лимит контекста</div>
-                        <div class="error-text">128K токенов — документ 1.4 МБ не помещается целиком. Уменьшите область или отправьте раздел.</div>
+                        <div class="error-title">Ключ routerai.ru не задан</div>
+                        <div class="error-text">Добавьте API-ключ в настройках AI — он хранится в Windows Credential Manager, а не в файле.</div>
+                        <div class="card-foot">
+                          <button class="btn ghost js-open-settings" type="button">Открыть настройки</button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Неверный ключ (401) -->
+                    <div class="error-card" role="alert">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>
+                      <div class="error-body">
+                        <div class="error-title">Неверный ключ (401)</div>
+                        <div class="error-text">routerai.ru отклонил ключ. Проверьте его в настройках AI.</div>
+                        <div class="card-foot">
+                          <button class="btn ghost js-open-settings" type="button">Открыть настройки</button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Нет соединения -->
+                    <div class="error-card" role="alert">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>
+                      <div class="error-body">
+                        <div class="error-title">Нет соединения</div>
+                        <div class="error-text">Не удалось связаться с routerai.ru. Проверьте подключение к сети.</div>
                         <div class="card-foot">
                           <button class="btn ghost" id="err-retry" type="button">Повторить</button>
-                          <button class="btn ghost" data-flash="Отправить только раздел — скоро" type="button">Только раздел</button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Лимит запросов (429) -->
+                    <div class="error-card" role="alert">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>
+                      <div class="error-body">
+                        <div class="error-title">Лимит запросов (429)</div>
+                        <div class="error-text">Слишком много запросов к routerai.ru. Повторите через несколько секунд.</div>
+                        <div class="card-foot">
+                          <button class="btn ghost" data-flash="Повторить запрос — скоро" type="button">Повторить</button>
                         </div>
                       </div>
                     </div>
@@ -1446,12 +1570,13 @@ end</pre>
       </footer>
     </div>
 
-    <!-- Диалог согласия на отправку содержимого (модальный) -->
+    <!-- Диалог согласия на отправку содержимого в облачный routerai.ru (модальный) -->
     <div class="consent-overlay" id="consent" hidden>
       <div class="consent-dialog" role="dialog" aria-modal="true" aria-labelledby="consent-title">
-        <div class="dialog-head" id="consent-title">Отправка содержимого в AI</div>
+        <div class="dialog-head" id="consent-title">Отправка содержимого в routerai.ru</div>
         <div class="dialog-body">
-          Для работы ассистенту нужно передать текст документа (и код плагина) на сторону LLM-провайдера.
+          AI-ассистент может отправлять содержимое документа и историю чата в облачный сервис
+          <strong>routerai.ru</strong> — для запроса к модели <strong>deepseek/deepseek-v4.1-flash</strong>. Разрешить?
           Сеть живёт только в Rust-слое; CSP <code>default-src 'self'</code> не нарушается.
           <div class="warning">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>
@@ -1459,9 +1584,41 @@ end</pre>
           </div>
         </div>
         <div class="dialog-actions">
-          <button class="btn ghost" id="consent-cancel" type="button">Отмена</button>
-          <button class="btn primary" id="consent-accept" type="button">Отправить и запомнить</button>
+          <button class="btn ghost" id="consent-cancel" type="button">Не разрешать</button>
+          <button class="btn primary" id="consent-accept" type="button">Разрешить</button>
         </div>
+      </div>
+    </div>
+
+    <!-- Поповер настроек AI: провайдер / base URL / модель / API-ключ -->
+    <div class="ai-settings-pop" id="ai-settings-pop" role="dialog" aria-label="Настройки AI" hidden>
+      <div class="pop-head">Настройки AI</div>
+      <div class="pop-body">
+        <label class="pop-row">
+          <span class="pop-label">Провайдер</span>
+          <select class="pop-input" id="ai-provider" aria-label="Провайдер">
+            <option value="routerai" selected>routerai.ru (OpenAI-совместимый)</option>
+          </select>
+        </label>
+        <label class="pop-row">
+          <span class="pop-label">Base URL</span>
+          <input class="pop-input" id="ai-base-url" type="text" value="https://routerai.ru/api/v1" readonly spellcheck="false" aria-label="Base URL" />
+        </label>
+        <label class="pop-row">
+          <span class="pop-label">Модель</span>
+          <select class="pop-input" id="ai-model-select" aria-label="Модель">
+            <option value="deepseek/deepseek-v4.1-flash" selected>deepseek/deepseek-v4.1-flash</option>
+          </select>
+        </label>
+        <label class="pop-row">
+          <span class="pop-label">API-ключ</span>
+          <input class="pop-input" id="ai-key" type="password" value="sk-demo0000000000000000" autocomplete="off" spellcheck="false" aria-label="API-ключ routerai.ru" />
+        </label>
+        <p class="pop-note">Ключ хранится в Windows Credential Manager, а не в файле настроек.</p>
+      </div>
+      <div class="pop-foot">
+        <button class="btn ghost" id="ai-settings-close" type="button">Закрыть</button>
+        <button class="btn primary" id="ai-settings-save" type="button">Сохранить</button>
       </div>
     </div>
 
@@ -1480,7 +1637,7 @@ end</pre>
           hidden: false,         // дока нет в layout
           collapsed: false,      // полоса-шапка 28px
           consentGiven: false,
-          model: 'ollama · qwen2.5:7b'
+          model: 'routerai · deepseek-v4.1-flash'
         };
 
         var stick = true;        // автоскролл чата к низу
@@ -1506,6 +1663,10 @@ end</pre>
         var skillsRow = $('ai-skills');
         var aiModel = $('ai-model');
         var aiSettings = $('ai-settings');
+        var settingsPop = $('ai-settings-pop');
+        var settingsClose = $('ai-settings-close');
+        var settingsSave = $('ai-settings-save');
+        var modelSelect = $('ai-model-select');
         var aiClear = $('ai-clear');
         var logsClear = $('logs-clear');
         var chat = $('ai-chat');
@@ -1535,6 +1696,10 @@ end</pre>
           flash.classList.add('show');
           window.setTimeout(function () { flash.classList.remove('show'); }, 1800);
         }
+
+        // Поповер настроек AI (провайдер / модель / API-ключ)
+        function openSettings() { settingsPop.hidden = false; }
+        function closeSettings() { settingsPop.hidden = true; }
 
         function scrollToBottom() {
           chat.scrollTop = chat.scrollHeight;
@@ -1618,6 +1783,7 @@ end</pre>
           toggleAll('.ai-only', isAi);
           toggleAll('.logs-only', isLogs);
           toggleAll('.mon-only', isMon);
+          if (!isAi) closeSettings();
           if (isAi) stick = true;
           syncTriggers();
         }
@@ -1653,6 +1819,7 @@ end</pre>
           state.collapsed = false;
           dock.hidden = true;
           dockCaret.setAttribute('aria-expanded', 'false');
+          closeSettings();
           syncTriggers();
           showFlash('Док скрыт — вернуть: триггер в статусбаре');
         }
@@ -1753,6 +1920,7 @@ end</pre>
             state.hidden = true;
             state.collapsed = false;
             aiDot.hidden = true;
+            closeSettings();
             sbLogs.classList.remove('active');
             sbMon.classList.remove('active');
             sbAi.classList.remove('active');
@@ -1813,7 +1981,24 @@ end</pre>
         sbAi.addEventListener('click', function () { trigger('ai'); });
         toolbarAi.addEventListener('click', function () { trigger('ai'); });
 
-        aiSettings.addEventListener('click', function () { showFlash('Настройки AI — скоро'); });
+        // Настройки AI: поповер с провайдером/моделью/ключом
+        aiSettings.addEventListener('click', function () {
+          settingsPop.hidden = !settingsPop.hidden;
+        });
+        settingsClose.addEventListener('click', closeSettings);
+        settingsSave.addEventListener('click', function () {
+          var short = modelSelect.value.split('/').pop();
+          state.model = 'routerai · ' + short;
+          aiModel.textContent = state.model;
+          closeSettings();
+          showFlash('Настройки AI сохранены');
+        });
+
+        // Ошибки «Ключ routerai.ru не задан» / «Неверный ключ (401)» → открыть настройки
+        var openSettingsButtons = dock.querySelectorAll('.js-open-settings');
+        for (var os = 0; os < openSettingsButtons.length; os++) {
+          openSettingsButtons[os].addEventListener('click', function () { openSettings(); });
+        }
         aiClear.addEventListener('click', clearChat);
         logsClear.addEventListener('click', function () { showFlash('Журнал очищен'); });
         sendBtn.addEventListener('click', send);
@@ -1893,6 +2078,10 @@ end</pre>
 
         // Клавиатура: прогрессивный Esc (фокус в доке) и Ctrl+Shift+A (AI).
         document.addEventListener('keydown', function (e) {
+          if (e.key === 'Escape' && !settingsPop.hidden) {
+            closeSettings();
+            return;
+          }
           if (e.key === 'Escape' && state.view === 'after' && !state.hidden && consent.hidden) {
             // Esc не перехватываем у редактора/превью — только при фокусе внутри дока.
             if (!dock.contains(document.activeElement)) return;

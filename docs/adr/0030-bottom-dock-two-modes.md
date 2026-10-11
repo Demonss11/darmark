@@ -9,8 +9,9 @@
   контракты), §16 (реестр ADR); `docs/adr/0029-journal-bottom-panel.md` (**расширяется**);
   `docs/adr/0024-plugin-drawer-placement.md` (AI-чат — **ещё одно исключение** из паттерна
   дровера); `docs/adr/0007-*`/§11 (санитайзер); `docs/adr/0031-resource-monitoring-source.md`
-  (мониторинг ресурсов, номер ADR — 0031); `crates/app/src/logPanel.ts`, `crates/app/src/main.ts`,
-  `crates/app/index.html`, `crates/app/src/style.css`
+  (мониторинг ресурсов, номер ADR — 0031); `docs/adr/0032-ai-provider-openai.md`
+  (провайдер LLM в MVP: OpenAI-совместимый API, `routerai.ru`); `crates/app/src/logPanel.ts`,
+  `crates/app/src/main.ts`, `crates/app/index.html`, `crates/app/src/style.css`
 
 ---
 
@@ -56,7 +57,7 @@ IDEA-013/TZ-AI-ASSISTANT проектировала AI-ассистента ка
   сужает ответственность до тела режима «Журнал».
 - **Рендер на Rust-стороне (D7/§11):** ответ LLM не попадает в `innerHTML` минуя Rust-санитайзер.
 - **CSP `default-src 'self'`** и **D6 (≤6 МБ):** новых тяжёлых зависимостей не вводим
-  (сетевой слой AI — отдельный спайк/ADR ТЗ, вне этого решения).
+  (сетевой слой AI и провайдер LLM — **ADR-0032**, вне этого решения).
 - **Best-effort:** AI-чат — не audit log; ошибки LLM/сети показываются в чате, не роняют приложение.
 
 ---
@@ -211,5 +212,7 @@ flowchart TD
 - `docs/adr/0007-*`, `DESIGN_DOC` §11 — единая точка санитайзера (рендер ответа AI).
 - `tasks/TZ-AI-ASSISTANT.md` — ТЗ AI (правится: дровер → режим дока).
 - `docs/adr/0031-resource-monitoring-source.md` — мониторинг ресурсов (номер ADR — 0031).
+- `docs/adr/0032-ai-provider-openai.md` — провайдер LLM в MVP: OpenAI-совместимый API (`routerai.ru`);
+  локальная LLM отложена (сетевой слой AI, согласие, секреты; расширяет этот ADR по части AI-подсистемы).
 - `ideas/front_idea-ai-assistant.html` — прототип (редакция 2).
 - `crates/app/src/logPanel.ts`, `main.ts`, `shell.ts`, `index.html`, `style.css` — точки интеграции.
