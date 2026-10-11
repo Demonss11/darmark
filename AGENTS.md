@@ -51,8 +51,6 @@ Tauri 2 + vanilla TypeScript/Vite на фронте + чистое Rust-ядро
   `plugins/index.json` (`schema_version: 1`; `id`/`path`/`description`, метаданные — из `plugin.json`)
   и каталогом приложения (`--repo`/`--dest`, env `DARMARK_PLUGIN_REPO`/`DARMARK_PLUGINS_DIR`).
   Линкует `plugin-host` как библиотеку — mlua остаётся вне GUI-хоста (D6/ADR-0021).
-- `crates/lua-proto/`, `crates/lua-rpc-spike/` — **прототип** (источник переноса блоков и фикстур
-  `crash`/`hang`/`chatty`/`edit`), в продукт не линкуются; держатся в workspace до Фазы 2.
 
 ## Команды
 

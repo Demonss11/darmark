@@ -26,6 +26,8 @@
 > **Спайк источника метрик ОЗУ/CPU:** §9 (**F49–F54**) — WinAPI (`windows`-crate)
 > против `sysinfo`; вход в ADR-0031. Стенд — `crates/resource-spike/` (в продукт не входил;
 > удалён после реализации).
+> **Примечание (после переноса):** прототипы `lua-proto`/`lua-rpc-spike` удалены — их блоки
+> перенесены в продуктовые `plugin-host`/`plugin-proto`; упоминания их файлов ниже — исторические.
 
 Замеры выполнены на Windows x86_64-msvc, rustc 1.99, mlua 0.12.2, vendored Lua 5.5.1
 (`lua-src 551.0.2`). Релизный профиль — `[profile.release]` (`opt-level="s"`, LTO, strip,

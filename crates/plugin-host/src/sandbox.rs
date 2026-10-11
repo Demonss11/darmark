@@ -5,7 +5,7 @@
 //! watchdog). Базовая библиотека в `mlua` 0.12 грузится **неявно** и флага `BASE` нет (F7),
 //! поэтому [`harden_base`] чистит уже загруженную базу.
 //!
-//! Перенесено из `lua-proto/src/sandbox.rs`, дополнено чисткой `rawget`/`rawset` (D17).
+//! Перенесено из прототипа (удалён), дополнено чисткой `rawget`/`rawset` (D17).
 
 use mlua::{Lua, LuaOptions, Result, StdLib, Value};
 
