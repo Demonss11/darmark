@@ -80,9 +80,8 @@ export function createShell(opts: ShellOptions): void {
   byId<HTMLButtonElement>("palette-trigger").addEventListener("click", commands.palette);
   // Дровер плагинов: триггер в тулбаре (повторный клик закрывает).
   byId<HTMLButtonElement>("tb-plugins").addEventListener("click", () => opts.drawer.toggle());
-  // «Журнал» — точка входа из статусбара (S11, ADR-0029): разворачивает/сворачивает
-  // панель-консоль; фокус возвращается на триггер при свёртке (collapse в logPanel).
-  byId<HTMLButtonElement>("sb-logs").addEventListener("click", () => opts.logPanel.toggle());
+  // Триггеры дока (#sb-logs/#sb-mon) вешает сам logPanel — он владеет режимами;
+  // shell отвечает только за прогрессивный Esc (ниже), чтобы не разделять логику.
 
   // Активная панель (фокус) — для визуализации Pane/View.
   editor.addEventListener("focus", () => commands.setActivePane(opts.editorPane));
@@ -103,14 +102,17 @@ export function createShell(opts: ShellOptions): void {
     // Пока открыт модальный диалог (палитра), хоткеи оболочки не срабатывают:
     // управление (в т.ч. Escape) остаётся за dialog.ts.
     if (isModalOpen()) return;
-    // Esc сворачивает развёрнутую панель журнала (AC-2), но только при фокусе
-    // внутри панели (§4.5 ТЗ): иначе Esc остаётся инспектору/редактору — не
-    // перехватываем и пропускаем дальше по обработчику.
-    if (e.key === "Escape" && opts.logPanel.isOpen()) {
+    // Esc в доке — прогрессивный (ADR-0030 §2.2 №10): развёрнут → свернуть,
+    // свёрнут → скрыть; фокус возвращается на триггер активного режима (в logPanel).
+    // Только при фокусе внутри панели (§4.5 ТЗ): иначе Esc остаётся инспектору/
+    // редактору — не перехватываем и пропускаем дальше по обработчику.
+    if (e.key === "Escape") {
       const panel = document.getElementById("logs-panel");
-      if (panel && panel.contains(document.activeElement)) {
+      if (panel && !panel.hidden && panel.contains(document.activeElement)) {
         e.preventDefault();
-        opts.logPanel.collapse();
+        const st = opts.logPanel.state();
+        if (st === "expanded") opts.logPanel.collapse();
+        else if (st === "collapsed") opts.logPanel.hide();
         return;
       }
     }

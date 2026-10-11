@@ -119,6 +119,16 @@ flowchart TD
 | 20 | Доступность | Док `role="region"`; сегмент `role="tablist"` + `role="tab"`/`aria-selected`/`aria-controls`; тела `role="tabpanel"`; `#logs-list` сохраняет `role="log"`; чат `role="log"`/`aria-live="polite"`; на триггерах `aria-expanded` |
 | 21 | Нумерация | Этот ADR — **0030**; планировавшийся под 0030 ADR мониторинга ресурсов сдвигается на **0031** |
 
+> **Дополнение 11.10.2026 (IDEA-015).** Док получил третье состояние **`hidden`** и явные
+> affordances скрытия: кнопка `#logs-close` (×) и **прогрессивный Esc** (`expanded → collapsed →
+> hidden`; только при фокусе внутри дока — после свёртки фокус возвращается на триггер, поэтому
+> следующий Esc срабатывает, если фокус снова в доке). Режимы: **«Журнал | Мониторинг | AI-ассистент»**
+> (`#mode-mon-btn` — мониторинг ресурсов, ADR-0031; `#mode-ai-btn` — зарезервирован, `aria-disabled`).
+> Триггеры: `#sb-logs` / `#sb-mon` (новый). Режим «Мониторинг» переехал из строки в шапке в
+> **вкладку** (`#mon-body` → `#logs-resources` → `#mon-rows`); в шапке — тихая сводка `#mon-summary`.
+> Новые id: `#logs-close`, `#sb-mon`, `#mode-mon-btn`, `#mon-body`, `#mon-rows`, `#mon-summary`.
+> Прототип: `ideas/front_idea-dock-monitoring.html`.
+
 ### 2.3. Интеграция
 
 - `main.ts` — создать `bottomDock` (контейнер `#logs-panel`, режимы, свёртка/resize) и

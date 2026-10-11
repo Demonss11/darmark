@@ -150,6 +150,22 @@ Then(
   }
 );
 
+// Наличие класса-состояния (например, `.active` триггера дока): видимый признак
+// активного режима, а не только парный атрибут (см. syncTriggers в logPanel.ts).
+Then(
+  "у элемента {string} есть класс {string}",
+  async (selector, className) => {
+    const has = await browser.execute(
+      (s, c) => !!document.querySelector(s)?.classList.contains(c),
+      selector,
+      className
+    );
+    if (!has) {
+      throw new Error(`У ${selector} нет класса ${JSON.stringify(className)}`);
+    }
+  }
+);
+
 // M3: aria-sort на самом th (подпись столбца — по видимому тексту).
 Then(
   "у заголовка {string} значение aria-sort равно {string}",

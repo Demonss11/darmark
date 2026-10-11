@@ -236,47 +236,103 @@
         </main>
       </div>
 
-      <!-- ============ ЖУРНАЛ (S11, ADR-0029) ============
-           Сворачивающаяся панель-консоль ВНУТРИ layout, между рабочей областью
-           и #statusbar: раскрытие сжимает рабочую область (не overlay),
-           свёртка — полоса-шапка. -->
-      <section class="logs-panel" id="logs-panel" role="region" aria-label="Журнал событий" aria-labelledby="logs-title" hidden>
+      <!-- ============ НИЖНИЙ ДОК (S11, ADR-0029/0030) ============
+           Один док на взаимоисключающие режимы «Журнал | Мониторинг | AI-ассистент».
+           Раскрытие сжимает рабочую область (не overlay); свёртка — полоса-шапка;
+           атрибут hidden — дока нет в layout (дефолт, возврат — триггеры статусбара). -->
+      <section class="logs-panel" id="logs-panel" role="region" aria-label="Нижняя панель" aria-labelledby="logs-title" data-mode="logs" hidden>
         <!-- drag-handle изменения высоты (логика — Фаза 3) -->
-        <div class="logs-resize" id="logs-resize" role="separator" aria-orientation="horizontal" aria-label="Изменить высоту журнала" title="Потяните, чтобы изменить высоту"></div>
+        <div class="logs-resize" id="logs-resize" role="separator" aria-orientation="horizontal" aria-label="Изменить высоту панели" title="Потяните, чтобы изменить высоту"></div>
 
         <!-- Шапка панели -->
         <div class="logs-head">
-          <button class="logs-caret" id="logs-collapse" type="button" title="Свернуть журнал" aria-label="Свернуть журнал" aria-expanded="false" aria-controls="logs-body">
+          <button class="logs-caret" id="logs-collapse" type="button" title="Свернуть или развернуть панель" aria-label="Свернуть или развернуть панель" aria-expanded="false" aria-controls="logs-body">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false">
               <polyline points="6 9 12 15 18 9" />
             </svg>
           </button>
           <span class="logs-title" id="logs-title">Журнал</span>
-          <span class="logs-count" id="logs-count">0</span>
+          <span class="logs-count logs-only" id="logs-count">0</span>
 
-          <!-- Тихий фильтр-сегмент (логика — Фаза 3) -->
-          <div class="logs-filter" role="group" aria-label="Фильтр событий">
+          <!-- Сегмент режимов дока (ADR-0030): radio-tablist -->
+          <div class="logs-modes" id="logs-modes" role="tablist" aria-label="Режим нижней панели">
+            <button class="mode-btn active" id="mode-logs-btn" type="button" role="tab" aria-selected="true" aria-controls="logs-body" data-mode="logs" title="Журнал событий">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false">
+                <polyline points="4 17 10 11 4 5" />
+                <line x1="12" y1="19" x2="20" y2="19" />
+              </svg>
+              <span>Журнал</span>
+            </button>
+            <button class="mode-btn" id="mode-mon-btn" type="button" role="tab" aria-selected="false" aria-controls="mon-body" data-mode="mon" title="Мониторинг ресурсов">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false">
+                <path d="M3 12h4l3 8 4-16 3 8h4" />
+              </svg>
+              <span>Мониторинг</span>
+            </button>
+            <button class="mode-btn" id="mode-ai-btn" type="button" role="tab" aria-selected="false" aria-controls="ai-mode" data-mode="ai" aria-disabled="true" title="AI-ассистент (скоро)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false">
+                <path d="M12 3l1.6 4.6L18 9l-4.4 1.4L12 15l-1.6-4.6L6 9l4.4-1.4z" />
+              </svg>
+              <span>AI-ассистент</span>
+              <span class="soon">скоро</span>
+            </button>
+          </div>
+
+          <!-- Тихий фильтр-сегмент (только режим «Журнал», логика — Фаза 3) -->
+          <div class="logs-filter logs-only" role="group" aria-label="Фильтр событий">
             <button class="filter-btn active" data-filter="all" type="button" aria-pressed="true">Все</button>
             <button class="filter-btn" data-filter="error" type="button" aria-pressed="false">Ошибки</button>
           </div>
 
           <span class="logs-head-spacer"></span>
 
-          <!-- Строка памяти (IDEA-012 — зарезервировано, §6.8) -->
-          <span class="logs-resources" id="logs-resources" role="note" aria-label="Потребление памяти"></span>
+          <!-- Тихая сводка мониторинга в шапке (детали — во вкладке) -->
+          <span class="mon-summary mon-only" id="mon-summary"></span>
 
-          <!-- Кнопка очистки — только иконка (логика — Фаза 3) -->
-          <button class="logs-clear" id="logs-clear" type="button" title="Очистить журнал" aria-label="Очистить журнал">
+          <!-- Кнопка очистки журнала — только иконка (режим «Журнал», логика — Фаза 3) -->
+          <button class="logs-clear logs-only" id="logs-clear" type="button" title="Очистить журнал" aria-label="Очистить журнал">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false">
               <polyline points="3 6 5 6 21 6" />
               <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
             </svg>
           </button>
+
+          <!-- Скрыть док целиком (возврат в hidden; в БЫЛО такого affordance не было) -->
+          <button class="logs-close" id="logs-close" type="button" title="Скрыть панель" aria-label="Скрыть панель">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true" focusable="false">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
         </div>
 
-        <!-- Тело панели: лента событий -->
-        <div class="logs-body" id="logs-body">
+        <!-- Тело режима «Журнал»: лента событий -->
+        <div class="logs-body" id="logs-body" role="tabpanel" aria-labelledby="mode-logs-btn">
           <div class="logs-list" id="logs-list" role="log" aria-live="polite" aria-relevant="additions"></div>
+        </div>
+
+        <!-- Тело режима «Мониторинг» (id/role слота ресурсов сохранены, AC-11) -->
+        <div class="mon-tab" id="mon-body" role="tabpanel" aria-labelledby="mode-mon-btn" hidden>
+          <div class="mon-list" id="logs-resources" role="note" aria-label="Мониторинг ресурсов">
+            <div class="mon-grid mon-head-row" aria-hidden="true">
+              <span></span>
+              <span>Процесс</span>
+              <span>ОЗУ</span>
+              <span>Нагрузка</span>
+              <span class="c-cpu">CPU</span>
+              <span class="c-age">Обновлено</span>
+            </div>
+            <!-- строки процессов: заполняет resourceMonitor.ts (только textContent) -->
+            <div id="mon-rows"></div>
+          </div>
+        </div>
+
+        <!-- Тело режима «AI-ассистент» (зарезервирован, ADR-0030) -->
+        <div class="mon-tab" id="ai-mode" role="tabpanel" aria-labelledby="mode-ai-btn" hidden>
+          <div class="mon-empty">
+            <span class="t">AI-ассистент — скоро</span>
+            <span class="h">Режим предусмотрен ADR-0030; в этой версии не реализован</span>
+          </div>
         </div>
       </section>
 
@@ -285,13 +341,20 @@
         <span class="stat"><span class="stat-dot" aria-hidden="true"></span><span id="stat-state">Готов</span></span>
         <span class="stat" id="stat-msg" role="status" aria-live="polite"></span>
         <!-- Журнал: точка входа из статусбара (S11, ADR-0029) -->
-        <button class="stat clickable" id="sb-logs" type="button" title="Журнал и события" aria-label="Журнал и события">
+        <button class="stat clickable" id="sb-logs" type="button" title="Журнал и события" aria-label="Журнал и события" aria-expanded="false" aria-controls="logs-panel">
           <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="12" height="12">
             <polyline points="4 17 10 11 4 5" />
             <line x1="12" y1="19" x2="20" y2="19" />
           </svg>
           <span>Журнал</span>
           <span class="badge" id="log-badge" hidden>0</span>
+        </button>
+        <!-- Мониторинг ресурсов: точка входа из статусбара (IDEA-012, ADR-0031) -->
+        <button class="stat clickable" id="sb-mon" type="button" title="Мониторинг ресурсов" aria-label="Мониторинг ресурсов" aria-expanded="false" aria-controls="logs-panel">
+          <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="12" height="12">
+            <path d="M3 12h4l3 8 4-16 3 8h4" />
+          </svg>
+          <span>Мониторинг</span>
         </button>
         <span class="plugin-status" id="plugin-status" role="group" aria-label="Плагины"></span>
         <span id="plugin-announcer" class="visually-hidden" role="status" aria-live="polite"></span>

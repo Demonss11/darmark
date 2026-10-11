@@ -1,7 +1,12 @@
-// logPanel.ts — панель «Журнал» (S11, ADR-0029): ring buffer событий на 200
-// записей, подписка на существующие и новые Tauri-события, рендер записей только
-// через textContent (без innerHTML в ленте — CSP/XSS), бейдж непрочитанных,
-// своротка до полосы-шапки.
+// logPanel.ts — нижний док (S11, ADR-0029/0030): контроллер режимов
+// «Журнал | Мониторинг | AI-ассистент» плюс тело режима «Журнал» — ring buffer
+// событий на 200 записей, подписка на Tauri-события, рендер записей только через
+// textContent (без innerHTML в ленте — CSP/XSS), бейдж непрочитанных.
+//
+// Состояния дока: hidden (нет в layout, дефолт) / collapsed (полоса-шапка) /
+// expanded (тело режима видно). Скрытие — кнопка × (#logs-close) и прогрессивный
+// Esc (развёрнут → свернуть, свёрнут → скрыть; обработчик — shell.ts).
+//
 // Фаза 3 (§8 ТЗ): фильтр «Все/Ошибки», очистка ленты, группировка по дате,
 // drag-resize высоты и автопрокрутка с заморозкой.
 
@@ -24,10 +29,14 @@ export interface LogEntry {
 }
 
 export interface LogPanel {
-  toggle(): void;
-  open(): void;
-  collapse(): void;
-  isOpen(): boolean;
+  /** Текущее состояние видимости дока (hidden/collapsed/expanded). */
+  state(): DockState;
+  /** Текущий активный режим дока. */
+  mode(): DockMode;
+  /** Свернуть раскрытый док до полосы-шапки. */
+  collapse(moveFocus?: boolean): void;
+  /** Полностью скрыть док (убрать из layout). */
+  hide(): void;
   /**
    * Единая точка записи в ленту для внешних модулей (шов ресурс-монитора, TZ §6.5):
    * те не подписываются на `log-entry` повторно, а отдают готовую запись владельцу ленты.
@@ -36,11 +45,24 @@ export interface LogPanel {
   dispose(): void;
 }
 
+/** Режим нижнего дока (ADR-0030): `ai` зарезервирован и не активируется. */
+export type DockMode = "logs" | "mon" | "ai";
+
+/** Видимость дока: нет в layout / полоса-шапка / тело режима видно. */
+export type DockState = "hidden" | "collapsed" | "expanded";
+
 export interface LogPanelOptions {
-  /** Триггер в статусбаре (#sb-logs): получает aria-expanded/.active. */
+  /** Триггер «Журнал» в статусбаре (#sb-logs): получает aria-expanded/.active. */
   trigger: HTMLElement;
+  /** Триггер «Мониторинг» в статусбаре (#sb-mon). */
+  monTrigger: HTMLElement;
   /** Бейдж непрочитанных (#log-badge). */
   badge: HTMLElement;
+  /**
+   * Смена состояния/режима дока: даёт ресурс-монитору догнать отложенный рендер,
+   * когда вкладка «Мониторинг» активна (шов без обратной зависимости модулей).
+   */
+  onLayoutChange?: () => void;
 }
 
 /** Фильтр ленты (§4.2 ТЗ, AC-8): «Ошибки» — только warn/error. */
@@ -78,15 +100,22 @@ function clampHeight(value: number): number {
 }
 
 export function createLogPanel(opts: LogPanelOptions): LogPanel {
-  const { trigger, badge } = opts;
+  const { trigger, monTrigger, badge } = opts;
 
   const panel = byId<HTMLElement>("logs-panel");
   const body = byId<HTMLElement>("logs-body");
   const list = byId<HTMLElement>("logs-list");
+  const monBody = byId<HTMLElement>("mon-body");
+  const aiBody = byId<HTMLElement>("ai-mode");
+  const title = byId<HTMLElement>("logs-title");
   const caret = byId<HTMLButtonElement>("logs-collapse");
+  const closeButton = byId<HTMLButtonElement>("logs-close");
   const count = byId<HTMLElement>("logs-count");
   const clearButton = byId<HTMLButtonElement>("logs-clear");
   const resizeBar = byId<HTMLElement>("logs-resize");
+  const modeLogsBtn = byId<HTMLButtonElement>("mode-logs-btn");
+  const modeMonBtn = byId<HTMLButtonElement>("mode-mon-btn");
+  const modeAiBtn = byId<HTMLButtonElement>("mode-ai-btn");
   const filterButtons = Array.from(panel.querySelectorAll<HTMLButtonElement>(".filter-btn"));
 
   const entries: LogEntry[] = [];
@@ -94,7 +123,10 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
   let unread = 0;
   let unreadErrors = 0;
   let unreadWarnings = 0;
+  // `open` = тело активного режима видно (expanded); скрытое/свёрнутое — false.
+  // Признак «дока нет в layout» живёт в атрибуте panel.hidden (единственный владелец).
   let open = false;
+  let mode: DockMode = "logs";
   let filter: LogFilter = "all";
   let renderQueued = false;
   // Автопрокрутка (AC-10): пока пользователь сам не прокрутил вверх, лента
@@ -112,9 +144,9 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
   function push(level: LogLevel, category: LogCategory, message: string, detail?: string): void {
     entries.push({ id: nextId++, timestamp: Date.now(), level, category, message, detail });
     if (entries.length > MAX_ENTRIES) entries.splice(0, entries.length - MAX_ENTRIES);
-    // Непрочитанные копятся только при свёрнутой панели: в развёрнутой пользователь
-    // видит ленту в реальном времени.
-    if (!open) {
+    // Непрочитанные копятся, пока лента журнала не видна: свёрнутый док или
+    // активный другой режим (тело «Журнал» скрыто) — событие непрочитано.
+    if (!open || mode !== "logs") {
       unread++;
       if (level === "error") unreadErrors++;
       else if (level === "warn") unreadWarnings++;
@@ -138,55 +170,163 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
     }
   }
 
-  // --- состояние панели (§4.5) ---
-
-  function expandedFilterButton(): HTMLButtonElement | undefined {
-    return filterButtons.find((btn) => btn.dataset.filter === filter);
+  /** Лента журнала видима — события прочитаны: сбрасываем счётчики и бейдж (§6.5). */
+  function markRead(): void {
+    unread = 0;
+    unreadErrors = 0;
+    unreadWarnings = 0;
+    updateBadge();
   }
 
-  function setExpanded(next: boolean, moveFocus: boolean): void {
-    if (open === next) return;
-    open = next;
+  // --- режимы и состояние дока (§4.5, ADR-0030) ---
+
+  /** Заголовок шапки по режиму — он же accessible-имя региона (aria-labelledby). */
+  const MODE_TITLE: Record<DockMode, string> = {
+    logs: "Журнал",
+    mon: "Мониторинг",
+    ai: "AI-ассистент",
+  };
+
+  /** Показать/скрыть режимные поля шапки (`.logs-only`/`.mon-only`/`.ai-only`). */
+  function toggleModeFields(selector: string, show: boolean): void {
+    for (const el of panel.querySelectorAll<HTMLElement>(selector)) el.hidden = !show;
+  }
+
+  /** Отразить активный режим: табы, заголовок, тела вкладок и режимные поля шапки. */
+  function applyMode(): void {
+    panel.dataset.mode = mode;
+    title.textContent = MODE_TITLE[mode];
+    const isLogs = mode === "logs";
+    const isMon = mode === "mon";
+    modeLogsBtn.classList.toggle("active", isLogs);
+    modeMonBtn.classList.toggle("active", isMon);
+    modeLogsBtn.setAttribute("aria-selected", String(isLogs));
+    modeMonBtn.setAttribute("aria-selected", String(isMon));
+    modeAiBtn.setAttribute("aria-selected", "false");
+    body.hidden = !isLogs;
+    monBody.hidden = !isMon;
+    aiBody.hidden = true; // режим «скоро»: тело не показываем никогда
+    toggleModeFields(".logs-only", isLogs);
+    toggleModeFields(".mon-only", isMon);
+    toggleModeFields(".ai-only", false);
+  }
+
+  /** Переключить режим дока (без изменения высоты/свёртки, ADR-0030 §2.2 №7). */
+  function setMode(next: DockMode): void {
+    if (next === "ai" || next === mode) return; // зарезервирован / уже активен
+    mode = next;
+    applyMode();
+    // Активация «Журнала» при раскрытом доке = прочтение ленты (§6.5).
+    if (open && next === "logs") markRead();
+    syncTriggers();
+    notifyLayout();
+  }
+
+  /** Текущее состояние видимости дока — единственная точка чтения для shell.ts. */
+  function state(): DockState {
+    if (panel.hidden) return "hidden";
+    return open ? "expanded" : "collapsed";
+  }
+
+  /** Триггер статусбара активного режима — точка возврата фокуса (§4.5, ADR-0030 №10). */
+  function activeTrigger(): HTMLElement {
+    return mode === "mon" ? monTrigger : trigger;
+  }
+
+  /** Догон отложенного рендера монитора после смены состояния/режима. */
+  function notifyLayout(): void {
+    opts.onLayoutChange?.();
+  }
+
+  /** Отразить активность триггеров: `.active`/`aria-expanded` только у раскрытого режима. */
+  function syncTriggers(): void {
+    const st = state();
+    const logsActive = st === "expanded" && mode === "logs";
+    const monActive = st === "expanded" && mode === "mon";
+    trigger.classList.toggle("active", logsActive);
+    trigger.setAttribute("aria-expanded", String(logsActive));
+    monTrigger.classList.toggle("active", monActive);
+    monTrigger.setAttribute("aria-expanded", String(monActive));
+  }
+
+  /** Раскрыть док (тело активного режима видно). */
+  function expand(moveFocus = true): void {
+    if (!panel.hidden && open) return;
     panel.hidden = false;
     // Инлайн-высота принадлежит drag-resize: при программной смене состояния
     // возвращаемся к токенам высоты (иначе после драга до 28px панель
     // «развернулась» бы высотой полосы-шапки).
     panel.style.height = "";
-    panel.classList.toggle("collapsed", !next);
-    trigger.classList.toggle("active", next);
-    trigger.setAttribute("aria-expanded", String(next));
-    caret.setAttribute("aria-expanded", String(next));
-    if (next) {
-      // Панель развёрнута — события прочитаны: сбрасываем счётчики и бейдж.
-      unread = 0;
-      unreadErrors = 0;
-      unreadWarnings = 0;
-      updateBadge();
-      render();
-      stick = true;
-      scrollToBottom();
-      // §7: при открытии фокус уходит на фильтр; при resize не вырываем его из драга.
-      if (moveFocus) expandedFilterButton()?.focus({ preventScroll: true });
-    } else {
-      // Единственная предсказуемая точка возврата фокуса — триггер в статусбаре.
-      if (moveFocus) trigger.focus({ preventScroll: true });
-    }
+    panel.classList.remove("collapsed");
+    open = true;
+    caret.setAttribute("aria-expanded", "true");
+    // Док раскрыт — события прочитаны: сбрасываем счётчики и бейдж.
+    markRead();
+    render();
+    stick = true;
+    scrollToBottom();
+    syncTriggers();
+    notifyLayout();
+    // §7: фокус — на вкладку активного режима (при resize его не вырываем: moveFocus=false).
+    if (moveFocus) (mode === "mon" ? modeMonBtn : modeLogsBtn).focus({ preventScroll: true });
   }
 
-  function openPanel(): void {
-    if (open) return;
-    setExpanded(true, true);
-  }
-
-  function collapsePanel(moveFocus = true): void {
-    if (!open) return;
+  /** Свернуть док до полосы-шапки (тело скрыто, шапка на месте). */
+  function collapse(moveFocus = true): void {
+    if (panel.hidden || !open) return;
     endResize(); // незавершённый drag не должен пережить свёртку
-    setExpanded(false, moveFocus);
+    panel.style.height = "";
+    panel.classList.add("collapsed");
+    open = false;
+    caret.setAttribute("aria-expanded", "false");
+    syncTriggers();
+    notifyLayout();
+    // Единственная предсказуемая точка возврата фокуса — триггер активного режима.
+    if (moveFocus) activeTrigger().focus({ preventScroll: true });
   }
 
-  function toggle(): void {
-    if (open) collapsePanel();
-    else openPanel();
+  /** Полностью скрыть док: дока нет в layout, вернуть его могут триггеры статусбара. */
+  function hide(moveFocus = true): void {
+    if (panel.hidden) return;
+    endResize();
+    panel.hidden = true;
+    panel.style.height = "";
+    panel.classList.remove("collapsed", "resizing");
+    open = false;
+    caret.setAttribute("aria-expanded", "false");
+    syncTriggers();
+    notifyLayout();
+    // Фокус не должен остаться на скрытом элементе — вернуть на триггер режима.
+    if (moveFocus) activeTrigger().focus({ preventScroll: true });
+  }
+
+  /** Открыть док в указанном режиме (раскрыть + переключить вкладку). */
+  function openMode(next: DockMode): void {
+    if (next === "ai") return; // режим «скоро» не открывается
+    setMode(next);
+    expand(true);
+  }
+
+  /**
+   * Триггер статусбара (ADR-0030 §2.2 №9): скрыт/свёрнут → открыть в своём режиме;
+   * раскрыт в другом → переключить; раскрыт в том же → свернуть. Скрытие — × и Esc.
+   */
+  function triggerMode(next: DockMode): void {
+    if (next === "ai") return;
+    const st = state();
+    if (st === "hidden" || st === "collapsed") {
+      openMode(next);
+      return;
+    }
+    if (mode === next) collapse();
+    else setMode(next);
+  }
+
+  /** Шеврон: свернуть ↔ развернуть (в hidden не бывает — шапка не видна). */
+  function toggleCollapse(): void {
+    const st = state();
+    if (st === "collapsed") expand(true);
+    else if (st === "expanded") collapse(true);
   }
 
   // --- фильтр и очистка (AC-8, AC-9) ---
@@ -242,7 +382,7 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
   // --- рендер (§4.3: по requestAnimationFrame; §4.6: только textContent) ---
 
   function scheduleRender(): void {
-    // Панель скрыта — не пересоздаём DOM ленты; при открытии openPanel вызывает render() напрямую.
+    // Панель скрыта — не пересоздаём DOM ленты; при раскрытии expand() вызывает render() напрямую.
     if (panel.hidden) return;
     if (renderQueued) return;
     renderQueued = true;
@@ -380,7 +520,7 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
     // Тянем верхнюю кромку: движение вверх увеличивает высоту.
     const next = clampHeight(resizeStartHeight + (resizeStartY - event.clientY));
     // Вытянули из полосы-шапки — панель разворачивается (без переноса фокуса).
-    if (next > MIN_HEIGHT && !open) setExpanded(true, false);
+    if (next > MIN_HEIGHT && !open) expand(false);
     panel.style.height = `${next}px`;
   }
 
@@ -391,7 +531,7 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
     endResize();
     // «Схлопнули» до минимума — это и есть свёрнутое состояние (§4.5). Фокус не
     // переносим: симметрично развороту драгом (moveFocus=false).
-    if (collapsed) collapsePanel(false);
+    if (collapsed) collapse(false);
   }
 
   function onResizePointerCancel(event: PointerEvent): void {
@@ -414,7 +554,23 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
     if (value === "all" || value === "error") setFilter(value);
   }
 
-  caret.addEventListener("click", toggle);
+  // Триггеры статусбара (#sb-logs/#sb-mon) — владелец режимов здесь, а не в shell:
+  // логика троицы «открыть в своём режиме / переключить / свернуть» (ADR-0030 №9).
+  const onLogsTriggerClick = (): void => triggerMode("logs");
+  const onMonTriggerClick = (): void => triggerMode("mon");
+  const onCaretClick = (): void => toggleCollapse();
+  // × — единственный явный возврат в `hidden` (п.1 бага).
+  const onCloseClick = (): void => hide();
+  const onModeLogsClick = (): void => setMode("logs");
+  const onModeMonClick = (): void => setMode("mon");
+
+  caret.addEventListener("click", onCaretClick);
+  closeButton.addEventListener("click", onCloseClick);
+  trigger.addEventListener("click", onLogsTriggerClick);
+  monTrigger.addEventListener("click", onMonTriggerClick);
+  modeLogsBtn.addEventListener("click", onModeLogsClick);
+  modeMonBtn.addEventListener("click", onModeMonClick);
+  // #mode-ai-btn — зарезервирован (`aria-disabled`): обработчик не вешаем.
   clearButton.addEventListener("click", clearLog);
   resizeBar.addEventListener("pointerdown", onResizePointerDown);
   resizeBar.addEventListener("pointermove", onResizePointerMove);
@@ -501,17 +657,26 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
     push(level, category, message);
   });
 
+  // Начальное состояние: разметка уже в режиме «Журнал», синхронизируем табы/поля/триггеры.
+  applyMode();
+  syncTriggers();
+
   return {
-    toggle,
-    open: openPanel,
-    collapse: collapsePanel,
-    isOpen: () => open,
+    state,
+    mode: () => mode,
+    collapse,
+    hide,
     log: push,
     dispose(): void {
       disposed = true; // до очистки: pending-listen увидит флаг и отпишется сам
       for (const un of unlisteners) un();
       unlisteners.length = 0;
-      caret.removeEventListener("click", toggle);
+      caret.removeEventListener("click", onCaretClick);
+      closeButton.removeEventListener("click", onCloseClick);
+      trigger.removeEventListener("click", onLogsTriggerClick);
+      monTrigger.removeEventListener("click", onMonTriggerClick);
+      modeLogsBtn.removeEventListener("click", onModeLogsClick);
+      modeMonBtn.removeEventListener("click", onModeMonClick);
       clearButton.removeEventListener("click", clearLog);
       resizeBar.removeEventListener("pointerdown", onResizePointerDown);
       resizeBar.removeEventListener("pointermove", onResizePointerMove);

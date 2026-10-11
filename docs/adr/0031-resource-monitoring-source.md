@@ -26,8 +26,10 @@
 
 ### 1.2. Что уже зафиксировано (не пересматривается)
 
-`TZ-RESOURCE-MON` (§1, §4, §6) закрыл **продуктовые** границы: место — слот `#logs-resources` в
-шапке панели «Журнал» (logs-режимный слот нижнего дока, ADR-0030); сбор — на **Rust-стороне**
+`TZ-RESOURCE-MON` (§1, §4, §6) закрыл **продуктовые** границы: место — вкладка-режим
+«Мониторинг» нижнего дока (`#mon-body` → `#logs-resources` → `#mon-rows`; тихая сводка
+`#mon-summary` в шапке; вход — `#sb-mon`/`#mode-mon-btn`; ADR-0030 + дополнение 11.10.2026);
+сбор — на **Rust-стороне**
 (фронт не читает процессы/ФС); рендер — **только `textContent`** (CSP/XSS); **best-effort**
 (потеря семпла некритична); **без авто-kill** (реакция — подсветка + запись в журнал); Windows-only.
 
@@ -131,7 +133,7 @@ WebView2/event-loop напрямую не тестировался (AC-19 — р
     host-функций, permissions и конверт **не меняются** (ADR-0027 §2.4). `resource-metrics`/
     `plugin-process-exited` — события фронт-шины (как `log-entry`), **не** часть контракта плагина;
     `docs/PLUGIN_API.md` не правится.
-18. Рендер слота — **только `textContent`**; `innerHTML` для строк ресурсов запрещён; CSP
+18. Рендер вкладки «Мониторинг» — **только `textContent`**; `innerHTML` для строк ресурсов запрещён; CSP
     `default-src 'self'` сохраняется.
 19. **Обнаружение завершения child'а** (`plugin-process-exited`) производится **по владению
     процессом** (живой `Supervisor`/его хендл/переход статуса из `active`), а **не** пробой «голого
@@ -248,6 +250,7 @@ WebView2/event-loop напрямую не тестировался (AC-19 — р
 - `docs/adr/0021-plugin-isolation-process.md` (child-per-plugin, Job Object, watchdog),
   `docs/adr/0027-host-api-version-policy.md` (§2.4 — аддитивность),
   `docs/adr/0029-journal-bottom-panel.md` / `docs/adr/0030-bottom-dock-two-modes.md`
-  (`#logs-resources` — logs-режимный слот).
+  (`#logs-resources` — внутри вкладки «Мониторинг»).
 - Код: `crates/app/src-tauri/src/plugins/supervisor.rs`, `manager.rs`, `services.rs`, `lib.rs`;
-  `crates/app/src/logPanel.ts`, `crates/app/index.html` (`#logs-resources`), `crates/app/src/style.css`.
+  `crates/app/src/logPanel.ts`/`bottomDock.ts`, `crates/app/index.html` (вкладка «Мониторинг»:
+  `#mon-body`/`#logs-resources`/`#mon-rows`), `crates/app/src/style.css`.

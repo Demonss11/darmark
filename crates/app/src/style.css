@@ -36,9 +36,9 @@
   --h-toolbar: 36px;
   --h-tabs: 32px;
   --h-status: 24px;
-  /* Панель «Журнал» (S11, ADR-0029): развёрнутая и свёрнутая (полоса-шапка) */
-  --h-logs: 220px;
-  --h-logs-bar: 28px;
+  /* Нижний док (S11, ADR-0030 §2.2 №5): развёрнутая и свёрнутая (полоса-шапка) */
+  --h-dock: 300px;
+  --h-dock-bar: 28px;
   --w-drawer: 440px;
   --r-sm: 5px;
   --r-md: 7px;
@@ -1117,30 +1117,32 @@ label.tbtn:has(> input:focus-visible) { outline: 2px solid var(--accent); outlin
 /* ===================== ПАНЕЛЬ «ЖУРНАЛ» (S11, ADR-0029) =====================
    Сворачивающаяся консоль в flex-колонке #app, между .workspace и
    #statusbar. Раскрытие сжимает рабочую область (не overlay), свёртка —
-   полоса-шапка --h-logs-bar. */
+   полоса-шапка --h-dock-bar. */
 .logs-panel {
   position: relative; /* база для drag-handle */
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  height: var(--h-logs);
-  min-height: var(--h-logs-bar);
+  height: var(--h-dock);
+  min-height: var(--h-dock-bar);
   background: var(--bg-1);
   border-top: 1px solid var(--line-soft);
   overflow: hidden;
   transition: height 0.18s; /* гасится глобальным prefers-reduced-motion */
 }
-.logs-panel.collapsed { height: var(--h-logs-bar); }
-.logs-panel.collapsed .logs-body { display: none; }
+.logs-panel.collapsed { height: var(--h-dock-bar); }
+/* Свёрнутый док показывает только полосу-шапку: все тела режимов скрыты. */
+.logs-panel.collapsed .logs-body,
+.logs-panel.collapsed .mon-tab { display: none; }
 
-/* Шапка панели — максимально тихая, высота --h-logs-bar; при узком окне
-   flex-wrap переносит строку ресурсов на отдельную строку, а не обрезает её (§6.1). */
+/* Шапка дока — максимально тихая, высота --h-dock-bar; при узком окне
+   flex-wrap переносит содержимое на отдельную строку, а не обрезает его. */
 .logs-head {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  min-height: var(--h-logs-bar);
+  min-height: var(--h-dock-bar);
   padding: 2px 6px 2px 4px;
   background: var(--bg-1);
   flex-shrink: 0;
@@ -1205,58 +1207,152 @@ label.tbtn:has(> input:focus-visible) { outline: 2px solid var(--accent); outlin
 
 .logs-head-spacer { flex: 1; min-width: 8px; }
 
-/* Строка памяти (IDEA-012 — зарезервировано): приглушённая, без яркости;
-   пока пустая, не занимает заметного места (§6.8). */
-.logs-resources {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 2px 10px;
-  min-width: 0;
+/* Сегмент режимов дока «Журнал | Мониторинг | AI-ассистент» (ADR-0030). */
+.logs-modes {
+  display: inline-flex;
+  gap: 0;
   flex-shrink: 0;
-  font-family: "Cascadia Code", ui-monospace, monospace;
-  font-size: 10.5px;
+  padding: 1px;
+  background: var(--bg-0);
+  border-radius: 5px;
+}
+.mode-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
   color: var(--fg-mute);
-  font-variant-numeric: tabular-nums;
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 500;
+  cursor: pointer;
   white-space: nowrap;
+  transition: background 0.12s, color 0.12s;
+}
+.mode-btn:hover { background: var(--bg-2); color: var(--fg); }
+.mode-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.mode-btn.active { background: var(--bg-3); color: var(--fg); }
+.mode-btn[aria-disabled="true"] { opacity: 0.45; cursor: default; }
+.mode-btn[aria-disabled="true"]:hover { background: transparent; color: var(--fg-mute); }
+.mode-btn svg { width: 11px; height: 11px; }
+.mode-btn .soon {
+  padding: 0 5px;
+  border-radius: 6px;
+  background: var(--bg-2);
+  color: var(--fg-mute);
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
 }
 
-/* --- Мониторинг ресурсов (TZ-RESOURCE-MON, ADR-0031) ---
-   Компактно и тихо: числа моно/табличные, декор (точка, бар) скрыт от
-   скринридеров, семантику несёт текст. */
-.mon-row {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
+/* Тихая сводка мониторинга в шапке (детали — во вкладке «Мониторинг»). */
+.mon-summary {
+  flex-shrink: 0;
+  font-family: "Cascadia Code", ui-monospace, Consolas, monospace;
+  font-size: 10.5px;
+  color: var(--fg-mute);
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
-.mon-children {
+
+/* Кнопка «скрыть док» (×) — приглушённая, краснеет на hover (как у дровера). */
+.logs-close {
   display: inline-flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 2px 10px;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--fg-mute);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
 }
-.mon-name { color: var(--fg-mute); }
-.mon-val { color: var(--fg-mute); }
-.mon-cpu,
-.mon-age { color: var(--fg-dim); }
-.mon-age { opacity: 0.8; }
-.mon-flag { color: var(--fg-mute); font-style: italic; }
+.logs-close:hover { background: rgba(248, 113, 113, 0.12); color: var(--error); }
+.logs-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.logs-close svg { width: 13px; height: 13px; }
+
+/* --- Вкладка «Мониторинг» (TZ-RESOURCE-MON, ADR-0031 + IDEA-012) ---
+   Тело режима: список процессов общей сеткой; `#logs-resources` сохраняет id
+   и `role` (AC-11), строки — только `textContent`. */
+.mon-tab {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 16px 12px;
+  background: var(--bg-0);
+}
+.mon-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+/* Общая сетка колонок шапки и строк: точка · имя · ОЗУ · бар · CPU · возраст. */
+.mon-grid {
+  display: grid;
+  grid-template-columns: 16px minmax(120px, 1fr) 104px 132px 66px 96px;
+  align-items: center;
+  gap: 0 12px;
+}
+.mon-head-row {
+  padding: 0 10px 8px;
+  color: var(--fg-mute);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--line-soft);
+  margin-bottom: 4px;
+}
+.mon-head-row .c-cpu,
+.mon-head-row .c-age { text-align: right; }
+
+/* Строки: числа моно/табличные, декор (точка, бар) скрыт от скринридеров,
+   семантику несёт текст. */
+.mon-row {
+  padding: 9px 10px;
+  border-radius: var(--r-sm);
+  font-family: "Cascadia Code", ui-monospace, Consolas, monospace;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  transition: background 0.12s;
+}
+.mon-row:hover { background: var(--bg-1); }
+.mon-row.mon-main {
+  color: var(--fg);
+  background: var(--bg-1);
+  margin-bottom: 2px;
+  font-weight: 600;
+}
+.mon-row.mon-main:hover { background: var(--bg-2); }
+.mon-row.mon-child { color: var(--fg-dim); }
+
 /* Точка плагина — цвет `--pc` (детерминирован из id), как в палитре/статусбаре. */
 .mon-dot {
-  flex-shrink: 0;
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: var(--pc, var(--fg-mute));
 }
-/* Прогресс-бар плагина: 4px, заливка = commit / лимит (`--fill`, §6.5). */
+.mon-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mon-val { color: var(--fg-mute); }
+.mon-row.mon-child .mon-val { color: var(--fg-dim); }
+.mon-cpu { color: var(--fg-dim); text-align: right; }
+.mon-age { color: var(--fg-mute); opacity: 0.85; text-align: right; }
+.mon-flag { color: var(--fg-mute); font-style: italic; text-align: right; }
+.mon-val.empty, .mon-cpu.empty { color: var(--fg-mute); opacity: 0.45; }
+
+/* Прогресс-бар плагина: во вкладке места больше — 6px, заливка = commit / лимит (§6.5). */
 .mon-bar {
-  flex-shrink: 0;
-  width: 28px;
-  height: 4px;
-  border-radius: var(--r-sm);
+  height: 6px;
+  border-radius: 3px;
   background: var(--bg-3);
   overflow: hidden;
 }
@@ -1272,10 +1368,27 @@ label.tbtn:has(> input:focus-visible) { outline: 2px solid var(--accent); outlin
 .mon-row.warn .mon-bar > i { background: var(--warning); }
 .mon-row.crit .mon-val { color: var(--error); }
 .mon-row.crit .mon-bar > i { background: var(--error); }
-/* Завершённый child: приглушён; бар в orphan-строке не рендерится (§6.6). */
+.mon-row.warn .mon-name::after,
+.mon-row.crit .mon-name::after { content: " ▲"; font-size: 9px; vertical-align: 1px; opacity: 0.85; }
+/* Завершённый child: приглушён, бар погашен, пометка «завершён» (§6.6). */
 .mon-row.orphan { opacity: 0.5; }
+.mon-row.orphan .mon-name { text-decoration: line-through; text-decoration-color: var(--fg-mute); }
 /* Устаревший снимок (>3 пропущенных тика) — «нет данных» вместо числа (§6.4). */
 .mon-row.mon-stale .mon-val { color: var(--fg-dim); }
+
+/* Пустое состояние вкладки: активных плагинов нет (мониторинг редактора идёт). */
+.mon-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 34px 16px;
+  color: var(--fg-mute);
+  text-align: center;
+}
+.mon-empty .t { color: var(--fg-dim); font-size: 12px; }
+.mon-empty .h { font-size: 11px; opacity: 0.85; }
 
 /* Кнопка очистки — только иконка */
 .logs-clear {
@@ -1407,9 +1520,10 @@ body.logs-resizing { cursor: ns-resize; user-select: none; }
 .log-empty-title { color: var(--fg-dim); }
 .log-empty-hint { margin-top: 4px; font-size: 11px; color: var(--fg-mute); }
 
-/* Триггер журнала в статусбаре: активен, пока панель развёрнута (§6.5). */
+/* Триггер журнала в статусбаре: активен, пока док развёрнут в режиме «Журнал» (§6.5).
+   Поворот иконки-шеврона — только у «Журнала» (у «Мониторинга» иконка-график). */
 .stat.clickable.active { background: var(--accent-soft); color: var(--accent); }
-.stat.clickable.active svg { transform: rotate(90deg); }
+#sb-logs.active svg { transform: rotate(90deg); }
 
 /* Узкое окно: дровер на всю ширину */
 @media (max-width: 900px) {

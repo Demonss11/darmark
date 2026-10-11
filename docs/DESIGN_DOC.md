@@ -639,14 +639,17 @@ scan(plugins_dir) -> validate(manifest) -> load(src) -> on_activate(ctx)
 - **Контракты панели журнала (ADR-0029):** слот `#sb-logs` и бейдж `#log-badge` в статусбаре
   сохраняются; аддитивно добавляются `#logs-panel`, `#logs-resize`, `#logs-collapse`,
   `#logs-list`, `#logs-clear`.
-- **Контракты нижнего дока (ADR-0030):** `#logs-panel`, `#logs-resize`, `#logs-collapse`,
-  `#logs-list`, `#logs-clear`, `#sb-logs`, `#log-badge` сохраняются; `#bottom-dock` не вводится;
-  аддитивно добавляются `#sb-ai`, `#tb-ai`, `#dock-modes`, `#mode-logs-btn`, `#mode-ai-btn`,
-  `#ai-mode`, `#ai-skills`, `#ai-chat`, `#ai-input`, `#ai-send`, `#ai-settings`, `#ai-clear`,
-  `#ai-model`; `#logs-resources` — logs-режимный слот (скрыт в режиме AI).
-- **Контракты мониторинга ресурсов (ADR-0031):** `#logs-resources` (logs-режимный слот) сохраняется;
-  аддитивно добавляется `#mon-children` (и классы `.mon-*`). События `resource-metrics`,
-  `plugin-process-exited` — аддитивные события фронт-шины (не контракт плагина).
+- **Контракты нижнего дока (ADR-0030, доп. 11.10.2026):** `#logs-panel`, `#logs-resize`,
+  `#logs-collapse`, `#logs-list`, `#logs-clear`, `#sb-logs`, `#log-badge` сохраняются;
+  `#bottom-dock` не вводится. Состояния дока — `hidden`/`collapsed`/`expanded`; скрытие — кнопка
+  `#logs-close` (×) и прогрессивный Esc. Режимы-табы: `#mode-logs-btn`/`#mode-mon-btn`/`#mode-ai-btn`.
+  Аддитивные id: `#sb-mon`, `#mode-mon-btn`, `#logs-close`, `#mon-body`, `#mon-rows`, `#mon-summary`,
+  `#sb-ai`, `#tb-ai`, `#dock-modes`, `#mode-ai-btn`, `#ai-mode`, `#ai-skills`, `#ai-chat`,
+  `#ai-input`, `#ai-send`, `#ai-settings`, `#ai-clear`, `#ai-model`.
+- **Контракты мониторинга ресурсов (ADR-0031, доп. 11.10.2026):** `#logs-resources` (`role="note"`)
+  сохраняется — **внутри вкладки** `#mon-body[role="tabpanel"]`; аддитивно `#mon-rows` (строки,
+  `.mon-row.mon-main`/`.mon-child[data-plugin-id]`), `#mon-summary` (тихая сводка в шапке), классы
+  `.mon-*`. События `resource-metrics`, `plugin-process-exited` — аддитивные фронт-события.
 - **Инварианты скролла и переключения view:** `#editor` и `#preview` — сами скролл-контейнеры
   (e2e читает их `scrollTop`); переключение view — `hidden`-toggle уже смонтированных узлов,
   не пересоздание DOM.

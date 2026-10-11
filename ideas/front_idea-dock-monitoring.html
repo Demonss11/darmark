@@ -1,0 +1,1260 @@
+<!doctype html>
+<!-- ============================================================================
+  Прототип-референс: нижний док — вкладка «Мониторинг» и полное скрытие дока
+  (IDEA-012 / tasks/TZ-RESOURCE-MON.md; ADR-0029/0030/0031)
+  ============================================================================
+  Что это: однофайловый HTML-прототип проекта darmark с визуальным сравнением
+  «было-стало» по двум связанным вопросам.
+
+  БАГ (п.1 заказчика):
+    Док `#logs-panel` скрыт по умолчанию (атрибут hidden), открывается из
+    статусбара (`#sb-logs`). После открытия его можно только СВЕРНУТЬ до
+    полосы-шапки (28px), но НЕЛЬЗЯ полностью СКРЫТЬ обратно в состояние
+    `hidden`. Нужен явный affordance возврата в скрытое состояние.
+
+  UX (п.2 заказчика):
+    Мониторинг ресурсов сейчас — тесная строка `#logs-resources` в шапке дока
+    (10.5px, моно, переносится при узком окне). Выносим весь мониторинг в
+    отдельную вкладку-режим «Мониторинг» рядом с «Журнал».
+
+  РЕШЕНИЕ ПО СКРЫТИЮ (три состояния дока):
+    hidden      — дока нет в layout (default; возврат — триггер в статусбаре);
+    collapsed   — полоса-шапка 28px (шеврон «развернуть»);
+    expanded    — тело вкладки видно.
+    • Шеврон (caret) сохраняет привычный смысл: свернуть <-> развернуть (полоса).
+    • НОВАЯ кнопка «×» (`#logs-close`) — явное «скрыть док» (в hidden).
+    • Esc — прогрессивный: развёрнут → свернуть (полоса); свёрнут → скрыть.
+    • Триггеры статусбара сохраняют логику ADR-0030 §2.2 №9
+      (скрыт/свёрнут → открыть в своём режиме; открыт в другом → переключить;
+      открыт в том же → свернуть), «скрыть» отдано кнопке × и Esc.
+
+  СТРУКТУРА ВКЛАДКИ «МОНИТОРИНГ»:
+    #mon-body (role=tabpanel) → #logs-resources (role=note, id и role сохранены,
+    AC-11) → .mon-list: строка главного процесса + строки плагинов
+    (имя · ОЗУ «24 / 64 МБ» · прогресс-бар · CPU · возраст).
+    Пороги: плагин warn >=75% / crit >=90% лимита; darmark >800 МБ / >1.5 ГБ.
+    Состояния: обычное, один плагин, .warn/.crit, orphan («завершён»),
+    «нет данных», пустое («Плагины не запущены»).
+
+  ИДЕНТИФИКАТОРЫ:
+    Заморожённые (ADR-0029/0030, §13.2): #logs-panel, #logs-resize,
+    #logs-collapse, #logs-body, #logs-list, #logs-clear, #logs-resources.
+    Аддитивные: #logs-close (скрыть), сегмент #dock-modes + #mode-logs-btn /
+    #mode-mon-btn / #mode-ai-btn, тело #mon-body, сводка #mon-summary,
+    триггер #sb-mon. Рабочие имена #bottom-dock/#dock-* в продукте НЕ вводятся.
+
+  Дата редакции: 11.10.2026
+  Self-contained: все стили inline, без внешних зависимостей, CSP-safe
+  (default-src 'self', только addEventListener, без onclick=/eval).
+  ============================================================================ -->
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>darmark — нижний док: вкладка «Мониторинг» и скрытие (было-стало)</title>
+    <style>
+      /* ===================== ТОКЕНЫ ПРОЕКТА (style.css) ===================== */
+      :root {
+        color-scheme: dark;
+        --bg-0: #111318;
+        --bg-1: #161920;
+        --bg-2: #1c1f28;
+        --bg-3: #242836;
+        --line: #2e3348;
+        --line-soft: #232736;
+        --fg: #e8eaf0;
+        --fg-dim: #a0a6bd;
+        --fg-mute: #8a90b0;
+        --head: #ffffff;
+        --body: #d0d3e0;
+        --accent: #9d8fff;
+        --accent-2: #6ea8fe;
+        --accent-soft: rgba(157, 143, 255, 0.14);
+        --green: #34d399;
+        --amber: #fbbf24;
+        --red: #f87171;
+        --gutter: #0f1014;
+        --success: var(--green);
+        --warning: var(--amber);
+        --error: var(--red);
+        --info: var(--accent-2);
+        --h-toolbar: 36px;
+        --h-tabs: 32px;
+        --h-status: 24px;
+        /* Нижний док: высота раскрытия и полоса-шапка (ADR-0030) */
+        --h-dock: 300px;
+        --h-dock-bar: 28px;
+        --r-sm: 5px;
+        --r-md: 7px;
+        --r-lg: 12px;
+        --ed-fs: 14.5px;
+        --ed-lh: 26px;
+        --ed-pad-y: 20px;
+        --accent-rgb: 157, 143, 255;
+        --code-fg: #e9b3ff;
+        --popover: #181b24;
+        --pop-border: #2e3348;
+        --shadow-lg: 0 20px 60px rgba(0, 0, 0, 0.55);
+        --shadow-sm: 0 6px 18px rgba(0, 0, 0, 0.35);
+        --pc: var(--accent);
+      }
+
+      * { box-sizing: border-box; }
+      html, body { height: 100%; margin: 0; overflow: hidden; }
+      [hidden] { display: none !important; }
+      .spacer { flex: 1; }
+      svg { display: block; }
+
+      body {
+        background: var(--bg-0);
+        color: var(--fg);
+        font: 13px/1.4 -apple-system, "Segoe UI", system-ui, Roboto, Arial, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      ::selection { background: rgba(var(--accent-rgb), 0.32); color: #fff; }
+      ::-webkit-scrollbar { width: 10px; height: 10px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb {
+        background: #272935;
+        border-radius: 8px;
+        border: 3px solid transparent;
+        background-clip: padding-box;
+      }
+      ::-webkit-scrollbar-thumb:hover { background: #3a3d52; background-clip: padding-box; }
+      ::-webkit-scrollbar-corner { background: transparent; }
+
+      :focus { outline: none; }
+      :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 4px; }
+
+      /* ===================== СЛУЖЕБНЫЕ ПЕРЕКЛЮЧАТЕЛИ ПРОТОТИПА ===================== */
+      .proto-switch,
+      .proto-scenes {
+        position: fixed;
+        right: 10px;
+        z-index: 1000;
+        display: flex;
+        gap: 2px;
+        padding: 2px;
+        background: var(--bg-1);
+        border: 1px solid var(--line-soft);
+        border-radius: 6px;
+        opacity: 0.65;
+        transition: opacity 0.15s;
+        flex-wrap: wrap;
+        max-width: 46vw;
+        justify-content: flex-end;
+      }
+      .proto-switch { top: 8px; }
+      .proto-scenes { top: 40px; }
+      .proto-switch:hover,
+      .proto-scenes:hover { opacity: 1; }
+      .proto-switch button,
+      .proto-scenes button {
+        padding: 3px 9px;
+        border: none;
+        border-radius: 4px;
+        background: transparent;
+        color: var(--fg-mute);
+        font: inherit;
+        font-size: 10.5px;
+        font-weight: 500;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .proto-switch button.active,
+      .proto-scenes button.active { background: var(--bg-3); color: var(--fg); }
+      .proto-scenes::before {
+        content: "состояния";
+        align-self: center;
+        padding: 0 6px 0 4px;
+        color: var(--fg-mute);
+        font-size: 9.5px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .proto-note {
+        position: fixed;
+        top: 8px;
+        left: 10px;
+        z-index: 1000;
+        max-width: 33vw;
+        padding: 7px 11px;
+        background: var(--popover);
+        border: 1px solid var(--pop-border);
+        border-left: 2px solid var(--accent);
+        border-radius: var(--r-md);
+        box-shadow: var(--shadow-sm);
+        color: var(--fg-dim);
+        font-size: 11px;
+        line-height: 1.55;
+      }
+      .proto-note b { color: var(--fg); font-weight: 600; }
+      .proto-note code {
+        font-family: "Cascadia Code", ui-monospace, monospace;
+        color: var(--code-fg);
+        font-size: 10.5px;
+      }
+
+      /* ===================== МАКЕТ ПРИЛОЖЕНИЯ ===================== */
+      .app-mock {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        padding-top: 34px;
+      }
+
+      .toolbar {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        height: var(--h-toolbar);
+        padding: 0 8px;
+        background: var(--bg-1);
+        border-bottom: 1px solid var(--line-soft);
+        flex-shrink: 0;
+        user-select: none;
+      }
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        margin-right: 6px;
+        padding: 0 4px 0 2px;
+        font-weight: 600;
+        font-size: 12.5px;
+        color: var(--head);
+      }
+      .brand-mark {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 19px;
+        height: 19px;
+        border-radius: 5px;
+        border: 1.4px solid var(--accent);
+        color: var(--accent);
+        font-family: "Cascadia Code", ui-monospace, monospace;
+        font-weight: 800;
+        font-size: 11px;
+      }
+      .file-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        max-width: 280px;
+        min-width: 0;
+        padding: 3px 9px;
+        border-radius: var(--r-sm);
+        color: var(--fg-dim);
+        font-size: 12px;
+      }
+      .tbtn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        padding: 0;
+        border: none;
+        border-radius: var(--r-sm);
+        background: transparent;
+        color: var(--fg-dim);
+        cursor: pointer;
+        flex-shrink: 0;
+      }
+      .tbtn:hover { background: var(--bg-3); color: var(--fg); }
+      .tbtn svg { width: 15px; height: 15px; }
+      .div-v { width: 1px; height: 16px; margin: 0 6px; background: var(--line); opacity: 0.75; }
+
+      .workspace { display: flex; flex: 1; min-height: 0; }
+      .main { flex: 1; display: flex; flex-direction: column; min-width: 0; background: var(--bg-0); }
+      .tabrow {
+        display: flex;
+        align-items: stretch;
+        height: var(--h-tabs);
+        background: var(--bg-1);
+        border-bottom: 1px solid var(--line-soft);
+        flex-shrink: 0;
+      }
+      .tab {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        padding: 0 12px;
+        background: var(--bg-0);
+        color: var(--fg);
+        font-size: 12px;
+      }
+      .tab::after {
+        content: "";
+        position: absolute;
+        left: 0; right: 0; top: 0;
+        height: 2px;
+        background: var(--accent);
+      }
+      .panes { flex: 1; display: flex; min-height: 0; overflow: hidden; }
+      .pane { flex: 1 1 0; min-width: 0; min-height: 0; display: flex; overflow: hidden; background: var(--bg-0); }
+      .divider { width: 1px; flex-shrink: 0; background: var(--line-soft); }
+      .editor-wrap { flex: 1; display: flex; min-height: 0; overflow: hidden; }
+      .line-numbers {
+        min-width: 44px;
+        padding: var(--ed-pad-y) 8px var(--ed-pad-y) 12px;
+        background: var(--gutter);
+        border-right: 1px solid var(--line-soft);
+        color: var(--fg-mute);
+        font-family: "Cascadia Code", ui-monospace, Consolas, monospace;
+        font-size: var(--ed-fs);
+        line-height: var(--ed-lh);
+        text-align: right;
+        white-space: pre;
+        user-select: none;
+      }
+      #editor {
+        flex: 1;
+        min-width: 0;
+        padding: var(--ed-pad-y) 20px;
+        border: none;
+        outline: none;
+        resize: none;
+        background: var(--bg-0);
+        color: var(--fg);
+        caret-color: var(--accent);
+        font-family: "Cascadia Code", ui-monospace, Consolas, monospace;
+        font-size: var(--ed-fs);
+        line-height: var(--ed-lh);
+        white-space: pre;
+        overflow: auto;
+      }
+      #preview { flex: 1; min-width: 0; overflow-y: auto; padding: 14px 34px 80px; color: var(--body); line-height: 1.7; }
+
+      /* ===================== НИЖНИЙ ДОК (ЖУРНАЛ | МОНИТОРИНГ | AI) =====================
+         Живёт в flex-колонке .app-mock МЕЖДУ .workspace и .statusbar.
+         Раскрытый: height --h-dock, тело видно.
+         Свёрнутый: height --h-dock-bar, только полоса-шапка.
+         Скрытый: атрибут hidden — дока нет в layout (default). */
+      .dock {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        flex-shrink: 0;
+        height: var(--h-dock);
+        min-height: var(--h-dock-bar);
+        background: var(--bg-1);
+        border-top: 1px solid var(--line-soft);
+        overflow: hidden;
+      }
+      .dock.collapsed { height: var(--h-dock-bar); }
+      .dock.collapsed .dock-body { display: none; }
+
+      .dock-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        height: var(--h-dock-bar);
+        padding: 0 6px 0 4px;
+        background: var(--bg-1);
+        flex-shrink: 0;
+        user-select: none;
+      }
+      .dock-caret {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 22px;
+        height: 22px;
+        padding: 0;
+        border: none;
+        border-radius: var(--r-sm);
+        background: transparent;
+        color: var(--fg-mute);
+        cursor: pointer;
+        flex-shrink: 0;
+        transition: background 0.12s, color 0.12s;
+      }
+      .dock-caret:hover { background: var(--bg-2); color: var(--fg); }
+      .dock-caret svg { width: 13px; height: 13px; transition: transform 0.18s; }
+      .dock.collapsed .dock-caret svg { transform: rotate(180deg); }
+
+      .dock-title {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 6px;
+        flex-shrink: 0;
+        font-size: 11.5px;
+        font-weight: 600;
+        color: var(--fg-mute);
+      }
+      .dock-count { color: var(--fg-mute); font-weight: 500; font-size: 11px; }
+
+      /* Сегмент-переключатель режимов: «Журнал | Мониторинг | AI-ассистент» */
+      .dock-modes {
+        display: inline-flex;
+        gap: 0;
+        flex-shrink: 0;
+        padding: 1px;
+        background: var(--bg-0);
+        border-radius: 5px;
+      }
+      .mode-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 2px 9px;
+        border: none;
+        border-radius: 4px;
+        background: transparent;
+        color: var(--fg-mute);
+        font: inherit;
+        font-size: 10.5px;
+        font-weight: 500;
+        cursor: pointer;
+        white-space: nowrap;
+        transition: background 0.12s, color 0.12s;
+      }
+      .mode-btn:hover { background: var(--bg-2); color: var(--fg); }
+      .mode-btn.active { background: var(--bg-3); color: var(--fg); }
+      .mode-btn[aria-disabled="true"] { opacity: 0.45; cursor: default; }
+      .mode-btn[aria-disabled="true"]:hover { background: transparent; color: var(--fg-mute); }
+      .mode-btn svg { width: 11px; height: 11px; }
+      .mode-btn .soon {
+        padding: 0 5px;
+        border-radius: 6px;
+        background: var(--bg-2);
+        color: var(--fg-mute);
+        font-size: 8.5px;
+        font-weight: 600;
+        letter-spacing: 0.03em;
+      }
+
+      .dock-head-spacer { flex: 1; min-width: 8px; }
+
+      .dock-icon-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        width: 22px;
+        height: 22px;
+        padding: 0;
+        border: none;
+        border-radius: var(--r-sm);
+        background: transparent;
+        color: var(--fg-mute);
+        cursor: pointer;
+        transition: background 0.12s, color 0.12s;
+      }
+      .dock-icon-btn:hover { background: var(--bg-2); color: var(--fg); }
+      .dock-icon-btn svg { width: 13px; height: 13px; }
+      .dock-icon-btn.close:hover { background: rgba(248, 113, 113, 0.12); color: var(--error); }
+
+      /* Сводка мониторинга в шапке — ТИХАЯ одна строка (детали во вкладке) */
+      .mon-summary {
+        flex-shrink: 0;
+        font-family: "Cascadia Code", ui-monospace, monospace;
+        font-size: 10.5px;
+        color: var(--fg-mute);
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+      }
+
+      /* БЫЛО: тесная строка ресурсов в шапке (id сохранён, AC-11) */
+      .logs-resources {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 2px 10px;
+        min-width: 0;
+        flex-shrink: 1;
+        font-family: "Cascadia Code", ui-monospace, monospace;
+        font-size: 10.5px;
+        color: var(--fg-mute);
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+        overflow: hidden;
+        max-width: 46%;
+      }
+      .logs-resources .rr { display: inline-flex; align-items: center; gap: 4px; }
+      .logs-resources .rr i {
+        width: 6px; height: 6px; border-radius: 50%;
+        background: var(--pc, var(--fg-mute)); flex-shrink: 0;
+      }
+
+      /* Тело дока */
+      .dock-body {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        background: var(--bg-0);
+      }
+
+      /* Drag-handle — тонкий */
+      .dock-resize {
+        position: absolute;
+        top: 0; left: 0; right: 0;
+        height: 3px;
+        cursor: ns-resize;
+        z-index: 3;
+        background: transparent;
+      }
+
+      /* ===================== ВКЛАДКА «ЖУРНАЛ» (лента) ===================== */
+      .log-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 0 16px; }
+      .log-item { display: flex; align-items: baseline; gap: 10px; padding: 7px 14px; }
+      .log-item:hover { background: var(--bg-1); }
+      .log-dot { flex-shrink: 0; width: 5px; height: 5px; border-radius: 50%; transform: translateY(-1px); opacity: 0.75; }
+      .log-dot.plugin { background: var(--accent); }
+      .log-dot.document { background: var(--accent-2); }
+      .log-dot.system { background: var(--fg-mute); }
+      .log-dot.error { background: var(--error); opacity: 1; }
+      .log-dot.warning { background: var(--amber); opacity: 0.85; }
+      .log-time {
+        flex-shrink: 0;
+        color: var(--fg-mute);
+        font-family: "Cascadia Code", ui-monospace, monospace;
+        font-size: 10.5px;
+        font-variant-numeric: tabular-nums;
+      }
+      .log-msg { color: var(--body); font-size: 12px; min-width: 0; }
+
+      /* ===================== ВКЛАДКА «МОНИТОРИНГ» ===================== */
+      .mon-tab {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        padding: 10px 16px 12px;
+      }
+      .mon-list {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        display: block;
+      }
+      /* Общая сетка колонок для шапки и строк: иконка · имя · ОЗУ · бар · CPU · возраст */
+      .mon-grid {
+        display: grid;
+        grid-template-columns: 16px minmax(120px, 1fr) 104px 132px 66px 96px;
+        align-items: center;
+        gap: 0 12px;
+      }
+      .mon-head-row {
+        padding: 0 10px 8px;
+        color: var(--fg-mute);
+        font-size: 9.5px;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        border-bottom: 1px solid var(--line-soft);
+        margin-bottom: 4px;
+      }
+      .mon-head-row .c-cpu,
+      .mon-head-row .c-age { text-align: right; }
+
+      .mon-row {
+        padding: 9px 10px;
+        border-radius: var(--r-sm);
+        font-family: "Cascadia Code", ui-monospace, Consolas, monospace;
+        font-size: 11.5px;
+        font-variant-numeric: tabular-nums;
+        transition: background 0.12s;
+      }
+      .mon-row:hover { background: var(--bg-1); }
+      .mon-row.mon-main {
+        color: var(--fg);
+        background: var(--bg-1);
+        margin-bottom: 2px;
+        font-weight: 600;
+      }
+      .mon-row.mon-main:hover { background: var(--bg-2); }
+      .mon-row.mon-child { color: var(--fg-dim); }
+
+      .mon-dot { flex-shrink: 0; width: 7px; height: 7px; border-radius: 50%; background: var(--pc, var(--fg-mute)); }
+      .mon-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .mon-val { color: var(--fg-mute); }
+      .mon-row.mon-child .mon-val { color: var(--fg-dim); }
+      .mon-cpu { color: var(--fg-dim); text-align: right; }
+      .mon-age { color: var(--fg-mute); opacity: 0.85; text-align: right; }
+      .mon-flag { color: var(--fg-mute); font-style: italic; text-align: right; }
+      .mon-val.empty, .mon-cpu.empty { color: var(--fg-mute); opacity: 0.45; }
+
+      /* Прогресс-бар плагина: полнее, чем в тесной шапке — вкладка даёт место. */
+      .mon-bar {
+        height: 6px;
+        border-radius: 3px;
+        background: var(--bg-3);
+        overflow: hidden;
+      }
+      .mon-bar > i {
+        display: block;
+        height: 100%;
+        width: var(--fill, 0%);
+        background: var(--pc, var(--accent));
+        transition: width 0.2s;
+      }
+
+      /* Пороги: цвет — не единственный носитель (в title/тексте есть пометка). */
+      .mon-row.warn .mon-val { color: var(--warning); }
+      .mon-row.warn .mon-bar > i { background: var(--warning); }
+      .mon-row.crit .mon-val { color: var(--error); }
+      .mon-row.crit .mon-bar > i { background: var(--error); }
+      .mon-row.warn .mon-name::after,
+      .mon-row.crit .mon-name::after { content: " ▲"; font-size: 9px; vertical-align: 1px; opacity: 0.85; }
+
+      /* Завершённый child: приглушён, бар погашен, пометка «завершён» */
+      .mon-row.orphan { opacity: 0.5; }
+      .mon-row.orphan .mon-name { text-decoration: line-through; text-decoration-color: var(--fg-mute); }
+
+      /* Устаревший снимок (>3 пропущенных тика) */
+      .mon-row.mon-stale .mon-val { color: var(--fg-dim); }
+
+      .mon-empty {
+        grid-column: 1 / -1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        padding: 34px 16px;
+        color: var(--fg-mute);
+        text-align: center;
+      }
+      .mon-empty svg { width: 24px; height: 24px; opacity: 0.4; }
+      .mon-empty .t { color: var(--fg-dim); font-size: 12px; }
+      .mon-empty .h { font-size: 11px; opacity: 0.85; }
+
+      .mon-note {
+        flex-shrink: 0;
+        min-height: 16px;
+        padding: 8px 10px 0;
+        color: var(--fg-mute);
+        font-size: 10.5px;
+        line-height: 1.5;
+      }
+      .mon-legend {
+        flex-shrink: 0;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 14px;
+        padding: 8px 10px 0;
+        border-top: 1px solid var(--line-soft);
+        margin-top: 6px;
+        color: var(--fg-mute);
+        font-size: 10px;
+      }
+      .mon-legend .k { display: inline-flex; align-items: center; gap: 5px; }
+      .mon-legend .sw { width: 8px; height: 8px; border-radius: 2px; }
+      .mon-legend .sw.w { background: var(--warning); }
+      .mon-legend .sw.c { background: var(--error); }
+      .mon-legend .sw.p { background: var(--pc, var(--accent)); }
+
+      /* ===================== СТАТУСБАР ===================== */
+      .statusbar {
+        display: flex;
+        align-items: center;
+        gap: 1px;
+        height: var(--h-status);
+        padding: 0 6px;
+        background: var(--bg-1);
+        border-top: 1px solid var(--line-soft);
+        font-size: 11px;
+        font-variant-numeric: tabular-nums;
+        flex-shrink: 0;
+      }
+      .stat { display: inline-flex; align-items: center; gap: 6px; height: 100%; padding: 0 9px; border-radius: 4px; color: var(--fg-mute); white-space: nowrap; }
+      .stat-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--success); }
+      .stat.clickable { border: none; background: transparent; font: inherit; font-size: 11px; cursor: pointer; }
+      .stat.clickable:hover { background: var(--bg-3); color: var(--fg-dim); }
+      .stat.clickable.active { background: var(--accent-soft); color: var(--accent); }
+      .stat.clickable[aria-disabled="true"] { opacity: 0.5; cursor: default; }
+      .stat.clickable[aria-disabled="true"]:hover { background: transparent; color: var(--fg-mute); }
+      .stat svg { width: 12px; height: 12px; }
+
+      /* ===================== ФЛЕШ ===================== */
+      .flash {
+        position: fixed;
+        bottom: 40px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 500;
+        padding: 8px 16px;
+        background: var(--popover);
+        border: 1px solid var(--pop-border);
+        border-radius: var(--r-md);
+        box-shadow: var(--shadow-sm);
+        color: var(--fg-dim);
+        font-size: 12px;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.2s;
+      }
+      .flash.show { opacity: 1; }
+
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after {
+          animation-duration: 0.01ms !important;
+          animation-iteration-count: 1 !important;
+          transition-duration: 0.01ms !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="proto-switch">
+      <button id="btn-before" type="button">БЫЛО</button>
+      <button id="btn-after" class="active" type="button">СТАЛО</button>
+    </div>
+
+    <div class="proto-scenes" id="proto-scenes">
+      <button data-scene="normal" class="active" type="button">Обычное</button>
+      <button data-scene="one" type="button">Один плагин</button>
+      <button data-scene="warn" type="button">Порог .warn</button>
+      <button data-scene="orphan" type="button">Orphan</button>
+      <button data-scene="stale" type="button">Нет данных</button>
+      <button data-scene="empty" type="button">Пусто</button>
+    </div>
+
+    <div class="proto-note" id="proto-note"></div>
+
+    <div class="app-mock">
+      <!-- Тулбар -->
+      <header class="toolbar">
+        <div class="brand"><span class="brand-mark">d</span><span>darmark</span></div>
+        <div class="file-chip">документ.md</div>
+        <div class="spacer"></div>
+        <div class="div-v"></div>
+        <button class="tbtn" type="button" title="Плагины" aria-label="Плагины">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z" /><line x1="16" y1="8" x2="2" y2="22" /></svg>
+        </button>
+      </header>
+
+      <!-- Рабочая область -->
+      <div class="workspace">
+        <main class="main">
+          <div class="tabrow"><div class="tab"><span>документ.md</span></div></div>
+          <div class="panes">
+            <section class="pane">
+              <div class="editor-wrap">
+                <div class="line-numbers">1
+2
+3
+4
+5
+6
+7</div>
+                <textarea id="editor" spellcheck="false" wrap="off" aria-label="Редактор Markdown"># Документ
+
+Пример Markdown-документа для демонстрации нижнего дока:
+вкладка «Мониторинг» и полное скрытие панели.
+
+## Возможности
+
+- Редактирование Markdown
+- HTML-предпросмотр
+- Мониторинг ресурсов плагинов</textarea>
+              </div>
+            </section>
+            <div class="divider"></div>
+            <section class="pane">
+              <article id="preview" class="markdown-body">
+                <h1 style="color:var(--head)">Документ</h1>
+                <p>Пример Markdown-документа для демонстрации нижнего дока: вкладка «Мониторинг» и полное скрытие панели.</p>
+                <h2 style="color:var(--head)">Возможности</h2>
+                <ul><li>Редактирование Markdown</li><li>HTML-предпросмотр</li><li>Мониторинг ресурсов плагинов</li></ul>
+              </article>
+            </section>
+          </div>
+        </main>
+      </div>
+
+      <!-- ============ НИЖНИЙ ДОК: РЕЖИМЫ «ЖУРНАЛ | МОНИТОРИНГ | AI-АССИСТЕНТ» ============
+           Контейнер переиспользует замороженный #logs-panel (ADR-0030). -->
+      <section class="dock" id="logs-panel" data-mode="mon" role="region" aria-label="Нижняя панель">
+        <div class="dock-resize" id="logs-resize" role="separator" aria-orientation="horizontal" aria-label="Изменить высоту панели" title="Потяните, чтобы изменить высоту"></div>
+
+        <!-- Шапка дока -->
+        <div class="dock-head">
+          <button class="dock-caret" id="logs-collapse" type="button" title="Свернуть/развернуть панель" aria-label="Свернуть или развернуть панель" aria-expanded="true" aria-controls="logs-body">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><polyline points="6 9 12 15 18 9" /></svg>
+          </button>
+
+          <span class="dock-title" id="dock-title">Журнал</span>
+          <span class="dock-count logs-only" id="logs-count">3</span>
+
+          <!-- Сегмент режимов (в СТАЛО; в БЫЛО скрыт) -->
+          <div class="dock-modes after-only" role="tablist" aria-label="Режим нижней панели" id="dock-modes">
+            <button class="mode-btn" id="mode-logs-btn" type="button" role="tab" aria-selected="false" aria-controls="logs-list" data-mode="logs" title="Журнал событий">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><polyline points="4 17 10 11 4 5" /><line x1="12" y1="19" x2="20" y2="19" /></svg>
+              <span>Журнал</span>
+            </button>
+            <button class="mode-btn active" id="mode-mon-btn" type="button" role="tab" aria-selected="true" aria-controls="mon-body" data-mode="mon" title="Мониторинг ресурсов (IDEA-012)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 12h4l3 8 4-16 3 8h4" /></svg>
+              <span>Мониторинг</span>
+            </button>
+            <button class="mode-btn" id="mode-ai-btn" type="button" role="tab" aria-selected="false" aria-controls="ai-mode" data-mode="ai" aria-disabled="true" title="AI-ассистент (скоро)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3l1.6 4.6L18 9l-4.4 1.4L12 15l-1.6-4.6L6 9l4.4-1.4z" /></svg>
+              <span>AI-ассистент</span>
+              <span class="soon">скоро</span>
+            </button>
+          </div>
+
+          <span class="dock-head-spacer"></span>
+
+          <!-- БЫЛО: тесная строка ресурсов в шапке (иллюстрация; в продукте это #logs-resources) -->
+          <span class="logs-resources before-only" role="note" aria-label="Потребление памяти">
+            <span class="rr"><i style="--pc:#34d399"></i>darmark 812 МБ</span>
+            <span class="rr"><i style="--pc:#9d8fff"></i>word-count 24 / 64 МБ</span>
+            <span class="rr"><i style="--pc:#6ea8fe"></i>export-html 50 / 64 МБ</span>
+            <span class="rr"><i style="--pc:#f472b6"></i>linter 61 / 64 МБ CPU 55%</span>
+          </span>
+
+          <!-- СТАЛО: тихая сводка мониторинга (детали — во вкладке) -->
+          <span class="mon-summary mon-only" id="mon-summary">darmark 156 МБ · плагинов 2 · 2 сек назад</span>
+
+          <!-- Очистка журнала (только режим «Журнал») -->
+          <button class="dock-icon-btn logs-only" id="logs-clear" type="button" title="Очистить журнал" aria-label="Очистить журнал">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
+          </button>
+
+          <!-- СТАЛО: скрыть док целиком (в БЫЛО отсутствует — это и есть баг) -->
+          <button class="dock-icon-btn close after-only" id="logs-close" type="button" title="Скрыть панель" aria-label="Скрыть панель">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+          </button>
+        </div>
+
+        <!-- Тело дока -->
+        <div class="dock-body" id="logs-body">
+          <!-- Режим «Журнал» -->
+          <div class="log-scroll" id="logs-list" role="log" aria-live="polite" aria-relevant="additions">
+            <div class="log-item"><span class="log-dot plugin" aria-hidden="true"></span><span class="log-time">14:31:02</span><span class="log-msg">Плагин «word-count»: active → failed</span></div>
+            <div class="log-item"><span class="log-dot warning" aria-hidden="true"></span><span class="log-time">14:31:06</span><span class="log-msg">Плагин «export-html»: повышенное потребление ресурсов</span></div>
+            <div class="log-item"><span class="log-dot system" aria-hidden="true"></span><span class="log-time">14:31:08</span><span class="log-msg">Представления обновлены</span></div>
+          </div>
+
+          <!-- Режим «Мониторинг» (tabpanel). #logs-resources сохраняет id и role (AC-11). -->
+          <div class="mon-tab" id="mon-body" role="tabpanel" aria-labelledby="mode-mon-btn" hidden>
+            <div class="mon-list" id="logs-resources" role="note" aria-label="Мониторинг ресурсов">
+              <div class="mon-grid mon-head-row">
+                <span aria-hidden="true"></span>
+                <span>Процесс</span>
+                <span>ОЗУ</span>
+                <span>Нагрузка</span>
+                <span class="c-cpu">CPU</span>
+                <span class="c-age">Обновлено</span>
+              </div>
+              <div id="mon-rows"></div>
+            </div>
+            <div class="mon-note" id="mon-note"></div>
+            <div class="mon-legend">
+              <span class="k"><span class="sw p" aria-hidden="true"></span>commit / лимит Job Object</span>
+              <span class="k"><span class="sw w" aria-hidden="true"></span>warn: плагин ≥75% · darmark &gt;800 МБ</span>
+              <span class="k"><span class="sw c" aria-hidden="true"></span>crit: плагин ≥90% · darmark &gt;1.5 ГБ</span>
+            </div>
+          </div>
+
+          <!-- Режим «AI-ассистент» (зарезервирован) -->
+          <div class="mon-tab" id="ai-mode" role="tabpanel" aria-labelledby="mode-ai-btn" hidden>
+            <div class="mon-empty">
+              <span class="t">AI-ассистент — зарезервировано</span>
+              <span class="h">Режим дока по ADR-0030; в этом прототипе не показан</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Статусбар -->
+      <footer class="statusbar" id="statusbar">
+        <span class="stat"><span class="stat-dot"></span><span>Готов</span></span>
+        <span class="spacer"></span>
+        <button class="stat clickable" id="sb-logs" type="button" title="Журнал событий" aria-label="Журнал событий" aria-expanded="false" aria-controls="logs-panel">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><polyline points="4 17 10 11 4 5" /><line x1="12" y1="19" x2="20" y2="19" /></svg>
+          <span>Журнал</span>
+        </button>
+        <button class="stat clickable after-only" id="sb-mon" type="button" title="Мониторинг ресурсов" aria-label="Мониторинг ресурсов" aria-expanded="false" aria-controls="logs-panel">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 12h4l3 8 4-16 3 8h4" /></svg>
+          <span>Мониторинг</span>
+        </button>
+        <button class="stat clickable after-only" id="sb-ai" type="button" title="AI-ассистент (скоро)" aria-label="AI-ассистент" aria-expanded="false" aria-controls="logs-panel" aria-disabled="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3l1.6 4.6L18 9l-4.4 1.4L12 15l-1.6-4.6L6 9l4.4-1.4z" /></svg>
+          <span>AI</span>
+        </button>
+        <span class="stat">Стр 1, Кол 1</span>
+      </footer>
+    </div>
+
+    <div class="flash" id="flash" role="status"></div>
+
+    <script>
+      (function () {
+        'use strict';
+
+        // ===================== СОСТОЯНИЕ =====================
+        // view: 'before' | 'after'; mode: 'logs' | 'mon' | 'ai'
+        // collapsed: полоса-шапка; hidden: дока нет в layout (как по умолчанию).
+        var state = { view: 'after', scene: 'normal', mode: 'mon', collapsed: false, hidden: false };
+
+        // ===================== ДАННЫЕ СЦЕНАРИЕВ =====================
+        // mem/limit — МБ; state считается из доли commit/лимит (пороги §6.5),
+        // если не задан явно. CPU — advisory. age — «N сек назад» (§6.4).
+        var SCENES = {
+          normal: {
+            main: { mem: 156, cpu: 3, age: '2 сек назад' },
+            children: [
+              { id: 'word-count', pc: '#9d8fff', mem: 24, limit: 64, cpu: 0 },
+              { id: 'export-html', pc: '#6ea8fe', mem: 18, limit: 64, cpu: 0 }
+            ]
+          },
+          one: {
+            main: { mem: 148, cpu: 2, age: '1 сек назад' },
+            children: [ { id: 'word-count', pc: '#9d8fff', mem: 22, limit: 64, cpu: 1 } ]
+          },
+          warn: {
+            main: { mem: 812, cpu: 4, age: '2 сек назад' },
+            children: [
+              { id: 'word-count', pc: '#9d8fff', mem: 24, limit: 64, cpu: 0 },
+              { id: 'export-html', pc: '#6ea8fe', mem: 50, limit: 64, cpu: 3 },
+              { id: 'linter', pc: '#f472b6', mem: 61, limit: 64, cpu: 55 }
+            ]
+          },
+          orphan: {
+            main: { mem: 152, cpu: 2, age: '3 сек назад' },
+            children: [
+              { id: 'word-count', pc: '#9d8fff', mem: 24, limit: 64, cpu: 0 },
+              { id: 'export-html', pc: '#6ea8fe', mem: 18, limit: 64, cpu: 0, orphan: true }
+            ]
+          },
+          stale: { stale: true },
+          empty: {
+            main: { mem: 142, cpu: 1, age: '1 сек назад' },
+            children: []
+          }
+        };
+
+        // ===================== DOM =====================
+        var $ = function (id) { return document.getElementById(id); };
+        var dock = $('logs-panel');
+        var dockCaret = $('logs-collapse');
+        var dockTitle = $('dock-title');
+        var closeBtn = $('logs-close');
+        var modeLogsBtn = $('mode-logs-btn');
+        var modeMonBtn = $('mode-mon-btn');
+        var modeAiBtn = $('mode-ai-btn');
+        var paneLogs = $('logs-list');
+        var paneMon = $('mon-body');
+        var paneAi = $('ai-mode');
+        var monRows = $('mon-rows');
+        var monNote = $('mon-note');
+        var monSummary = $('mon-summary');
+        var sbLogs = $('sb-logs');
+        var sbMon = $('sb-mon');
+        var sbAi = $('sb-ai');
+        var scenesBar = $('proto-scenes');
+        var note = $('proto-note');
+        var flash = $('flash');
+
+        var NOTE_BEFORE = 'БЫЛО: ресурсы зажаты в <b>тесную строку</b> в шапке дока (' +
+          '<code>#logs-resources</code>, 10.5px, переносится). Полностью <b>скрыть док нельзя</b> — ' +
+          'только свернуть до полосы; вернуть в <code>hidden</code> нечем.';
+        var NOTE_AFTER = 'СТАЛО: мониторинг — <b>отдельная вкладка</b> «Журнал | Мониторинг | AI» ' +
+          '(детали во вкладке, в шапке — тихая сводка). Кнопка <b>×</b> скрывает док целиком; ' +
+          'шеврон сворачивает до полосы; прогрессивный <b>Esc</b>: развёрнут → свернуть, свёрнут → скрыть.';
+
+        // ===================== УТИЛИТЫ =====================
+        function el(cls, text) { var s = document.createElement('span'); s.className = cls; if (text !== undefined) s.textContent = text; return s; }
+        function mb(n) { return String(n) + ' МБ'; }
+        function ratioState(mem, limit) {
+          var r = limit > 0 ? mem / limit : 0;
+          return r >= 0.9 ? 'crit' : r >= 0.75 ? 'warn' : 'ok';
+        }
+        function showFlash(text) {
+          flash.textContent = text;
+          flash.classList.add('show');
+          window.setTimeout(function () { flash.classList.remove('show'); }, 1900);
+        }
+
+        // ===================== РЕНДЕР МОНИТОРИНГА =====================
+        function dot(pc) { var d = el('mon-dot'); d.setAttribute('aria-hidden', 'true'); if (pc) d.style.setProperty('--pc', pc); return d; }
+
+        function mainRow(m) {
+          var row = el('mon-row mon-main mon-grid');
+          row.dataset.pid = 'main';
+          var st = m.mem > 1500 ? 'crit' : m.mem > 800 ? 'warn' : 'ok';
+          if (st !== 'ok') row.classList.add(st);
+          row.append(
+            dot('#8a90b0'),
+            el('mon-name', 'darmark'),
+            el('mon-val', mb(m.mem)),
+            el(''),                              // бар у главного процесса не рендерится
+            el('mon-cpu', 'CPU ' + m.cpu + '%'),
+            el('mon-age', m.age)
+          );
+          // «перегруз» в title — цвет не единственный носитель (§6.7)
+          row.title = 'рабочий набор ' + mb(m.mem) + ', CPU ' + m.cpu + '%' + (st !== 'ok' ? ' — перегруз' : '');
+          return row;
+        }
+
+        function childRow(c) {
+          var row = el('mon-row mon-child mon-grid');
+          row.dataset.pluginId = c.id;
+          row.appendChild(dot(c.pc));
+
+          var name = el('mon-name', c.id);
+          var memCell, barCell, cpuCell, ageCell;
+
+          if (c.orphan) {
+            row.classList.add('orphan');
+            memCell = el('mon-val', mb(c.mem));
+            barCell = el('');                    // бар погашен
+            cpuCell = el('mon-cpu empty', '—');
+            ageCell = el('mon-flag', 'завершён'); // пометка вместо возраста
+            row.append(name, memCell, barCell, cpuCell, ageCell);
+            row.title = 'Плагин ' + c.id + ': процесс завершён';
+            return row;
+          }
+
+          var st = c.state || ratioState(c.mem, c.limit);
+          row.classList.add(st);
+          memCell = el('mon-val', c.mem + ' / ' + mb(c.limit));
+          var bar = el('mon-bar'); bar.setAttribute('aria-hidden', 'true');
+          var fill = document.createElement('i');
+          fill.style.setProperty('--fill', Math.round((c.mem / c.limit) * 100) + '%');
+          bar.appendChild(fill);
+          barCell = el(''); barCell.appendChild(bar);
+          cpuCell = el('mon-cpu', 'CPU ' + c.cpu + '%');
+          ageCell = el('mon-age', '');
+          row.append(name, memCell, barCell, cpuCell, ageCell);
+          var pct = Math.round((c.mem / c.limit) * 100);
+          row.title = 'commit ' + mb(c.mem) + ' из ' + mb(c.limit) + ' (' + pct + '%), CPU ' + c.cpu + '%' +
+            (st !== 'ok' ? ' — перегруз' : '');
+          return row;
+        }
+
+        function staleRow() {
+          var row = el('mon-row mon-main mon-grid mon-stale');
+          row.dataset.pid = 'main';
+          row.append(
+            dot('#8a90b0'),
+            el('mon-name', 'darmark'),
+            el('mon-val', 'нет данных'),
+            el(''),
+            el('mon-cpu empty', '—'),
+            el('mon-age', 'нет данных')
+          );
+          row.title = 'Снимков не было больше 6 с';
+          return row;
+        }
+
+        function emptyState() {
+          var box = el('mon-empty');
+          var icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+          icon.setAttribute('viewBox', '0 0 24 24');
+          icon.setAttribute('fill', 'none');
+          icon.setAttribute('stroke', 'currentColor');
+          icon.setAttribute('stroke-width', '1.5');
+          icon.setAttribute('aria-hidden', 'true');
+          var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+          path.setAttribute('d', 'M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z');
+          icon.appendChild(path);
+          box.append(icon, el('t', 'Плагины не запущены'), el('h', 'Мониторинг ресурсов редактора продолжается'));
+          return box;
+        }
+
+        function renderMon() {
+          var data = SCENES[state.scene];
+          monRows.textContent = '';
+          monNote.textContent = '';
+          if (data.stale) {
+            monRows.appendChild(staleRow());
+            monNote.textContent = 'Снимков не было больше 6 с — показываем «нет данных», а не устаревшее число (§6.4).';
+          } else {
+            monRows.appendChild(mainRow(data.main));
+            if (data.children.length === 0) {
+              monRows.appendChild(emptyState());
+            } else {
+              data.children.forEach(function (c) { monRows.appendChild(childRow(c)); });
+            }
+            if (state.scene === 'warn') {
+              monNote.textContent = 'Порог достигнут: .warn (янтарь) / .crit (красный) + одна запись warn/error в журнал на переход, не на каждый тик (§6.5).';
+            } else if (state.scene === 'orphan') {
+              monNote.textContent = 'Строка «завершён» (opacity 0.5, бар погашен) удаляется через 5 с, если плагин не перезапустился (§6.6).';
+            }
+          }
+          // Тихая сводка в шапке вместо тесной строки ресурсов.
+          if (data.stale) {
+            monSummary.textContent = 'darmark — нет данных';
+          } else if (data.children.length === 0) {
+            monSummary.textContent = 'darmark ' + mb(data.main.mem) + ' · плагинов 0 · ' + data.main.age;
+          } else {
+            var plugins = data.children.filter(function (c) { return !c.orphan; }).length;
+            monSummary.textContent = 'darmark ' + mb(data.main.mem) + ' · плагинов ' + plugins + ' · ' + data.main.age;
+          }
+        }
+
+        // ===================== РЕЖИМЫ =====================
+        var MODE_TITLE = { logs: 'Журнал', mon: 'Мониторинг', ai: 'AI-ассистент' };
+
+        function setMode(mode) {
+          if (mode === 'ai') return; // зарезервирован — «скоро»
+          state.mode = mode;
+          dock.setAttribute('data-mode', mode);
+          dockTitle.textContent = MODE_TITLE[mode];
+          var isLogs = mode === 'logs', isMon = mode === 'mon';
+          modeLogsBtn.classList.toggle('active', isLogs);
+          modeMonBtn.classList.toggle('active', isMon);
+          modeLogsBtn.setAttribute('aria-selected', isLogs ? 'true' : 'false');
+          modeMonBtn.setAttribute('aria-selected', isMon ? 'true' : 'false');
+          modeAiBtn.setAttribute('aria-selected', 'false');
+          paneLogs.hidden = !isLogs;
+          paneMon.hidden = !isMon;
+          paneAi.hidden = true;
+          // Режимные поля шапки
+          toggleAll('.logs-only', isLogs);
+          toggleAll('.mon-only', isMon);
+          syncTriggers();
+        }
+
+        function toggleAll(sel, show) {
+          var list = dock.querySelectorAll(sel);
+          for (var i = 0; i < list.length; i++) list[i].hidden = !show;
+        }
+
+        // ===================== ВИДИМОСТЬ ДОКА: hidden / collapsed / expanded =====================
+        function expandDock() {
+          state.hidden = false;
+          state.collapsed = false;
+          dock.hidden = false;
+          dock.classList.remove('collapsed');
+          dockCaret.setAttribute('aria-expanded', 'true');
+          syncTriggers();
+        }
+        function collapseDock() {
+          state.collapsed = true;
+          state.hidden = false;
+          dock.hidden = false;
+          dock.classList.add('collapsed');
+          dockCaret.setAttribute('aria-expanded', 'false');
+          syncTriggers();
+        }
+        function hideDock() {
+          state.hidden = true;
+          state.collapsed = false;
+          dock.hidden = true;
+          state.mode = 'logs';
+          syncTriggers();
+          showFlash('Док скрыт — вернуть: кнопка «Мониторинг» в статусбаре');
+          sbMon.focus();
+        }
+
+        function syncTriggers() {
+          var logsActive = !state.hidden && !state.collapsed && state.mode === 'logs';
+          var monActive = !state.hidden && !state.collapsed && state.mode === 'mon';
+          sbLogs.classList.toggle('active', logsActive);
+          sbMon.classList.toggle('active', monActive);
+          sbLogs.setAttribute('aria-expanded', String(logsActive));
+          sbMon.setAttribute('aria-expanded', String(monActive));
+        }
+
+        function openMode(mode) {
+          if (state.view !== 'after') { showFlash('В состоянии БЫЛО режимы не показаны'); return; }
+          if (mode === 'ai') { showFlash('AI-ассистент — скоро'); return; }
+          expandDock();
+          setMode(mode);
+          if (!state.hidden) dock.hidden = false;
+        }
+
+        // ===================== ВИД БЫЛО / СТАЛО =====================
+        function applyView() {
+          var after = state.view === 'after';
+          toggleAll('.after-only', after);
+          toggleAll('.before-only', !after);
+          note.innerHTML = after ? NOTE_AFTER : NOTE_BEFORE;
+          scenesBar.hidden = !after;
+          if (!after) {
+            // БЫЛО: док всегда виден, раскрыт, только «Журнал»; скрыть нельзя.
+            state.hidden = false;
+            state.collapsed = false;
+            dock.hidden = false;
+            dock.classList.remove('collapsed');
+            dockTitle.textContent = 'Журнал';
+            paneLogs.hidden = false;
+            paneMon.hidden = true;
+            paneAi.hidden = true;
+            toggleAll('.logs-only', true);
+            toggleAll('.mon-only', false);
+            sbLogs.setAttribute('aria-expanded', 'true');
+            sbMon.setAttribute('aria-expanded', 'false');
+          } else {
+            setMode(state.mode);
+            if (state.hidden) dock.hidden = true; else expandDock();
+          }
+        }
+
+        // ===================== СОБЫТИЯ =====================
+        $('btn-before').addEventListener('click', function () {
+          state.view = 'before';
+          $('btn-before').classList.add('active');
+          $('btn-after').classList.remove('active');
+          applyView();
+        });
+        $('btn-after').addEventListener('click', function () {
+          state.view = 'after';
+          $('btn-after').classList.add('active');
+          $('btn-before').classList.remove('active');
+          applyView();
+        });
+
+        Array.prototype.forEach.call(scenesBar.querySelectorAll('button[data-scene]'), function (btn) {
+          btn.addEventListener('click', function () {
+            state.scene = this.getAttribute('data-scene');
+            Array.prototype.forEach.call(scenesBar.querySelectorAll('button'), function (b) { b.classList.remove('active'); });
+            this.classList.add('active');
+            renderMon();
+          });
+        });
+
+        modeLogsBtn.addEventListener('click', function () { setMode('logs'); });
+        modeMonBtn.addEventListener('click', function () { setMode('mon'); });
+        modeAiBtn.addEventListener('click', function () { showFlash('AI-ассистент — скоро'); });
+
+        // Шеврон: свернуть <-> развернуть (полоса-шапка).
+        dockCaret.addEventListener('click', function () {
+          if (state.view !== 'after') { showFlash('В состоянии БЫЛО шеврон только сворачивает'); collapseDock(); return; }
+          if (state.collapsed) expandDock(); else collapseDock();
+        });
+
+        // × — скрыть док целиком (возврат в hidden). Новый affordance (п.1 бага).
+        closeBtn.addEventListener('click', function () { hideDock(); });
+
+        // Триггеры статусбара (логика ADR-0030 §2.2 №9).
+        function trigger(mode) {
+          if (state.view !== 'after') { showFlash('БЫЛО: доступен только «Журнал»'); openMode('logs'); return; }
+          if (state.hidden || state.collapsed) { openMode(mode); return; }
+          if (state.mode === mode) { collapseDock(); return; }
+          setMode(mode);
+        }
+        sbLogs.addEventListener('click', function () { trigger('logs'); });
+        sbMon.addEventListener('click', function () { trigger('mon'); });
+        sbAi.addEventListener('click', function () { showFlash('AI-ассистент — скоро'); });
+
+        // Esc — прогрессивный: развёрнут → свернуть; свёрнут → скрыть.
+        // Только для СТАЛО и при фокусе внутри дока (не перехватываем у редактора).
+        document.addEventListener('keydown', function (e) {
+          if (e.key !== 'Escape' || state.view !== 'after' || state.hidden) return;
+          if (!dock.contains(document.activeElement)) return;
+          e.preventDefault();
+          if (!state.collapsed) { collapseDock(); return; }
+          hideDock();
+        });
+
+        // ===================== ИНИЦИАЛИЗАЦИЯ =====================
+        renderMon();
+        applyView();
+      })();
+    </script>
+  </body>
+</html>

@@ -29,7 +29,7 @@ import { createDrawer } from "./drawer";
 import { createGutter } from "./gutter";
 import { createFormatActions } from "./formatActions";
 import { createLogPanel } from "./logPanel";
-import { createResourceMonitor } from "./resourceMonitor";
+import { createResourceMonitor, type ResourceMonitor } from "./resourceMonitor";
 import { START_TEXT } from "./sampleDocument";
 import { createPalette, type CommandProvider, type PaletteCommand } from "./palette";
 import { toast } from "./toast";
@@ -59,18 +59,23 @@ const drawer = createDrawer({
 const gutter = createGutter(editor, gutterEl);
 const format = createFormatActions(editor);
 
-// Панель «Журнал» (S11, ADR-0029): сворачивающаяся консоль над статусбаром.
-// Создаётся до оболочки: shell.ts вызывает toggle()/isOpen() на триггере #sb-logs.
+// Нижний док (S11, ADR-0029/0030): режимы «Журнал | Мониторинг | AI-ассистент».
+// Создаётся до оболочки: shell.ts читает state() и вызывает collapse()/hide() (Esc).
+// `monitor` объявлен заранее: onLayoutChange дёргает его догон при открытии
+// вкладки «Мониторинг» (сам монитор создаётся ниже, после логгера).
+let monitor: ResourceMonitor | null = null;
 const logPanel = createLogPanel({
   trigger: document.getElementById("sb-logs") as HTMLButtonElement,
+  monTrigger: document.getElementById("sb-mon") as HTMLButtonElement,
   badge: document.getElementById("log-badge") as HTMLElement,
+  onLayoutChange: () => monitor?.refresh(),
 });
 
-// Строка мониторинга ресурсов (TZ-RESOURCE-MON, ADR-0031): подписка на
-// `resource-metrics`/`plugin-process-exited`, рендер в слот `#logs-resources`.
-// Живёт весь сеанс; запись в журнал идёт через шов ленты (подписки не дублируются).
-createResourceMonitor({
-  root: document.getElementById("logs-resources") as HTMLElement,
+// Вкладка «Мониторинг» (TZ-RESOURCE-MON, ADR-0031): подписка на
+// `resource-metrics`/`plugin-process-exited`, рендер строк `#mon-rows` и тихой
+// сводки `#mon-summary`. Живёт весь сеанс; запись в журнал — через шов ленты.
+monitor = createResourceMonitor({
+  root: document.getElementById("mon-rows") as HTMLElement,
   log: (level, category, message, detail) => logPanel.log(level, category, message, detail),
 });
 
