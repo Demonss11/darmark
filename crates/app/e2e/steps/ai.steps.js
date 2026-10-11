@@ -478,3 +478,77 @@ When("я направляю AI на недоступный адрес {string}",
     throw new Error(`base_url AI не стал ${url} (получено ${after.base_url})`);
   }
 });
+
+// ---------- Хоткей, поповер и удаление ключа (правки Фазы 1) ----------
+//
+// Хоткей Ctrl+Shift+A проверяется существующим шагом «я нажимаю хоткей …»
+// (plugins.steps.js): он шлёт синтетический keydown в window — тот же путь, что у
+// shell.ts. Здесь добавляем только открытие поповера и удаление ключа.
+
+When("я открываю настройки AI", async () => {
+  await ensureSettingsOpen();
+});
+
+Then("настройки AI открыты", async () => {
+  await browser.waitUntil(
+    async () =>
+      browser.execute(
+        () => document.getElementById("ai-settings-pop")?.hidden === false
+      ),
+    { timeout: 3000, timeoutMsg: "Поповер настроек AI не открылся" }
+  );
+});
+
+Then("кнопка удаления ключа AI доступна", async () => {
+  await browser.waitUntil(
+    async () =>
+      browser.execute(
+        () => document.getElementById("ai-key-clear")?.disabled === false
+      ),
+    { timeout: 3000, timeoutMsg: "Кнопка удаления ключа AI недоступна" }
+  );
+});
+
+Then("кнопка удаления ключа AI недоступна", async () => {
+  await browser.waitUntil(
+    async () =>
+      browser.execute(
+        () => document.getElementById("ai-key-clear")?.disabled === true
+      ),
+    { timeout: 3000, timeoutMsg: "Кнопка удаления ключа AI осталась доступной" }
+  );
+});
+
+/// Удаление ключа — клик по #ai-key-clear (пустое поле → ai_set_api_key("")).
+When("я удаляю ключ AI", async () => {
+  const ok = await browser.execute(() => {
+    const btn = document.getElementById("ai-key-clear");
+    if (!btn || btn.disabled) return false;
+    btn.click();
+    return true;
+  });
+  if (!ok) throw new Error("Кнопка удаления ключа AI (#ai-key-clear) недоступна");
+});
+
+Then("подсказка ключа AI {string}", async (text) => {
+  await browser.waitUntil(
+    async () =>
+      browser.execute(
+        (t) => document.getElementById("ai-key-hint")?.textContent === t,
+        text
+      ),
+    { timeout: 5000, timeoutMsg: `Подсказка ключа AI не стала «${text}»` }
+  );
+});
+
+/// Персист удаления: ключ больше не считается заданным (`has_key=false`).
+/// Сверяем IPC-швом (в config.json секрет может лежать как `null` — хрупко).
+Then("у AI нет сохранённого ключа", async () => {
+  await browser.waitUntil(
+    async () => {
+      const view = await invoke("ai_get_settings");
+      return view?.has_key === false;
+    },
+    { timeout: 5000, timeoutMsg: "У AI всё ещё есть сохранённый ключ (has_key ≠ false)" }
+  );
+});
