@@ -1,5 +1,5 @@
-// resourceMonitor.ts — вкладка «Мониторинг» дока (IDEA-012; TZ-RESOURCE-MON,
-// ADR-0031): строки процессов `#mon-rows` внутри `#logs-resources` показывают ОЗУ
+// resourceMonitor.ts — вкладка «Мониторинг» дока (IDEA-012; ADR-0031): строки
+// процессов `#mon-rows` внутри `#logs-resources` показывают ОЗУ
 // главного процесса и каждого активного child'а плагина.
 //
 // Подписки — только на два host→front события: `resource-metrics` (снимок

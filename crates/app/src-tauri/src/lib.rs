@@ -1051,7 +1051,7 @@ fn setup_plugins(app: &mut tauri::App) -> Result<(), String> {
     // Best-effort старт enabled-плагинов; notify внутри.
     host.start_enabled();
 
-    // Ресурс-монитор (TZ-RESOURCE-MON, Фаза 2): поток опроса 2 с. Список активных PID
+    // Ресурс-монитор (ADR-0031, Фаза 2): поток опроса 2 с. Список активных PID
     // снимается коротким локом менеджера внутри потока; замеры/эмит — вне блокировок
     // (ADR-0031 §2.3 п.10). Лимит Job Object — из общего бюджета плагинов.
     let resource_provider: Arc<dyn ProcessMetrics> = Arc::new(WinProcessMetrics::new());

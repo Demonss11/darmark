@@ -2610,7 +2610,7 @@ fn log_without_sink_is_noop() {
     assert_eq!(result, json!(true));
 }
 
-// ─── TZ-RESOURCE-MON (Фаза 2): сбор метрик ресурсов ─────────────────────
+// ─── Ресурс-монитор (ADR-0031, Фаза 2): сбор метрик ресурсов ────────────
 //
 // Фазовый TDD-контракт (Windows-only модуль `plugins/resource.rs`, ADR-0031 §2.4 п.16, §2.6):
 //

@@ -1278,7 +1278,7 @@ label.tbtn:has(> input:focus-visible) { outline: 2px solid var(--accent); outlin
 .logs-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .logs-close svg { width: 13px; height: 13px; }
 
-/* --- Вкладка «Мониторинг» (TZ-RESOURCE-MON, ADR-0031 + IDEA-012) ---
+/* --- Вкладка «Мониторинг» (ADR-0031 + IDEA-012) ---
    Тело режима: список процессов общей сеткой; `#logs-resources` сохраняет id
    и `role` (AC-11), строки — только `textContent`. */
 .mon-tab {

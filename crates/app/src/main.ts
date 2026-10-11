@@ -71,7 +71,7 @@ const logPanel = createLogPanel({
   onLayoutChange: () => monitor?.refresh(),
 });
 
-// Вкладка «Мониторинг» (TZ-RESOURCE-MON, ADR-0031): подписка на
+// Вкладка «Мониторинг» (ADR-0031): подписка на
 // `resource-metrics`/`plugin-process-exited`, рендер строк `#mon-rows` и тихой
 // сводки `#mon-summary`. Живёт весь сеанс; запись в журнал — через шов ленты.
 monitor = createResourceMonitor({

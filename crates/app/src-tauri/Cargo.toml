@@ -29,7 +29,7 @@ plugin-proto = { path = "../../plugin-proto" }
 [target.'cfg(windows)'.dependencies]
 webview2-com = "0.39"
 windows-core = "0.62"
-# WinAPI-путь ресурс-монитора (TZ-RESOURCE-MON, ADR-0031 §2.1 п.2): прямой доступ к
+# WinAPI-путь ресурс-монитора (ADR-0031 §2.1 п.2): прямой доступ к
 # K32GetProcessMemoryInfo/GetProcessTimes/GetProcessHandleCount. Фичи minimal — крейт уже в
 # дереве darmark (windows 0.62.2), новых зависимостей не появляется (F53).
 windows = { version = "0.62", features = [

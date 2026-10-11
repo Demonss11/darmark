@@ -8,8 +8,8 @@
 - **Связанные:** `docs/DESIGN_DOC.md` §5 (UI), §5.5 (модульная карта), §13.2 (замороженные
   контракты), §16 (реестр ADR); `docs/adr/0029-journal-bottom-panel.md` (**расширяется**);
   `docs/adr/0024-plugin-drawer-placement.md` (AI-чат — **ещё одно исключение** из паттерна
-  дровера); `docs/adr/0007-*`/§11 (санитайзер); `tasks/TZ-RESOURCE-MON.md` (номер ADR
-  сдвигается на 0031); `crates/app/src/logPanel.ts`, `crates/app/src/main.ts`,
+  дровера); `docs/adr/0007-*`/§11 (санитайзер); `docs/adr/0031-resource-monitoring-source.md`
+  (мониторинг ресурсов, номер ADR — 0031); `crates/app/src/logPanel.ts`, `crates/app/src/main.ts`,
   `crates/app/index.html`, `crates/app/src/style.css`
 
 ---
@@ -169,9 +169,9 @@ flowchart TD
   (аддитивно, контракты не ломают).
 - **Рендер AI:** требует Rust-санитайзера перед `innerHTML` (или `textContent` в MVP) — иначе
   нарушение инварианта D7/§11.
-- **Нумерация:** ADR мониторинга ресурсов (`TZ-RESOURCE-MON`) сдвигается с 0030 на **0031**.
-- **ТЗ:** `TZ-AI-ASSISTANT` (§2, §3.1, §3.5, §4.2, §8, §11) и `TZ-RESOURCE-MON` (§2, §8,
-  IDEA-012) требуют правок (см. §5).
+- **Нумерация:** ADR мониторинга ресурсов (ADR-0031) сдвигается с 0030 на **0031**.
+- **ТЗ:** `TZ-AI-ASSISTANT` (§2, §3.1, §3.5, §4.2, §8, §11) требует правок (см. §5);
+  продуктовые границы мониторинга ресурсов зафиксированы в ADR-0031 (§1.2).
 - **E2E:** новая фича `ai-dock.feature` (режим, триггеры, согласие); обновление `a11y.feature`.
 
 **Обратимость:** режим AI можно скрыть (убрать `#sb-ai`/`#tb-ai` из разметки), вернувшись к
@@ -210,6 +210,6 @@ flowchart TD
 - `docs/adr/0027-host-api-version-policy.md` — аддитивные события не поднимают мажор.
 - `docs/adr/0007-*`, `DESIGN_DOC` §11 — единая точка санитайзера (рендер ответа AI).
 - `tasks/TZ-AI-ASSISTANT.md` — ТЗ AI (правится: дровер → режим дока).
-- `tasks/TZ-RESOURCE-MON.md` — мониторинг ресурсов (номер ADR сдвигается на 0031).
+- `docs/adr/0031-resource-monitoring-source.md` — мониторинг ресурсов (номер ADR — 0031).
 - `ideas/front_idea-ai-assistant.html` — прототип (редакция 2).
 - `crates/app/src/logPanel.ts`, `main.ts`, `shell.ts`, `index.html`, `style.css` — точки интеграции.

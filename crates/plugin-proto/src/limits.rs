@@ -20,7 +20,7 @@ pub const MAX_PLUGIN_SOURCE_BYTES: u64 = 1024 * 1024;
 /// Бюджет committed-памяти child'а по умолчанию, байты (64 МБ, `JOB_OBJECT_LIMIT_PROCESS_MEMORY`).
 ///
 /// Единственный источник для `SupervisorParams`/`PluginRuntime` и знаменателя порогов
-/// ресурс-монитора (TZ-RESOURCE-MON §6.5, `mem_limit_bytes`): меняется в одном месте.
+/// ресурс-монитора (ADR-0031 §2.5, `mem_limit_bytes`): меняется в одном месте.
 pub const DEFAULT_MEM_BYTES: usize = 64 * 1024 * 1024;
 
 #[cfg(test)]
