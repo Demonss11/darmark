@@ -19,6 +19,9 @@
   --accent: #9d8fff;
   --accent-2: #6ea8fe;
   --accent-soft: rgba(157, 143, 255, 0.14);
+  /* текст на заливке акцентом/ошибкой: тёмный ради WCAG AA (белый на светлом не проходит) */
+  --on-accent: #17121f; /* на --accent #9d8fff ~6.8:1 */
+  --on-error: #2a0f0f; /* на --error #f87171 ~6.5:1 */
   --green: #34d399;
   --amber: #fbbf24;
   --red: #f87171;
@@ -87,7 +90,7 @@ svg { display: block; }
   padding: 6px 12px;
   border-radius: var(--r-sm);
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   font-size: 12px;
   text-decoration: none;
   transition: top 0.12s;
@@ -616,7 +619,7 @@ label.tbtn:has(> input:focus-visible) { outline: 2px solid var(--accent); outlin
 .pl-perms-bulk button { min-height: 22px; padding: 2px 8px; font-size: 11px; }
 /* Кнопка «Удалить» — деструктивное действие: красный акцент. */
 .pl-remove { color: var(--error, #d33); }
-.pl-remove:hover:not(:disabled) { color: #fff; background: var(--error, #d33); border-color: var(--error, #d33); }
+.pl-remove:hover:not(:disabled) { color: var(--on-error); background: var(--error, #d33); border-color: var(--error, #d33); }
 /* Confirm-диалог удаления плагина. */
 .pl-confirm-remove { padding: 4px 0; }
 .pl-confirm-text { margin: 0 0 12px; font-size: 12px; line-height: 1.5; color: var(--fg); }
@@ -634,8 +637,9 @@ label.tbtn:has(> input:focus-visible) { outline: 2px solid var(--accent); outlin
 }
 .pl-confirm-buttons button:hover { background: var(--bg-3); }
 .pl-confirm-cancel:hover { background: var(--bg-3); }
-.pl-confirm-ok { color: #fff; background: var(--error, #d33); border-color: var(--error, #d33); }
-.pl-confirm-ok:hover { background: #b22; border-color: #b22; }
+.pl-confirm-ok { color: var(--on-error); background: var(--error, #d33); border-color: var(--error, #d33); }
+/* hover — тёмный красный #b22: здесь белый текст проходит (~5.8:1), тёмный был бы нечитаем */
+.pl-confirm-ok:hover { background: #b22; border-color: #b22; color: #fff; }
 /* Панель плагинов: чуть больше воздуха, чем у общего `.side-empty` (референс idea8). */
 .pl-empty { padding: 16px 12px; }
 /* Структурное пустое состояние (рендер заменится в Фазе 3). */
@@ -1111,7 +1115,7 @@ label.tbtn:has(> input:focus-visible) { outline: 2px solid var(--accent); outlin
 }
 /* Цвет бейджа по уровню непрочитанных (§6.5): ошибки → красный,
    предупреждения без ошибок → янтарный. */
-.badge.error { background: var(--error); color: #fff; }
+.badge.error { background: var(--error); color: var(--on-error); }
 .badge.warning { background: var(--warning); color: #1a1400; }
 
 /* ===================== ПАНЕЛЬ «ЖУРНАЛ» (S11, ADR-0029) =====================
@@ -2078,7 +2082,7 @@ th.filtered .col-filter-btn { color: var(--accent); font-weight: 700; }
   margin-top: 3px;
   border-radius: 50%;
   background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  color: #fff;
+  color: var(--on-accent);
   font-size: 8px;
   font-weight: 700;
   display: flex;
@@ -2143,7 +2147,7 @@ th.filtered .col-filter-btn { color: var(--accent); font-weight: 700; }
 }
 .btn:hover { background: var(--bg-3); color: var(--fg); }
 .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.btn.primary { background: var(--accent); color: #fff; }
+.btn.primary { background: var(--accent); color: var(--on-accent); }
 .btn.primary:hover { background: #ab9fff; }
 .btn.ghost { background: transparent; border-color: var(--line); }
 .btn.ghost:hover { background: var(--bg-2); }
@@ -2187,7 +2191,7 @@ th.filtered .col-filter-btn { color: var(--accent); font-weight: 700; }
   border: none;
   border-radius: var(--r-md);
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   font-size: 14px;
   cursor: pointer;
 }

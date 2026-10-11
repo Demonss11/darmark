@@ -14,7 +14,8 @@ colors:
   link: "#6ea8fe"
   code: "#e9b3ff"
   accent-soft: "rgba(157, 143, 255, 0.14)"
-  on-accent: "#ffffff"
+  on-accent: "#17121f"
+  on-error: "#2a0f0f"
   on-warning: "#1a1400"
   # поверхности и границы
   background: "#111318"
@@ -181,7 +182,7 @@ components:
     padding: "0 5px"
   badge-error:
     backgroundColor: "{colors.error}"
-    textColor: "{colors.on-accent}"
+    textColor: "{colors.on-error}"
   badge-warning:
     backgroundColor: "{colors.warning}"
     textColor: "{colors.on-warning}"
@@ -308,7 +309,7 @@ Backdrop'ы (дровер, модальные диалоги) — полупро
 
 Все компоненты построены **только на семантических токенах**; хардкод hex допустим лишь там, где значение не вынесено в переменную (например, hover-оттенок `button-primary-hover`).
 
-- **button-primary** (`{components.button-primary}`) — фиолетовая заливка, белый текст; главное действие (например, «Включить»). Единственная крупная заливка акцентом.
+- **button-primary** (`{components.button-primary}`) — фиолетовая заливка, тёмный текст (`on-accent`); главное действие (например, «Включить»). Единственная крупная заливка акцентом.
 - **button-secondary** — фон `surface-raised`, текст `foreground-muted`; hover светлит до `surface-overlay` и текста `foreground`. Базовый вид кнопок в карточках и панелях.
 - **button-danger** — прозрачный фон, текст `error`; hover добавляет красную подложку 12%. Только деструктивные действия (удаление плагина).
 - **button-icon** — иконка 15px в квадрате 28px (в панелях — 24px); прозрачный фон, hover `surface-overlay`. Каждая несёт `aria-label`.
@@ -319,7 +320,7 @@ Backdrop'ы (дровер, модальные диалоги) — полупро
 - **pane** — фон `background`; панель-редактор с gutter, панель-предпросмотр с `body-text`.
 - **drawer** — 440px справа, фон `popover`, тень `shadow-lg`; модален (backdrop + `inert` на `#app`).
 - **dock** — нижняя панель на `surface`; режимы «Журнал | Мониторинг | AI-ассистент»; сворачивается в полосу 28px.
-- **badge** — фон `surface-overlay`, текст `foreground-muted`, pill; вариант `badge-error` (красный, белый текст) и `badge-warning` (янтарный, `on-warning`).
+- **badge** — фон `surface-overlay`, текст `foreground-muted`, pill; вариант `badge-error` (красный, тёмный текст `on-error`) и `badge-warning` (янтарный, `on-warning`).
 
 Мелкие атомы, тоже на семантических токенах: **divider / divider-strong** (`border-soft` / `border`), **line-numbers** (фон `gutter`, `mono`), **inline-code** (`surface-overlay` + `code`), **link** (`link`), **heading** (`heading`), **blockquote** (фон `accent-soft`), **status-dot** с вариантами warning/error/off (`success`/`warning`/`error`/`disabled`), **log-dot-document** (`info`).
 
