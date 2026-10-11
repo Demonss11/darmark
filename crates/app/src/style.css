@@ -1133,13 +1133,15 @@ label.tbtn:has(> input:focus-visible) { outline: 2px solid var(--accent); outlin
 .logs-panel.collapsed { height: var(--h-logs-bar); }
 .logs-panel.collapsed .logs-body { display: none; }
 
-/* Шапка панели — максимально тихая, высота --h-logs-bar */
+/* Шапка панели — максимально тихая, высота --h-logs-bar; при узком окне
+   flex-wrap переносит строку ресурсов на отдельную строку, а не обрезает её (§6.1). */
 .logs-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  height: var(--h-logs-bar);
-  padding: 0 6px 0 4px;
+  min-height: var(--h-logs-bar);
+  padding: 2px 6px 2px 4px;
   background: var(--bg-1);
   flex-shrink: 0;
   user-select: none;
@@ -1206,6 +1208,12 @@ label.tbtn:has(> input:focus-visible) { outline: 2px solid var(--accent); outlin
 /* Строка памяти (IDEA-012 — зарезервировано): приглушённая, без яркости;
    пока пустая, не занимает заметного места (§6.8). */
 .logs-resources {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px 10px;
+  min-width: 0;
   flex-shrink: 0;
   font-family: "Cascadia Code", ui-monospace, monospace;
   font-size: 10.5px;
@@ -1213,6 +1221,61 @@ label.tbtn:has(> input:focus-visible) { outline: 2px solid var(--accent); outlin
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+
+/* --- Мониторинг ресурсов (TZ-RESOURCE-MON, ADR-0031) ---
+   Компактно и тихо: числа моно/табличные, декор (точка, бар) скрыт от
+   скринридеров, семантику несёт текст. */
+.mon-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.mon-children {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 10px;
+}
+.mon-name { color: var(--fg-mute); }
+.mon-val { color: var(--fg-mute); }
+.mon-cpu,
+.mon-age { color: var(--fg-dim); }
+.mon-age { opacity: 0.8; }
+.mon-flag { color: var(--fg-mute); font-style: italic; }
+/* Точка плагина — цвет `--pc` (детерминирован из id), как в палитре/статусбаре. */
+.mon-dot {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--pc, var(--fg-mute));
+}
+/* Прогресс-бар плагина: 4px, заливка = commit / лимит (`--fill`, §6.5). */
+.mon-bar {
+  flex-shrink: 0;
+  width: 28px;
+  height: 4px;
+  border-radius: var(--r-sm);
+  background: var(--bg-3);
+  overflow: hidden;
+}
+.mon-bar > i {
+  display: block;
+  height: 100%;
+  width: var(--fill, 0%);
+  background: var(--pc, var(--accent));
+  transition: width 0.2s; /* гасится глобальным prefers-reduced-motion */
+}
+/* Пороги: цвет — не единственный носитель, в `title` есть пометка «перегруз» (§6.7). */
+.mon-row.warn .mon-val { color: var(--warning); }
+.mon-row.warn .mon-bar > i { background: var(--warning); }
+.mon-row.crit .mon-val { color: var(--error); }
+.mon-row.crit .mon-bar > i { background: var(--error); }
+/* Завершённый child: приглушён; бар в orphan-строке не рендерится (§6.6). */
+.mon-row.orphan { opacity: 0.5; }
+/* Устаревший снимок (>3 пропущенных тика) — «нет данных» вместо числа (§6.4). */
+.mon-row.mon-stale .mon-val { color: var(--fg-dim); }
 
 /* Кнопка очистки — только иконка */
 .logs-clear {

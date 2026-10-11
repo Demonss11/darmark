@@ -28,6 +28,11 @@ export interface LogPanel {
   open(): void;
   collapse(): void;
   isOpen(): boolean;
+  /**
+   * Единая точка записи в ленту для внешних модулей (шов ресурс-монитора, TZ §6.5):
+   * те не подписываются на `log-entry` повторно, а отдают готовую запись владельцу ленты.
+   */
+  log(level: LogLevel, category: LogCategory, message: string, detail?: string): void;
   dispose(): void;
 }
 
@@ -501,6 +506,7 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
     open: openPanel,
     collapse: collapsePanel,
     isOpen: () => open,
+    log: push,
     dispose(): void {
       disposed = true; // до очистки: pending-listen увидит флаг и отпишется сам
       for (const un of unlisteners) un();

@@ -29,6 +29,7 @@ import { createDrawer } from "./drawer";
 import { createGutter } from "./gutter";
 import { createFormatActions } from "./formatActions";
 import { createLogPanel } from "./logPanel";
+import { createResourceMonitor } from "./resourceMonitor";
 import { START_TEXT } from "./sampleDocument";
 import { createPalette, type CommandProvider, type PaletteCommand } from "./palette";
 import { toast } from "./toast";
@@ -63,6 +64,14 @@ const format = createFormatActions(editor);
 const logPanel = createLogPanel({
   trigger: document.getElementById("sb-logs") as HTMLButtonElement,
   badge: document.getElementById("log-badge") as HTMLElement,
+});
+
+// Строка мониторинга ресурсов (TZ-RESOURCE-MON, ADR-0031): подписка на
+// `resource-metrics`/`plugin-process-exited`, рендер в слот `#logs-resources`.
+// Живёт весь сеанс; запись в журнал идёт через шов ленты (подписки не дублируются).
+createResourceMonitor({
+  root: document.getElementById("logs-resources") as HTMLElement,
+  log: (level, category, message, detail) => logPanel.log(level, category, message, detail),
 });
 
 // 1. Общий индекс рендера + связка inspector/scrollsync.
