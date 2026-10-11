@@ -2,8 +2,8 @@
 
 - **Статус:** **Принят**
 - **Дата:** 10.10.2026
-- **Основание:** прототип `ideas/front_plugins-drawer-c.html` (C-v2); прототип размещения
-  `ideas/front_plugins-placement.html`; `docs/adr/0021-*`, `docs/adr/0023-*`;
+- **Основание:** прототипы размещения дровера (C-v2) — удалены после реализации;
+  `docs/adr/0021-*`, `docs/adr/0023-*`;
   `docs/DESIGN_DOC.md` §13.2
 - **Связанные:** `docs/DESIGN_DOC.md` §5.5, §13.2, §16; `crates/app/src/main.ts`, `shell.ts`, `dialog.ts`
   (переиспользование примитивов), `drawer.ts` (замена `sidebar.ts`)
@@ -105,4 +105,4 @@ Ctrl+K (палитра) и дровер взаимоисключены: откр
 - `docs/adr/0021-*` (изоляция плагина), `docs/adr/0023-*` (плагинный runtime)
 - `docs/adr/0029-journal-bottom-panel.md` (журнал — панель-консоль, исключение)
 - `docs/adr/0030-bottom-dock-two-modes.md` (нижний док: журнал + AI, ещё одно исключение из дровера)
-- Прототип: `ideas/front_plugins-drawer-c.html` (C-v2), `ideas/front_plugins-placement.html`
+- Прототип: удалён после реализации.

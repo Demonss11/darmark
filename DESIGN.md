@@ -234,7 +234,7 @@ components:
 
 Идентичность — рабочая, собранная, «редакторская»: плотная, но не тесная; контрастная там, где нужно читать код, и намеренно тихая во всём остальном.
 
-Нормативная спецификация UI/layout — `docs/DESIGN_DOC.md` (§5 — layout/pane/view, §13.2 — замороженные e2e-контракты). Правила кода — `AGENTS.md`. Бэклог идей — `ideas/BACKLOG.md`. Источник истины токенов — `crates/app/src/style.css`.
+Нормативная спецификация UI/layout — `docs/DESIGN_DOC.md` (§5 — layout/pane/view, §13.2 — замороженные e2e-контракты). Правила кода — `AGENTS.md`. Бэклог идей — `docs/BACKLOG.md`. Источник истины токенов — `crates/app/src/style.css`.
 
 ## Colors
 
