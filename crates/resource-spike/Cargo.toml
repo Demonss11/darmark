@@ -1,0 +1,29 @@
+[package]
+name = "resource-spike"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Спайк TZ-RESOURCE-MON: сравнение источников метрик ОЗУ/CPU (WinAPI windows-crate vs sysinfo); в продукт не линкуется"
+
+[[bin]]
+name = "resource-spike"
+path = "src/main.rs"
+
+# Раздельные бэкенды нужны для замера размера релизного бинарника по отдельности
+# (только WinAPI vs только sysinfo). Полный прогон — оба включены (default).
+[features]
+default = ["winapi", "sysinfo"]
+winapi = ["dep:windows"]
+sysinfo = ["dep:sysinfo"]
+
+[dependencies]
+# WinAPI-путь: нужны только ProcessStatus (K32GetProcessMemoryInfo) и Threading
+# (OpenProcess/GetProcessTimes/GetProcessHandleCount). windows 0.62.2 — та же ветка,
+# что уже транзитивно в Cargo.lock (windows-core 0.62), поэтому фичи добавлены точечно.
+windows = { version = "0.62", optional = true, features = [
+  "Win32_Foundation",
+  "Win32_System_Threading",
+  "Win32_System_ProcessStatus",
+] }
+# Альтернативный источник: sysinfo (кроссплатформенно). Кандидат спайка, не база.
+sysinfo = { version = "0.39", optional = true }
