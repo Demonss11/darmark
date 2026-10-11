@@ -104,4 +104,5 @@ Ctrl+K (палитра) и дровер взаимоисключены: откр
 - `docs/DESIGN_DOC.md` §5.5 (модульная карта), §13.2 (контракты), §16 (реестр ADR)
 - `docs/adr/0021-*` (изоляция плагина), `docs/adr/0023-*` (плагинный runtime)
 - `docs/adr/0029-journal-bottom-panel.md` (журнал — панель-консоль, исключение)
+- `docs/adr/0030-bottom-dock-two-modes.md` (нижний док: журнал + AI, ещё одно исключение из дровера)
 - Прототип: `ideas/front_plugins-drawer-c.html` (C-v2), `ideas/front_plugins-placement.html`

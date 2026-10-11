@@ -3,7 +3,7 @@
 > **Статус:** план
 > **Приоритет:** P1 (после закрытия H2/S11)
 > **Источник:** IDEA-013 из `ideas/UI-IDEAS.md`
-> **Связанные:** `docs/DESIGN_DOC.md` §5, §6–§9, §11, §13.2, §14; ADR-0021, ADR-0022;
+> **Связанные:** `docs/DESIGN_DOC.md` §5, §6–§9, §11, §13.2, §14; ADR-0021, ADR-0022, ADR-0029, ADR-0030;
 > `crates/app/src/docStore.ts`; `crates/app/src-tauri/src/state.rs`;
 > `crates/app/src-tauri/src/plugins/`; `crates/app/src-tauri/src/plugins/services.rs`
 
@@ -49,7 +49,7 @@ AI-ассистент — **встроенная подсистема хоста
 
 ### В scope (MVP)
 
-1. **AI-панель** — правый дровер 480px с чатом, кнопка «AI» в тулбаре.
+1. **AI-панель** — режим `AI` нижнего дока (`#logs-panel`, ADR-0030) с чатом, кнопки «AI» в тулбаре (`#tb-ai`) и статусбаре (`#sb-ai`).
 2. **Провайдер LLM** — локальный (Ollama) как базовый; архитектура с возможностью добавления облачных API.
 3. **Rust-сетевой слой** — HTTP-клиент на Rust-стороне, обход CSP.
 4. **Библиотека скиллов** — 5–7 готовых промтов (переструктурировать документ, сделать конспект, сгенерировать плагин, отладить плагин, добавить команду представления).
@@ -83,8 +83,9 @@ AI-ассистент — **встроенная подсистема хоста
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │ TS-оболочка (WebView)                                       │
-│  aiPanel.ts — чат-панель, предпросмотр диффа, согласие      │
-│  ❌ Нет сетевых вызовов (CSP default-src 'self')            │
+│  aiPanel.ts — тело режима AI дока (чат, предпросмотр диффа,  │
+│  согласие); bottomDock.ts — режим/свёртка/resize дока       │
+│  ❌ Нет сетевых вызовов в TS (CSP default-src 'self')       │
 ├─────────────────────────────────────────────────────────────┤
 │ IPC-граница (Tauri commands)                                │
 │  ai_chat, ai_apply_edit, ai_create_plugin, ...              │
@@ -141,9 +142,9 @@ AI-ассистент — **встроенная подсистема хоста
 
 ### 3.5. AI-панель
 
-- **Где:** Тир-2 DomView (как редактор).
-- **Почему:** Нужен полный DOM (чат, поле ввода, кнопки).
-- **Как:** Регистрация в `viewRegistry.ts`, монтирование через `paneHost.ts`.
+- **Где:** Тело режима `AI` нижнего дока (ADR-0030), по образцу `logPanel.ts` (тело режима «Журнал»).
+- **Почему:** AI-чат — подсистема оболочки (как журнал), а не представление документа; чат глобален и переживает переключение панелей.
+- **Как:** Модуль-оболочка `aiPanel.ts` монтируется `bottomDock` в контейнер `#logs-panel` (режим `AI`); **не** view и **не** pane — `viewRegistry.ts`/`paneHost.ts` не задействуются.
 
 ---
 
@@ -163,9 +164,9 @@ AI-ассистент — **встроенная подсистема хоста
 ### 4.2. Модель согласия
 
 ```
-Пользователь нажимает «AI» в тулбаре
+Пользователь открывает режим AI дока (#sb-ai / #tb-ai)
   ↓
-Первый запуск: диалог «AI-ассистент может отправлять содержимое документа в облачный сервис. Разрешить?»
+При первой отправке: модальный диалог согласия «AI-ассистент может отправлять содержимое документа в облачный сервис. Разрешить?»
   ├─ «Разрешить» → consent_document_send = true
   └─ «Не разрешать» → consent_document_send = false (только локальная модель)
   ↓
@@ -351,30 +352,45 @@ PluginManager::reload_plugin (перезагрузка без перезапус
 
 ### 8.1. Расположение и размер
 
-- **Ширина:** `--w-ai-drawer: 480px` (чуть шире дровера плагинов `--w-drawer: 440px`). На узком окне ≤900px — 100vw.
-- **Модальность:** по образцу ADR-0024 — `role="dialog"`, `aria-modal="true"`, `inert` на `#app`, backdrop закрывает, focus-trap, возврат фокуса на кнопку в тулбаре.
-- **DOM:** постоянный `#ai-drawer` + `#ai-backdrop` как прямые дети `body`.
+- **Контейнер:** режим `AI` — сегмент **нижнего дока** `#logs-panel` (ADR-0030), тот же слот, что и «Журнал»; `#bottom-dock` **не вводится**, контракты `#logs-*` сохраняются.
+- **Высоты:** общие токены `--h-dock: 300px` (развёрнут) и `--h-dock-bar: 28px` (свёрнут); `--h-logs*` из ADR-0029 заменяются. Общая ручка высоты `#logs-resize`, кламп **28–520px**.
+- **Модальность:** док **немодальный** — сжимает рабочую область, а не перекрывает её. Модален **только диалог согласия** (транзиентный, `dialog.ts` — ADR-0030 §2.4).
+- **DOM:** сегмент режимов в `.logs-head` и тело режима AI внутри существующего `#logs-panel`; триггеры — `#sb-ai` (статусбар) и `#tb-ai` (тулбар).
 
-### 8.2. Структура DOM
+### 8.2. Структура DOM (аддитивно)
+
+Добавляемые id (ADR-0030 §2.2): `#sb-ai`, `#tb-ai`, `#ai-dot`, `#dock-modes`, `#mode-logs-btn`, `#mode-ai-btn`, `#ai-mode`, `#ai-skills`, `#ai-chat`, `#ai-input`, `#ai-send`, `#ai-settings`, `#ai-clear`, `#ai-model`. Сохраняются `#logs-panel` и все `#logs-*`.
 
 ```html
-<aside class="ai-drawer" id="ai-drawer" role="dialog" aria-modal="true" aria-labelledby="ai-title" hidden>
-  <div class="ai-head">
-    <span class="side-title" id="ai-title">AI-ассистент</span>
-    <button class="tbtn tbtn-sm" id="ai-settings" aria-label="Настройки AI">⚙</button>
-    <button class="tbtn tbtn-sm" id="ai-close" aria-label="Закрыть AI">✕</button>
+<!-- #logs-panel расширяется: сегмент режимов в шапке + тело режима AI -->
+<section class="logs-panel dock" id="logs-panel" role="region" aria-label="Док: Журнал и AI" hidden>
+  <div class="logs-resize" id="logs-resize" role="separator" aria-orientation="horizontal"></div>
+  <div class="logs-head">
+    <button class="logs-caret" id="logs-collapse" aria-expanded="false" aria-controls="logs-body"></button>
+
+    <!-- Сегмент режимов дока (ADR-0030): radio-tablist -->
+    <div class="dock-modes" id="dock-modes" role="tablist" aria-label="Режим дока">
+      <button id="mode-logs-btn" type="button" role="tab" aria-selected="true" aria-controls="logs-body">Журнал</button>
+      <button id="mode-ai-btn" type="button" role="tab" aria-selected="false" aria-controls="ai-mode">AI-ассистент</button>
+    </div>
+
+    <!-- Режимная шапка logs-only: #logs-count, .logs-filter, #logs-resources, #logs-clear -->
+    <!-- Режимная шапка ai-only: #ai-model, #ai-settings, #ai-clear, #ai-dot -->
   </div>
-  <div class="ai-skills" id="ai-skills">
-    <!-- сетка скиллов -->
+
+  <!-- Тело режима «Журнал» (существует) -->
+  <div class="logs-body" id="logs-body">…</div>
+
+  <!-- Тело режима AI (ai-only) -->
+  <div class="ai-mode" id="ai-mode" role="tabpanel" aria-label="AI-ассистент" hidden>
+    <div class="ai-skills" id="ai-skills"><!-- сетка скиллов --></div>
+    <div class="ai-chat" id="ai-chat" role="log" aria-live="polite" aria-relevant="additions"><!-- сообщения --></div>
+    <div class="ai-input">
+      <textarea id="ai-input" placeholder="Спросите что-нибудь..."></textarea>
+      <button id="ai-send" type="button" aria-label="Отправить">➤</button>
+    </div>
   </div>
-  <div class="ai-chat" id="ai-chat" role="log" aria-live="polite" aria-relevant="additions">
-    <!-- сообщения -->
-  </div>
-  <div class="ai-input">
-    <textarea id="ai-input" placeholder="Спросите что-нибудь..."></textarea>
-    <button id="ai-send" aria-label="Отправить">➤</button>
-  </div>
-</aside>
+</section>
 ```
 
 ### 8.3. Сообщения чата
@@ -386,7 +402,7 @@ PluginManager::reload_plugin (перезагрузка без перезапус
 **Сообщение ассистента:**
 - Выровнено влево, пузырь `--ai-assistant-bubble`.
 - Шапка: иконка AI (круг 24px, градиент `--accent` → `--accent-2`), имя «AI», время.
-- Текст: рендерится как Markdown (через `md-core` → `sanitize_html` → `innerHTML`).
+- Текст: рендерится **только** HTML, санитизированным Rust-санитайзером (`md-core::sanitize_html`, D7/§11), либо как `textContent` в MVP. **Сырой вывод LLM в `innerHTML` запрещён.**
 
 ### 8.4. Карточка диффа
 
@@ -437,14 +453,16 @@ PluginManager::reload_plugin (перезагрузка без перезапус
 
 ### 8.7. Доступность (a11y)
 
-- Дровер: `role="dialog"`, `aria-modal="true"`, `aria-labelledby="ai-title"`.
+- Док: `role="region"`; тело режима AI — `role="tabpanel"`.
+- Сегмент режимов: `role="tablist"` + `role="tab"`/`aria-selected`/`aria-controls` (`#mode-logs-btn` → `#logs-body`, `#mode-ai-btn` → `#ai-mode`).
+- Триггеры `#sb-ai`/`#tb-ai`: `aria-expanded` (состояние дока в своём режиме).
 - Чат: `role="log"`, `aria-live="polite"`, `aria-relevant="additions"`.
 - Сообщения: `role="article"`, `aria-label="Сообщение пользователя/ассистента"`.
 - Карточка диффа: `role="group"`, `aria-label="Предлагаемая правка"`.
 - Карточка плагина: `role="group"`, `aria-label="Плагин {{name}} версии {{version}}"`.
 - Скиллы: `role="button"`, `aria-label="{{title}}: {{description}}"`.
-- Клавиатура: `Ctrl+Shift+A` — открыть/закрыть, `Ctrl+Enter` — отправить, `Esc` — закрыть.
-- Фокус: при открытии — на поле ввода; при закрытии — возврат на кнопку «AI».
+- Клавиатура: `Ctrl+Shift+A` — открыть/свернуть режим AI, `Ctrl+Enter` — отправить, `Esc` — свернуть док.
+- Фокус: при открытии режима AI — в поле ввода; при сворачивании дока — на триггер **активного** режима (`#sb-ai`/`#sb-logs`).
 
 ---
 
@@ -597,17 +615,18 @@ pub struct AiValidationResult {
 
 | # | Критерий | Проверка |
 |---|----------|----------|
-| AC-1 | AI-панель открывается по кнопке «AI» в тулбаре и закрывается по Esc/повторному клику | E2E: открытие/закрытие |
+| AC-1 | Режим AI дока открывается по `#sb-ai`/`#tb-ai` и сворачивается по Esc/повторному клику | E2E: открытие/сворачивание дока |
 | AC-2 | Диалог работает: отправка сообщения, получение ответа от LLM | E2E: отправка сообщения |
 | AC-3 | Правка документа: AI предлагает дифф, пользователь применяет или отклоняет | E2E: применение диффа |
 | AC-4 | Применённая правка видна в редакторе и превью, `rev` растёт | E2E: проверка редактора |
 | AC-5 | Отмена правки через undo-стек работает | E2E: отмена правки |
 | AC-6 | Плагин генерируется: AI создаёт `main.lua` + `plugin.json`, пользователь подтверждает | E2E: создание плагина |
 | AC-7 | Плагин проходит валидацию манифеста и прогон в песочнице | E2E: валидация |
-| AC-8 | Согласие: при первом открытии AI-панели появляется диалог согласия | E2E: диалог согласия |
+| AC-8 | Согласие: при первой отправке из режима AI дока появляется модальный диалог согласия | E2E: диалог согласия |
 | AC-9 | Без согласия запросы не отправляются | E2E: проверка запрета |
 | AC-10 | Скиллы: пользователь может выбрать готовый скилл и отправить его | E2E: выбор скилла |
 | AC-11 | Ошибки сети/LLM показываются в чате, не роняют приложение | E2E: ошибка сети |
+| AC-11.1 | Режимы AI и журнал не занимают экран одновременно; переключение мгновенно | E2E: переключение режимов |
 
 ### Инварианты и ограничения
 
@@ -634,7 +653,7 @@ pub struct AiValidationResult {
 
 ### Фаза 1: MVP (2 недели)
 
-1. AI-панель (дровер, чат, поле ввода).
+1. Нижний док, режим AI (чат, поле ввода) — расширение дока журнала (ADR-0030).
 2. Rust-сетевой слой (Ollama, HTTP-клиент).
 3. Согласие (диалог, хранение в `config.json`).
 4. 1–2 скилла (правка документа).
@@ -689,6 +708,8 @@ pub struct AiValidationResult {
 - `docs/DESIGN_DOC.md` §5, §6–§9, §11, §13.2, §14 — норматива спецификация
 - `docs/adr/0021-plugin-host-isolation.md` — изоляция plugin-host
 - `docs/adr/0022-plugin-sandbox.md` — песочница
+- `docs/adr/0029-journal-bottom-panel.md` — нижняя панель «Журнал» (`#logs-panel`)
+- `docs/adr/0030-bottom-dock-two-modes.md` — нижний док: режимы «Журнал»/«AI-ассистент» (ADR этого ТЗ)
 - `crates/app/src/docStore.ts` — документный стор
 - `crates/app/src-tauri/src/state.rs` — DocumentStore, apply_edit
 - `crates/app/src-tauri/src/plugins/` — плагинная подсистема

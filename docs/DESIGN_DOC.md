@@ -284,7 +284,9 @@ export interface ViewContext {
 | `pluginViews.ts` | тир-1 представления плагинов |
 | `pluginStatusBar.ts` | per-plugin статусбар |
 | `pluginColor.ts` | цвета плагинов |
-| `logPanel.ts` | панель-консоль журнала: буфер, подписка на события, рендер (ADR-0029) |
+| `logPanel.ts` | тело режима «Журнал» нижнего дока: буфер, подписка, рендер (ADR-0029/0030) |
+| `bottomDock.ts` | нижний док `#logs-panel`: режимы «Журнал»/«AI», свёртка, resize, триггеры (ADR-0030) |
+| `aiPanel.ts` | тело режима «AI»: чат, скиллы, диффы, согласие (ADR-0030) |
 | `sampleDocument.ts` | стартовый документ |
 
 `linkController` строит **один** `RenderIndex` на `rev` и раздаёт его inspector и scrollsync.
@@ -632,6 +634,11 @@ scan(plugins_dir) -> validate(manifest) -> load(src) -> on_activate(ctx)
 - **Контракты панели журнала (ADR-0029):** слот `#sb-logs` и бейдж `#log-badge` в статусбаре
   сохраняются; аддитивно добавляются `#logs-panel`, `#logs-resize`, `#logs-collapse`,
   `#logs-list`, `#logs-clear`.
+- **Контракты нижнего дока (ADR-0030):** `#logs-panel`, `#logs-resize`, `#logs-collapse`,
+  `#logs-list`, `#logs-clear`, `#sb-logs`, `#log-badge` сохраняются; `#bottom-dock` не вводится;
+  аддитивно добавляются `#sb-ai`, `#tb-ai`, `#dock-modes`, `#mode-logs-btn`, `#mode-ai-btn`,
+  `#ai-mode`, `#ai-skills`, `#ai-chat`, `#ai-input`, `#ai-send`, `#ai-settings`, `#ai-clear`,
+  `#ai-model`; `#logs-resources` — logs-режимный слот (скрыт в режиме AI).
 - **Инварианты скролла и переключения view:** `#editor` и `#preview` — сами скролл-контейнеры
   (e2e читает их `scrollTop`); переключение view — `hidden`-toggle уже смонтированных узлов,
   не пересоздание DOM.
@@ -699,6 +706,7 @@ scan(plugins_dir) -> validate(manifest) -> load(src) -> on_activate(ctx)
 | 27 | Политика совместимости `HOST_API_VERSION`: мажор — только несовместимые изменения, двухступенчатая депрекация (Фаза 3 H3, S15) | §7.2, §8 | ADR-0027 |
 | 28 | Rust-undo: diff-модель `EditOp {start, removed, inserted}`, единый стек ввода/`apply_edit`, команды `undo_document`/`redo_document` (D5, S16) | §4.1, §4.2, §4.3 | ADR-0028 |
 | 29 | Журнал: сворачивающаяся панель-консоль над `#statusbar` (исключение из паттерна дровера) | §5.5, §13.2 | ADR-0029 |
+| 30 | Нижний док: «Журнал» + AI-ассистент, два режима (расширение ADR-0029; исключение из ADR-0024) | §5.5, §13.2 | ADR-0030 |
 
 ---
 

@@ -35,6 +35,17 @@
     • Свёртка/разворот — шеврон в шапке, `#sb-ai`/`#sb-logs`, Esc.
     • Resize — тонкий drag-handle сверху (28–520px).
 
+  ИДЕНТИФИКАТОРЫ (выровнено под ADR-0030):
+    Док переиспользует существующий контейнер `#logs-panel` и замороженные
+    id журнала `#logs-resize` / `#logs-collapse` / `#logs-body` / `#logs-list` /
+    `#logs-clear` (ADR-0029/0030). Рабочие имена `#bottom-dock` / `#dock-*`
+    в продукте НЕ используются. AI-направление — аддитивно: `#ai-*`
+    (`#ai-mode`, `#ai-skills`, `#ai-chat`, `#ai-input`, `#ai-send`,
+    `#ai-settings`, `#ai-clear`, `#ai-model`), `#sb-ai`, `#tb-ai`, `#ai-dot`,
+    `#log-badge`, сегмент режимов `#dock-modes` / `#mode-logs-btn` / `#mode-ai-btn`.
+    Общие токены высоты: `--h-dock: 300px` (развёрнут), `--h-dock-bar: 28px`
+    (свёрнут); кламп resize — 28–520px.
+
   Дата редакции: 11.10.2026
   Self-contained: все стили inline, без внешних зависимостей, CSP-safe
   (default-src 'self', без eval, без inline-обработчиков onclick=).
@@ -907,7 +918,7 @@
         <div class="spacer"></div>
         <div class="div-v"></div>
         <!-- Кнопка AI: главный вход в режим «AI-ассистент» дока (в БЫЛО скрыта) -->
-        <button class="tbtn" id="tb-ai" type="button" title="AI-ассистент (Ctrl+Shift+A)" aria-label="AI-ассистент" aria-expanded="false" aria-controls="bottom-dock" hidden>
+        <button class="tbtn" id="tb-ai" type="button" title="AI-ассистент (Ctrl+Shift+A)" aria-label="AI-ассистент" aria-expanded="false" aria-controls="logs-panel" hidden>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
             <path d="M12 3l1.6 4.6L18 9l-4.4 1.4L12 15l-1.6-4.6L6 9l4.4-1.4z" />
             <path d="M18.5 15.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z" />
@@ -985,12 +996,12 @@
            рабочую область; свёрнутый — тонкая полоса-шапка.
            Один док на две консольные панели: переключение режима — тихим
            сегментом в шапке (ADR-0029 — журнал уже занимает этот слот). -->
-      <section class="dock" id="bottom-dock" data-mode="ai" role="region" aria-label="Нижняя панель" hidden>
-        <div class="dock-resize" id="dock-resize" role="separator" aria-orientation="horizontal" aria-label="Изменить высоту панели" title="Потяните, чтобы изменить высоту"></div>
+      <section class="dock" id="logs-panel" data-mode="ai" role="region" aria-label="Нижняя панель" hidden>
+        <div class="dock-resize" id="logs-resize" role="separator" aria-orientation="horizontal" aria-label="Изменить высоту панели" title="Потяните, чтобы изменить высоту"></div>
 
         <!-- Шапка дока -->
         <div class="dock-head">
-          <button class="dock-caret" id="dock-caret" type="button" title="Свернуть/развернуть панель" aria-label="Свернуть или развернуть панель" aria-expanded="true" aria-controls="dock-body">
+          <button class="dock-caret" id="logs-collapse" type="button" title="Свернуть/развернуть панель" aria-label="Свернуть или развернуть панель" aria-expanded="true" aria-controls="logs-body">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
               <polyline points="6 9 12 15 18 9" />
             </svg>
@@ -998,14 +1009,14 @@
 
           <!-- Переключатель режимов одного дока -->
           <div class="dock-modes" role="tablist" aria-label="Режим нижней панели">
-            <button class="mode-btn" id="mode-logs-btn" type="button" role="tab" aria-selected="false" aria-controls="mode-logs" data-mode="logs" title="Журнал событий (панель уже реализована, ADR-0029)">
+            <button class="mode-btn" id="mode-logs-btn" type="button" role="tab" aria-selected="false" aria-controls="logs-list" data-mode="logs" title="Журнал событий (панель уже реализована, ADR-0029)">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
                 <polyline points="4 17 10 11 4 5" />
                 <line x1="12" y1="19" x2="20" y2="19" />
               </svg>
               <span>Журнал</span>
             </button>
-            <button class="mode-btn active" id="mode-ai-btn" type="button" role="tab" aria-selected="true" aria-controls="mode-ai" data-mode="ai" title="AI-ассистент">
+            <button class="mode-btn active" id="mode-ai-btn" type="button" role="tab" aria-selected="true" aria-controls="ai-mode" data-mode="ai" title="AI-ассистент">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
                 <path d="M12 3l1.6 4.6L18 9l-4.4 1.4L12 15l-1.6-4.6L6 9l4.4-1.4z" />
               </svg>
@@ -1015,16 +1026,24 @@
 
           <span class="dock-head-spacer"></span>
 
+          <!-- Очистка журнала — кнопка режима «Журнал» (logs-only) -->
+          <button class="dock-icon-btn logs-only" id="logs-clear" type="button" title="Очистить журнал" aria-label="Очистить журнал">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+            </svg>
+          </button>
+
           <!-- Служебная строка модели — тихо, только в режиме AI -->
           <span class="ai-model ai-only" id="ai-model">ollama · qwen2.5:7b</span>
 
-          <button class="dock-icon-btn" id="ai-settings" type="button" title="Настройки AI" aria-label="Настройки AI">
+          <button class="dock-icon-btn ai-only" id="ai-settings" type="button" title="Настройки AI" aria-label="Настройки AI">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
               <circle cx="12" cy="12" r="3" />
               <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
             </svg>
           </button>
-          <button class="dock-icon-btn" id="ai-clear" type="button" title="Очистить чат" aria-label="Очистить чат">
+          <button class="dock-icon-btn ai-only" id="ai-clear" type="button" title="Очистить чат" aria-label="Очистить чат">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
               <polyline points="3 6 5 6 21 6" />
               <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
@@ -1033,7 +1052,7 @@
         </div>
 
         <!-- Полоса готовых скиллов (только режим AI) -->
-        <div class="dock-skills dock-collapsible ai-only" id="dock-skills" role="toolbar" aria-label="Готовые скиллы">
+        <div class="dock-skills dock-collapsible ai-only" id="ai-skills" role="toolbar" aria-label="Готовые скиллы">
           <button class="skill" type="button" data-prompt="Переструктурируй документ: улучши структуру и иерархию заголовков." title="Переструктурировать документ">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="8" y1="13" x2="16" y2="13" /><line x1="8" y1="17" x2="13" y2="17" /></svg>
             <span>Переструктурировать</span>
@@ -1061,17 +1080,18 @@
         </div>
 
         <!-- Тело дока -->
-        <div class="dock-body dock-collapsible" id="dock-body">
-          <!-- Режим «Журнал» — существующая панель (ADR-0029), здесь не перерисовывается -->
-          <div class="mode-note" id="mode-logs" role="tabpanel" aria-labelledby="mode-logs-btn" hidden>
+        <div class="dock-body dock-collapsible" id="logs-body">
+          <!-- Режим «Журнал» — существующая панель (ADR-0029), здесь не перерисовывается.
+               Список журнала сохраняет role="log" (ADR-0029/0030). -->
+          <div class="mode-note" id="logs-list" role="log" aria-live="polite" aria-labelledby="mode-logs-btn" hidden>
             Панель «Журнал» уже занимает этот нижний слот (ADR-0029).<br />
             В этом прототипе она не перерисовывается — показан только режим-переключатель.<br />
             Обе панели — консольного типа, поэтому живут в одном доке.
           </div>
 
           <!-- Режим «AI-ассистент» -->
-          <div class="mode-pane" id="mode-ai" role="tabpanel" aria-labelledby="mode-ai-btn" style="display:flex;flex-direction:column;flex:1;min-height:0">
-            <div class="chat" id="chat" role="log" aria-live="polite" aria-relevant="additions">
+          <div class="mode-pane" id="ai-mode" role="tabpanel" aria-labelledby="mode-ai-btn" style="display:flex;flex-direction:column;flex:1;min-height:0">
+            <div class="chat" id="ai-chat" role="log" aria-live="polite" aria-relevant="additions">
               <div class="chat-inner" id="chat-inner">
                 <!-- Сообщение пользователя -->
                 <div class="msg user">
@@ -1192,14 +1212,15 @@ end</pre>
         <span class="stat"><span class="stat-dot"></span><span>Готов</span></span>
         <span class="spacer"></span>
         <!-- Триггеры нижнего дока: два режима одной панели -->
-        <button class="stat clickable" id="sb-logs" type="button" title="Журнал событий" aria-label="Журнал событий" aria-expanded="false" aria-controls="bottom-dock">
+        <button class="stat clickable" id="sb-logs" type="button" title="Журнал событий" aria-label="Журнал событий" aria-expanded="false" aria-controls="logs-panel">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="12" height="12" aria-hidden="true">
             <polyline points="4 17 10 11 4 5" />
             <line x1="12" y1="19" x2="20" y2="19" />
           </svg>
           <span>Журнал</span>
+          <span class="badge" id="log-badge" title="События в журнале">3</span>
         </button>
-        <button class="stat clickable" id="sb-ai" type="button" title="AI-ассистент" aria-label="AI-ассистент" aria-expanded="false" aria-controls="bottom-dock">
+        <button class="stat clickable" id="sb-ai" type="button" title="AI-ассистент" aria-label="AI-ассистент" aria-expanded="false" aria-controls="logs-panel">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="12" height="12" aria-hidden="true">
             <path d="M12 3l1.6 4.6L18 9l-4.4 1.4L12 15l-1.6-4.6L6 9l4.4-1.4z" />
           </svg>
@@ -1252,19 +1273,20 @@ end</pre>
         var btnAfter = document.getElementById('btn-after');
         var toolbarAi = document.getElementById('tb-ai');
         var aiDot = document.getElementById('ai-dot');
-        var dock = document.getElementById('bottom-dock');
-        var dockCaret = document.getElementById('dock-caret');
-        var dockResize = document.getElementById('dock-resize');
-        var dockBody = document.getElementById('dock-body');
+        var dock = document.getElementById('logs-panel');
+        var dockCaret = document.getElementById('logs-collapse');
+        var dockResize = document.getElementById('logs-resize');
+        var dockBody = document.getElementById('logs-body');
         var modeLogsBtn = document.getElementById('mode-logs-btn');
         var modeAiBtn = document.getElementById('mode-ai-btn');
-        var paneLogs = document.getElementById('mode-logs');
-        var paneAi = document.getElementById('mode-ai');
-        var skillsRow = document.getElementById('dock-skills');
+        var paneLogs = document.getElementById('logs-list');
+        var paneAi = document.getElementById('ai-mode');
+        var skillsRow = document.getElementById('ai-skills');
         var aiModel = document.getElementById('ai-model');
         var aiSettings = document.getElementById('ai-settings');
         var aiClear = document.getElementById('ai-clear');
-        var chat = document.getElementById('chat');
+        var logsClear = document.getElementById('logs-clear');
+        var chat = document.getElementById('ai-chat');
         var chatInner = document.getElementById('chat-inner');
         var chatEmpty = document.getElementById('chat-empty');
         var typingRow = document.getElementById('typing-row');
@@ -1362,6 +1384,9 @@ end</pre>
           // Поля только режима AI
           var aiOnly = dock.querySelectorAll('.ai-only');
           for (var i = 0; i < aiOnly.length; i++) aiOnly[i].hidden = mode !== 'ai';
+          // Поля только режима «Журнал» (взаимоисключающе с ai-only)
+          var logsOnly = dock.querySelectorAll('.logs-only');
+          for (var j = 0; j < logsOnly.length; j++) logsOnly[j].hidden = mode !== 'logs';
           if (mode === 'ai') stick = true;
         }
 
@@ -1489,6 +1514,7 @@ end</pre>
 
         aiSettings.addEventListener('click', function () { showFlash('Настройки AI — скоро'); });
         aiClear.addEventListener('click', clearChat);
+        logsClear.addEventListener('click', function () { showFlash('Журнал очищен'); });
         sendBtn.addEventListener('click', send);
 
         // Скиллы: подставляем промт в поле ввода
@@ -1599,7 +1625,7 @@ end</pre>
         dockResize.addEventListener('pointermove', function (e) {
           if (!dragging) return;
           var next = dragStartH - (e.clientY - dragStartY);
-          next = Math.max(28, Math.min(560, next));
+          next = Math.max(28, Math.min(520, next));
           dock.style.height = next + 'px';
         });
 

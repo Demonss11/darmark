@@ -1,6 +1,6 @@
 # ADR-0029. Журнал: сворачивающаяся панель-консоль над статусбаром (исключение из паттерна дровера)
 
-- **Статус:** **Принят**
+- **Статус:** **Принят** (дополнен ADR-0030: док расширен до двух режимов «Журнал»/«AI-ассистент»)
 - **Дата:** 11.10.2026
 - **Основание:** задача S11 стабилизации; упрощённый прототип
   `ideas/front_idea-s11-log-panel.html` (редакция 2); `docs/adr/0024-plugin-drawer-placement.md`;
@@ -159,6 +159,7 @@ flowchart TD
 - `docs/adr/0024-plugin-drawer-placement.md` — правый дровер плагинов; журнал — **исключение**
   (этот ADR).
 - `docs/adr/0027-host-api-version-policy.md` — аддитивные события не поднимают мажор.
+- `docs/adr/0030-bottom-dock-two-modes.md` — док на два режима («Журнал»/«AI») — расширение этого ADR.
 - `ideas/front_idea-s11-log-panel.html` — упрощённый прототип (редакция 2).
 - `crates/app/src/logPanel.ts`, `shell.ts`, `main.ts`, `index.html`, `style.css` — точки интеграции.
 - `crates/app/src-tauri/src/plugins/host.rs`, `services.rs`, `lib.rs` — эмиттеры событий.
