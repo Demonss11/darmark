@@ -77,7 +77,7 @@ pub fn read_source(entry_path: &Path) -> Result<String, String> {
     String::from_utf8(bytes).map_err(|e| format!("{}: не UTF-8: {e}", entry_path.display()))
 }
 
-/// Читает и валидирует один каталог плагина (harness AI, TZ §6.2).
+/// Читает и валидирует один каталог плагина (harness AI, ADR-0034 §2.4).
 ///
 /// Общая точка с [`scan_plugins`]: те же проверки манифеста/entry/размера.
 pub fn load_single(dir: &Path) -> Result<DiscoveredPlugin, String> {

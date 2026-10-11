@@ -3,7 +3,7 @@
 //! Здесь только данные: сообщения чата, ответ, скиллы, настройки и их проекции для
 //! фронтенда. Секрет (`api_key`) живёт в [`AiSettings`] и пишется в `config.json`
 //! (секция `ai`, D11), но **никогда** не попадает в [`AiSettingsView`] — наружу идёт
-//! лишь `has_key` (TZ §3.2, §9.1).
+//! лишь `has_key` (ADR-0032/0034).
 
 use serde::{Deserialize, Serialize};
 
@@ -14,7 +14,7 @@ pub struct AiMessage {
     pub content: String,
 }
 
-/// Токены использования ответа (показ расходов, TZ §10.1).
+/// Токены использования ответа (показ расходов, ADR-0032).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AiUsage {
     pub prompt_tokens: u32,
@@ -28,7 +28,7 @@ pub struct AiResponse {
     pub usage: Option<AiUsage>,
 }
 
-/// Готовый скилл (промт) из встроенной библиотеки (TZ §7).
+/// Готовый скилл (промт) из встроенной библиотеки (ADR-0032).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct AiSkill {
     pub id: String,
@@ -101,7 +101,7 @@ impl std::fmt::Debug for AiSettings {
     }
 }
 
-/// Проекция настроек для фронтенда: без `api_key`, но с `has_key` (TZ §9.1).
+/// Проекция настроек для фронтенда: без `api_key`, но с `has_key` (ADR-0034).
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct AiSettingsView {
     pub enabled: bool,
@@ -151,7 +151,7 @@ pub struct AiTestResult {
     pub error: Option<String>,
 }
 
-/// Одна операция правки документа (harness, TZ §5): замена `[start, end)` на `text`.
+/// Одна операция правки документа (harness, ADR-0034): замена `[start, end)` на `text`.
 ///
 /// Смещения — **байтовые** UTF-8 (как `data-md` и `DocumentStore::apply_edit`, D5).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -172,7 +172,7 @@ pub struct AiDiff {
     pub ops: Vec<AiEditOp>,
 }
 
-/// Результат валидации плагина (harness, TZ §6): статус, понятные ошибки и сырой отчёт CLI.
+/// Результат валидации плагина (harness, ADR-0034/ADR-0026): статус, понятные ошибки и сырой отчёт CLI.
 #[derive(Clone, Debug, Serialize)]
 pub struct AiValidationResult {
     pub ok: bool,

@@ -1,7 +1,7 @@
-//! Встроенная библиотека скиллов (готовых промтов), TZ §7.
+//! Встроенная библиотека скиллов (готовых промтов), ADR-0032.
 //!
 //! В MVP — **ровно 2** скилла: `explain` (документ) и `create-plugin` (плагины).
-//! Промты встроены в код (редактора скиллов в MVP нет); формат — как в ТЗ §7.2.
+//! Промты встроены в код (редактора скиллов в MVP нет); формат — как в ADR-0032.
 
 use crate::ai::types::AiSkill;
 
@@ -11,7 +11,7 @@ const EXPLAIN_PROMPT: &str = "Объясни этот документ прос�
 
 /// Промт `create-plugin`: подстановка `{{input}}` — описание плагина из чата.
 ///
-/// Контракт ответа (TZ §6): модель возвращает **только** один fenced-блок ```` ```json ````
+/// Контракт ответа (ADR-0034/ADR-0026): модель возвращает **только** один fenced-блок ```` ```json ````
 /// с объектом `{ id, name, version, permissions, source }` — его парсит фронт.
 const CREATE_PLUGIN_PROMPT: &str = r#"Ты — генератор Lua-плагинов для darmark. По описанию: {{input}}
 Верни РОВНО один fenced-блок ```json с одним объектом:
@@ -20,7 +20,7 @@ const CREATE_PLUGIN_PROMPT: &str = r#"Ты — генератор Lua-плаги
 darmark (document:read, document:write, view:create, view:modify, ui:statusbar); source — полный
 код main.lua с функцией on_activate и host-API песочницы darmark. Никакого текста вне блока."#;
 
-/// Список встроенных скиллов MVP (ровно 2, TZ §7.1).
+/// Список встроенных скиллов MVP (ровно 2, ADR-0032).
 pub fn skills() -> Vec<AiSkill> {
     vec![
         AiSkill {
@@ -49,7 +49,7 @@ mod tests {
     #[test]
     fn mvp_has_exactly_two_skills() {
         let skills = skills();
-        assert_eq!(skills.len(), 2, "в MVP ровно 2 скилла (TZ §7.1)");
+        assert_eq!(skills.len(), 2, "в MVP ровно 2 скилла (ADR-0032)");
         let ids: Vec<&str> = skills.iter().map(|skill| skill.id.as_str()).collect();
         assert_eq!(ids, vec!["explain", "create-plugin"]);
     }
@@ -68,7 +68,7 @@ mod tests {
 
     #[test]
     fn create_plugin_prompt_requires_json_contract() {
-        // Контракт парсинга фронта (TZ §6): только fenced ```json с полями объекта.
+        // Контракт парсинга фронта (ADR-0034/ADR-0026): только fenced ```json с полями объекта.
         let create = &skills()[1];
         let prompt = &create.prompt_template;
         assert!(prompt.contains("```json"), "промт просит fenced json-блок");

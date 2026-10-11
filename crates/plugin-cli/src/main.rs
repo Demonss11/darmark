@@ -22,7 +22,7 @@ const MAX_MANIFEST_BYTES: u64 = 256 * 1024;
 /// Версия схемы JSON-отчёта `test --json` (корневое поле `schema_version`).
 ///
 /// Аддитивные поля не повышают мажор; harness AI доверяет отчёту только с этой версией
-/// (нет поля / неизвестный мажор → fallback, TZ-AI-ASSISTANT §6.2).
+/// (нет поля / неизвестный мажор → fallback, ADR-0034 §2.4).
 const REPORT_SCHEMA_VERSION: u32 = 1;
 
 /// Имя файла манифеста в каталоге плагина.
@@ -1138,7 +1138,7 @@ mod tests {
         let json = report_to_json(&report);
         assert_eq!(
             json["schema_version"], 1,
-            "версионированный отчёт (TZ §6.2)"
+            "версионированный отчёт (ADR-0034 §2.4)"
         );
         assert_eq!(json["ok"], true);
         assert!(json["checks"].is_array(), "checks[] присутствует");

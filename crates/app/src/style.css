@@ -1979,7 +1979,7 @@ th.filtered .col-filter-btn { color: var(--accent); font-weight: 700; }
 .toast-warning { border-left-color: var(--warning); }
 .toast-error { border-left-color: var(--error); }
 
-/* ===================== AI-АССИСТЕНТ (aiPanel.ts, TZ §8) =====================
+/* ===================== AI-АССИСТЕНТ (aiPanel.ts, ADR-0030) =====================
    Тело режима AI нижнего дока: скиллы, чат, поле ввода, поповер настроек и
    состояния индикатора #ai-dot. Ответ модели рендерится только textContent
    (MVP); сеть — на Rust-стороне (CSP default-src 'self'). */
@@ -2345,7 +2345,7 @@ th.filtered .col-filter-btn { color: var(--accent); font-weight: 700; }
 .dialog-actions { display: flex; gap: 8px; margin-top: 12px; }
 .dialog-actions .btn { flex: 1; padding: 7px 12px; font-size: 12px; }
 
-/* ============ AI-АССИСТЕНТ: карточки harness Фазы 2 (aiPanel.ts, §5–§6) ============
+/* ============ AI-АССИСТЕНТ: карточки harness Фазы 2 (aiPanel.ts, ADR-0034) ============
    Карточка диффа и карточка плагина. Строки модели/манифеста — только textContent
    (сырой вывод LLM в innerHTML запрещён). Все стили — на существующих токенах. */
 

@@ -2,7 +2,7 @@
 //!
 //! HTTP — `POST {base_url}/chat/completions` с Bearer-ключом и `stream: true`; ответ читается
 //! как SSE (`bytes_stream`) и разбирается [`SseParser`](crate::ai::sse::SseParser). TLS —
-//! системный SChannel (`native-tls`, без OpenSSL). Таймаут — 30 с (TZ §10.1).
+//! системный SChannel (`native-tls`, без OpenSSL). Таймаут — 30 с (ADR-0032).
 
 use std::time::Duration;
 
@@ -13,7 +13,7 @@ use crate::ai::sse::{SseEvent, SseParser};
 use crate::ai::transport::{AiTransport, BoxFuture, ChatOutcome, ChatRequest, TestRequest};
 use crate::error::{CommandError, ErrorCode};
 
-/// Таймаут запроса к провайдеру (TZ §10.1, ADR-0033 §2.3 п.9).
+/// Таймаут запроса к провайдеру (ADR-0032, ADR-0033 §2.3 п.9).
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 /// Число попыток для транзиентной 5xx (первая + один ретрай, ADR-0032 §2.5 п.13).
 const MAX_ATTEMPTS: u32 = 2;

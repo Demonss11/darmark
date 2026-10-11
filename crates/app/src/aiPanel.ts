@@ -1,5 +1,6 @@
-// aiPanel.ts — тело режима «AI-ассистент» нижнего дока (TZ-AI-ASSISTANT §8;
-// ADR-0030/0032/0034). Модуль-оболочка (как logPanel/resourceMonitor), НЕ view
+// aiPanel.ts — тело режима «AI-ассистент» нижнего дока (ADR-0030; сеть и
+// провайдер — ADR-0032/0033; рантайм — ADR-0034). Модуль-оболочка (как
+// logPanel/resourceMonitor), НЕ view
 // и НЕ pane: монтируется logPanel'ом в контейнер #logs-panel (режим ai).
 //
 // Инварианты: сетевые вызовы — только на Rust-стороне (CSP `default-src 'self'`);
@@ -8,7 +9,7 @@
 // Стриминг: события ai:chunk/ai:done/ai:error дописывают/финализируют текущий
 // пузырь ассистента; отписки сохраняются и снимаются (без утечек).
 //
-// Фаза 2 (harness §5–§6): под ответом ассистента — «Применить как правку» (дифф)
+// Фаза 2 (harness, ADR-0034): под ответом ассистента — «Применить как правку» (дифф)
 // и карточка плагина из ```json-блока. Правки документа идут через ai_apply_edit
 // (+ undo_document); плагины — через ai_*_plugin. Карточки собираются DOM API и
 // textContent; сырой вывод модели в innerHTML не попадает.
@@ -46,13 +47,13 @@ import type { DocumentId } from "./ids";
 import type { Json } from "./viewRegistry";
 import type { DockMode, DockState, LogCategory, LogLevel } from "./logPanel";
 
-/** Лимит текста документа за запрос (§4.1, §10.4). */
+/** Лимит текста документа за запрос (ADR-0032). */
 const MAX_DOC_BYTES = 100 * 1024;
 
 /** Допуск «чат прижат к низу», px — автопрокрутка с заморозкой. */
 const STICK_THRESHOLD = 24;
 
-/** Состояние индикатора #ai-dot (§8.6). */
+/** Состояние индикатора #ai-dot (ADR-0030/0034). */
 type AiDotState = "off" | "warn" | "ready" | "error";
 
 /** Классификация ошибки для карточки и действий. */
@@ -64,7 +65,7 @@ interface ErrorAction {
   run(): void;
 }
 
-/** Встроенные скиллы-фолбэк, если `ai_list_skills` недоступен (TZ §7.2). */
+/** Встроенные скиллы-фолбэк, если `ai_list_skills` недоступен (ADR-0032). */
 const FALLBACK_SKILLS: readonly AiSkill[] = [
   {
     id: "explain",
@@ -175,7 +176,7 @@ function shortModel(model: string): string {
   return parts[parts.length - 1] || model;
 }
 
-/** Лимит строк диффа в карточке: защита от огромных правок (§10.1, 10 000 строк). */
+/** Лимит строк диффа в карточке: защита от огромных правок (ADR-0032, 10 000 строк). */
 const MAX_DIFF_LINES = 500;
 
 /** Человекочитаемая подпись статуса плагина для бейджа карточки. */
@@ -186,7 +187,7 @@ const PLUGIN_STATUS_LABELS: Record<PluginStatus["state"], string> = {
   stopped: "остановлен",
 };
 
-/** Кодовый блок ```json в ответе модели — предложение плагина (скилл create-plugin, §6). */
+/** Кодовый блок ```json в ответе модели — предложение плагина (скилл create-plugin, ADR-0034/ADR-0026). */
 const PLUGIN_FENCE = /```json[^\n]*\n([\s\S]*?)```/gi;
 
 /** Предложение плагина, извлечённое из ответа ассистента. */
@@ -288,7 +289,7 @@ function renderDiffBody(pre: HTMLElement, diff: AiDiff): void {
   }
 }
 
-/** Ищет первый валидный ```json-блок плагина в ответе ассистента (§6). */
+/** Ищет первый валидный ```json-блок плагина в ответе ассистента (ADR-0034/ADR-0026). */
 function extractPluginProposal(content: string): AiPluginProposal | null {
   PLUGIN_FENCE.lastIndex = 0; // глобальный regexp: сбрасываем позицию между вызовами
   let match: RegExpExecArray | null;
@@ -317,7 +318,7 @@ function parsePluginBlock(raw: string): AiPluginProposal | null {
     typeof obj.version === "string" && obj.version.trim() ? obj.version.trim() : "0.1.0";
   const rawPermissions: unknown[] = Array.isArray(obj.permissions) ? obj.permissions : [];
   const permissions = rawPermissions.filter((p): p is string => typeof p === "string");
-  // api_version/entry — значения по умолчанию шаблона `darmark-plugin init` (§6.2).
+  // api_version/entry — значения по умолчанию шаблона `darmark-plugin init` (ADR-0034 §2.4).
   const manifest: Json = { id, name, version, api_version: 1, entry: "main.lua", permissions };
   return { id, name, version, source, manifest };
 }
@@ -684,7 +685,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     if (stick) scrollToBottom();
   }
 
-  // --- Фаза 2: harness — карточка диффа и карточка плагина (§5–§6) ---
+  // --- Фаза 2: harness — карточка диффа и карточка плагина (ADR-0034) ---
 
   /** Короткая заметка под сообщением (info/error) — только textContent. */
   function appendNotice(col: HTMLElement, text: string, kind: "info" | "error"): void {
@@ -732,7 +733,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     if (!disposed && !ok) button.disabled = false;
   }
 
-  /** Карточка диффа: предпросмотр по `ops` + «Применить»/«Отклонить»/«Отменить» (§5). */
+  /** Карточка диффа: предпросмотр по `ops` + «Применить»/«Отклонить»/«Отменить» (ADR-0034). */
   function renderDiffCard(
     col: HTMLElement,
     diff: AiDiff,
@@ -807,7 +808,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
         apply.disabled = false;
         reject.disabled = false;
         if (errorCode(e) === "ai_stale_edit") {
-          // Документ изменился между diff и apply — предлагаем пересчитать (§5.4).
+          // Документ изменился между diff и apply — предлагаем пересчитать (ADR-0034).
           status.textContent = "Документ изменился, пересмотрите правку.";
           const reconsider = actionButton(
             "Пересмотреть",
@@ -833,7 +834,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     reject.addEventListener("click", rejectEdit);
   }
 
-  /** Карточка плагина из ```json-блока: предпросмотр, валидация, создание/удаление (§6). */
+  /** Карточка плагина из ```json-блока: предпросмотр, валидация, создание/удаление (ADR-0034/ADR-0026). */
   function renderPluginCard(col: HTMLElement, proposal: AiPluginProposal): void {
     const id = ++cardSeq;
     const card = el("div", "ai-plugin-card");
@@ -917,7 +918,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
       pluginCards.delete(state);
     }
 
-    /** Валидация при появлении карточки (манифест + entry + песочница, §6.4). */
+    /** Валидация при появлении карточки (манифест + entry + песочница, ADR-0034/ADR-0026). */
     async function validate(): Promise<void> {
       status.textContent = "Проверка…";
       try {
@@ -1016,7 +1017,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     void validate();
   }
 
-  /** Действия под ответом ассистента: «Применить как правку» + карточка плагина (§5–§6). */
+  /** Действия под ответом ассистента: «Применить как правку» + карточка плагина (ADR-0034). */
   function appendAssistantActions(col: HTMLElement, content: string): void {
     const actions = el("div", "ai-msg-actions");
     const apply = actionButton(
@@ -1166,7 +1167,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     const content = document.createElement("div");
     content.className = "ai-consent";
     const p = document.createElement("p");
-    // Формулировка — канон TZ §4.2: явно называем получателя и модель.
+    // Формулировка — канон ADR-0032: явно называем получателя и модель.
     p.textContent =
       "AI-ассистент может отправлять содержимое документа и историю чата в облачный сервис routerai.ru (для запроса к модели deepseek/deepseek-v4.1-flash). Разрешить?";
     const warn = document.createElement("div");
@@ -1317,7 +1318,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
   // --- обработчики ---
 
   const onInputKeyDown = (e: KeyboardEvent): void => {
-    // Enter и Ctrl+Enter — отправить; Shift+Enter — перенос строки (TZ §8.7).
+    // Enter и Ctrl+Enter — отправить; Shift+Enter — перенос строки (ADR-0030).
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       submitInput();

@@ -1,13 +1,13 @@
-//! Harness плагинов (TZ §6): валидация через `darmark-plugin test --json` с fallback на
+//! Harness плагинов (ADR-0034/ADR-0026): валидация через `darmark-plugin test --json` с fallback на
 //! `plugin_core::manifest` + `darmark-plugin-host --self-test`, а также создание/обновление/
 //! удаление плагинов через существующий [`crate::plugins::host::PluginHost`].
 //!
-//! Порядок строго **запись → валидация → регистрация** (§6.2): невалидный плагин не попадает
+//! Порядок строго **запись → валидация → регистрация** (ADR-0034 §2.4): невалидный плагин не попадает
 //! в реестр. Сеть/LLM живут в AI-модуле, CLI используется как dev-инструмент (сеть в него не
 //! вводится). Безопасность id проверяется **до** записи (нет traversal/спецсимволов).
 //!
 //! **Обновление не затирает рабочий плагин:** предложенный контент валидируется во временном
-//! каталоге **до** перезаписи реальных файлов; при `!ok` реальные файлы не трогаются (§6.5).
+//! каталоге **до** перезаписи реальных файлов; при `!ok` реальные файлы не трогаются (ADR-0034/ADR-0026).
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -24,7 +24,7 @@ pub const REPORT_SCHEMA_VERSION: u64 = 1;
 /// Максимальная длина id плагина (защита от гигантских имён каталогов).
 const MAX_PLUGIN_ID_LEN: usize = 64;
 
-/// Host-side таймаут запуска CLI/`--self-test` (TZ §6.2): при превышении — `ok=false`.
+/// Host-side таймаут запуска CLI/`--self-test` (ADR-0034 §2.4): при превышении — `ok=false`.
 const VALIDATION_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// Имя файла манифеста в каталоге плагина.
@@ -77,7 +77,7 @@ pub fn validate_manifest_id(manifest: &Value, id: &str) -> Result<(), CommandErr
     }
 }
 
-/// Лимиты размера **до** записи на диск (TZ §6.2/§10.1): исходник `main.lua` и
+/// Лимиты размера **до** записи на диск (ADR-0034 §2.4/ADR-0032): исходник `main.lua` и
 /// сериализованный манифест. Нарушение → `ai_plugin_invalid` без записи файлов.
 pub fn check_plugin_limits(manifest: &Value, source: &str) -> Result<(), CommandError> {
     if let Err(e) = plugin_core::manifest::validate_source_len(source.len() as u64) {
@@ -119,7 +119,7 @@ pub fn plugins_root() -> Result<PathBuf, CommandError> {
 /// Разбирает JSON-отчёт `darmark-plugin test --json`.
 ///
 /// `None` — отчёту нельзя доверять: нет `schema_version` или неизвестный мажор → harness
-/// уходит в fallback (§6.2). Иначе — `ok`/`errors` (проваленные `checks[]`) и сырой отчёт.
+/// уходит в fallback (ADR-0034 §2.4). Иначе — `ok`/`errors` (проваленные `checks[]`) и сырой отчёт.
 pub fn parse_cli_report(stdout: &str) -> Option<AiValidationResult> {
     let value: Value = serde_json::from_str(stdout.trim()).ok()?;
     let schema = value.get("schema_version")?.as_u64()?;
@@ -149,7 +149,7 @@ pub fn parse_cli_report(stdout: &str) -> Option<AiValidationResult> {
     })
 }
 
-/// Валидация манифеста и исходника **без** CLI (fallback, §6.4): те же проверки через
+/// Валидация манифеста и исходника **без** CLI (fallback, ADR-0034/ADR-0026): те же проверки через
 /// `plugin_core::manifest`. Возвращает понятные ошибки (пусто — валидно).
 pub fn manifest_errors(manifest: &Value, source: &str) -> Vec<String> {
     let mut errors = Vec::new();
@@ -184,7 +184,7 @@ pub fn validate_plugin(dir: &Path) -> AiValidationResult {
     fallback_validate(dir)
 }
 
-/// Fallback-валидация (§6.2): манифест/entry через `plugin_core` + песочница child-хостом.
+/// Fallback-валидация (ADR-0034 §2.4): манифест/entry через `plugin_core` + песочница child-хостом.
 fn fallback_validate(dir: &Path) -> AiValidationResult {
     let manifest_path = dir.join(MANIFEST_FILE);
     let source_path = dir.join(ENTRY_FILE);
@@ -282,7 +282,7 @@ fn resolve_sidecar(env: &str, name: &str) -> Option<PathBuf> {
 ///
 /// stdout/stderr читаются **параллельно** ожиданию (отдельные потоки): иначе «болтливый»
 /// вывод переполняет буфер пайпа, процесс блокируется на записи и ложно срабатывает
-/// таймаут (§6.2).
+/// таймаут (ADR-0034 §2.4).
 fn run_with_timeout(
     mut command: Command,
     timeout: Duration,
@@ -374,7 +374,7 @@ fn io_error(e: std::io::Error) -> CommandError {
     CommandError::new(ErrorCode::AiIo, e.to_string())
 }
 
-/// Каталог — reparse point (symlink/junction)? Defense-in-depth (TZ §6.2): запись в такой
+/// Каталог — reparse point (symlink/junction)? Defense-in-depth (ADR-0034 §2.4): запись в такой
 /// каталог может увести файлы за пределы `plugins/`. Проверяем атрибут `FILE_ATTRIBUTE_REPARSE_POINT`.
 #[cfg(windows)]
 fn is_reparse_point(path: &Path) -> bool {
@@ -406,7 +406,7 @@ fn errors_summary(errors: &[String]) -> String {
     }
 }
 
-// ---------- команды IPC (TZ §9, «Фаза 2») ----------
+// ---------- команды IPC (ADR-0034, «Фаза 2») ----------
 
 /// Валидирует плагин во временном каталоге (запись → проверка), не трогая реальный профиль.
 #[tauri::command(async)]
@@ -554,7 +554,7 @@ pub fn create_plugin_at(
 /// валидация предложенного контента во временном каталоге → перезапись реальных файлов →
 /// `reload_plugin`.
 ///
-/// **Рабочий плагин не затирается:** при `!ok` реальные файлы не трогаются (§6.5).
+/// **Рабочий плагин не затирается:** при `!ok` реальные файлы не трогаются (ADR-0034/ADR-0026).
 #[cfg(windows)]
 pub fn update_plugin_at(
     host: &crate::plugins::host::PluginHost,
@@ -574,7 +574,7 @@ pub fn update_plugin_at(
             format!("плагин не найден: {id}"),
         ));
     }
-    // Defense-in-depth (§6.2): не пишем в symlink/junction-каталог (эскейп за `plugins/`).
+    // Defense-in-depth (ADR-0034 §2.4): не пишем в symlink/junction-каталог (эскейп за `plugins/`).
     if is_reparse_point(&dir) {
         return Err(CommandError::new(
             ErrorCode::AiPluginInvalid,

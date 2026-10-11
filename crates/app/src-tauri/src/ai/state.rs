@@ -13,7 +13,7 @@ use crate::ai::transport::AiTransport;
 use crate::ai::types::{AiSettings, AiSettingsInput};
 use crate::error::{CommandError, ErrorCode};
 
-/// Минимальный интервал между запросами (клиентский rate limit ≥1 зап/с, TZ §10.1).
+/// Минимальный интервал между запросами (клиентский rate limit ≥1 зап/с, ADR-0032).
 const MIN_REQUEST_INTERVAL: Duration = Duration::from_secs(1);
 
 /// Состояние AI-подсистемы для IPC-команд.
@@ -96,7 +96,7 @@ impl AiState {
         settings::persist_to(self.config_path.as_deref(), &settings)
     }
 
-    /// Клиентский rate limit: гарантирует паузу ≥1 с между запросами (TZ §10.1).
+    /// Клиентский rate limit: гарантирует паузу ≥1 с между запросами (ADR-0032).
     ///
     /// Асинхронный сон (не блокирующий `thread::sleep`): не занимает worker tokio.
     pub async fn enforce_rate_limit(&self) {

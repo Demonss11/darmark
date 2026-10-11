@@ -286,7 +286,7 @@ export interface ViewContext {
 | `pluginColor.ts` | цвета плагинов |
 | `logPanel.ts` | тело режима «Журнал» нижнего дока: буфер, подписка, рендер (ADR-0029/0030) |
 | `bottomDock.ts` | нижний док `#logs-panel`: режимы «Журнал»/«AI», свёртка, resize, триггеры (ADR-0030) |
-| `aiPanel.ts` | тело режима «AI»: чат, скиллы, диффы, согласие (провайдер OpenAI-совместимый, `routerai.ru`, ADR-0032; HTTP-клиент `reqwest`/SChannel + SSE, ADR-0033; AI-рантайм в процессе GUI за швом `AiBackend`/`AiTransport`, включаемость `ai.enabled`/состояния, ADR-0034; ADR-0030) |
+| `aiPanel.ts` | тело режима «AI»: чат, скиллы, диффы, согласие, **настройки провайдеров** (список `provider/model`; провайдеры LLM задаёт пользователь в `config.json`, `ai.providers`, ADR-0035; протокол OpenAI-совместимый, ADR-0032; HTTP-клиент `reqwest`/SChannel + SSE, ADR-0033; AI-рантайм в процессе GUI за швом `AiBackend`/`AiTransport`, включаемость `ai.enabled`/состояния, ADR-0034; ADR-0030) |
 | `resourceMonitor.ts` | мониторинг ресурсов: подписка на `resource-metrics`/`plugin-process-exited`, рендер `#logs-resources`, состояния orphan, пороги (ADR-0031) |
 | `sampleDocument.ts` | стартовый документ |
 
@@ -601,6 +601,10 @@ scan(plugins_dir) -> validate(manifest) -> load(src) -> on_activate(ctx)
 ## 12. Настройки, состояние, recent files
 
 - **Конфиг приложения**: `%APPDATA%/darmark/config.json`, владелец — Rust `SettingsStore`.
+- **AI-провайдеры**: секция `ai` — map `ai.providers` (ключ — id провайдера; поля `name`/`env`/
+  `package`/`settings` (`baseURL`/`apiKey`/`timeout`)/`headers`/`body`/`models`) + активная пара
+  `ai.active_provider`/`ai.active_model`; ссылка на модель — `provider/model` (ADR-0035; структура —
+  раздел **Custom** `opencode.json`, <https://opencode.ai/v2/docs/providers/#custom>).
 - **Плагины**: `%APPDATA%/darmark/plugins/<id>/` (манифест + `.lua`); постоянные настройки плагина — `%APPDATA%/darmark/plugin-settings/<id>.json` (per-plugin JSON-объект; UI-схема `contributes.settings` рендерится в менеджере — секция «Настройки», S5b).
 - **Состояние окна**: размер/позиция окна, layout (дерево), открытые документы, активная панель — восстанавливается между сессиями.
 - **Recent files**: список путей + время, лимит 20.
@@ -646,12 +650,13 @@ scan(plugins_dir) -> validate(manifest) -> load(src) -> on_activate(ctx)
   Аддитивные id: `#sb-mon`, `#mode-mon-btn`, `#logs-close`, `#mon-body`, `#mon-rows`, `#mon-summary`,
   `#sb-ai`, `#tb-ai`, `#dock-modes`, `#mode-ai-btn`, `#ai-mode`, `#ai-skills`, `#ai-chat`,
   `#ai-input`, `#ai-send`, `#ai-settings`, `#ai-clear`, `#ai-model`.
-- **Контракты AI-ассистента (ADR-0030, провайдер — ADR-0032, сетевой слой — ADR-0033):** режим AI дока и аддитивные id
-  `#sb-ai`/`#tb-ai`/`#ai-*` сохраняются; **провайдер LLM в MVP — OpenAI-совместимый API
-  (`routerai.ru`)**, HTTP-клиент — `reqwest` (native-tls/SChannel) + SSE-стриминг (ADR-0033),
+- **Контракты AI-ассистента (ADR-0030, провайдер — ADR-0032/0035, сетевой слой — ADR-0033):** режим AI дока и аддитивные id
+  `#sb-ai`/`#tb-ai`/`#ai-*` сохраняются; **провайдер LLM — OpenAI-совместимый API, задаётся
+  пользователем в `config.json` (`ai.providers`, ADR-0035)** (провайдер по умолчанию — `routerai.ru`),
+  HTTP-клиент — `reqwest` (native-tls/SChannel) + SSE-стриминг (ADR-0033),
   сеть — только на
   Rust-стороне; отправка содержимого документа — **только после явного согласия** (модальный диалог,
-  ADR-0030 §2.4).
+  ADR-0030 §2.4); согласие называет **активный хост** (ADR-0035 §2.7).
 - **Контракты мониторинга ресурсов (ADR-0031, доп. 11.10.2026):** `#logs-resources` (`role="note"`)
   сохраняется — **внутри вкладки** `#mon-body[role="tabpanel"]`; аддитивно `#mon-rows` (строки,
   `.mon-row.mon-main`/`.mon-child[data-plugin-id]`), `#mon-summary` (тихая сводка в шапке), классы
@@ -730,6 +735,7 @@ scan(plugins_dir) -> validate(manifest) -> load(src) -> on_activate(ctx)
 | 32 | AI-провайдер в MVP: OpenAI-совместимый API (routerai.ru); локальная LLM отложена (вне scope) | §5.5, §13.2 | ADR-0032 |
 | 33 | AI: HTTP-клиент `reqwest` (native-tls/SChannel) + SSE-стриминг; бюджет AI-клиента пересмотрен | §5.5, §10, §14 | F55–F58 |
 | 34 | Размещение AI-рантайма: в процессе GUI (шов `AiBackend`); сайдкар отложен (триггеры) | §5.5, §10, §13.2 | ADR-0034 |
+| 35 | Универсальная конфигурация провайдеров LLM (map провайдеров/моделей, идея opencode.json) | §5.5, §12, §13.2 | ADR-0035 |
 
 ---
 

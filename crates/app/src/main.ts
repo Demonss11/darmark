@@ -100,7 +100,7 @@ const store = createDocStore({
 
 const status = createStatusBar({ store, editor, appName: APP_NAME });
 
-// AI-ассистент (TZ-AI-ASSISTANT, ADR-0030/0032/0034): тело режима AI дока —
+// AI-ассистент (ADR-0030/0032/0033/0034): тело режима AI дока —
 // чат, скиллы, настройки, согласие. Сеть — только на Rust-стороне; ответ
 // модели рендерится исключительно textContent. Создаётся после стора: текст
 // документа берётся из активной вкладки (шов getDocumentText).

@@ -1,4 +1,4 @@
-//! IPC-команды AI-ассистента (TZ §9.1). Фасад над [`AiState`] и швом [`AiTransport`].
+//! IPC-команды AI-ассистента (ADR-0034). Фасад над [`AiState`] и швом [`AiTransport`].
 //!
 //! Секрет (`api_key`) сюда не возвращается: `ai_get_settings` отдаёт только `has_key`.
 //! Сетевые ошибки транслируются в [`CommandError`] и событие `ai:error` — без паник.
@@ -35,7 +35,7 @@ pub fn ai_set_api_key(key: String, state: State<'_, AiState>) -> Result<(), Comm
     state.set_api_key(key)
 }
 
-/// Возвращает встроенную библиотеку скиллов MVP (ровно 2, TZ §7.1).
+/// Возвращает встроенную библиотеку скиллов MVP (ровно 2, ADR-0032).
 #[tauri::command]
 pub fn ai_list_skills() -> Vec<AiSkill> {
     skills::skills()

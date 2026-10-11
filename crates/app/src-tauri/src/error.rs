@@ -45,13 +45,13 @@ pub enum ErrorCode {
     AiOffline,
     /// AI: некорректные настройки (напр. `base_url` не `https://` и не loopback).
     AiBadSettings,
-    /// AI harness: предложенная правка устарела (ревизия документа изменилась, TZ §5.4).
+    /// AI harness: предложенная правка устарела (ревизия документа изменилась, ADR-0034).
     AiStaleEdit,
     /// AI harness: правку не удалось применить (невалидные смещения/неизвестный документ).
     AiApplyFailed,
-    /// AI harness: плагин не прошёл валидацию (манифест/entry/песочница, TZ §6.4).
+    /// AI harness: плагин не прошёл валидацию (манифест/entry/песочница, ADR-0034/ADR-0026).
     AiPluginInvalid,
-    /// AI harness: плагин с таким id уже существует (TZ §6.1).
+    /// AI harness: плагин с таким id уже существует (ADR-0034/ADR-0026).
     AiPluginExists,
     /// AI harness: плагин с таким id не найден.
     AiPluginNotFound,

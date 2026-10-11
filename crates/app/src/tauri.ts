@@ -231,7 +231,7 @@ export function errorMessage(e: unknown): string {
   return String(e);
 }
 
-// --- AI-ассистент (TZ-AI-ASSISTANT §9; ADR-0030/0032/0034) ---
+// --- AI-ассистент (ADR-0030/0032/0033/0034) ---
 // Все сетевые вызовы — на Rust-стороне (CSP `default-src 'self'`); здесь только
 // типизированные обёртки IPC. Ключ наружу не отдаётся (только `has_key`).
 
@@ -322,18 +322,18 @@ export function aiTestConnection(): Promise<AiTestResult> {
   return invoke<AiTestResult>("ai_test_connection");
 }
 
-// --- AI-ассистент: harness Фазы 2 (TZ-AI-ASSISTANT §5–§6, §9) ---
+// --- AI-ассистент: harness Фазы 2 (ADR-0034) ---
 // Правка документа идёт через `DocumentStore::apply_edit` (D5); плагины — через
 // тот же цикл валидации, что и пользовательские (песочница, D16). Сеть — на Rust.
 
-/** Операция правки документа: байтовые (UTF-8) смещения + новый текст (§9.3). */
+/** Операция правки документа: байтовые (UTF-8) смещения + новый текст (ADR-0034). */
 export interface AiEditOp {
   start: number;
   end: number;
   text: string;
 }
 
-/** Предложенная правка: исходный/новый текст и минимальный дифф (§5.3). */
+/** Предложенная правка: исходный/новый текст и минимальный дифф (ADR-0034). */
 export interface AiDiff {
   doc_id: string;
   base_rev: number;
@@ -342,7 +342,7 @@ export interface AiDiff {
   ops: AiEditOp[];
 }
 
-/** Результат валидации плагина (манифест + entry + песочница, §6.4). */
+/** Результат валидации плагина (манифест + entry + песочница, ADR-0034/ADR-0026). */
 export interface AiValidationResult {
   ok: boolean;
   errors: string[];
@@ -350,12 +350,12 @@ export interface AiValidationResult {
   report: unknown | null;
 }
 
-/** Предлагает правку документа: минимальный дифф текущего текста и `proposed` (§5.3). */
+/** Предлагает правку документа: минимальный дифф текущего текста и `proposed` (ADR-0034). */
 export function aiDiff(docId: DocumentId, proposed: string): Promise<AiDiff> {
   return invoke<AiDiff>("ai_diff", { docId, proposed });
 }
 
-/** Применяет правку через `DocumentStore::apply_edit`; `baseRev` защищает от гонок (§5.4). */
+/** Применяет правку через `DocumentStore::apply_edit`; `baseRev` защищает от гонок (ADR-0034). */
 export function aiApplyEdit(
   docId: DocumentId,
   baseRev: number,
@@ -364,7 +364,7 @@ export function aiApplyEdit(
   return invoke<UndoResult>("ai_apply_edit", { docId, baseRev, ops });
 }
 
-/** Валидирует плагин (манифест + entry + прогон в песочнице, §6.4). */
+/** Валидирует плагин (манифест + entry + прогон в песочнице, ADR-0034/ADR-0026). */
 export function aiValidatePlugin(
   id: string,
   manifest: Json,
@@ -373,12 +373,12 @@ export function aiValidatePlugin(
   return invoke<AiValidationResult>("ai_validate_plugin", { id, manifest, source });
 }
 
-/** Создаёт плагин: запись → валидация → регистрация; только при `ok=true` (§6.1). */
+/** Создаёт плагин: запись → валидация → регистрация; только при `ok=true` (ADR-0034/ADR-0026). */
 export function aiCreatePlugin(id: string, manifest: Json, source: string): Promise<PluginInfo> {
   return invoke<PluginInfo>("ai_create_plugin", { id, manifest, source });
 }
 
-/** Обновляет плагин: перезапись → валидация → reload без рестарта приложения (§6.5). */
+/** Обновляет плагин: перезапись → валидация → reload без рестарта приложения (ADR-0034/ADR-0026). */
 export function aiUpdatePlugin(id: string, manifest: Json, source: string): Promise<PluginInfo> {
   return invoke<PluginInfo>("ai_update_plugin", { id, manifest, source });
 }
