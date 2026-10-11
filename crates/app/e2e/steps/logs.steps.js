@@ -98,3 +98,97 @@ Then("бейдж журнала показывает {string}", async (expected)
     throw new Error(`Бейдж журнала показывает ${JSON.stringify(text)}, ожидалось ${JSON.stringify(expected)}`);
   }
 });
+
+// ---------- Лента: записи, фильтр, очистка, даты (Фаза 3, AC-8/9/11) ----------
+//
+// Записи приходят из Rust-событий (`document-event`, `plugin-status-changed`, …).
+// Мы не подделываем их напрямую, а порождаем пользовательскими действиями без
+// нативных диалогов: «Новый файл» (#btn-new) → запись info; включение падающего
+// плагина e2e-fail → запись error. «Видимость» записи определяем по геометрии
+// (`getClientRects`), а уровень — по стабильному атрибуту `data-level`.
+
+/// Видимые (реально отрисованные) записи ленты: уровень + текст сообщения.
+function visibleLogItems() {
+  return browser.execute(() =>
+    Array.from(document.querySelectorAll("#logs-list .log-item"))
+      .filter((el) => el.getClientRects().length > 0)
+      .map((el) => ({
+        level: el.dataset.level ?? "info",
+        message: el.querySelector(".log-msg")?.textContent ?? "",
+      }))
+  );
+}
+
+Then("в ленте журнала есть записи", async () => {
+  await browser.waitUntil(
+    async () => (await visibleLogItems()).length > 0,
+    { timeout: 5_000, timeoutMsg: "В ленте журнала нет записей" }
+  );
+});
+
+Then("лента журнала пуста", async () => {
+  await browser.waitUntil(
+    async () =>
+      browser.execute(() => {
+        const list = document.getElementById("logs-list");
+        return (
+          !!list &&
+          list.querySelectorAll(".log-item").length === 0 &&
+          !!list.querySelector(".log-empty")
+        );
+      }),
+    {
+      timeout: 5_000,
+      timeoutMsg: "Лента журнала не опустошилась (нет .log-empty или остались записи)",
+    }
+  );
+});
+
+Then("в ленте журнала есть запись уровня ошибки", async () => {
+  await browser.waitUntil(
+    async () => (await visibleLogItems()).some((it) => it.level === "error"),
+    { timeout: 5_000, timeoutMsg: "В ленте нет записи уровня error" }
+  );
+});
+
+Then("в ленте журнала есть информационная запись", async () => {
+  await browser.waitUntil(
+    async () => (await visibleLogItems()).some((it) => it.level === "info"),
+    { timeout: 5_000, timeoutMsg: "В ленте нет информационной записи" }
+  );
+});
+
+Then("среди видимых записей журнала нет информационных", async () => {
+  const isFiltered = async () => {
+    const items = await visibleLogItems();
+    return items.length > 0 && items.every((it) => it.level !== "info");
+  };
+  try {
+    await browser.waitUntil(isFiltered, { timeout: 5_000, interval: 100 });
+  } catch {
+    const items = await visibleLogItems();
+    if (items.length === 0) {
+      throw new Error(
+        "Фильтр «Ошибки» опустошил ленту: записей warn/error не осталось"
+      );
+    }
+    throw new Error(
+      "Фильтр «Ошибки» показывает информационные записи: " +
+        JSON.stringify(items.filter((it) => it.level === "info").map((it) => it.message))
+    );
+  }
+});
+
+Then("в ленте журнала есть разделитель даты «Сегодня»", async () => {
+  await browser.waitUntil(
+    async () => {
+      const texts = await browser.execute(() =>
+        Array.from(
+          document.querySelectorAll("#logs-list .log-date-separator")
+        ).map((el) => el.textContent.trim())
+      );
+      return texts.includes("Сегодня");
+    },
+    { timeout: 5_000, timeoutMsg: "В ленте нет разделителя даты «Сегодня»" }
+  );
+});

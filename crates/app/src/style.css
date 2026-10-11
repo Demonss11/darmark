@@ -1258,7 +1258,10 @@ label.tbtn:has(> input:focus-visible) { outline: 2px solid var(--accent); outlin
 }
 .logs-resize:hover::after,
 .logs-panel.resizing .logs-resize::after { opacity: 0.6; }
-.logs-panel.resizing { cursor: ns-resize; user-select: none; }
+/* Во время драга transition мешает: высота должна следовать за указателем вплотную. */
+.logs-panel.resizing { cursor: ns-resize; user-select: none; transition: none; }
+/* Класс на body — чтобы драг не выделял текст рабочей области под курсором (§10). */
+body.logs-resizing { cursor: ns-resize; user-select: none; }
 
 /* Тело панели — лента событий. Строки разделены воздухом, а не рамками (§6.4). */
 .logs-body {
@@ -1273,11 +1276,9 @@ label.tbtn:has(> input:focus-visible) { outline: 2px solid var(--accent); outlin
   align-items: baseline;
   gap: 10px;
   padding: 7px 14px;
-  border-bottom: none;
   transition: background 0.12s;
 }
 .log-item:hover { background: var(--bg-1); }
-.log-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 /* Точка категории: 5px, приглушена; warn/error перекрывают цвет (§6.3). */
 .log-dot {
   flex-shrink: 0;
@@ -1317,13 +1318,31 @@ label.tbtn:has(> input:focus-visible) { outline: 2px solid var(--accent); outlin
   color: var(--fg-dim);
   font-size: 11px;
 }
-/* Пустая лента (§6.6): единственное реальное состояние до первых событий. */
+/* Разделители дат (§6.7): только воздух и приглушённый заголовок, без линии.
+   Липкие — при длинной истории не теряется контекст группы. */
+.log-date-separator {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 12px 14px 4px;
+  background: var(--bg-0);
+  color: var(--fg-mute);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  user-select: none;
+}
+/* Пустая лента (§6.6): единственное реальное состояние до первых событий
+   и результат фильтра «Ошибки» без подходящих записей. */
 .log-empty {
   padding: 26px 16px;
   text-align: center;
   color: var(--fg-mute);
   font-size: 12px;
 }
+.log-empty-title { color: var(--fg-dim); }
+.log-empty-hint { margin-top: 4px; font-size: 11px; color: var(--fg-mute); }
 
 /* Триггер журнала в статусбаре: активен, пока панель развёрнута (§6.5). */
 .stat.clickable.active { background: var(--accent-soft); color: var(--accent); }

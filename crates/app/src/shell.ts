@@ -103,12 +103,16 @@ export function createShell(opts: ShellOptions): void {
     // Пока открыт модальный диалог (палитра), хоткеи оболочки не срабатывают:
     // управление (в т.ч. Escape) остаётся за dialog.ts.
     if (isModalOpen()) return;
-    // Esc сворачивает развёрнутую панель журнала (AC-2); при открытом модальном
-    // диалоге не трогаем — выше уже вышли по isModalOpen().
+    // Esc сворачивает развёрнутую панель журнала (AC-2), но только при фокусе
+    // внутри панели (§4.5 ТЗ): иначе Esc остаётся инспектору/редактору — не
+    // перехватываем и пропускаем дальше по обработчику.
     if (e.key === "Escape" && opts.logPanel.isOpen()) {
-      e.preventDefault();
-      opts.logPanel.collapse();
-      return;
+      const panel = document.getElementById("logs-panel");
+      if (panel && panel.contains(document.activeElement)) {
+        e.preventDefault();
+        opts.logPanel.collapse();
+        return;
+      }
     }
     // Esc выходит из режима инспектора (кроме случая открытого меню фильтра).
     if (e.key === "Escape" && opts.inspectorActive()) {
