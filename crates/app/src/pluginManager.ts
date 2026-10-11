@@ -2,9 +2,9 @@
 //
 // Контроллер показывает снимок плагинов из Rust-хоста (команда `list_plugins`):
 // статус, тумблер вкл/выкл, «Перезагрузить», инлайн-согласие на permissions
-// (§11.1 п.4) и кнопки команд плагина. Тело панели собирается
-// DOM-узлами и `textContent` — строки из манифеста/хоста не проходят через
-// `innerHTML` (защита от инъекции).
+// (§11.1 п.4), кнопки команд плагина и форму настроек по `contributes.settings`
+// (S5b). Тело панели собирается DOM-узлами и `textContent` — строки из
+// манифеста/хоста не проходят через `innerHTML` (защита от инъекции).
 //
 // Состав/статусы меняются и по инициативе хоста: событие `plugins-changed` (без
 // payload) заставляет перечитать снимок. Обработчики — делегированные на корне,
@@ -19,12 +19,15 @@ import {
   runPluginCommand,
   setPluginEnabled,
   setPluginPermissions,
+  setPluginSetting,
   type PluginInfo,
+  type PluginSettingProperty,
   type PluginStatus,
 } from "./tauri";
 import { openDialog, type Dialog } from "./dialog";
 import { ownerPluginId } from "./pluginTarget";
 import { pluginColor } from "./pluginColor";
+import type { Json } from "./viewRegistry";
 
 /** Публичный фасад контроллера менеджера плагинов. */
 export interface PluginManager {
@@ -107,6 +110,41 @@ function stateHint(status: PluginStatus): string | null {
  */
 function documentBoundaryNotice(info: PluginInfo): string | null {
   return info.notices.find((notice) => notice.toLowerCase().includes("документ")) ?? null;
+}
+
+/**
+ * Текущее значение настройки: сохранённое в сторе, иначе `default` из схемы
+ * (S5b). Значения из IPC — `unknown`: контрол выбирается по `type` схемы, а
+ * фактическое значение сужается проверками `typeof` при инициализации.
+ */
+function settingValue(info: PluginInfo, key: string, prop: PluginSettingProperty): unknown {
+  const stored = info.settings_values[key];
+  return stored !== undefined ? stored : prop.default;
+}
+
+/**
+ * Строка настройки: подпись + контрол (`<label>` даёт неявную связь и клик по
+ * тексту), ниже — мелкое описание. Все строки из манифеста идут через
+ * `textContent`, без `innerHTML`.
+ */
+function renderSettingRow(
+  key: string,
+  prop: PluginSettingProperty,
+  control: HTMLInputElement | HTMLSelectElement
+): HTMLElement {
+  const row = el("div", "pl-setting");
+  const head = el("label", "pl-setting-head");
+  const label = el("span", "pl-setting-label");
+  label.textContent = prop.title ?? key;
+  control.dataset.settingKey = key;
+  head.append(label, control);
+  row.append(head);
+  if (prop.description) {
+    const desc = el("div", "pl-setting-desc");
+    desc.textContent = prop.description;
+    row.append(desc);
+  }
+  return row;
 }
 
 function el(tag: string, className?: string): HTMLElement {
@@ -284,6 +322,9 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
   let openInfoButton: HTMLButtonElement | null = null;
   // Связь кнопки с её поповером по DOM-узлу — без запросов к document и без утечек.
   const infoPopovers = new WeakMap<HTMLButtonElement, HTMLElement>();
+  // Допустимые значения `<select>` настройки: индекс опции → исходное значение схемы.
+  // WeakMap по узлу — не удерживает DOM после перерисовки и не течёт.
+  const settingEnums = new WeakMap<HTMLSelectElement, Json[]>();
   // Раскрытые карточки — вне DOM: `render` пересоздаёт узлы (`replaceChildren`),
   // а раскрытие должно переживать перерисовку после действий (toggle/grant/reload).
   const expanded = new Set<string>();
@@ -379,6 +420,100 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     return section;
   }
 
+  /**
+   * Контрол по свойству схемы (S5b): `enum` → `<select>`, иначе по `type`
+   * (boolean → чекбокс, integer/number → число, string → текст). `null` —
+   * неизвестный/отсутствующий тип: контрол без семантики не рендерим.
+   * Значение из стора (`unknown`) сужается проверками `typeof`.
+   */
+  function settingControl(
+    prop: PluginSettingProperty,
+    current: unknown
+  ): HTMLInputElement | HTMLSelectElement | null {
+    const options = prop.enum;
+    if (Array.isArray(options) && options.length > 0) {
+      const select = document.createElement("select");
+      select.className = "pl-setting-control";
+      options.forEach((value, index) => {
+        const option = document.createElement("option");
+        option.value = String(index);
+        option.textContent = String(value);
+        if (value === current) option.selected = true;
+        select.append(option);
+      });
+      settingEnums.set(select, options);
+      return select;
+    }
+
+    const input = document.createElement("input");
+    input.className = "pl-setting-control";
+    if (prop.type === "boolean") {
+      input.type = "checkbox";
+      input.checked = current === true;
+    } else if (prop.type === "integer" || prop.type === "number") {
+      input.type = "number";
+      if (prop.type === "integer") input.step = "1";
+      if (typeof current === "number") input.value = String(current);
+    } else if (prop.type === "string") {
+      input.type = "text";
+      if (typeof current === "string") input.value = current;
+    } else {
+      return null;
+    }
+    return input;
+  }
+
+  /**
+   * Секция «Настройки» в теле карточки (S5b). `null`, если схемы/`properties`
+   * нет или все свойства неизвестного типа — пустую секцию не показываем.
+   */
+  function renderSettings(info: PluginInfo): HTMLElement | null {
+    const properties = info.settings_schema?.properties;
+    if (!properties) return null;
+
+    const rows: HTMLElement[] = [];
+    for (const [key, prop] of Object.entries(properties)) {
+      const control = settingControl(prop, settingValue(info, key, prop));
+      if (control) rows.push(renderSettingRow(key, prop, control));
+    }
+    if (rows.length === 0) return null;
+
+    const section = el("div", "pl-settings");
+    const title = el("div", "pl-settings-title");
+    title.textContent = "Настройки";
+    section.append(title, ...rows);
+    return section;
+  }
+
+  /** Дизейблит контролы настроек на время IPC (защита от повторного ввода). */
+  function setSettingsBusy(item: HTMLElement, busy: boolean): void {
+    for (const control of item.querySelectorAll<HTMLInputElement | HTMLSelectElement>(
+      ".pl-setting-control"
+    )) {
+      control.disabled = busy;
+    }
+  }
+
+  /** Значение контрола в тип схемы; `undefined` — ввод невалиден (пустое число). */
+  function readSettingValue(
+    control: HTMLInputElement | HTMLSelectElement
+  ): Json | undefined {
+    if (control instanceof HTMLSelectElement) {
+      const options = settingEnums.get(control);
+      const index = Number(control.value);
+      if (!options || !Number.isInteger(index) || index < 0 || index >= options.length) {
+        return undefined;
+      }
+      return options[index];
+    }
+    if (control.type === "checkbox") return control.checked;
+    if (control.type === "number") {
+      const value = Number(control.value);
+      return Number.isFinite(value) ? value : undefined;
+    }
+    return control.value;
+  }
+
   /** Один плагин: голова-строка (тумблер/имя/инфо/бейдж/шеврон) + тело-аккордеон. */
   function renderItem(info: PluginInfo): HTMLElement {
     const item = el("div", "pl-item");
@@ -462,6 +597,10 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     // Инлайн-секция согласия: запросы манифеста + фактически выданные права.
     const consent = renderConsent(info);
     if (consent) body.append(consent);
+
+    // S5b: настройки плагина по схеме `contributes.settings` — ниже согласия.
+    const settings = renderSettings(info);
+    if (settings) body.append(settings);
 
     // Тело всегда в DOM (скрывается CSS `.pl-item:not(.open)`) — иначе e2e не
     // найдёт контролы свёрнутой карточки до её раскрытия.
@@ -655,6 +794,25 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     await refresh();
   }
 
+  /** Записывает изменённую настройку плагина и перечитывает снимок (S5b). */
+  async function handleSettingChange(
+    control: HTMLInputElement | HTMLSelectElement
+  ): Promise<void> {
+    const item = control.closest<HTMLElement>(".pl-item");
+    const id = item?.dataset.plugin;
+    const key = control.dataset.settingKey;
+    if (!item || !id || !key) return;
+    const value = readSettingValue(control);
+    if (value === undefined) return; // невалидный ввод — стор не трогаем
+    setSettingsBusy(item, true);
+    try {
+      await setPluginSetting(id, key, value);
+    } catch (e) {
+      status(`Плагин ${id}: ${errorMessage(e)}`);
+    }
+    await refresh();
+  }
+
   async function handleReload(btn: HTMLButtonElement): Promise<void> {
     const id = btn.closest<HTMLElement>(".pl-item")?.dataset.plugin;
     if (!id) return;
@@ -738,13 +896,19 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
   }
 
   function onChange(e: Event): void {
-    const input = e.target as HTMLInputElement | null;
-    if (!input) return;
-    if (input.classList.contains("pl-enabled")) {
-      void handleToggle(input);
+    const target = e.target as HTMLElement | null;
+    if (!target) return;
+    if (target.classList.contains("pl-enabled")) {
+      void handleToggle(target as HTMLInputElement);
       return;
     }
-    if (input.classList.contains("pl-grant")) void handleGrant(input);
+    if (target.classList.contains("pl-grant")) {
+      void handleGrant(target as HTMLInputElement);
+      return;
+    }
+    if (target.classList.contains("pl-setting-control")) {
+      void handleSettingChange(target as HTMLInputElement | HTMLSelectElement);
+    }
   }
 
   function onClick(e: MouseEvent): void {

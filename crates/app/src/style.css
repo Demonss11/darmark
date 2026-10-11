@@ -529,6 +529,59 @@ label.tbtn:has(> input:focus-visible) { outline: 2px solid var(--accent); outlin
 .pl-boundary .ic svg { display: block; width: 14px; height: 14px; }
 .pl-boundary-text { min-width: 0; overflow-wrap: break-word; }
 
+/* ===== S5b — настройки плагина: контролы по `contributes.settings` =====
+   Секция в теле карточки: подпись + контрол в строке, мелкое описание под ним.
+   Строка — `<label>` (клик по подписи фокусирует/переключает контрол). */
+.pl-settings { display: flex; flex-direction: column; gap: 6px; }
+.pl-settings-title { font-size: 11px; color: var(--fg-mute); }
+.pl-setting { display: flex; flex-direction: column; gap: 2px; }
+.pl-setting-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 6px;
+  border-radius: var(--r-sm);
+  font-size: 11px;
+  color: var(--fg-dim);
+  cursor: pointer;
+}
+.pl-setting-head:hover { background: var(--bg-3); }
+.pl-setting-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pl-setting-control {
+  flex-shrink: 0;
+  min-width: 110px;
+  max-width: 160px;
+  min-height: 22px;
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-2);
+  color: var(--fg);
+  font: inherit;
+  font-size: 11px;
+}
+.pl-setting-control:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.pl-setting-control:disabled { opacity: 0.6; cursor: default; }
+/* Чекбокс — нативный размер: рамка/фон/ширина текстового поля ему не нужны. */
+.pl-setting-control[type="checkbox"] {
+  width: auto;
+  min-width: 0;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.pl-setting-desc { padding: 0 6px; font-size: 10.5px; line-height: 1.4; color: var(--fg-mute); }
+
 /* ===== S12c — состояния: причина + что делать (failed/quarantined) ===== */
 .pl-state-hint { font-size: 11px; line-height: 1.4; color: var(--fg-dim); }
 /* Разделитель не нужен: строки-карточки уже отделены border-bottom. */

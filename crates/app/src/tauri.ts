@@ -131,6 +131,31 @@ export interface PluginCommandInfo {
   keybinding: string | null;
 }
 
+/**
+ * Свойство UI-схемы настроек плагина — подмножество JSON Schema из
+ * `contributes.settings.properties` (см. `docs/PLUGIN_API.md` §1). Значения
+ * приходят из манифеста (недоверенные данные), поэтому `type` — свободная
+ * строка, а не union: неизвестный тип контрола просто не рендерится.
+ */
+export interface PluginSettingProperty {
+  /** Примитивный тип значения: `"boolean" | "integer" | "number" | "string"`. */
+  type?: string;
+  /** Подпись контрола; фолбэк — ключ свойства. */
+  title?: string;
+  /** Мелкая подсказка под контролом. */
+  description?: string;
+  /** Значение по умолчанию, если в сторе для ключа ничего нет. */
+  default?: unknown;
+  /** Допустимые значения — контрол становится `<select>` (JSON-скаляры схемы). */
+  enum?: Json[];
+}
+
+/** UI-схема настроек `contributes.settings`: объект с картой свойств. */
+export interface PluginSettingsSchema {
+  type?: string;
+  properties?: Record<string, PluginSettingProperty>;
+}
+
 /** Проекция плагина для менеджера (IPC-команда `list_plugins`, Фаза 5). */
 export interface PluginInfo {
   id: string;
@@ -146,6 +171,10 @@ export interface PluginInfo {
   enabled: boolean;
   commands: PluginCommandInfo[];
   notices: string[];
+  /** UI-схема настроек из манифеста (`contributes.settings`); null — секцию не рендерим. */
+  settings_schema: PluginSettingsSchema | null;
+  /** Сохранённые значения настроек (per-plugin JSON-объект; может быть пустым). */
+  settings_values: Record<string, unknown>;
 }
 
 /** Список плагинов со статусами/разрешениями (пусто, если плагинов нет). */
@@ -161,6 +190,15 @@ export function setPluginEnabled(id: string, enabled: boolean): Promise<void> {
 /** Фиксирует согласие пользователя на права плагина; активный перезапускается (§11.1 п.4). */
 export function setPluginPermissions(id: string, granted: string[]): Promise<void> {
   return invoke<void>("set_plugin_permissions", { id, granted });
+}
+
+/**
+ * Записывает одно значение настройки плагина (`host.set_setting` в сторе Rust).
+ * `value` — примитив из UI-контрола (boolean/number/string); тип приводится на
+ * фронте по схеме, а валидация и хранение — на Rust-стороне.
+ */
+export function setPluginSetting(id: string, key: string, value: Json): Promise<void> {
+  return invoke<void>("set_plugin_setting", { id, key, value });
 }
 
 /** Перезагружает плагин с диска без рестарта приложения (§4.7). */
