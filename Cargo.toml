@@ -11,9 +11,6 @@ members = [
   "crates/plugin-cli",
   "crates/lua-proto",
   "crates/lua-rpc-spike",
-  # resource-spike — спайк TZ-RESOURCE-MON (источник метрик ОЗУ/CPU). В продукт не линкуется,
-  # удаляется после ADR-0031; CI его не гоняет (джобы используют `-p`).
-  "crates/resource-spike",
 ]
 
 [workspace.package]

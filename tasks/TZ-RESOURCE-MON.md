@@ -1,6 +1,6 @@
 # TZ-RESOURCE-MON — Мониторинг ресурсов (ОЗУ/CPU) приложения и плагинов
 
-> **Статус:** спайк ✅ (F49–F54) + ADR-0031 ✅ принят → реализация
+> **Статус:** ✅ реализовано (Фазы 2–3), E2E ✅, приёмка ✅
 > **Приоритет:** P2 (наблюдаемость; после закрытия H2/S11)
 > **Источник:** IDEA-012 из `ideas/UI-IDEAS.md` (слот `#logs-resources` в шапке панели «Журнал»)
 > **Предшественник:** ADR-0029 (панель «Журнал» — место строки `#logs-resources`) — **сделано**
@@ -522,20 +522,23 @@ export type MonState = "ok" | "warn" | "crit" | "orphan";
 (WinAPI `windows`-crate, Windows-only), границы мониторинга (главный + child'ы Job Object), частота
 2 с, реакция без авто-kill; запись в `DESIGN_DOC §16` (№31), §5.5, §9, §13.2.
 
-**Фаза 2 — Rust-сбор метрик.**
+**Фаза 2 — Rust-сбор метрик — ✅ выполнено** (commit `9b1f2ff`).
 4. `plugins/resource.rs`: тип `ResourceSnapshot`, WinAPI-провайдер, `ResourceSink`, `ResourceMonitor`.
 5. `supervisor.rs` → `pid()`; `manager.rs` → `PluginRuntime::pid()` и `PluginManager::active_pids()`.
 6. Эмиттеры `resource-metrics`/`plugin-process-exited` в `setup_plugins` (по образцу `log-entry`).
 7. Юнит-тесты: сборка снимка из фиктивного списка PID; пороговые границы; пропуск недоступного PID.
 
-**Фаза 3 — TS-рендер.**
+**Фаза 3 — TS-рендер — ✅ выполнено** (commit `c81ea1c`).
 8. `resourceMonitor.ts`: снимок, состояния, рендер `#logs-resources`, прогресс-бары, «N сек назад».
 9. Пороговая логика `.warn`/`.crit` + дедуплицированные записи в журнал (через `log-entry`).
 10. `orphan`-состояние и таймер удаления 5 с; интеграция в `main.ts`; перенос в узком окне (CSS).
 
-**Фаза 4 — проверка.**
-11. `npm run build`, `cargo test -p darmark`, `npm run test:e2e` (новая `resources.feature`,
-    обновление `logs.feature`/`a11y.feature`); size-gate в CI.
+**Фаза 4 — проверка — ✅ выполнено.**
+11. `npm run build`, `cargo test -p darmark` (154 passed), `npm run test:e2e` — **135 сценариев,
+    0 ошибок** (функционал «Мониторинг ресурсов» — 3/3; регресс `logs.feature`/`a11y.feature`
+    зелёный).
+12. **size-gate:** release `darmark.exe` = **3.94 MiB** ≤ 6 МБ (D6). Спайк-крейт
+    `crates/resource-spike/` удалён после реализации (sysinfo ушёл из `Cargo.lock`).
 
 ---
 
