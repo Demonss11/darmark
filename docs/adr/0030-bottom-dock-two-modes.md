@@ -127,7 +127,7 @@ flowchart TD
 > Триггеры: `#sb-logs` / `#sb-mon` (новый). Режим «Мониторинг» переехал из строки в шапке в
 > **вкладку** (`#mon-body` → `#logs-resources` → `#mon-rows`); в шапке — тихая сводка `#mon-summary`.
 > Новые id: `#logs-close`, `#sb-mon`, `#mode-mon-btn`, `#mon-body`, `#mon-rows`, `#mon-summary`.
-> Прототип: `ideas/front_idea-dock-monitoring.html`.
+> (Прототип дока использован при проектировании; удалён после реализации.)
 
 ### 2.3. Интеграция
 
