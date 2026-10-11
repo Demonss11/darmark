@@ -1,6 +1,6 @@
 // shell.ts — привязка оболочки к DOM: кнопки тулбара, горячие клавиши, тумблеры
 // предпросмотра/синхронизации, формат-группа, палитра, триггер дровера плагинов,
-// журнал-заглушка, фокус активной панели, закрытие окна. Логики домена здесь
+// журнал-панель, фокус активной панели, закрытие окна. Логики домена здесь
 // нет — только вызовы команд из main.ts. Хоткеи глушатся, пока открыт модальный
 // диалог (dialog.ts).
 
@@ -9,6 +9,7 @@ import { confirm } from "@tauri-apps/plugin-dialog";
 import type { PaneId } from "./ids";
 import type { FormatActions } from "./formatActions";
 import type { Drawer } from "./drawer";
+import type { LogPanel } from "./logPanel";
 import { isModalOpen } from "./dialog";
 import { openDevtools } from "./tauri";
 
@@ -42,6 +43,8 @@ export interface ShellOptions {
   previewPane: PaneId;
   editor: HTMLTextAreaElement;
   preview: HTMLElement;
+  /** Панель «Журнал» (S11, ADR-0029): сворачивающаяся консоль над статусбаром. */
+  logPanel: LogPanel;
 }
 
 function byId<T extends HTMLElement>(id: string): T {
@@ -77,8 +80,9 @@ export function createShell(opts: ShellOptions): void {
   byId<HTMLButtonElement>("palette-trigger").addEventListener("click", commands.palette);
   // Дровер плагинов: триггер в тулбаре (повторный клик закрывает).
   byId<HTMLButtonElement>("tb-plugins").addEventListener("click", () => opts.drawer.toggle());
-  // «Журнал» — точка входа из статусбара (Фаза 3, заглушка; панель — H3).
-  byId<HTMLButtonElement>("sb-logs").addEventListener("click", () => commands.flash("Журнал — скоро"));
+  // «Журнал» — точка входа из статусбара (S11, ADR-0029): разворачивает/сворачивает
+  // панель-консоль; фокус возвращается на триггер при свёртке (collapse в logPanel).
+  byId<HTMLButtonElement>("sb-logs").addEventListener("click", () => opts.logPanel.toggle());
 
   // Активная панель (фокус) — для визуализации Pane/View.
   editor.addEventListener("focus", () => commands.setActivePane(opts.editorPane));
@@ -99,6 +103,13 @@ export function createShell(opts: ShellOptions): void {
     // Пока открыт модальный диалог (палитра), хоткеи оболочки не срабатывают:
     // управление (в т.ч. Escape) остаётся за dialog.ts.
     if (isModalOpen()) return;
+    // Esc сворачивает развёрнутую панель журнала (AC-2); при открытом модальном
+    // диалоге не трогаем — выше уже вышли по isModalOpen().
+    if (e.key === "Escape" && opts.logPanel.isOpen()) {
+      e.preventDefault();
+      opts.logPanel.collapse();
+      return;
+    }
     // Esc выходит из режима инспектора (кроме случая открытого меню фильтра).
     if (e.key === "Escape" && opts.inspectorActive()) {
       if (!document.querySelector(".col-filter-menu")) {

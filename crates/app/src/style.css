@@ -36,6 +36,9 @@
   --h-toolbar: 36px;
   --h-tabs: 32px;
   --h-status: 24px;
+  /* Панель «Журнал» (S11, ADR-0029): развёрнутая и свёрнутая (полоса-шапка) */
+  --h-logs: 220px;
+  --h-logs-bar: 28px;
   --w-drawer: 440px;
   --r-sm: 5px;
   --r-md: 7px;
@@ -1106,6 +1109,225 @@ label.tbtn:has(> input:focus-visible) { outline: 2px solid var(--accent); outlin
   font-size: 10px;
   font-weight: 600;
 }
+/* Цвет бейджа по уровню непрочитанных (§6.5): ошибки → красный,
+   предупреждения без ошибок → янтарный. */
+.badge.error { background: var(--error); color: #fff; }
+.badge.warning { background: var(--warning); color: #1a1400; }
+
+/* ===================== ПАНЕЛЬ «ЖУРНАЛ» (S11, ADR-0029) =====================
+   Сворачивающаяся консоль в flex-колонке #app, между .workspace и
+   #statusbar. Раскрытие сжимает рабочую область (не overlay), свёртка —
+   полоса-шапка --h-logs-bar. */
+.logs-panel {
+  position: relative; /* база для drag-handle */
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  height: var(--h-logs);
+  min-height: var(--h-logs-bar);
+  background: var(--bg-1);
+  border-top: 1px solid var(--line-soft);
+  overflow: hidden;
+  transition: height 0.18s; /* гасится глобальным prefers-reduced-motion */
+}
+.logs-panel.collapsed { height: var(--h-logs-bar); }
+.logs-panel.collapsed .logs-body { display: none; }
+
+/* Шапка панели — максимально тихая, высота --h-logs-bar */
+.logs-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--h-logs-bar);
+  padding: 0 6px 0 4px;
+  background: var(--bg-1);
+  flex-shrink: 0;
+  user-select: none;
+}
+/* Кнопка-шеврон сворачивания */
+.logs-caret {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--fg-mute);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.12s, color 0.12s;
+}
+.logs-caret:hover { background: var(--bg-2); color: var(--fg); }
+.logs-caret:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.logs-caret svg { width: 13px; height: 13px; transition: transform 0.18s; }
+.logs-panel.collapsed .logs-caret svg { transform: rotate(180deg); }
+.logs-title {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-shrink: 0;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--fg-mute);
+}
+.logs-count { color: var(--fg-mute); font-weight: 500; font-size: 11px; }
+
+/* Тихий фильтр-сегмент «Все / Ошибки» — без счётчиков, без рамок */
+.logs-filter {
+  display: inline-flex;
+  gap: 0;
+  flex-shrink: 0;
+  padding: 1px;
+  background: var(--bg-0);
+  border-radius: 5px;
+}
+.filter-btn {
+  padding: 2px 8px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--fg-mute);
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s, color 0.12s;
+}
+.filter-btn:hover { background: var(--bg-2); color: var(--fg); }
+.filter-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.filter-btn.active { background: var(--bg-3); color: var(--fg); }
+
+.logs-head-spacer { flex: 1; min-width: 8px; }
+
+/* Строка памяти (IDEA-012 — зарезервировано): приглушённая, без яркости;
+   пока пустая, не занимает заметного места (§6.8). */
+.logs-resources {
+  flex-shrink: 0;
+  font-family: "Cascadia Code", ui-monospace, monospace;
+  font-size: 10.5px;
+  color: var(--fg-mute);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Кнопка очистки — только иконка */
+.logs-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--fg-mute);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.logs-clear:hover { background: var(--bg-2); color: var(--fg); }
+.logs-clear:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.logs-clear svg { width: 13px; height: 13px; }
+
+/* Drag-handle — тонкий, незаметный (логика resize — Фаза 3) */
+.logs-resize {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  cursor: ns-resize;
+  z-index: 3;
+  background: transparent;
+}
+.logs-resize::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--accent);
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.logs-resize:hover::after,
+.logs-panel.resizing .logs-resize::after { opacity: 0.6; }
+.logs-panel.resizing { cursor: ns-resize; user-select: none; }
+
+/* Тело панели — лента событий. Строки разделены воздухом, а не рамками (§6.4). */
+.logs-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 0 16px;
+  background: var(--bg-0);
+}
+.log-item {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 7px 14px;
+  border-bottom: none;
+  transition: background 0.12s;
+}
+.log-item:hover { background: var(--bg-1); }
+.log-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* Точка категории: 5px, приглушена; warn/error перекрывают цвет (§6.3). */
+.log-dot {
+  flex-shrink: 0;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  transform: translateY(-1px);
+  opacity: 0.7;
+}
+.log-dot.plugin { background: var(--accent); }
+.log-dot.document { background: var(--accent-2); }
+.log-dot.system { background: var(--fg-mute); }
+.log-dot.error { background: var(--error); opacity: 1; }
+.log-dot.warning { background: var(--amber); opacity: 0.85; }
+/* Время приглушено; сообщение — единственный яркий текст в строке. */
+.log-time {
+  flex-shrink: 0;
+  font-family: "Cascadia Code", ui-monospace, Consolas, monospace;
+  font-size: 10.5px;
+  color: var(--fg-mute);
+  font-variant-numeric: tabular-nums;
+}
+.log-msg {
+  flex: 1;
+  min-width: 0;
+  color: var(--fg);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: break-word;
+}
+.log-detail {
+  flex-shrink: 0;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-dim);
+  font-size: 11px;
+}
+/* Пустая лента (§6.6): единственное реальное состояние до первых событий. */
+.log-empty {
+  padding: 26px 16px;
+  text-align: center;
+  color: var(--fg-mute);
+  font-size: 12px;
+}
+
+/* Триггер журнала в статусбаре: активен, пока панель развёрнута (§6.5). */
+.stat.clickable.active { background: var(--accent-soft); color: var(--accent); }
+.stat.clickable.active svg { transform: rotate(90deg); }
 
 /* Узкое окно: дровер на всю ширину */
 @media (max-width: 900px) {

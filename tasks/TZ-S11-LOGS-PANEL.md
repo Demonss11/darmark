@@ -212,7 +212,7 @@ interface LogEntry {
 ### 6.3. Запись журнала
 
 ```html
-<div class="log-item" data-category="plugin" tabindex="0">
+<div class="log-item" data-category="plugin">
   <span class="log-dot" aria-hidden="true"></span>
   <span class="log-time">12:34:56</span>
   <span class="log-msg">Плагин «word-count» включён</span>
@@ -281,7 +281,8 @@ interface LogEntry {
 - Лента: `role="log"`, `aria-live="polite"`, `aria-relevant="additions"`.
 - Фильтр: `role="group"`, кнопки с `aria-pressed="true|false"`.
 - Бейдж: `aria-label="Непрочитанных событий: N"`.
-- Клавиатура: `Tab`, `Enter`/`Пробел` (фильтры/кнопки), `Esc` (свернуть), `↑`/`↓`/`Home`/`End` (лента).
+- Клавиатура: `Tab`, `Enter`/`Пробел` (фильтры/кнопки), `Esc` (свернуть). Записи ленты —
+  только для чтения, без tab-стопов; навигация по записям (roving tabindex) — Фаза 3.
 - Фокус: при открытии — на фильтр/ленту; при закрытии — возврат на `#sb-logs`.
 - `prefers-reduced-motion` отключает анимацию высоты и автоскролл.
 

@@ -28,6 +28,7 @@ import { createShell } from "./shell";
 import { createDrawer } from "./drawer";
 import { createGutter } from "./gutter";
 import { createFormatActions } from "./formatActions";
+import { createLogPanel } from "./logPanel";
 import { START_TEXT } from "./sampleDocument";
 import { createPalette, type CommandProvider, type PaletteCommand } from "./palette";
 import { toast } from "./toast";
@@ -56,6 +57,13 @@ const drawer = createDrawer({
 });
 const gutter = createGutter(editor, gutterEl);
 const format = createFormatActions(editor);
+
+// Панель «Журнал» (S11, ADR-0029): сворачивающаяся консоль над статусбаром.
+// Создаётся до оболочки: shell.ts вызывает toggle()/isOpen() на триггере #sb-logs.
+const logPanel = createLogPanel({
+  trigger: document.getElementById("sb-logs") as HTMLButtonElement,
+  badge: document.getElementById("log-badge") as HTMLElement,
+});
 
 // 1. Общий индекс рендера + связка inspector/scrollsync.
 const renderIndex = createRenderIndex();
@@ -475,6 +483,7 @@ createShell({
   },
   format,
   drawer,
+  logPanel,
   inspectorActive: () => inspector.isActive(),
   editorPane: EDITOR_PANE,
   previewPane: PREVIEW_PANE,

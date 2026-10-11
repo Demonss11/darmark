@@ -236,11 +236,55 @@
         </main>
       </div>
 
+      <!-- ============ ЖУРНАЛ (S11, ADR-0029) ============
+           Сворачивающаяся панель-консоль ВНУТРИ layout, между рабочей областью
+           и #statusbar: раскрытие сжимает рабочую область (не overlay),
+           свёртка — полоса-шапка. -->
+      <section class="logs-panel" id="logs-panel" role="region" aria-label="Журнал событий" aria-labelledby="logs-title" hidden>
+        <!-- drag-handle изменения высоты (логика — Фаза 3) -->
+        <div class="logs-resize" id="logs-resize" role="separator" aria-orientation="horizontal" aria-label="Изменить высоту журнала" title="Потяните, чтобы изменить высоту"></div>
+
+        <!-- Шапка панели -->
+        <div class="logs-head">
+          <button class="logs-caret" id="logs-collapse" type="button" title="Свернуть журнал" aria-label="Свернуть журнал" aria-expanded="false" aria-controls="logs-body">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false">
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </button>
+          <span class="logs-title" id="logs-title">Журнал</span>
+          <span class="logs-count" id="logs-count">0</span>
+
+          <!-- Тихий фильтр-сегмент (логика — Фаза 3) -->
+          <div class="logs-filter" role="group" aria-label="Фильтр событий">
+            <button class="filter-btn active" data-filter="all" type="button" aria-pressed="true">Все</button>
+            <button class="filter-btn" data-filter="error" type="button" aria-pressed="false">Ошибки</button>
+          </div>
+
+          <span class="logs-head-spacer"></span>
+
+          <!-- Строка памяти (IDEA-012 — зарезервировано, §6.8) -->
+          <span class="logs-resources" id="logs-resources" role="note" aria-label="Потребление памяти"></span>
+
+          <!-- Кнопка очистки — только иконка (логика — Фаза 3) -->
+          <button class="logs-clear" id="logs-clear" type="button" title="Очистить журнал" aria-label="Очистить журнал">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false">
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+            </svg>
+          </button>
+        </div>
+
+        <!-- Тело панели: лента событий -->
+        <div class="logs-body" id="logs-body" role="log" aria-live="polite" aria-relevant="additions">
+          <div class="logs-list" id="logs-list"></div>
+        </div>
+      </section>
+
       <!-- ============ СТАТУСБАР ============ -->
       <footer id="statusbar" class="statusbar">
         <span class="stat"><span class="stat-dot" aria-hidden="true"></span><span id="stat-state">Готов</span></span>
         <span class="stat" id="stat-msg" role="status" aria-live="polite"></span>
-        <!-- Журнал: точка входа из статусбара (Фаза 3, заглушка — панель H3) -->
+        <!-- Журнал: точка входа из статусбара (S11, ADR-0029) -->
         <button class="stat clickable" id="sb-logs" type="button" title="Журнал и события" aria-label="Журнал и события">
           <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="12" height="12">
             <polyline points="4 17 10 11 4 5" />
