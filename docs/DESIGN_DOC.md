@@ -286,7 +286,7 @@ export interface ViewContext {
 | `pluginColor.ts` | цвета плагинов |
 | `logPanel.ts` | тело режима «Журнал» нижнего дока: буфер, подписка, рендер (ADR-0029/0030) |
 | `bottomDock.ts` | нижний док `#logs-panel`: режимы «Журнал»/«AI», свёртка, resize, триггеры (ADR-0030) |
-| `aiPanel.ts` | тело режима «AI»: чат, скиллы, диффы, согласие (провайдер OpenAI-совместимый, `routerai.ru`, ADR-0032; ADR-0030) |
+| `aiPanel.ts` | тело режима «AI»: чат, скиллы, диффы, согласие (провайдер OpenAI-совместимый, `routerai.ru`, ADR-0032; HTTP-клиент `reqwest`/SChannel + SSE, ADR-0033; AI-рантайм в процессе GUI за швом `AiBackend`/`AiTransport`, включаемость `ai.enabled`/состояния, ADR-0034; ADR-0030) |
 | `resourceMonitor.ts` | мониторинг ресурсов: подписка на `resource-metrics`/`plugin-process-exited`, рендер `#logs-resources`, состояния orphan, пороги (ADR-0031) |
 | `sampleDocument.ts` | стартовый документ |
 
@@ -646,9 +646,10 @@ scan(plugins_dir) -> validate(manifest) -> load(src) -> on_activate(ctx)
   Аддитивные id: `#sb-mon`, `#mode-mon-btn`, `#logs-close`, `#mon-body`, `#mon-rows`, `#mon-summary`,
   `#sb-ai`, `#tb-ai`, `#dock-modes`, `#mode-ai-btn`, `#ai-mode`, `#ai-skills`, `#ai-chat`,
   `#ai-input`, `#ai-send`, `#ai-settings`, `#ai-clear`, `#ai-model`.
-- **Контракты AI-ассистента (ADR-0030, провайдер — ADR-0032):** режим AI дока и аддитивные id
+- **Контракты AI-ассистента (ADR-0030, провайдер — ADR-0032, сетевой слой — ADR-0033):** режим AI дока и аддитивные id
   `#sb-ai`/`#tb-ai`/`#ai-*` сохраняются; **провайдер LLM в MVP — OpenAI-совместимый API
-  (`routerai.ru`)**, сеть — только на
+  (`routerai.ru`)**, HTTP-клиент — `reqwest` (native-tls/SChannel) + SSE-стриминг (ADR-0033),
+  сеть — только на
   Rust-стороне; отправка содержимого документа — **только после явного согласия** (модальный диалог,
   ADR-0030 §2.4).
 - **Контракты мониторинга ресурсов (ADR-0031, доп. 11.10.2026):** `#logs-resources` (`role="note"`)
@@ -672,6 +673,8 @@ scan(plugins_dir) -> validate(manifest) -> load(src) -> on_activate(ctx)
 ## 14. Бюджет размера
 
 - **База (GUI-хост) — ≤ 6 МБ**; size-gate в CI: размер release-exe ≤ 6 МБ.
+- **AI-клиент (ADR-0033):** ориентир — **маргинальный прирост ≤1.0 МБ** (пересмотрен с ≤0.5 МБ по
+  F55–F58: `reqwest`+SChannel +0.71 МиБ standalone); общий gate ≤6 МБ не меняется.
 - GUI-хост **не содержит `mlua`**; Lua-рантайм — в отдельном child-бинарнике.
 - Пользовательские `.lua` в дистрибутив не входят (нулевая база, D6).
 - Собственные аллокаторы/арены не добавляются (D9).
@@ -725,6 +728,8 @@ scan(plugins_dir) -> validate(manifest) -> load(src) -> on_activate(ctx)
 | 30 | Нижний док: «Журнал» + AI-ассистент, два режима (расширение ADR-0029; исключение из ADR-0024) | §5.5, §13.2 | ADR-0030 |
 | 31 | Источник и границы мониторинга ресурсов: WinAPI (`windows`-crate), главный + child'ы Job Object, 2 с, без авто-kill | §5.5, §10, §14 | F49–F54 |
 | 32 | AI-провайдер в MVP: OpenAI-совместимый API (routerai.ru); локальная LLM отложена (вне scope) | §5.5, §13.2 | ADR-0032 |
+| 33 | AI: HTTP-клиент `reqwest` (native-tls/SChannel) + SSE-стриминг; бюджет AI-клиента пересмотрен | §5.5, §10, §14 | F55–F58 |
+| 34 | Размещение AI-рантайма: в процессе GUI (шов `AiBackend`); сайдкар отложен (триггеры) | §5.5, §10, §13.2 | ADR-0034 |
 
 ---
 

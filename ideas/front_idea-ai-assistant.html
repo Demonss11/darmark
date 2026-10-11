@@ -17,10 +17,35 @@
     Ассистент ходит в облачный OpenAI-совместимый API на routerai.ru; точка
     входа — https://routerai.ru/api/v1, модель — deepseek/deepseek-v4.1-flash.
     Локальная LLM (Ollama) отложена. Метка модели — «routerai ·
-    deepseek-v4.1-flash»; ключ хранится в Windows Credential Manager (не в
-    файле). Настройки провайдера/base URL/модели/ключа — в поповере
-    #ai-settings-pop (поля #ai-provider, #ai-base-url, #ai-model-select,
-    #ai-key type="password").
+    deepseek-v4.1-flash»; ключ хранится в настройках приложения:
+    %APPDATA%/darmark/config.json. Настройки провайдера/base URL/модели/ключа
+    — в поповере #ai-settings-pop (поля #ai-provider, #ai-base-url,
+    #ai-model-select, #ai-key type="password").
+
+  РЕШЕНИЯ MVP (11.10.2026):
+    • Скиллы MVP — два: «Объяснить файл» и «Создать плагин»; остальные
+      (переструктурировать/конспект/отладить плагин/добавить view/объяснить
+      синтаксис) — приглушённо «скоро» в #ai-skills.
+    • История чата — в памяти на сессию (без персистентности); в config.json
+      хранится только ключ.
+    • Недоступность routerai.ru — только ошибка «Нет соединения» + «Повторить»;
+      резервная модель/точка НЕ предлагается (без fallback).
+    • Принцип: AI — ДОПОЛНИТЕЛЬНЫЙ функционал лёгкого редактора; MVP не
+      перенагружаем, но состояния/ошибки/usage — информативны.
+
+  РЕШЕНИЯ 11.10.2026 (включаемость, состояния, размещение):
+    • AI — ВСТРОЕННЫЙ компонент приложения: работает в ПРОЦЕССЕ ПРИЛОЖЕНИЯ;
+      отдельного бинарника/child-процесса НЕТ (отложен). Сеть — только на
+      Rust-стороне (ADR-0034); CSP `default-src 'self'` не нарушается.
+    • Мастер-тумблер «AI-ассистент» в поповере #ai-settings-pop (#ai-enabled):
+      выкл → панель показывает заглушку «AI выключен» с кнопкой «Включить»
+      (#ai-off / #ai-enable); полоса скиллов, чат и поле ввода скрыты.
+    • Строка состояния компонента в поповере (#ai-status / #ai-status-dot /
+      #ai-status-text): точка + подпись (например «доступен · встроен»).
+    • Индикатор #ai-dot (и зеркало #ai-status-dot) — четыре состояния:
+      серый «выкл», жёлтый «нет ключа / нет согласия», зелёный «готов»,
+      красный «ошибка / офлайн». Легенда-предпросмотр — в поповере.
+    • MCP не показывается — отложен (в прототипе отсутствует).
 
   РЕДАКЦИЯ 2 — смена решения по размещению.
     Ранее AI-ассистент проектировался как ПРАВЫЙ МОДАЛЬНЫЙ ДРОВЕР 480px.
@@ -68,8 +93,10 @@
     строки `#mon-rows`, сводка `#mon-summary`, триггер `#sb-mon`, AI-поля
     `#ai-*` (`#ai-mode`, `#ai-skills`, `#ai-chat`, `#ai-input`, `#ai-send`,
     `#ai-settings`, `#ai-clear`, `#ai-model`), поповер настроек `#ai-settings-pop`
-    (`#ai-provider`, `#ai-model-select`, `#ai-key`), `#sb-ai`, `#tb-ai`, `#ai-dot`,
-    `#log-badge`. Рабочие имена `#bottom-dock` / `#dock-*` в продукте НЕ
+    (`#ai-enabled` — мастер-тумблер, `#ai-status` / `#ai-status-dot` /
+    `#ai-status-text`, `#ai-config`, `#ai-provider`, `#ai-model-select`, `#ai-key`,
+    `#ai-off-hint`), заглушка `#ai-off` + кнопка `#ai-enable`, `#sb-ai`, `#tb-ai`,
+    `#ai-dot`, `#log-badge`. Рабочие имена `#bottom-dock` / `#dock-*` в продукте НЕ
     используются. Общие токены высоты: `--h-dock: 300px` (развёрнут),
     `--h-dock-bar: 28px` (свёрнут); кламп resize — 28–520px.
 
@@ -311,17 +338,31 @@
       .tbtn.active { background: var(--accent-soft); color: var(--accent); }
       .tbtn svg { width: 15px; height: 15px; }
       .div-v { width: 1px; height: 16px; margin: 0 6px; background: var(--line); opacity: 0.75; flex-shrink: 0; }
-      /* Тихий индикатор «ассистент работает» на кнопке AI */
+      /* Индикатор состояния AI (#ai-dot) на кнопке тулбара.
+         Цвет — состояние компонента: серый выкл / жёлтый нет ключа /
+         зелёный готов / красный ошибка. Пульсация (.busy) — только во время
+         ответа ассистента. */
+      .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--disabled); /* серый — по умолчанию (выкл) */
+        flex-shrink: 0;
+      }
+      .dot.state-off { background: var(--disabled); }
+      .dot.state-warn { background: var(--amber); }
+      .dot.state-ready { background: var(--green); }
+      .dot.state-error { background: var(--red); }
+
       .tbtn .pdot {
         position: absolute;
-        top: 4px;
-        right: 4px;
-        width: 5px;
-        height: 5px;
-        border-radius: 50%;
-        background: var(--accent);
-        animation: pulse 1.5s infinite;
+        top: 3px;
+        right: 3px;
+        width: 6px;
+        height: 6px;
+        box-shadow: 0 0 0 2px var(--bg-1);
       }
+      .tbtn .pdot.busy { animation: pulse 1.5s infinite; }
       .tbtn { position: relative; }
       @keyframes pulse {
         0%, 100% { opacity: 1; }
@@ -572,6 +613,17 @@
       .skill:hover { background: var(--bg-3); color: var(--fg); border-color: var(--line-soft); }
       .skill svg { width: 12px; height: 12px; color: var(--accent); flex-shrink: 0; }
 
+      /* Скиллы вне MVP — приглушённый чип-заглушка «скоро» (не кликается) */
+      .skill-soon {
+        background: transparent;
+        border-style: dashed;
+        border-color: var(--line-soft);
+        color: var(--fg-mute);
+        cursor: default;
+      }
+      .skill-soon:hover { background: transparent; border-color: var(--line-soft); color: var(--fg-mute); }
+      .skill-soon svg { color: var(--fg-mute); opacity: 0.8; }
+
       /* Тело дока */
       .dock-body {
         flex: 1;
@@ -587,6 +639,26 @@
         text-align: center;
         line-height: 1.7;
       }
+
+      /* Заглушка «AI выключен» — показывается вместо чата при выключенном
+         мастер-тумблере. Скиллы и поле ввода скрываются (см. applyAiState). */
+      .ai-off {
+        display: none;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        flex: 1;
+        min-height: 0;
+        padding: 26px 16px;
+        text-align: center;
+      }
+      #ai-mode.is-off .ai-off { display: flex; }
+      #ai-mode.is-off .chat,
+      #ai-mode.is-off .ai-input { display: none; }
+      .ai-off svg { width: 26px; height: 26px; opacity: 0.4; }
+      .ai-off .ai-off-title { color: var(--fg-dim); font-size: 12.5px; font-weight: 600; }
+      .ai-off .ai-off-hint { max-width: 420px; color: var(--fg-mute); font-size: 11px; line-height: 1.6; }
 
       /* ===================== ВКЛАДКА «МОНИТОРИНГ» (упрощённый вид) ===================== */
       .mon-tab {
@@ -1042,8 +1114,8 @@
 
       /* ===================== ПОПОВЕР НАСТРОЕК AI (провайдер / base URL / модель / ключ) =====================
          Облачный OpenAI-совместимый провайдер routerai.ru: провайдер, base URL,
-         модель и маскированный API-ключ. Ключ хранится в Windows Credential
-         Manager, а не в файле настроек. */
+         модель и маскированный API-ключ. Ключ хранится в настройках приложения:
+         %APPDATA%/darmark/config.json. */
       .ai-settings-pop {
         position: fixed;
         right: 12px;
@@ -1096,6 +1168,101 @@
         font-family: "Cascadia Code", ui-monospace, Consolas, monospace;
         letter-spacing: 0.08em;
       }
+
+      /* Мастер-тумблер «AI-ассистент» */
+      .switch-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        cursor: pointer;
+        user-select: none;
+      }
+      .switch {
+        position: relative;
+        display: inline-flex;
+        width: 34px;
+        height: 18px;
+        flex-shrink: 0;
+      }
+      .switch input {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        opacity: 0;
+        cursor: pointer;
+      }
+      .switch-track {
+        position: absolute;
+        inset: 0;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: var(--bg-3);
+        transition: background 0.15s, border-color 0.15s;
+        pointer-events: none; /* клик принимает input под треком */
+      }
+      .switch-thumb {
+        position: absolute;
+        top: 3px;
+        left: 3px;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: var(--fg-mute);
+        transition: transform 0.15s, background 0.15s;
+        pointer-events: none;
+      }
+      .switch input:checked ~ .switch-track { background: var(--accent-soft); border-color: var(--accent); }
+      .switch input:checked ~ .switch-thumb { transform: translateX(16px); background: var(--accent); }
+      .switch input:focus-visible ~ .switch-track { outline: 2px solid var(--accent); outline-offset: 1px; }
+      .switch-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+      .switch-title { color: var(--fg); font-size: 12px; font-weight: 600; }
+      .switch-sub { color: var(--fg-mute); font-size: 10.5px; }
+
+      /* Строка состояния компонента AI (точка зеркалит #ai-dot) */
+      .pop-status {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        padding: 6px 9px;
+        border: 1px solid var(--line-soft);
+        border-radius: var(--r-sm);
+        background: var(--bg-1);
+        color: var(--fg-dim);
+        font-size: 11px;
+      }
+      .pop-status .dot { width: 8px; height: 8px; }
+      .pop-status-text { color: var(--fg-dim); }
+
+      /* Легенда-предпросмотр состояний индикатора (служебная, кликабельна) */
+      .pop-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 3px 6px;
+        margin-top: -4px;
+      }
+      .pop-legend button {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 2px 6px;
+        border: 1px solid transparent;
+        border-radius: 4px;
+        background: transparent;
+        color: var(--fg-mute);
+        font: inherit;
+        font-size: 10px;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .pop-legend button:hover { background: var(--bg-2); color: var(--fg-dim); }
+      .pop-legend button.active { border-color: var(--line); background: var(--bg-2); color: var(--fg); }
+
+      /* Поля конфигурации недоступны при выключенном AI */
+      .pop-config { display: flex; flex-direction: column; gap: 10px; }
+      .pop-config.is-disabled { opacity: 0.5; }
+
       .pop-note {
         margin: 0;
         padding: 8px 9px;
@@ -1155,7 +1322,7 @@
             <path d="M12 3l1.6 4.6L18 9l-4.4 1.4L12 15l-1.6-4.6L6 9l4.4-1.4z" />
             <path d="M18.5 15.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z" />
           </svg>
-          <span class="pdot" id="ai-dot" hidden></span>
+          <span class="dot pdot state-ready" id="ai-dot" title="AI: доступен · встроен"></span>
         </button>
         <div class="div-v"></div>
         <button class="tbtn" type="button" title="Плагины" aria-label="Плагины">
@@ -1300,31 +1467,22 @@
           </button>
         </div>
 
-        <!-- Полоса готовых скиллов (только режим AI) -->
+        <!-- Полоса готовых скиллов (только режим AI).
+             MVP — два скилла: «Объяснить файл» и «Создать плагин».
+             Остальные (переструктурировать/конспект/отладить плагин/добавить
+             view/объяснить синтаксис) — приглушённый чип «скоро». -->
         <div class="dock-skills dock-collapsible ai-only" id="ai-skills" role="toolbar" aria-label="Готовые скиллы">
-          <button class="skill" type="button" data-prompt="Переструктурируй документ: улучши структуру и иерархию заголовков." title="Переструктурировать документ">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="8" y1="13" x2="16" y2="13" /><line x1="8" y1="17" x2="13" y2="17" /></svg>
-            <span>Переструктурировать</span>
-          </button>
-          <button class="skill" type="button" data-prompt="Сделай краткий конспект текущего документа." title="Конспект документа">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" /></svg>
-            <span>Конспект</span>
+          <button class="skill" type="button" data-prompt="Объясни этот файл: о чём он, какова его структура и ключевые идеи." title="Объяснить файл">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><circle cx="12" cy="13" r="2.2" /><path d="M12 15.2v2" /></svg>
+            <span>Объяснить файл</span>
           </button>
           <button class="skill" type="button" data-prompt="Создай Lua-плагин, который…" title="Создать Lua-плагин">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" /></svg>
-            <span>Создать Lua-плагин</span>
+            <span>Создать плагин</span>
           </button>
-          <button class="skill" type="button" data-prompt="Отладить плагин: вот ошибка из журнала —" title="Отладить плагин">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><rect x="8" y="6" width="8" height="14" rx="4" /><path d="M19 7l-3 2M5 7l3 2M20 12h-4M4 12h4M19 17l-3-2M5 17l3-2" /></svg>
-            <span>Отладить плагин</span>
-          </button>
-          <button class="skill" type="button" data-prompt="Добавь команду view в текущий плагин." title="Добавить команду view">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /></svg>
-            <span>Добавить команду view</span>
-          </button>
-          <button class="skill" type="button" data-prompt="Объясни синтаксис Markdown: таблицы и YAML-шапка." title="Объяснить синтаксис">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>
-            <span>Объяснить синтаксис</span>
+          <button class="skill skill-soon" type="button" disabled aria-disabled="true" title="Скоро: переструктурировать, конспект, отладить плагин, добавить команду view, объяснить синтаксис" aria-label="Другие скиллы — скоро">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><circle cx="12" cy="12" r="9" /><polyline points="12 7 12 12 15.5 14" /></svg>
+            <span>Ещё скиллы — скоро</span>
           </button>
         </div>
 
@@ -1386,6 +1544,15 @@
 
           <!-- Режим «AI-ассистент» -->
           <div class="mode-pane" id="ai-mode" role="tabpanel" aria-labelledby="mode-ai-btn" style="display:flex;flex-direction:column;flex:1;min-height:0">
+            <!-- Заглушка при выключенном AI (мастер-тумблер в настройках).
+                 Видимость — через класс .is-off на #ai-mode (см. applyAiState). -->
+            <div class="ai-off" id="ai-off">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M12 3l1.6 4.6L18 9l-4.4 1.4L12 15l-1.6-4.6L6 9l4.4-1.4z" /></svg>
+              <div class="ai-off-title">AI выключен</div>
+              <div class="ai-off-hint">Ассистент встроен в приложение, но отключён в настройках. Сеть — только на Rust-стороне (ADR-0034); отдельный бинарник — отложен.</div>
+              <button class="btn primary" id="ai-enable" type="button">Включить</button>
+            </div>
+
             <div class="chat" id="ai-chat" role="log" aria-live="polite" aria-relevant="additions">
               <div class="chat-inner" id="chat-inner">
                 <!-- Сообщение пользователя -->
@@ -1459,7 +1626,7 @@ end</pre>
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>
                       <div class="error-body">
                         <div class="error-title">Ключ routerai.ru не задан</div>
-                        <div class="error-text">Добавьте API-ключ в настройках AI — он хранится в Windows Credential Manager, а не в файле.</div>
+                        <div class="error-text">Добавьте API-ключ в настройках AI — он хранится в настройках приложения (%APPDATA%/darmark/config.json).</div>
                         <div class="card-foot">
                           <button class="btn ghost js-open-settings" type="button">Открыть настройки</button>
                         </div>
@@ -1590,31 +1757,64 @@ end</pre>
       </div>
     </div>
 
-    <!-- Поповер настроек AI: провайдер / base URL / модель / API-ключ -->
+    <!-- Поповер настроек AI: мастер-тумблер, состояние, провайдер / base URL / модель / API-ключ -->
     <div class="ai-settings-pop" id="ai-settings-pop" role="dialog" aria-label="Настройки AI" hidden>
       <div class="pop-head">Настройки AI</div>
       <div class="pop-body">
-        <label class="pop-row">
-          <span class="pop-label">Провайдер</span>
-          <select class="pop-input" id="ai-provider" aria-label="Провайдер">
-            <option value="routerai" selected>routerai.ru (OpenAI-совместимый)</option>
-          </select>
+        <!-- Мастер-тумблер: AI — встроенный компонент, отдельного бинарника нет -->
+        <label class="switch-row" for="ai-enabled">
+          <span class="switch">
+            <input type="checkbox" id="ai-enabled" checked aria-label="AI-ассистент включён" />
+            <span class="switch-track" aria-hidden="true"></span>
+            <span class="switch-thumb" aria-hidden="true"></span>
+          </span>
+          <span class="switch-text">
+            <span class="switch-title">AI-ассистент</span>
+            <span class="switch-sub" id="ai-enabled-sub">включён</span>
+          </span>
         </label>
-        <label class="pop-row">
-          <span class="pop-label">Base URL</span>
-          <input class="pop-input" id="ai-base-url" type="text" value="https://routerai.ru/api/v1" readonly spellcheck="false" aria-label="Base URL" />
-        </label>
-        <label class="pop-row">
-          <span class="pop-label">Модель</span>
-          <select class="pop-input" id="ai-model-select" aria-label="Модель">
-            <option value="deepseek/deepseek-v4.1-flash" selected>deepseek/deepseek-v4.1-flash</option>
-          </select>
-        </label>
-        <label class="pop-row">
-          <span class="pop-label">API-ключ</span>
-          <input class="pop-input" id="ai-key" type="password" value="sk-demo0000000000000000" autocomplete="off" spellcheck="false" aria-label="API-ключ routerai.ru" />
-        </label>
-        <p class="pop-note">Ключ хранится в Windows Credential Manager, а не в файле настроек.</p>
+
+        <!-- Строка состояния компонента: точка зеркалит #ai-dot -->
+        <div class="pop-status" id="ai-status" role="status">
+          <span class="dot state-ready" id="ai-status-dot" aria-hidden="true"></span>
+          <span class="pop-status-text" id="ai-status-text">доступен · встроен</span>
+        </div>
+
+        <p class="pop-note" id="ai-off-hint" hidden>AI выключен — панель показывает заглушку «AI выключен» с кнопкой «Включить». Настройки и ключ при этом сохраняются.</p>
+
+        <div class="pop-config" id="ai-config">
+          <label class="pop-row">
+            <span class="pop-label">Провайдер</span>
+            <select class="pop-input" id="ai-provider" aria-label="Провайдер">
+              <option value="routerai" selected>routerai.ru (OpenAI-совместимый)</option>
+            </select>
+          </label>
+          <label class="pop-row">
+            <span class="pop-label">Base URL</span>
+            <input class="pop-input" id="ai-base-url" type="text" value="https://routerai.ru/api/v1" readonly spellcheck="false" aria-label="Base URL" />
+          </label>
+          <label class="pop-row">
+            <span class="pop-label">Модель</span>
+            <select class="pop-input" id="ai-model-select" aria-label="Модель">
+              <option value="deepseek/deepseek-v4.1-flash" selected>deepseek/deepseek-v4.1-flash</option>
+            </select>
+          </label>
+          <label class="pop-row">
+            <span class="pop-label">API-ключ</span>
+            <input class="pop-input" id="ai-key" type="password" value="sk-demo0000000000000000" autocomplete="off" spellcheck="false" aria-label="API-ключ routerai.ru" />
+          </label>
+        </div>
+
+        <!-- Легенда состояний индикатора: клик — предпросмотр (служебно) -->
+        <span class="pop-label">Состояние индикатора</span>
+        <div class="pop-legend" role="group" aria-label="Предпросмотр состояний индикатора AI">
+          <button type="button" data-ai-state="off"><span class="dot state-off" aria-hidden="true"></span>выкл</button>
+          <button type="button" data-ai-state="warn"><span class="dot state-warn" aria-hidden="true"></span>нет ключа / согласия</button>
+          <button type="button" data-ai-state="ready"><span class="dot state-ready" aria-hidden="true"></span>готов</button>
+          <button type="button" data-ai-state="error"><span class="dot state-error" aria-hidden="true"></span>ошибка / офлайн</button>
+        </div>
+
+        <p class="pop-note">AI работает в процессе приложения; сеть — только на Rust-стороне (ADR-0034). Отдельный бинарник — отложен. Ключ хранится в %APPDATA%/darmark/config.json.</p>
       </div>
       <div class="pop-foot">
         <button class="btn ghost" id="ai-settings-close" type="button">Закрыть</button>
@@ -1637,7 +1837,11 @@ end</pre>
           hidden: false,         // дока нет в layout
           collapsed: false,      // полоса-шапка 28px
           consentGiven: false,
-          model: 'routerai · deepseek-v4.1-flash'
+          consentDenied: false,  // пользователь отказался от отправки (жёлтый)
+          model: 'routerai · deepseek-v4.1-flash',
+          aiEnabled: true,       // мастер-тумблер «AI-ассистент» (#ai-enabled)
+          aiKeySet: true,        // в #ai-key есть непустой ключ
+          aiDemo: null           // предпросмотр состояния индикатора (служебно)
         };
 
         var stick = true;        // автоскролл чата к низу
@@ -1649,6 +1853,14 @@ end</pre>
         var btnAfter = $('btn-after');
         var toolbarAi = $('tb-ai');
         var aiDot = $('ai-dot');
+        var aiEnabledInput = $('ai-enabled');
+        var aiEnabledSub = $('ai-enabled-sub');
+        var aiStatusDot = $('ai-status-dot');
+        var aiStatusText = $('ai-status-text');
+        var aiOffHint = $('ai-off-hint');
+        var aiConfig = $('ai-config');
+        var aiEnableBtn = $('ai-enable');
+        var aiKeyInput = $('ai-key');
         var dock = $('logs-panel');
         var dockCaret = $('logs-collapse');
         var dockResize = $('logs-resize');
@@ -1700,6 +1912,74 @@ end</pre>
         // Поповер настроек AI (провайдер / модель / API-ключ)
         function openSettings() { settingsPop.hidden = false; }
         function closeSettings() { settingsPop.hidden = true; }
+
+        // ===================== СОСТОЯНИЕ AI (тумблер + индикатор #ai-dot) =====================
+        // off — выключен; warn — нет ключа/согласия; ready — готов;
+        // error — ошибка/офлайн. aiDemo — служебный предпросмотр из легенды.
+        var AI_STATE_TEXT = {
+          off: 'выключен',
+          warn: 'нет ключа или согласия',
+          ready: 'доступен · встроен',
+          error: 'ошибка · нет соединения'
+        };
+        var AI_STATES = ['off', 'warn', 'ready', 'error'];
+
+        // Жёлтый — нет ключа ИЛИ пользователь отказал в отправке (нет согласия).
+        // До первого запроса согласие ещё не спрашивали — компонент «готов».
+        function aiState() {
+          if (state.aiDemo) return state.aiDemo;
+          if (!state.aiEnabled) return 'off';
+          if (!state.aiKeySet) return 'warn';
+          if (state.consentDenied && !state.consentGiven) return 'warn';
+          return 'ready';
+        }
+
+        // Подпись состояния — чуть конкретнее для живых (не demo) состояний
+        function aiStateLabel() {
+          if (state.aiDemo) return AI_STATE_TEXT[state.aiDemo];
+          if (!state.aiEnabled) return AI_STATE_TEXT.off;
+          if (!state.aiKeySet) return 'нет ключа';
+          if (state.consentDenied && !state.consentGiven) return 'нет согласия на отправку';
+          return AI_STATE_TEXT.ready;
+        }
+
+        function setDotState(el, s) {
+          if (!el) return;
+          for (var i = 0; i < AI_STATES.length; i++) {
+            el.classList.toggle('state-' + AI_STATES[i], AI_STATES[i] === s);
+          }
+        }
+
+        // Единая точка приведения UI к состоянию AI: цвет индикатора, строка
+        // статуса, доступность конфигурации, заглушка «AI выключен».
+        function applyAiState() {
+          var s = aiState();
+          var label = aiStateLabel();
+          setDotState(aiDot, s);
+          setDotState(aiStatusDot, s);
+          aiDot.title = 'AI: ' + label;
+          aiStatusText.textContent = label;
+
+          var on = state.aiEnabled;
+          aiEnabledSub.textContent = on ? 'включён' : 'выключен';
+          aiOffHint.hidden = on;
+          aiConfig.classList.toggle('is-disabled', !on);
+          var fields = aiConfig.querySelectorAll('input, select');
+          for (var j = 0; j < fields.length; j++) fields[j].disabled = !on;
+
+          // Заглушка вместо чата; полоса скиллов и поле ввода скрыты.
+          paneAi.classList.toggle('is-off', !on);
+          skillsRow.hidden = !(state.mode === 'ai' && on);
+          input.disabled = !on;
+          sendBtn.disabled = !on;
+          if (!on) aiDot.classList.remove('busy');
+
+          // Подсветка активного пункта легенды-предпросмотра
+          var legend = settingsPop.querySelectorAll('[data-ai-state]');
+          for (var k = 0; k < legend.length; k++) {
+            legend[k].classList.toggle('active', legend[k].getAttribute('data-ai-state') === state.aiDemo);
+          }
+        }
 
         function scrollToBottom() {
           chat.scrollTop = chat.scrollHeight;
@@ -1785,6 +2065,7 @@ end</pre>
           toggleAll('.mon-only', isMon);
           if (!isAi) closeSettings();
           if (isAi) stick = true;
+          applyAiState(); // скиллы/заглушка зависят и от режима, и от тумблера
           syncTriggers();
         }
 
@@ -1889,20 +2170,21 @@ end</pre>
           stick = true;
           scrollToBottom();
 
-          aiDot.hidden = false;
+          aiDot.classList.add('busy');
           var typing = appendTyping();
           scrollToBottom();
 
           window.setTimeout(function () {
             typing.remove();
-            aiDot.hidden = true;
+            aiDot.classList.remove('busy');
             appendAssistant('Принял запрос: «' + text + '». Демо-ответ прототипа — реальный ответ придёт из Rust-слоя.');
             if (stick) scrollToBottom();
           }, 1200);
         }
 
         function clearChat() {
-          // Согласие пользователя на отправку содержимого сохраняется (в продукте — config.json)
+          // Чат и согласие живут в памяти на сессию (без персистентности);
+          // в config.json хранится только API-ключ.
           chatInner.textContent = '';
           refreshEmpty();
           showFlash('Чат очищен');
@@ -1919,7 +2201,7 @@ end</pre>
             dock.hidden = true;
             state.hidden = true;
             state.collapsed = false;
-            aiDot.hidden = true;
+            aiDot.classList.remove('busy');
             closeSettings();
             sbLogs.classList.remove('active');
             sbMon.classList.remove('active');
@@ -1994,6 +2276,41 @@ end</pre>
           showFlash('Настройки AI сохранены');
         });
 
+        // Мастер-тумблер «AI-ассистент» (вкл/выкл встроенного компонента)
+        aiEnabledInput.addEventListener('change', function () {
+          state.aiEnabled = aiEnabledInput.checked;
+          state.aiDemo = null;
+          applyAiState();
+          showFlash(state.aiEnabled ? 'AI-ассистент включён' : 'AI-ассистент выключен');
+        });
+
+        // Кнопка «Включить» в заглушке панели
+        aiEnableBtn.addEventListener('click', function () {
+          state.aiEnabled = true;
+          state.aiDemo = null;
+          aiEnabledInput.checked = true;
+          applyAiState();
+          showFlash('AI-ассистент включён');
+          input.focus();
+        });
+
+        // Наличие ключа влияет на состояние индикатора (жёлтый «нет ключа»)
+        aiKeyInput.addEventListener('input', function () {
+          state.aiKeySet = aiKeyInput.value.trim().length > 0;
+          state.aiDemo = null;
+          applyAiState();
+        });
+
+        // Легенда состояний: клик — служебный предпросмотр (повторный — сброс)
+        var aiLegendButtons = settingsPop.querySelectorAll('[data-ai-state]');
+        for (var lb = 0; lb < aiLegendButtons.length; lb++) {
+          aiLegendButtons[lb].addEventListener('click', function () {
+            var s = this.getAttribute('data-ai-state');
+            state.aiDemo = state.aiDemo === s ? null : s;
+            applyAiState();
+          });
+        }
+
         // Ошибки «Ключ routerai.ru не задан» / «Неверный ключ (401)» → открыть настройки
         var openSettingsButtons = dock.querySelectorAll('.js-open-settings');
         for (var os = 0; os < openSettingsButtons.length; os++) {
@@ -2030,13 +2347,13 @@ end</pre>
           errRetry.addEventListener('click', function () {
             var card = errRetry.closest('.error-card');
             if (card) card.closest('.msg').remove();
-            aiDot.hidden = false;
+            aiDot.classList.add('busy');
             var typing = appendTyping();
             stick = true;
             scrollToBottom();
             window.setTimeout(function () {
               typing.remove();
-              aiDot.hidden = true;
+              aiDot.classList.remove('busy');
               appendAssistant('Повторил запрос с усечённым контекстом (только текущий раздел).');
               if (stick) scrollToBottom();
             }, 1200);
@@ -2064,10 +2381,16 @@ end</pre>
         consentCancel.addEventListener('click', function () {
           consent.hidden = true;
           pendingSend = null;
+          state.consentDenied = true; // жёлтый «нет согласия на отправку»
+          state.aiDemo = null;
+          applyAiState();
         });
         consentAccept.addEventListener('click', function () {
           state.consentGiven = true;
+          state.consentDenied = false;
+          state.aiDemo = null;
           consent.hidden = true;
+          applyAiState(); // согласие снимает жёлтое состояние «нет согласия»
           showFlash('Согласие сохранено');
           if (pendingSend) {
             var text = pendingSend;
@@ -2139,8 +2462,10 @@ end</pre>
         state.view = 'after';
         btnAfter.classList.add('active');
         btnBefore.classList.remove('active');
+        state.aiKeySet = aiKeyInput.value.trim().length > 0;
         refreshEmpty();
         applyView();
+        applyAiState();
       })();
     </script>
   </body>
