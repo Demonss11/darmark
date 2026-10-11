@@ -1,0 +1,1311 @@
+<!DOCTYPE html>
+<!--
+  ============================================================
+  Прототип: AI-ассистент (IDEA-013 / TZ-AI-ASSISTANT)
+  ============================================================
+  Что это: однофайловый HTML-прототип-референс панели AI-ассистента
+  проекта darmark с визуальным сравнением «было-стало».
+
+  Задача: TZ-AI-ASSISTANT (tasks/TZ-AI-ASSISTANT.md)
+  Идея:  IDEA-013 (ideas/UI-IDEAS.md)
+
+  БЫЛО: пользователь работает с документом и плагинами вручную,
+        кнопки «AI» нет, чат отсутствует.
+  СТАЛО: кнопка «AI» в тулбаре открывает правый дровер 480px с чатом,
+        сеткой готовых скиллов, карточками диффов и карточками плагинов.
+
+  Дата: 11.10.2026
+  ============================================================
+-->
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>darmark — AI-ассистент (было-стало)</title>
+<style>
+  /* ===== Токены проекта (style.css) ===== */
+  :root {
+    color-scheme: dark;
+    --bg-0: #111318;
+    --bg-1: #161920;
+    --bg-2: #1c1f28;
+    --bg-3: #242836;
+    --line: #2e3348;
+    --line-soft: #232736;
+    --fg: #e8eaf0;
+    --fg-dim: #a0a6bd;
+    --fg-mute: #8a90b0;
+    --head: #ffffff;
+    --body: #d0d3e0;
+    --accent: #9d8fff;
+    --accent-2: #6ea8fe;
+    --accent-soft: rgba(157, 143, 255, 0.14);
+    --green: #34d399;
+    --amber: #fbbf24;
+    --red: #f87171;
+    --gutter: #0f1014;
+    --success: var(--green);
+    --warning: var(--amber);
+    --error: var(--red);
+    --info: var(--accent-2);
+    --disabled: #6b7280;
+    --link: var(--accent-2);
+    --h-toolbar: 36px;
+    --h-tabs: 32px;
+    --h-status: 24px;
+    --w-drawer: 440px;
+    --w-ai-drawer: 480px;
+    --r-sm: 5px;
+    --r-md: 7px;
+    --r-lg: 12px;
+    --ed-fs: 14.5px;
+    --ed-lh: 26px;
+    --ed-pad-y: 20px;
+    --accent-rgb: 157, 143, 255;
+    --code-fg: #e9b3ff;
+    --popover: #181b24;
+    --pop-border: #2e3348;
+    --shadow-lg: 0 20px 60px rgba(0, 0, 0, 0.55);
+    --shadow-sm: 0 6px 18px rgba(0, 0, 0, 0.35);
+    --pc: var(--accent);
+
+    /* AI-специфичные */
+    --ai-user-bubble: var(--bg-3);
+    --ai-assistant-bubble: var(--bg-2);
+    --ai-diff-add: rgba(52, 211, 153, 0.12);
+    --ai-diff-del: rgba(248, 113, 113, 0.12);
+    --ai-diff-add-line: var(--success);
+    --ai-diff-del-line: var(--error);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; overflow: hidden; }
+  [hidden] { display: none !important; }
+  svg { display: block; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 13px;
+    color: var(--fg);
+    background: var(--bg-0);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  /* ===== Переключатель БЫЛО/СТАЛО ===== */
+  .toggle-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 40px;
+    background: var(--bg-1);
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    z-index: 1000;
+    padding: 0 16px;
+  }
+  .toggle-bar .toggle-label {
+    font-size: 11px;
+    color: var(--fg-mute);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .toggle-bar .toggle-btn {
+    padding: 4px 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--r-sm);
+    background: var(--bg-2);
+    color: var(--fg);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.12s;
+  }
+  .toggle-bar .toggle-btn:hover { background: var(--bg-3); }
+  .toggle-bar .toggle-btn.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+
+  /* ===== Демо-состояния ===== */
+  .demo-bar {
+    position: fixed;
+    bottom: 12px;
+    left: 12px;
+    display: flex;
+    gap: 6px;
+    z-index: 1000;
+  }
+  .demo-bar button {
+    padding: 4px 10px;
+    border: 1px solid var(--line);
+    border-radius: var(--r-sm);
+    background: var(--bg-2);
+    color: var(--fg-dim);
+    font-size: 11px;
+    cursor: pointer;
+  }
+  .demo-bar button:hover { background: var(--bg-3); color: var(--fg); }
+  .demo-bar button.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+
+  /* ===== Макет приложения ===== */
+  .app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    padding-top: 40px; /* toggle-bar */
+  }
+
+  /* Тулбар */
+  .toolbar {
+    height: var(--h-toolbar);
+    background: var(--bg-1);
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+    gap: 2px;
+    flex-shrink: 0;
+  }
+  .toolbar .brand {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--head);
+    padding: 0 8px 0 4px;
+  }
+  .toolbar .tbtn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--fg-dim);
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.12s;
+    position: relative;
+  }
+  .toolbar .tbtn:hover { background: var(--bg-3); color: var(--fg); }
+  .toolbar .tbtn.active { background: var(--accent-soft); color: var(--accent); }
+  .toolbar .tbtn svg { width: 16px; height: 16px; }
+  .toolbar .spacer { flex: 1; }
+  .toolbar .file-chip {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border-radius: var(--r-sm);
+    background: var(--bg-2);
+    font-size: 11px;
+    color: var(--fg-dim);
+  }
+  .toolbar .file-chip .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+
+  /* Кнопка AI */
+  .toolbar .tbtn-ai {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--fg-dim);
+    cursor: pointer;
+    transition: all 0.12s;
+    position: relative;
+  }
+  .toolbar .tbtn-ai:hover { background: var(--bg-3); color: var(--fg); }
+  .toolbar .tbtn-ai.active { background: var(--accent-soft); color: var(--accent); }
+  .toolbar .tbtn-ai svg { width: 16px; height: 16px; }
+  .toolbar .tbtn-ai .pdot {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--accent);
+    animation: pulse 1.5s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  /* Вкладки */
+  .tabs {
+    height: var(--h-tabs);
+    background: var(--bg-1);
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+    gap: 2px;
+    flex-shrink: 0;
+  }
+  .tabs .tab {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: var(--r-sm);
+    font-size: 12px;
+    color: var(--fg-dim);
+    cursor: pointer;
+    transition: all 0.12s;
+  }
+  .tabs .tab:hover { background: var(--bg-2); }
+  .tabs .tab.active { background: var(--bg-3); color: var(--fg); }
+  .tabs .tab .dirty-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--amber);
+  }
+
+  /* Рабочая область */
+  .workspace {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+  }
+  .pane {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .pane-pane {
+    padding: var(--ed-pad-y);
+    overflow-y: auto;
+    font-family: "Cascadia Code", ui-monospace, monospace;
+    font-size: var(--ed-fs);
+    line-height: var(--ed-lh);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .pane-pane.preview {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+  .pane-pane.preview h1 { font-size: 1.5em; margin: 0.5em 0; }
+  .pane-pane.preview h2 { font-size: 1.25em; margin: 0.5em 0; }
+  .pane-pane.preview p { margin: 0.5em 0; }
+  .pane-pane.preview code {
+    font-family: "Cascadia Code", ui-monospace, monospace;
+    background: var(--bg-3);
+    padding: 1px 4px;
+    border-radius: 3px;
+    color: var(--code-fg);
+    font-size: 0.9em;
+  }
+  .splitter {
+    width: 4px;
+    background: var(--line-soft);
+    cursor: col-resize;
+  }
+  .splitter:hover { background: var(--accent); }
+
+  /* Статусбар */
+  .statusbar {
+    height: var(--h-status);
+    background: var(--bg-1);
+    border-top: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+    gap: 12px;
+    font-size: 11px;
+    color: var(--fg-mute);
+    flex-shrink: 0;
+  }
+  .statusbar .stat { display: flex; align-items: center; gap: 4px; }
+  .statusbar .stat.clickable { cursor: pointer; }
+  .statusbar .stat.clickable:hover { color: var(--fg); }
+  .statusbar .badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: 8px;
+    background: var(--bg-3);
+    font-size: 10px;
+    font-weight: 600;
+  }
+  .statusbar .badge.warn { background: var(--amber); color: #000; }
+  .statusbar .badge.error { background: var(--error); color: #fff; }
+
+  /* ===== Дровер AI ===== */
+  .ai-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 100;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .ai-backdrop.open { opacity: 1; }
+
+  .ai-drawer {
+    position: fixed;
+    top: 40px;
+    right: 0;
+    bottom: 0;
+    width: var(--w-ai-drawer);
+    background: var(--popover);
+    border-left: 1px solid var(--pop-border);
+    z-index: 101;
+    display: flex;
+    flex-direction: column;
+    transform: translateX(100%);
+    transition: transform 0.22s cubic-bezier(0.2, 0.9, 0.3, 1);
+    box-shadow: var(--shadow-lg);
+  }
+  .ai-drawer.open { transform: translateX(0); }
+
+  /* Шапка дровера */
+  .ai-head {
+    display: flex;
+    align-items: center;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--line-soft);
+    flex-shrink: 0;
+  }
+  .ai-head .side-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--head);
+  }
+  .ai-head .spacer { flex: 1; }
+  .ai-head .tbtn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border: none;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--fg-mute);
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .ai-head .tbtn:hover { background: var(--bg-3); color: var(--fg); }
+
+  /* Сетка скиллов */
+  .ai-skills {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--line-soft);
+    flex-shrink: 0;
+  }
+  .ai-skill {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 4px;
+    border-radius: var(--r-md);
+    background: var(--bg-2);
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: all 0.12s;
+    text-align: center;
+  }
+  .ai-skill:hover { background: var(--bg-3); border-color: var(--line); }
+  .ai-skill svg { width: 20px; height: 20px; color: var(--accent); }
+  .ai-skill .skill-title {
+    font-size: 10px;
+    color: var(--fg-dim);
+    line-height: 1.2;
+  }
+
+  /* Чат */
+  .ai-chat {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .ai-chat-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--fg-mute);
+    font-size: 12px;
+    text-align: center;
+    gap: 8px;
+  }
+  .ai-chat-empty svg { width: 32px; height: 32px; opacity: 0.3; }
+
+  .ai-msg {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-width: 85%;
+  }
+  .ai-msg.user {
+    align-self: flex-end;
+    align-items: flex-end;
+  }
+  .ai-msg.assistant {
+    align-self: flex-start;
+    align-items: flex-start;
+  }
+  .ai-msg .msg-bubble {
+    padding: 8px 12px;
+    border-radius: var(--r-md);
+    font-size: 12.5px;
+    line-height: 1.5;
+  }
+  .ai-msg.user .msg-bubble {
+    background: var(--ai-user-bubble);
+    border-bottom-right-radius: 2px;
+  }
+  .ai-msg.assistant .msg-bubble {
+    background: var(--ai-assistant-bubble);
+    border-bottom-left-radius: 2px;
+  }
+  .ai-msg .msg-time {
+    font-size: 10px;
+    color: var(--fg-mute);
+  }
+  .ai-msg .msg-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    color: var(--fg-mute);
+  }
+  .ai-msg .msg-header .ai-icon {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 8px;
+    color: #fff;
+  }
+
+  /* Индикатор загрузки */
+  .ai-loading {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 12px;
+  }
+  .ai-loading .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    animation: pulse 1.2s infinite;
+  }
+  .ai-loading .dot:nth-child(2) { animation-delay: 0.2s; }
+  .ai-loading .dot:nth-child(3) { animation-delay: 0.4s; }
+
+  /* Карточка диффа */
+  .ai-diff {
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    overflow: hidden;
+    font-size: 11.5px;
+  }
+  .ai-diff-header {
+    padding: 6px 10px;
+    background: var(--bg-3);
+    font-weight: 600;
+    font-size: 11px;
+    color: var(--fg-dim);
+  }
+  .ai-diff-body {
+    padding: 8px 10px;
+    font-family: "Cascadia Code", ui-monospace, monospace;
+    font-size: 11px;
+    line-height: 1.5;
+    overflow-x: auto;
+  }
+  .ai-diff-add {
+    display: block;
+    background: var(--ai-diff-add);
+    color: var(--ai-diff-add-line);
+    padding: 1px 4px;
+    border-radius: 2px;
+  }
+  .ai-diff-del {
+    display: block;
+    background: var(--ai-diff-del);
+    color: var(--ai-diff-del-line);
+    padding: 1px 4px;
+    border-radius: 2px;
+  }
+  .ai-diff-actions {
+    display: flex;
+    gap: 6px;
+    padding: 8px 10px;
+    border-top: 1px solid var(--line-soft);
+  }
+  .ai-diff-actions button {
+    flex: 1;
+    padding: 5px 10px;
+    border: none;
+    border-radius: var(--r-sm);
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.12s;
+  }
+  .ai-diff-actions .btn-apply {
+    background: var(--accent);
+    color: #fff;
+  }
+  .ai-diff-actions .btn-apply:hover { opacity: 0.9; }
+  .ai-diff-actions .btn-reject {
+    background: var(--bg-3);
+    color: var(--fg-dim);
+  }
+  .ai-diff-actions .btn-reject:hover { background: var(--line); }
+
+  /* Карточка плагина */
+  .ai-plugin-card {
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    overflow: hidden;
+    font-size: 11.5px;
+  }
+  .ai-plugin-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    background: var(--bg-3);
+  }
+  .ai-plugin-header .plugin-icon {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    color: #fff;
+  }
+  .ai-plugin-header .plugin-name {
+    font-weight: 600;
+    color: var(--fg);
+  }
+  .ai-plugin-header .plugin-version {
+    color: var(--fg-mute);
+    font-size: 10px;
+  }
+  .ai-plugin-header .plugin-badge {
+    margin-left: auto;
+    padding: 1px 6px;
+    border-radius: 8px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-size: 9px;
+    font-weight: 600;
+  }
+  .ai-plugin-code {
+    padding: 8px 10px;
+    font-family: "Cascadia Code", ui-monospace, monospace;
+    font-size: 10.5px;
+    line-height: 1.5;
+    max-height: 120px;
+    overflow-y: auto;
+    background: var(--gutter);
+    color: var(--fg-dim);
+  }
+  .ai-plugin-status {
+    padding: 6px 10px;
+    font-size: 10.5px;
+    color: var(--fg-mute);
+    border-top: 1px solid var(--line-soft);
+  }
+  .ai-plugin-status .status-ok { color: var(--success); }
+  .ai-plugin-status .status-fail { color: var(--error); }
+  .ai-plugin-actions {
+    display: flex;
+    gap: 6px;
+    padding: 8px 10px;
+    border-top: 1px solid var(--line-soft);
+  }
+  .ai-plugin-actions button {
+    flex: 1;
+    padding: 5px 8px;
+    border: none;
+    border-radius: var(--r-sm);
+    font-size: 10.5px;
+    cursor: pointer;
+    transition: all 0.12s;
+  }
+  .ai-plugin-actions .btn-secondary {
+    background: var(--bg-3);
+    color: var(--fg-dim);
+  }
+  .ai-plugin-actions .btn-secondary:hover { background: var(--line); }
+  .ai-plugin-actions .btn-danger {
+    background: transparent;
+    color: var(--error);
+    border: 1px solid var(--error);
+  }
+  .ai-plugin-actions .btn-danger:hover { background: rgba(248, 113, 113, 0.1); }
+
+  /* Ошибка */
+  .ai-error {
+    border: 1px solid var(--error);
+    border-radius: var(--r-md);
+    padding: 8px 10px;
+    background: rgba(248, 113, 113, 0.08);
+    font-size: 11px;
+  }
+  .ai-error .error-title {
+    color: var(--error);
+    font-weight: 600;
+    margin-bottom: 2px;
+  }
+  .ai-error button {
+    margin-top: 6px;
+    padding: 3px 8px;
+    border: 1px solid var(--error);
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--error);
+    font-size: 10px;
+    cursor: pointer;
+  }
+
+  /* Поле ввода */
+  .ai-input {
+    display: flex;
+    align-items: flex-end;
+    gap: 6px;
+    padding: 10px 12px;
+    border-top: 1px solid var(--line-soft);
+    flex-shrink: 0;
+  }
+  .ai-input textarea {
+    flex: 1;
+    resize: none;
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    background: var(--bg-2);
+    color: var(--fg);
+    font-size: 12px;
+    padding: 6px 10px;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.12s;
+    min-height: 32px;
+    max-height: 80px;
+  }
+  .ai-input textarea:focus { border-color: var(--accent); }
+  .ai-input textarea::placeholder { color: var(--fg-mute); }
+  .ai-input .btn-send {
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: var(--r-md);
+    background: var(--accent);
+    color: #fff;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.12s;
+    flex-shrink: 0;
+  }
+  .ai-input .btn-send:hover { opacity: 0.9; }
+  .ai-input .btn-send svg { width: 14px; height: 14px; }
+
+  /* Диалог согласия */
+  .consent-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .consent-dialog {
+    width: 380px;
+    background: var(--popover);
+    border: 1px solid var(--pop-border);
+    border-radius: var(--r-lg);
+    box-shadow: var(--shadow-lg);
+    overflow: hidden;
+  }
+  .consent-dialog .dialog-head {
+    padding: 14px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--head);
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .consent-dialog .dialog-body {
+    padding: 14px 16px;
+    font-size: 12px;
+    color: var(--fg-dim);
+    line-height: 1.6;
+  }
+  .consent-dialog .dialog-body .warning {
+    display: flex;
+    gap: 8px;
+    padding: 8px;
+    border-radius: var(--r-md);
+    background: rgba(251, 191, 36, 0.08);
+    border: 1px solid rgba(251, 191, 36, 0.2);
+    margin-top: 10px;
+    font-size: 11px;
+  }
+  .consent-dialog .dialog-body .warning svg {
+    width: 14px;
+    height: 14px;
+    color: var(--warning);
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .consent-dialog .dialog-actions {
+    display: flex;
+    gap: 8px;
+    padding: 12px 16px;
+    border-top: 1px solid var(--line-soft);
+  }
+  .consent-dialog .dialog-actions button {
+    flex: 1;
+    padding: 7px 12px;
+    border: none;
+    border-radius: var(--r-sm);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.12s;
+  }
+  .consent-dialog .dialog-actions .btn-cancel {
+    background: var(--bg-3);
+    color: var(--fg-dim);
+  }
+  .consent-dialog .dialog-actions .btn-cancel:hover { background: var(--line); }
+  .consent-dialog .dialog-actions .btn-accept {
+    background: var(--accent);
+    color: #fff;
+  }
+  .consent-dialog .dialog-actions .btn-accept:hover { opacity: 0.9; }
+
+  /* Флеш-сообщение */
+  .flash {
+    position: fixed;
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 8px 16px;
+    border-radius: var(--r-md);
+    background: var(--popover);
+    border: 1px solid var(--pop-border);
+    font-size: 12px;
+    color: var(--fg);
+    box-shadow: var(--shadow-lg);
+    z-index: 300;
+    animation: flash-in 0.2s ease-out;
+  }
+  @keyframes flash-in {
+    from { opacity: 0; transform: translateX(-50%) translateY(10px); }
+    to { opacity: 1; transform: translateX(-50%) translateY(0); }
+  }
+</style>
+</head>
+<body>
+
+<!-- Переключатель БЫЛO/СТАЛO -->
+<div class="toggle-bar">
+  <span class="toggle-label">Прототип</span>
+  <button class="toggle-btn active" id="btn-was" onclick="setMode('was')">БЫЛО</button>
+  <button class="toggle-btn" id="btn-became" onclick="setMode('became')">СТАЛО</button>
+</div>
+
+<!-- Демо-состояния -->
+<div class="demo-bar">
+  <button class="active" onclick="setState('normal')">Норма</button>
+  <button onclick="setState('empty')">Пусто</button>
+  <button onclick="setState('error')">Ошибка</button>
+</div>
+
+<!-- Макет приложения -->
+<div class="app">
+  <!-- Тулбар -->
+  <div class="toolbar">
+    <span class="brand">darmark</span>
+    <button class="tbtn" title="Новый">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+    </button>
+    <button class="tbtn" title="Открыть">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+    </button>
+    <button class="tbtn" title="Сохранить">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+    </button>
+    <div class="file-chip"><span class="dot"></span> notes.md</div>
+    <div class="spacer"></div>
+    <button class="tbtn" title="Журнал">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+    </button>
+    <button class="tbtn" title="Плагины">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+    </button>
+    <button class="tbtn tbtn-ai" id="tb-ai" title="AI-ассистент" onclick="toggleAI()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2a7 7 0 0 1 7 7c0 2.4-1.2 4.5-3 5.7V17a1 1 0 0 1-1 1h-6a1 1 0 0 1-1-1v-2.3C6.2 13.5 5 11.4 5 9a7 7 0 0 1 7-7z"/><path d="M9 21h6"/></svg>
+      <span class="pdot" id="ai-dot" hidden></span>
+    </button>
+    <button class="tbtn" title="Синхронизация">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+    </button>
+    <button class="tbtn" title="Предпросмотр">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+    </button>
+    <button class="tbtn" title="Инспектор">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    </button>
+  </div>
+
+  <!-- Вкладки -->
+  <div class="tabs">
+    <div class="tab active"><span class="dirty-dot"></span> notes.md</div>
+  </div>
+
+  <!-- Рабочая область -->
+  <div class="workspace">
+    <div class="pane">
+      <div class="pane-pane" id="editor" contenteditable="true"># Добро пожаловать в darmark
+
+Это **демонстрационный** документ для прототипа AI-ассистента.
+
+## Возможности
+
+- Редактирование Markdown
+- Предпросмотр в реальном времени
+- AI-ассистент для правки документов
+- Создание Lua-плагинов
+
+## Пример кода
+
+```lua
+function on_activate(ctx)
+  ctx.subscribe("document:changed", function(name, payload)
+    -- обработка изменений документа
+  end)
+end
+```
+
+Нажмите кнопку **AI** в тулбаре, чтобы открыть ассистента.</div>
+    </div>
+    <div class="splitter"></div>
+    <div class="pane">
+      <div class="pane-pane preview">
+        <h1>Добро пожаловать в darmark</h1>
+        <p>Это <strong>демонстрационный</strong> документ для прототипа AI-ассистента.</p>
+        <h2>Возможности</h2>
+        <ul>
+          <li>Редактирование Markdown</li>
+          <li>Предпросмотр в реальном времени</li>
+          <li>AI-ассистент для правки документов</li>
+          <li>Создание Lua-плагинов</li>
+        </ul>
+        <h2>Пример кода</h2>
+        <pre><code>function on_activate(ctx)
+  ctx.subscribe("document:changed", function(name, payload)
+    -- обработка изменений документа
+  end)
+end</code></pre>
+        <p>Нажмите кнопку <strong>AI</strong> в тулбаре, чтобы открыть ассистента.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Статусбар -->
+  <div class="statusbar">
+    <span class="stat">Готов</span>
+    <span class="stat">Позиция: 1:1</span>
+    <span class="stat">Размер: 1.2 КБ</span>
+    <div class="spacer"></div>
+    <span class="stat clickable" onclick="showFlash('Журнал — скоро')">Журнал <span class="badge" id="log-badge">0</span></span>
+  </div>
+</div>
+
+<!-- Backdrop для дровера AI -->
+<div class="ai-backdrop" id="ai-backdrop" onclick="toggleAI()"></div>
+
+<!-- Дровер AI -->
+<aside class="ai-drawer" id="ai-drawer" role="dialog" aria-modal="true" aria-labelledby="ai-title" hidden>
+  <!-- Шапка -->
+  <div class="ai-head">
+    <span class="side-title" id="ai-title">AI-ассистент</span>
+    <div class="spacer"></div>
+    <button class="tbtn" title="Настройки" onclick="showFlash('Настройки AI — скоро')">&#9881;</button>
+    <button class="tbtn" title="Закрыть" onclick="toggleAI()">&#10005;</button>
+  </div>
+
+  <!-- Сетка скиллов -->
+  <div class="ai-skills" id="ai-skills">
+    <div class="ai-skill" onclick="selectSkill('Переструктурировать документ')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      <span class="skill-title">Переструктурировать</span>
+    </div>
+    <div class="ai-skill" onclick="selectSkill('Сделать конспект')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+      <span class="skill-title">Сделать конспект</span>
+    </div>
+    <div class="ai-skill" onclick="selectSkill('Создать Lua-плагин')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+      <span class="skill-title">Создать плагин</span>
+    </div>
+    <div class="ai-skill" onclick="selectSkill('Отладить плагин')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      <span class="skill-title">Отладить плагин</span>
+    </div>
+    <div class="ai-skill" onclick="selectSkill('Добавить команду view')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+      <span class="skill-title">Добавить view</span>
+    </div>
+    <div class="ai-skill" onclick="selectSkill('Объяснить синтаксис')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      <span class="skill-title">Объяснить синтаксис</span>
+    </div>
+  </div>
+
+  <!-- Чат -->
+  <div class="ai-chat" id="ai-chat">
+    <div class="ai-chat-empty" id="ai-chat-empty">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2a7 7 0 0 1 7 7c0 2.4-1.2 4.5-3 5.7V17a1 1 0 0 1-1 1h-6a1 1 0 0 1-1-1v-2.3C6.2 13.5 5 11.4 5 9a7 7 0 0 1 7-7z"/><path d="M9 21h6"/></svg>
+      <span>Выберите скилл или напишите запрос</span>
+    </div>
+  </div>
+
+  <!-- Поле ввода -->
+  <div class="ai-input">
+    <textarea id="ai-input" placeholder="Спросите что-нибудь..." rows="1" onkeydown="handleKey(event)"></textarea>
+    <button class="btn-send" onclick="sendMessage()" title="Отправить">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+    </button>
+  </div>
+</aside>
+
+<!-- Диалог согласия -->
+<div class="consent-overlay" id="consent-overlay" hidden>
+  <div class="consent-dialog" role="dialog" aria-modal="true" aria-labelledby="consent-title">
+    <div class="dialog-head" id="consent-title">Отправка содержимого в AI</div>
+    <div class="dialog-body">
+      Для работы AI-ассистенту нужно отправить содержимое документа и код плагина на сервер провайдера LLM.
+      <div class="warning">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <span>Документ будет отправлен на внешний сервер. Не используйте AI для конфиденциальных документов.</span>
+      </div>
+    </div>
+    <div class="dialog-actions">
+      <button class="btn-cancel" onclick="closeConsent()">Отмена</button>
+      <button class="btn-accept" onclick="acceptConsent()">Отправить и запомнить</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ===== Состояние =====
+  let mode = 'was'; // 'was' | 'became'
+  let aiOpen = false;
+  let consentGiven = false;
+  let chatState = 'normal'; // 'normal' | 'empty' | 'error'
+
+  // ===== Переключатель БЫЛO/СТАЛO =====
+  function setMode(m) {
+    mode = m;
+    document.getElementById('btn-was').classList.toggle('active', m === 'was');
+    document.getElementById('btn-became').classList.toggle('active', m === 'became');
+
+    if (m === 'was') {
+      // БЫЛО: скрыть кнопку AI и дровер
+      document.getElementById('tb-ai').style.display = 'none';
+      closeAI();
+    } else {
+      // СТАЛО: показать кнопку AI
+      document.getElementById('tb-ai').style.display = 'flex';
+    }
+  }
+
+  // ===== Демо-состояния =====
+  function setState(s) {
+    chatState = s;
+    document.querySelectorAll('.demo-bar button').forEach(b => b.classList.remove('active'));
+    event.target.classList.add('active');
+
+    const chat = document.getElementById('ai-chat');
+    const empty = document.getElementById('ai-chat-empty');
+
+    if (s === 'empty') {
+      chat.innerHTML = '';
+      chat.appendChild(empty);
+      empty.style.display = 'flex';
+    } else if (s === 'error') {
+      chat.innerHTML = `
+        <div class="ai-msg user">
+          <div class="msg-bubble">Переструктурируй документ</div>
+          <span class="msg-time">12:34:56</span>
+        </div>
+        <div class="ai-error">
+          <div class="error-title">Ошибка</div>
+          <div>Превышен лимит контекста (128K токенов). Документ слишком большой для отправки.</div>
+          <button onclick="sendMessage()">Повторить</button>
+        </div>
+      `;
+    } else {
+      // normal
+      chat.innerHTML = `
+        <div class="ai-msg user">
+          <div class="msg-bubble">Переструктурируй документ</div>
+          <span class="msg-time">12:34:56</span>
+        </div>
+        <div class="ai-msg assistant">
+          <div class="msg-header">
+            <span class="ai-icon">AI</span>
+            <span>AI-ассистент</span>
+            <span class="msg-time">12:34:57</span>
+          </div>
+          <div class="msg-bubble">
+            Я проанализировал документ и предлагаю следующую правку:
+          </div>
+        </div>
+        <div class="ai-msg assistant">
+          <div class="ai-diff">
+            <div class="ai-diff-header">Предлагаемая правка</div>
+            <div class="ai-diff-body">
+              <span class="ai-diff-add">+ ## Возможности</span>
+              <span class="ai-diff-add">+ </span>
+              <span class="ai-diff-add">+ - Редактирование Markdown</span>
+              <span class="ai-diff-add">+ - Предпросмотр в реальном времени</span>
+              <span class="ai-diff-del">- ## Возможности</span>
+              <span class="ai-diff-del">- </span>
+              <span class="ai-diff-del">- Редактирование Markdown</span>
+              <span class="ai-diff-del">- Предпросмотр в реальном времени</span>
+            </div>
+            <div class="ai-diff-actions">
+              <button class="btn-apply" onclick="applyDiff()">Применить</button>
+              <button class="btn-reject" onclick="rejectDiff()">Отклонить</button>
+            </div>
+          </div>
+        </div>
+        <div class="ai-msg assistant">
+          <div class="msg-header">
+            <span class="ai-icon">AI</span>
+            <span>AI-ассистент</span>
+            <span class="msg-time">12:34:58</span>
+          </div>
+          <div class="msg-bubble">
+            Также создал плагин для подсчёта слов:
+          </div>
+        </div>
+        <div class="ai-msg assistant">
+          <div class="ai-plugin-card">
+            <div class="ai-plugin-header">
+              <span class="plugin-icon">W</span>
+              <span class="plugin-name">word-count</span>
+              <span class="plugin-version">v1.0.0</span>
+              <span class="plugin-badge">активен</span>
+            </div>
+            <div class="ai-plugin-code">function on_activate(ctx)
+  ctx.subscribe("document:changed", function(name, payload)
+    local text = ctx.get_document_text()
+    local count = 0
+    for word in text:gmatch("%a+") do count = count + 1 end
+    ctx.set_view_content("word-count", "<p>Слов: " .. count .. "</p>")
+  end)
+end</div>
+            <div class="ai-plugin-status">
+              Песочница: <span class="status-ok">&#10003; пройдена</span>
+            </div>
+            <div class="ai-plugin-actions">
+              <button class="btn-secondary" onclick="showFlash('Открыть в редакторе — скоро')">Открыть в редакторе</button>
+              <button class="btn-secondary" onclick="showFlash('Перезагрузить — скоро')">Перезагрузить</button>
+              <button class="btn-danger" onclick="showFlash('Удалить — скоро')">Удалить</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+  }
+
+  // ===== Дровер AI =====
+  function toggleAI() {
+    aiOpen = !aiOpen;
+    const drawer = document.getElementById('ai-drawer');
+    const backdrop = document.getElementById('ai-backdrop');
+    const btn = document.getElementById('tb-ai');
+
+    if (aiOpen) {
+      drawer.hidden = false;
+      backdrop.classList.add('open');
+      drawer.classList.add('open');
+      btn.classList.add('active');
+      // Показать диалог согласия при первом открытии
+      if (!consentGiven) {
+        setTimeout(() => {
+          document.getElementById('consent-overlay').hidden = false;
+        }, 300);
+      }
+    } else {
+      drawer.classList.remove('open');
+      backdrop.classList.remove('open');
+      btn.classList.remove('active');
+      setTimeout(() => { drawer.hidden = true; }, 220);
+    }
+  }
+
+  function closeAI() {
+    aiOpen = false;
+    document.getElementById('ai-drawer').classList.remove('open');
+    document.getElementById('ai-backdrop').classList.remove('open');
+    document.getElementById('tb-ai').classList.remove('active');
+  }
+
+  // ===== Диалог согласия =====
+  function closeConsent() {
+    document.getElementById('consent-overlay').hidden = true;
+  }
+
+  function acceptConsent() {
+    consentGiven = true;
+    document.getElementById('consent-overlay').hidden = true;
+    showFlash('Согласие сохранено');
+  }
+
+  // ===== Скиллы =====
+  function selectSkill(name) {
+    const input = document.getElementById('ai-input');
+    input.value = name;
+    input.focus();
+  }
+
+  // ===== Отправка сообщения =====
+  function sendMessage() {
+    const input = document.getElementById('ai-input');
+    const text = input.value.trim();
+    if (!text) return;
+
+    // Проверка согласия
+    if (!consentGiven) {
+      document.getElementById('consent-overlay').hidden = false;
+      return;
+    }
+
+    // Добавить сообщение пользователя
+    const chat = document.getElementById('ai-chat');
+    const time = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+    const userMsg = document.createElement('div');
+    userMsg.className = 'ai-msg user';
+    userMsg.innerHTML = `
+      <div class="msg-bubble">${escapeHtml(text)}</div>
+      <span class="msg-time">${time}</span>
+    `;
+    chat.appendChild(userMsg);
+    input.value = '';
+    chat.scrollTop = chat.scrollHeight;
+
+    // Показать индикатор загрузки
+    const loading = document.createElement('div');
+    loading.className = 'ai-msg assistant';
+    loading.innerHTML = `
+      <div class="ai-loading">
+        <span class="dot"></span>
+        <span class="dot"></span>
+        <span class="dot"></span>
+      </div>
+    `;
+    chat.appendChild(loading);
+    chat.scrollTop = chat.scrollHeight;
+
+    // Имитация ответа
+    setTimeout(() => {
+      loading.remove();
+      const response = document.createElement('div');
+      response.className = 'ai-msg assistant';
+      response.innerHTML = `
+        <div class="msg-header">
+          <span class="ai-icon">AI</span>
+          <span>AI-ассистент</span>
+          <span class="msg-time">${time}</span>
+        </div>
+        <div class="msg-bubble">Обработка запроса «${escapeHtml(text)}»...</div>
+      `;
+      chat.appendChild(response);
+      chat.scrollTop = chat.scrollHeight;
+    }, 1500);
+  }
+
+  // ===== Дифф =====
+  function applyDiff() {
+    showFlash('Правка применена');
+  }
+
+  function rejectDiff() {
+    showFlash('Правка отклонена');
+  }
+
+  // ===== Утилиты =====
+  function handleKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  }
+
+  function showFlash(text) {
+    const flash = document.createElement('div');
+    flash.className = 'flash';
+    flash.textContent = text;
+    document.body.appendChild(flash);
+    setTimeout(() => flash.remove(), 2000);
+  }
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  // Инициализация
+  setMode('was');
+  setState('normal');
+</script>
+
+</body>
+</html>
