@@ -5,6 +5,9 @@
 //! Порядок строго **запись → валидация → регистрация** (§6.2): невалидный плагин не попадает
 //! в реестр. Сеть/LLM живут в AI-модуле, CLI используется как dev-инструмент (сеть в него не
 //! вводится). Безопасность id проверяется **до** записи (нет traversal/спецсимволов).
+//!
+//! **Обновление не затирает рабочий плагин:** предложенный контент валидируется во временном
+//! каталоге **до** перезаписи реальных файлов; при `!ok` реальные файлы не трогаются (§6.5).
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -56,6 +59,49 @@ pub fn validate_plugin_id(id: &str) -> Result<(), CommandError> {
             ),
         ))
     }
+}
+
+/// `manifest.id` обязан совпадать с параметром `id` (create/update): иначе плагин записался
+/// бы под чужим/неожиданным id. Ошибка → `ai_plugin_invalid` **до** любой записи на диск.
+pub fn validate_manifest_id(manifest: &Value, id: &str) -> Result<(), CommandError> {
+    match manifest.get("id").and_then(Value::as_str) {
+        Some(manifest_id) if manifest_id == id => Ok(()),
+        Some(manifest_id) => Err(CommandError::new(
+            ErrorCode::AiPluginInvalid,
+            format!("id манифеста {manifest_id:?} не совпадает с id {id:?}"),
+        )),
+        None => Err(CommandError::new(
+            ErrorCode::AiPluginInvalid,
+            "в манифесте нет строкового поля id",
+        )),
+    }
+}
+
+/// Лимиты размера **до** записи на диск (TZ §6.2/§10.1): исходник `main.lua` и
+/// сериализованный манифест. Нарушение → `ai_plugin_invalid` без записи файлов.
+pub fn check_plugin_limits(manifest: &Value, source: &str) -> Result<(), CommandError> {
+    if let Err(e) = plugin_core::manifest::validate_source_len(source.len() as u64) {
+        return Err(CommandError::new(
+            ErrorCode::AiPluginInvalid,
+            format!("entry: {e}"),
+        ));
+    }
+    let manifest_len = serde_json::to_vec(manifest)
+        .map_err(|e| {
+            CommandError::new(
+                ErrorCode::AiPluginInvalid,
+                format!("манифест не сериализуется: {e}"),
+            )
+        })?
+        .len() as u64;
+    let max = plugin_core::MAX_PLUGIN_SOURCE_BYTES;
+    if manifest_len > max {
+        return Err(CommandError::new(
+            ErrorCode::AiPluginInvalid,
+            format!("манифест больше {max} байт"),
+        ));
+    }
+    Ok(())
 }
 
 /// Корень каталога плагинов: env `DARMARK_PLUGINS_DIR` → `%APPDATA%/darmark/plugins`.
@@ -233,6 +279,10 @@ fn resolve_sidecar(env: &str, name: &str) -> Option<PathBuf> {
 }
 
 /// Запуск процесса с host-side таймаутом. По истечении — процесс снимается, `Err`.
+///
+/// stdout/stderr читаются **параллельно** ожиданию (отдельные потоки): иначе «болтливый»
+/// вывод переполняет буфер пайпа, процесс блокируется на записи и ложно срабатывает
+/// таймаут (§6.2).
 fn run_with_timeout(
     mut command: Command,
     timeout: Duration,
@@ -249,30 +299,56 @@ fn run_with_timeout(
         command.creation_flags(CREATE_NO_WINDOW);
     }
     let mut child = command.spawn().map_err(process_io_error)?;
+    let stdout_thread = std::thread::spawn({
+        let pipe = child.stdout.take();
+        move || read_pipe(pipe)
+    });
+    let stderr_thread = std::thread::spawn({
+        let pipe = child.stderr.take();
+        move || read_pipe(pipe)
+    });
+
     let started = Instant::now();
-    loop {
+    let outcome = loop {
         match child.try_wait() {
-            Ok(Some(status)) => {
-                return Ok(ProcessOutput {
-                    success: status.success(),
-                    stdout: read_pipe(child.stdout.take()),
-                    stderr: read_pipe(child.stderr.take()),
-                });
-            }
+            Ok(Some(status)) => break WaitOutcome::Exited(status),
             Ok(None) => {
                 if started.elapsed() >= timeout {
                     let _ = child.kill();
                     let _ = child.wait();
-                    return Err(CommandError::new(
-                        ErrorCode::AiPluginInvalid,
-                        "таймаут проверки плагина",
-                    ));
+                    break WaitOutcome::TimedOut;
                 }
                 std::thread::sleep(Duration::from_millis(20));
             }
-            Err(e) => return Err(process_io_error(e)),
+            Err(e) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                break WaitOutcome::Failed(process_io_error(e));
+            }
         }
+    };
+    // Дожидаемся чтецов: после выхода/kill пайпы закрываются, потоки завершаются.
+    let stdout = stdout_thread.join().unwrap_or_default();
+    let stderr = stderr_thread.join().unwrap_or_default();
+    match outcome {
+        WaitOutcome::Exited(status) => Ok(ProcessOutput {
+            success: status.success(),
+            stdout,
+            stderr,
+        }),
+        WaitOutcome::TimedOut => Err(CommandError::new(
+            ErrorCode::AiPluginInvalid,
+            "таймаут проверки плагина",
+        )),
+        WaitOutcome::Failed(error) => Err(error),
     }
+}
+
+/// Исход ожидания процесса: выход, таймаут или ошибка опроса.
+enum WaitOutcome {
+    Exited(std::process::ExitStatus),
+    TimedOut,
+    Failed(CommandError),
 }
 
 /// Результат запуска сайдкара.
@@ -296,6 +372,17 @@ fn process_io_error(e: std::io::Error) -> CommandError {
 
 fn io_error(e: std::io::Error) -> CommandError {
     CommandError::new(ErrorCode::AiIo, e.to_string())
+}
+
+/// Каталог — reparse point (symlink/junction)? Defense-in-depth (TZ §6.2): запись в такой
+/// каталог может увести файлы за пределы `plugins/`. Проверяем атрибут `FILE_ATTRIBUTE_REPARSE_POINT`.
+#[cfg(windows)]
+fn is_reparse_point(path: &Path) -> bool {
+    use std::os::windows::fs::MetadataExt;
+    const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
+    std::fs::symlink_metadata(path)
+        .map(|meta| meta.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0)
+        .unwrap_or(false)
 }
 
 /// Хвост вывода процесса для сообщения об ошибке (не раздуваем статусбар).
@@ -420,9 +507,11 @@ fn plugin_unavailable() -> CommandError {
 
 // ---------- ядро CRUD (без Tauri — тестируемо) ----------
 
-/// Создание: безопасный id → каталог не существует → запись → валидация → регистрация.
+/// Создание: безопасный id/манифест/лимиты → каталог не существует → запись → валидация →
+/// регистрация.
 ///
 /// Невалидный плагин откатывается (каталог удаляется), чтобы не блокировать повторную попытку.
+/// Ошибка регистрации (в т.ч. `no_host`) тоже откатывает каталог — «сиротских» каталогов нет.
 #[cfg(windows)]
 pub fn create_plugin_at(
     host: &crate::plugins::host::PluginHost,
@@ -433,6 +522,8 @@ pub fn create_plugin_at(
     validate: impl Fn(&Path) -> AiValidationResult,
 ) -> Result<crate::PluginInfo, CommandError> {
     validate_plugin_id(id)?;
+    validate_manifest_id(manifest, id)?;
+    check_plugin_limits(manifest, source)?;
     let dir = root.join(id);
     if dir.exists() {
         return Err(CommandError::new(
@@ -449,10 +540,21 @@ pub fn create_plugin_at(
             errors_summary(&result.errors),
         ));
     }
-    host.register_plugin_dir(&dir).map_err(map_register_error)
+    match host.register_plugin_dir(&dir) {
+        Ok(info) => Ok(info),
+        Err(error) => {
+            // Регистрация не удалась — каталог не оставляем (можно повторить создание).
+            let _ = std::fs::remove_dir_all(&dir);
+            Err(map_register_error(error))
+        }
+    }
 }
 
-/// Обновление: каталог существует → перезапись → валидация → `reload_plugin`.
+/// Обновление: безопасный id/манифест/лимиты → каталог существует (и не reparse point) →
+/// валидация предложенного контента во временном каталоге → перезапись реальных файлов →
+/// `reload_plugin`.
+///
+/// **Рабочий плагин не затирается:** при `!ok` реальные файлы не трогаются (§6.5).
 #[cfg(windows)]
 pub fn update_plugin_at(
     host: &crate::plugins::host::PluginHost,
@@ -463,6 +565,8 @@ pub fn update_plugin_at(
     validate: impl Fn(&Path) -> AiValidationResult,
 ) -> Result<crate::PluginInfo, CommandError> {
     validate_plugin_id(id)?;
+    validate_manifest_id(manifest, id)?;
+    check_plugin_limits(manifest, source)?;
     let dir = root.join(id);
     if !dir.exists() {
         return Err(CommandError::new(
@@ -470,14 +574,34 @@ pub fn update_plugin_at(
             format!("плагин не найден: {id}"),
         ));
     }
-    write_plugin_files(&dir, manifest, source)?;
-    let result = validate(&dir);
+    // Defense-in-depth (§6.2): не пишем в symlink/junction-каталог (эскейп за `plugins/`).
+    if is_reparse_point(&dir) {
+        return Err(CommandError::new(
+            ErrorCode::AiPluginInvalid,
+            format!("каталог плагина — symlink/junction, запись запрещена: {id}"),
+        ));
+    }
+
+    // Сначала валидируем предложенный контент во временном каталоге: реальные файлы не
+    // трогаем до подтверждённого `ok` (иначе невалидный контент затирал бы рабочий плагин).
+    let temp = temp_validate_dir(id);
+    let result = match write_plugin_files(&temp, manifest, source) {
+        Ok(()) => validate(&temp),
+        Err(e) => {
+            let _ = std::fs::remove_dir_all(&temp);
+            return Err(e);
+        }
+    };
+    let _ = std::fs::remove_dir_all(&temp);
     if !result.ok {
         return Err(CommandError::new(
             ErrorCode::AiPluginInvalid,
             errors_summary(&result.errors),
         ));
     }
+
+    // Контент валиден — только теперь перезаписываем реальные файлы и перезагружаем.
+    write_plugin_files(&dir, manifest, source)?;
     host.reload(id)
         .map_err(|error| CommandError::new(ErrorCode::AiPluginNotFound, error.message))?;
     host.list_plugins()
@@ -502,13 +626,16 @@ pub fn delete_plugin_at(
         .map_err(|error| CommandError::new(ErrorCode::AiPluginNotFound, error.message))
 }
 
-/// Маппинг ошибки регистрации: «уже существует» → `ai_plugin_exists`, иначе `ai_plugin_invalid`.
+/// Маппинг ошибки регистрации на коды IPC: «уже существует» → `ai_plugin_exists`,
+/// «нет сайдкара-хоста» → `plugin` (проблема окружения, не контента), «не появился в
+/// реестре» → `ai_plugin_register_failed`, иначе → `ai_plugin_invalid`.
 #[cfg(windows)]
 fn map_register_error(error: plugin_core::envelope::PluginError) -> CommandError {
-    let code = if error.code == "plugin_exists" {
-        ErrorCode::AiPluginExists
-    } else {
-        ErrorCode::AiPluginInvalid
+    let code = match error.code.as_str() {
+        "plugin_exists" => ErrorCode::AiPluginExists,
+        "no_host" => ErrorCode::Plugin,
+        "register_failed" => ErrorCode::AiPluginRegisterFailed,
+        _ => ErrorCode::AiPluginInvalid,
     };
     CommandError::new(code, error.message)
 }
@@ -627,6 +754,63 @@ mod tests {
         assert_eq!(
             std::fs::read_to_string(dir.join("main.lua")).unwrap(),
             "function on_activate(ctx) end"
+        );
+    }
+
+    #[test]
+    fn manifest_id_must_match_param() {
+        let manifest = serde_json::json!({
+            "id": "p",
+            "name": "P",
+            "version": "1.0.0",
+            "api_version": 1,
+            "entry": "main.lua"
+        });
+        assert!(validate_manifest_id(&manifest, "p").is_ok());
+        let err = validate_manifest_id(&manifest, "q").unwrap_err();
+        assert_eq!(err.code, ErrorCode::AiPluginInvalid, "id != параметр id");
+
+        let missing = serde_json::json!({"name": "P"});
+        assert_eq!(
+            validate_manifest_id(&missing, "p").unwrap_err().code,
+            ErrorCode::AiPluginInvalid,
+            "нет строкового id"
+        );
+    }
+
+    #[test]
+    fn source_and_manifest_limits_are_checked() {
+        let manifest = serde_json::json!({
+            "id": "p",
+            "name": "P",
+            "version": "1.0.0",
+            "api_version": 1,
+            "entry": "main.lua"
+        });
+        assert!(check_plugin_limits(&manifest, "function on_activate(ctx) end").is_ok());
+
+        let max = plugin_core::MAX_PLUGIN_SOURCE_BYTES as usize;
+        let big_source = "a".repeat(max + 1);
+        assert_eq!(
+            check_plugin_limits(&manifest, &big_source)
+                .unwrap_err()
+                .code,
+            ErrorCode::AiPluginInvalid,
+            "исходник сверх лимита"
+        );
+
+        let big_manifest = serde_json::json!({
+            "id": "p",
+            "name": "P",
+            "version": "1.0.0",
+            "api_version": 1,
+            "entry": "main.lua",
+            "description": "x".repeat(max + 1)
+        });
+        assert_eq!(
+            check_plugin_limits(&big_manifest, "x").unwrap_err().code,
+            ErrorCode::AiPluginInvalid,
+            "манифест сверх лимита"
         );
     }
 
@@ -778,5 +962,93 @@ mod tests {
                 "невалидный плагин откатывается"
             );
         }
+
+        #[test]
+        fn register_error_codes_are_separated() {
+            use plugin_core::envelope::PluginError;
+            let cases = [
+                ("plugin_exists", ErrorCode::AiPluginExists),
+                ("no_host", ErrorCode::Plugin),
+                ("register_failed", ErrorCode::AiPluginRegisterFailed),
+                ("invalid_plugin", ErrorCode::AiPluginInvalid),
+            ];
+            for (code, expected) in cases {
+                let err = map_register_error(PluginError::new(code, "msg"));
+                assert_eq!(err.code, expected, "код для {code}");
+            }
+        }
+
+        #[test]
+        fn update_does_not_touch_files_when_proposed_content_invalid() {
+            let root = tempfile::tempdir().unwrap();
+            let host = host_with_disabled("keep");
+            let dir = root.path().join("keep");
+            write_plugin_files(&dir, &manifest("keep"), SOURCE).unwrap();
+            let before = std::fs::read(dir.join("main.lua")).unwrap();
+
+            let err = update_plugin_at(
+                &host,
+                root.path(),
+                "keep",
+                &manifest("keep"),
+                "-- невалидный исходник",
+                |_dir| AiValidationResult {
+                    ok: false,
+                    errors: vec!["sandbox: упал".to_string()],
+                    report: None,
+                },
+            )
+            .unwrap_err();
+            assert_eq!(err.code, ErrorCode::AiPluginInvalid);
+            assert_eq!(
+                std::fs::read(dir.join("main.lua")).unwrap(),
+                before,
+                "невалидный контент не должен затирать рабочие файлы"
+            );
+        }
+
+        #[test]
+        fn create_rolls_back_directory_when_registration_fails() {
+            let root = tempfile::tempdir().unwrap();
+            let host = host_with_disabled("dup");
+            // Регистрируем «dup» из другого каталога → повторная регистрация даст `plugin_exists`.
+            let other = tempfile::tempdir().unwrap();
+            let other_dir = other.path().join("dup");
+            write_plugin_files(&other_dir, &manifest("dup"), SOURCE).unwrap();
+            host.register_plugin_dir(&other_dir)
+                .expect("первичная регистрация");
+
+            let err = create_plugin_at(
+                &host,
+                root.path(),
+                "dup",
+                &manifest("dup"),
+                SOURCE,
+                always_ok,
+            )
+            .unwrap_err();
+            assert_eq!(err.code, ErrorCode::AiPluginExists);
+            assert!(
+                !root.path().join("dup").exists(),
+                "каталог откатывается при ошибке регистрации"
+            );
+        }
+    }
+
+    /// «Болтливый» процесс: вывод больше буфера пайпа. Без параллельного чтения процесс
+    /// заблокировался бы на записи и таймаут сработал бы ложно.
+    #[cfg(windows)]
+    #[test]
+    fn run_with_timeout_reads_large_output_without_false_timeout() {
+        let mut command = Command::new("cmd");
+        command.args(["/C", "for /L %i in (1,1,20000) do @echo line-%i"]);
+        let output =
+            run_with_timeout(command, Duration::from_secs(30)).expect("процесс завершился");
+        assert!(output.success, "процесс успешен");
+        assert!(
+            output.stdout.len() > 64 * 1024,
+            "вывод прочитан полностью: {} байт",
+            output.stdout.len()
+        );
     }
 }

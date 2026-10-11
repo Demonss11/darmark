@@ -14,6 +14,9 @@ use crate::ai::types::{AiDiff, AiEditOp};
 use crate::error::{CommandError, ErrorCode};
 use crate::state::{DocumentId, DocumentStore, UndoResult};
 
+/// Верхний предел числа строк изменённого блока (§10.1): защита от гигантских правок.
+pub const MAX_DIFF_LINES: usize = 10_000;
+
 /// Считает минимальный дифф `original → modified` (байтовые смещения UTF-8).
 ///
 /// Возвращает **один** [`AiEditOp`] на изменённый блок строк (или пустой список, если тексты
@@ -63,6 +66,24 @@ pub fn diff_ops(original: &str, modified: &str) -> Vec<AiEditOp> {
         end,
         text: modified[new_start..new_end].to_string(),
     }]
+}
+
+/// Дифф с проверкой лимита размера (§10.1): изменённый блок больше [`MAX_DIFF_LINES`]
+/// строк → `ai_bad_request`. Дифф считается всегда **одним** [`AiEditOp`], поэтому
+/// проверяется единственный блок (заменённый фрагмент и его новая версия).
+pub fn checked_diff_ops(original: &str, modified: &str) -> Result<Vec<AiEditOp>, CommandError> {
+    let ops = diff_ops(original, modified);
+    if let Some(op) = ops.first() {
+        let added = op.text.lines().count();
+        let removed = original[op.start..op.end].lines().count();
+        if added.max(removed) > MAX_DIFF_LINES {
+            return Err(CommandError::new(
+                ErrorCode::AiBadRequest,
+                format!("изменённый блок больше {MAX_DIFF_LINES} строк"),
+            ));
+        }
+    }
+    Ok(ops)
 }
 
 /// Байтовые границы строк `[start, end)` (end — за `\n`, если он есть).
@@ -115,7 +136,7 @@ pub fn ai_diff(
             .ok_or_else(|| CommandError::unknown_document(&doc_id))?;
         (doc.text.clone(), doc.rev)
     };
-    let ops = diff_ops(&original, &proposed);
+    let ops = checked_diff_ops(&original, &proposed)?;
     let diff = AiDiff {
         doc_id: doc_id.clone(),
         base_rev,
@@ -135,7 +156,9 @@ pub fn ai_diff(
 /// Применяет предложенную правку через `DocumentStore::apply_edit` (D5).
 ///
 /// **Rev-guard:** если `base_rev != текущая rev` — правка устарела (`ai_stale_edit`), ничего
-/// не применяется. При успехе эмитит `ai:edit_applied { doc_id, rev }`.
+/// не применяется. При успехе уведомляет плагины (`document:changed`, как
+/// `update_document`/`undo_document`) и фронт (`document-updated` → pull-снапшот, AC-4),
+/// затем эмитит `ai:edit_applied { doc_id, rev }`.
 #[tauri::command]
 pub fn ai_apply_edit(
     app: AppHandle,
@@ -143,19 +166,58 @@ pub fn ai_apply_edit(
     base_rev: u64,
     ops: Vec<AiEditOp>,
     store: State<'_, Arc<Mutex<DocumentStore>>>,
+    plugins: State<'_, crate::PluginState>,
 ) -> Result<UndoResult, CommandError> {
     let result = {
         let mut guard = lock_store(&store);
         let id = DocumentId::new(doc_id.clone());
         apply_with_guard(&mut guard, &id, base_rev, &ops)?
     };
-    if let Err(e) = app.emit(
-        "ai:edit_applied",
-        serde_json::json!({ "doc_id": doc_id, "rev": result.rev }),
-    ) {
-        eprintln!("не эмитить ai:edit_applied: {e}");
-    }
+    // Guard стора отпущен: доставка `document:changed` плагинам может обслужить host-call
+    // к тому же `DocumentStore` (нереентрантный мьютекс → дедлок при удержании лока).
+    // Порядок важен: сначала изменение документа (плагины + фронт), затем `ai:edit_applied`.
+    notify_applied(
+        &doc_id,
+        result.rev,
+        |id, rev| {
+            plugins.publish_document_changed(id, rev);
+            emit_document_updated(&app, id, rev);
+        },
+        |id, rev| {
+            if let Err(e) = app.emit(
+                "ai:edit_applied",
+                serde_json::json!({ "doc_id": id, "rev": rev }),
+            ) {
+                eprintln!("не эмитить ai:edit_applied: {e}");
+            }
+        },
+    );
     Ok(result)
+}
+
+/// Порядок уведомлений после успешного применения правки: сначала изменение документа
+/// (плагины + фронт), затем `ai:edit_applied` (карточка диффа). Выделено отдельно ради
+/// тестируемости порядка (TZ §5.1).
+fn notify_applied(
+    doc_id: &str,
+    rev: u64,
+    mut document_changed: impl FnMut(&str, u64),
+    mut edit_applied: impl FnMut(&str, u64),
+) {
+    document_changed(doc_id, rev);
+    edit_applied(doc_id, rev);
+}
+
+/// Эмитит фронту `document-updated { doc_id, rev }` — тот же контракт, что `DocumentSink`
+/// плагинной подсистемы (см. `setup_plugins`): фронт по событию тянет снапшот и обновляет
+/// `#editor`/`#preview`. Best-effort: сбой эмита не роняет команду.
+fn emit_document_updated(app: &AppHandle, doc_id: &str, rev: u64) {
+    if let Err(e) = app.emit(
+        "document-updated",
+        serde_json::json!({ "doc_id": doc_id, "rev": rev }),
+    ) {
+        eprintln!("не эмитить document-updated: {e}");
+    }
 }
 
 /// Rev-guard + применение операций: ядро команды [`ai_apply_edit`] (без Tauri — тестируемо).
@@ -183,24 +245,27 @@ pub fn apply_with_guard(
 
 /// Применяет операции в порядке убывания `start`, чтобы более ранние смещения не «поехали».
 ///
+/// **Атомарность (§7):** сначала **все** операции проверяются против базового текста
+/// ([`validate_ops`]); при любой невалидной — `ai_apply_failed` **без частичных изменений**.
 /// Возвращает [`UndoResult`] по первой (нижней по смещению) операции — фронт по нему
-/// выставляет выделение. Невалидные смещения `apply_edit` → `ai_apply_failed`.
+/// выставляет выделение.
 fn apply_ops(
     store: &mut DocumentStore,
     id: &DocumentId,
     ops: &[AiEditOp],
 ) -> Result<UndoResult, CommandError> {
+    {
+        let doc = store
+            .get(id)
+            .ok_or_else(|| CommandError::unknown_document(id.as_str()))?;
+        validate_ops(&doc.text, ops)?;
+    }
     let mut ordered: Vec<&AiEditOp> = ops.iter().collect();
     ordered.sort_by_key(|op| std::cmp::Reverse(op.start));
     for op in ordered {
         store
             .apply_edit(id, op.start, op.end, &op.text)
-            .ok_or_else(|| {
-                CommandError::new(
-                    ErrorCode::AiApplyFailed,
-                    format!("невалидная правка [{}, {})", op.start, op.end),
-                )
-            })?;
+            .ok_or_else(|| apply_failed(op))?;
     }
     let doc = store
         .get(id)
@@ -215,6 +280,40 @@ fn apply_ops(
         start,
         end,
     })
+}
+
+/// Проверяет все операции против базового текста **до** применения: диапазоны в границах,
+/// обе границы — на границе UTF-8, операции не перекрываются. Любая невалидная →
+/// `ai_apply_failed` (ни одна правка не применена).
+fn validate_ops(text: &str, ops: &[AiEditOp]) -> Result<(), CommandError> {
+    let mut ordered: Vec<&AiEditOp> = ops.iter().collect();
+    ordered.sort_by_key(|op| op.start);
+    let mut prev_end = 0usize;
+    for op in ordered {
+        if op.start > op.end || op.end > text.len() {
+            return Err(apply_failed(op));
+        }
+        if !text.is_char_boundary(op.start) || !text.is_char_boundary(op.end) {
+            return Err(apply_failed(op));
+        }
+        // Перекрытие (после сортировки по `start`): начало раньше конца предыдущей.
+        if op.start < prev_end {
+            return Err(CommandError::new(
+                ErrorCode::AiApplyFailed,
+                format!("правки перекрываются: [{}, {})", op.start, op.end),
+            ));
+        }
+        prev_end = op.end;
+    }
+    Ok(())
+}
+
+/// Ошибка невалидной операции правки (`ai_apply_failed`).
+fn apply_failed(op: &AiEditOp) -> CommandError {
+    CommandError::new(
+        ErrorCode::AiApplyFailed,
+        format!("невалидная правка [{}, {})", op.start, op.end),
+    )
 }
 
 /// Блокировка стора без паники (под `panic = "abort"` отравление невозможно).
@@ -347,5 +446,102 @@ mod tests {
         let mut store = DocumentStore::default();
         let err = apply_with_guard(&mut store, &DocumentId::new("doc-999"), 0, &[]).unwrap_err();
         assert_eq!(err.code, ErrorCode::UnknownDocument);
+    }
+
+    #[test]
+    fn disjoint_changes_still_yield_single_op() {
+        // Дифф сознательно строится как **один** оп по общему префиксу/суффиксу строк:
+        // две раздельные правки схлопываются в один блок (документированное поведение).
+        let original = "a\nb\nc\nd\ne\n";
+        let modified = "a\nB\nc\nD\ne\n";
+        let ops = diff_ops(original, modified);
+        assert_eq!(ops.len(), 1, "один оп на изменённый блок");
+        assert_eq!(apply(original, &ops), modified);
+    }
+
+    #[test]
+    fn oversized_diff_block_is_rejected() {
+        // Изменённый блок длиннее MAX_DIFF_LINES строк → ai_bad_request (§10.1).
+        let original = "head\n";
+        let mut modified = String::from("head\n");
+        for _ in 0..(MAX_DIFF_LINES + 1) {
+            modified.push_str("x\n");
+        }
+        let err = checked_diff_ops(original, &modified).unwrap_err();
+        assert_eq!(err.code, ErrorCode::AiBadRequest);
+
+        // Ровно на границе — ещё допустимо.
+        let mut ok = String::from("head\n");
+        for _ in 0..MAX_DIFF_LINES {
+            ok.push_str("x\n");
+        }
+        assert!(checked_diff_ops(original, &ok).is_ok());
+    }
+
+    #[test]
+    fn invalid_op_aborts_without_partial_changes() {
+        let mut store = DocumentStore::default();
+        let id = store.create("hello world".into()).id;
+        // Первая (валидная) правка + вторая вне границ: ничего не применяется.
+        let ops = vec![
+            AiEditOp {
+                start: 0,
+                end: 5,
+                text: "HELLO".into(),
+            },
+            AiEditOp {
+                start: 50,
+                end: 51,
+                text: "!".into(),
+            },
+        ];
+        let err = apply_with_guard(&mut store, &id, 0, &ops).unwrap_err();
+        assert_eq!(err.code, ErrorCode::AiApplyFailed);
+        assert_eq!(
+            store.get(&id).map(|d| d.text.as_str()),
+            Some("hello world"),
+            "частичных изменений быть не должно"
+        );
+    }
+
+    #[test]
+    fn overlapping_ops_are_rejected() {
+        let mut store = DocumentStore::default();
+        let id = store.create("abcdef".into()).id;
+        let ops = vec![
+            AiEditOp {
+                start: 0,
+                end: 4,
+                text: "X".into(),
+            },
+            AiEditOp {
+                start: 2,
+                end: 6,
+                text: "Y".into(),
+            },
+        ];
+        let err = apply_with_guard(&mut store, &id, 0, &ops).unwrap_err();
+        assert_eq!(err.code, ErrorCode::AiApplyFailed);
+        assert_eq!(store.get(&id).map(|d| d.text.as_str()), Some("abcdef"));
+    }
+
+    #[test]
+    fn notifications_are_document_then_applied() {
+        use std::cell::RefCell;
+        let calls = RefCell::new(Vec::new());
+        notify_applied(
+            "doc-1",
+            7,
+            |id, rev| calls.borrow_mut().push(format!("document:{id}:{rev}")),
+            |id, rev| calls.borrow_mut().push(format!("applied:{id}:{rev}")),
+        );
+        assert_eq!(
+            calls.into_inner(),
+            vec![
+                "document:doc-1:7".to_string(),
+                "applied:doc-1:7".to_string()
+            ],
+            "сначала document:changed/updated, затем ai:edit_applied"
+        );
     }
 }

@@ -315,7 +315,7 @@ D11); читается/пишется через `ai_get_settings`/`ai_set_setti
   ↓
 Фронт берёт текущий текст документа (docStore) и предлагаемый текст ответа
   ↓
-ai_diff(doc_id, proposed) — Rust считает минимальный дифф относительно текущего текста
+ai_diff(doc_id, proposed) — Rust считает минимальный дифф; изменённый блок > 10 000 строк → ai_bad_request
   ↓
 Эмитится ai:edit_proposed { doc_id, diff } → карточка диффа (зелёный/красный)
   ↓
@@ -323,21 +323,36 @@ ai_diff(doc_id, proposed) — Rust считает минимальный диф�
   ↓
 ai_apply_edit(doc_id, base_rev, ops) — rev-guard: base_rev устарел → ai_stale_edit (пересмотр)
   ↓
+Предварительная проверка ВСЕХ ops против базового текста (атомарность): любая невалидная
+ops / перекрытие → ai_apply_failed, ничего не применяется
+  ↓
 DocumentStore::apply_edit обновляет текст, rev++, undo-стек
   ↓
-Эмитится ai:edit_applied { doc_id, rev }; document:changed → перерисовка превью
+[1] document:changed через PluginState (как update_document/undo_document) + document-updated
+    фронту (pull снапшота → редактор/превью, AC-4)
+  ↓
+[2] Эмитится ai:edit_applied { doc_id, rev } — событие о применении правки
 ```
+
+**Порядок событий:** сначала изменение документа — `document:changed` (публикуется
+`ai_apply_edit` через `PluginState`, тем же путём, что `update_document`/`undo_document`;
+плагины уведомлены) и `document-updated` (фронт тянет снапшот `applyHostUpdate` и обновляет
+редактор/превью, AC-4), **затем** `ai:edit_applied` (событие о применении; карточку диффа
+помечает синхронный ответ `ai_apply_edit`). Обратный порядок оставил бы редактор/превью
+устаревшими на момент показа «применено».
 
 ### 5.2. Интеграция с существующим API
 
 | Существующий контракт | Как используется |
 |----------------------|------------------|
-| `ai_diff(doc_id, proposed)` | Минимальный дифф относительно текущего текста (Rust); `AiDiff` с `base_rev` и `ops` |
-| `ai_apply_edit(doc_id, base_rev, ops)` | Применение правки с rev-guard (байтовые смещения UTF-8) |
+| `ai_diff(doc_id, proposed)` | Минимальный дифф относительно текущего текста (Rust); `AiDiff` с `base_rev` и `ops` (лимит изменённого блока — 10 000 строк; превышение → `ai_bad_request`) |
+| `ai_apply_edit(doc_id, base_rev, ops)` | Применение правки с rev-guard и атомарной проверкой всех `ops` (байтовые смещения UTF-8); принимает `State<PluginState>`; публикует `document:changed` и эмитит `document-updated`, затем `ai:edit_applied` |
 | `DocumentStore::apply_edit` | Единый путь правки (D5): `rev++`, undo-стек |
 | `DocumentStore::undo/redo` | Отмена правки ассистента (`undo_document`) |
 | `DocumentSnapshot` | Источник текущего текста для `ai_diff`/`ai_apply_edit` |
-| `document:changed` (событие) | Уведомление TS-слоя об изменении (после `ai:edit_applied`) |
+| `document:changed` (событие) | Публикуется `ai_apply_edit` через `PluginState` (как `update_document`/`undo_document`) — **до** `ai:edit_applied`; уведомляет плагины/подписчиков |
+| `document-updated` (событие) | Эмитится `ai_apply_edit` после применения; фронт тянет снапшот (`applyHostUpdate`) и обновляет редактор/превью (AC-4) |
+| `ai:edit_applied` (событие) | Эмитится `ai_apply_edit` **после** `document:changed`/`document-updated` — событие о применении (карточку диффа помечает синхронный ответ) |
 | `RenderResult.changed` | Инвалидация кэша рендера |
 
 ### 5.3. Предпросмотр диффа
@@ -365,6 +380,14 @@ pub struct AiDiff {
 применением `ai_apply_edit` сверяет `base_rev` с текущей ревизией: если пользователь успел
 отредактировать текст, команда завершается ошибкой **`ai_stale_edit`** — дифф помечается как
 **устаревший**, правка не применяется, пользователю предлагается пересчитать дифф.
+
+**Атомарность применения.** `ai_apply_edit` **сначала** проверяет **все** `ops` против базового
+текста (границы UTF-8, корректность диапазонов `[start, end)`, перекрытия), и только затем
+применяет. Если невалидна хотя бы одна операция — не применяется **ни одна**: ошибка
+**`ai_apply_failed`**, частичного результата нет (правка не оставляет «половину» изменений).
+
+**Лимит диффа.** Изменённый блок длиннее **10 000 строк** (§10.1) отклоняется **`ai_diff`**
+ошибкой **`ai_bad_request`** (защита от огромных правок); карточка диффа не строится.
 
 ---
 
@@ -394,13 +417,15 @@ LLM возвращает fenced-JSON-блок плагина (формат — �
   ↓
 ai_create_plugin(id, manifest, source)
   ↓
-[1] Запись: main.lua + plugin.json в каталог плагина (после проверки безопасного id/пути)
+[1] Запись: main.lua + plugin.json в каталог плагина — ПОСЛЕ проверок до записи:
+    безопасный id/путь, manifest.id == id, лимиты source/манифеста
   ↓
 [2] Валидация: ai_validate_plugin(id, manifest, source)
      ├─ CLI доступен → `darmark-plugin test <dir> --json` (версионированный отчёт, `schema_version: 1`)
      └─ CLI недоступен/отчёт невалиден → fallback: plugin_core::manifest + darmark-plugin-host --self-test
   ↓
 [3] Регистрация: PluginManager::load_plugins — ТОЛЬКО при ok=true; эмитит ai:plugin_created
+    (при ошибке валидации ИЛИ регистрации созданный каталог откатывается — удаляется)
   ↓
 Показывает результат проверки в чате
   ↓
@@ -452,12 +477,25 @@ Harness **делегирует** существующему CLI `darmark-plugin`
 - **Таймаут — на стороне хоста:** запуск CLI/`--self-test` ограничен **host-side** таймаутом
   (запрос LLM — 30 с, §10.1; прогон песочницы — по бюджету watchdog, ADR-0023); при превышении —
   отчёт `ok=false`, причина показывается в чате.
-- **Безопасные id/пути:** id плагина и путь проверяются **до записи** (допустимые символы id,
-  отсутствие `..`/абсолютных выходов за `plugins/`, запрет symlink-эскейпа) — как в
-  `plugin_core::manifest` и `scan.rs`; небезопасный id/путь → отказ без записи.
+- **Безопасные id/пути (до записи):** id плагина и путь проверяются **до любой записи**
+  (допустимые символы id `[a-z0-9-_]`, длина ≤64, отсутствие `..`/абсолютных выходов за
+  `plugins/`). `manifest.id` **обязан** совпадать с `id` команды — иначе `ai_plugin_invalid`
+  без записи.
+- **Лимиты до записи:** длина `source` (`MAX_PLUGIN_SOURCE_BYTES` = 1 МиБ) и размер
+  сериализованного манифеста (≤ того же лимита) проверяются **до записи** на диск
+  (`ai_plugin_invalid`) — заведомо негодный плагин не попадает в `plugins/`.
+- **Symlink/junction-гейт (обновление):** каталог плагина не должен быть reparse point
+  (symlink/junction) — запись в него запрещена (`ai_plugin_invalid`) **до** перезаписи; защита
+  от эскейпа за `plugins/` (согласовано со `scan.rs`, который пропускает reparse points).
 - **Порядок строго:** **запись → валидация → регистрация.** `PluginManager::load_plugins`
   вызывается **только** при `ok=true`; неуспешная валидация оставляет плагин вне реестра.
-  Создание — `ai_create_plugin` (эмитит `ai:plugin_created`), обновление — `ai_update_plugin`
+- **Откат создания:** `ai_create_plugin` при **любой** ошибке после записи — валидация **или**
+  регистрация — удаляет созданный каталог, чтобы повторная попытка не блокировалась остатками.
+- **Обновление без потери рабочей версии:** `ai_update_plugin` **сначала** валидирует
+  предлагаемые `manifest`/`source` **во временном каталоге**, и только при `ok=true`
+  перезаписывает рабочий каталог и делает `reload_plugin`. Невалидная правка не трогает
+  рабочую версию плагина.
+- Создание — `ai_create_plugin` (эмитит `ai:plugin_created`), обновление — `ai_update_plugin`
   (эмитит `ai:plugin_updated`, затем `PluginManager::reload_plugin`), удаление — `ai_delete_plugin`
   (эмитит `ai:plugin_deleted`).
 
@@ -466,7 +504,7 @@ Harness **делегирует** существующему CLI `darmark-plugin`
 | Существующий контракт | Как используется |
 |----------------------|------------------|
 | `ai_validate_plugin(id, manifest, source)` | Единый вход валидации harness'а: пишет во временный каталог, зовёт CLI/fallback |
-| `ai_create_plugin` / `ai_update_plugin` / `ai_delete_plugin` | Жизненный цикл плагина (запись → валидация → регистрация) |
+| `ai_create_plugin` / `ai_update_plugin` / `ai_delete_plugin` | Жизненный цикл плагина: создание — запись → валидация → регистрация (откат при ошибке); обновление — валидация (temp) → перезапись → `reload_plugin` |
 | `darmark-plugin init` (`plugin-cli`) | Скаффолд `plugin.json` + `main.lua` + `README.md` |
 | `darmark-plugin test <dir> --json` (`plugin-cli`) | Валидация: манифест + entry + песочница; версионированный JSON-отчёт (`schema_version: 1`) |
 | `plugin_core::manifest::Manifest` | Валидация `plugin.json` (fallback, если CLI недоступен) |
@@ -499,9 +537,8 @@ LLM возвращает fenced-JSON-блок плагина (§6.1)
   ↓
 Пользователь применяет изменения
   ↓
-ai_update_plugin(id, manifest, source) — перезапись → валидация (ai_validate_plugin) → регистрация
-  ↓
-Повторная валидация (darmark-plugin test <dir> --json, `schema_version: 1` / fallback, §6.2)
+ai_update_plugin(id, manifest, source) — валидация предлагаемой версии во временном каталоге
+(ai_validate_plugin, §6.2) → только при ok=true перезапись рабочего каталога → регистрация
   ↓
 PluginManager::reload_plugin (перезагрузка без перезапуска приложения) — только при ok=true;
 эмитит ai:plugin_updated
@@ -746,63 +783,71 @@ async fn ai_test_connection(state: State<'_, AiState>) -> Result<AiTestResult, C
 **Фаза 2 (harness — тот же релиз, после Фазы 1; §5/§6):**
 
 ```rust
-// src-tauri/src/ai/commands.rs — все команды принимают `State<'_, AiState>`;
-// команды, эмитящие события, принимают `app: tauri::AppHandle` (как в Фазе 1).
+// src-tauri/src/ai/commands.rs — документные команды harness принимают
+// `State<'_, Arc<Mutex<DocumentStore>>>`; `ai_apply_edit` дополнительно
+// `State<'_, PluginState>` (публикация `document:changed`, как `update_document`/`undo_document`);
+// плагинные команды принимают `State<'_, PluginState>`; эмитящие события — `app: AppHandle`.
 
 #[tauri::command]
 fn ai_diff(
+    app: tauri::AppHandle,
     doc_id: String,
     proposed: String,
-    state: State<'_, AiState>,
-) -> Result<AiDiff, CommandError>          // минимальный дифф относительно текущего текста; эмитит ai:edit_proposed { doc_id, diff }
+    store: State<'_, Arc<Mutex<DocumentStore>>>,
+) -> Result<AiDiff, CommandError>          // минимальный дифф относительно текущего текста; лимит изменённого блока 10 000 строк → ai_bad_request; эмитит ai:edit_proposed { doc_id, diff }
 
 #[tauri::command]
-async fn ai_apply_edit(
+fn ai_apply_edit(
     app: tauri::AppHandle,
     doc_id: String,
     base_rev: u64,
     ops: Vec<AiEditOp>,
-    state: State<'_, AiState>,
-) -> Result<UndoResult, CommandError>      // rev-guard: base_rev устарел → ai_stale_edit; через DocumentStore::apply_edit; эмитит ai:edit_applied { doc_id, rev }
+    store: State<'_, Arc<Mutex<DocumentStore>>>,
+    plugins: State<'_, PluginState>,       // для публикации document:changed (как update_document/undo_document)
+) -> Result<UndoResult, CommandError>      // rev-guard (base_rev устарел → ai_stale_edit); атомарная проверка ops → ai_apply_failed;
+                                           // через DocumentStore::apply_edit; публикует document:changed и эмитит document-updated, затем ai:edit_applied { doc_id, rev }
 
-#[tauri::command]
-async fn ai_validate_plugin(
+#[tauri::command(async)]
+fn ai_validate_plugin(
     id: String,
     manifest: serde_json::Value,
     source: String,
-    state: State<'_, AiState>,
 ) -> Result<AiValidationResult, CommandError>  // пишет во временный каталог; CLI test --json (schema_version) либо fallback; событий не эмитит
 
-#[tauri::command]
-async fn ai_create_plugin(
+#[tauri::command(async)]
+fn ai_create_plugin(
     app: tauri::AppHandle,
     id: String,
     manifest: serde_json::Value,
     source: String,
-    state: State<'_, AiState>,
-) -> Result<PluginInfo, CommandError>      // запись → валидация → регистрация; эмитит ai:plugin_created
+    state: State<'_, PluginState>,
+) -> Result<PluginInfo, CommandError>      // проверки до записи → запись → валидация → регистрация; откат при ошибке; эмитит ai:plugin_created
 
-#[tauri::command]
-async fn ai_update_plugin(
+#[tauri::command(async)]
+fn ai_update_plugin(
     app: tauri::AppHandle,
     id: String,
     manifest: serde_json::Value,
     source: String,
-    state: State<'_, AiState>,
-) -> Result<PluginInfo, CommandError>      // эмитит ai:plugin_updated
+    state: State<'_, PluginState>,
+) -> Result<PluginInfo, CommandError>      // валидация (temp) → перезапись → reload_plugin; эмитит ai:plugin_updated
 
-#[tauri::command]
-async fn ai_delete_plugin(
+#[tauri::command(async)]
+fn ai_delete_plugin(
     app: tauri::AppHandle,
     id: String,
-    state: State<'_, AiState>,
+    state: State<'_, PluginState>,
 ) -> Result<(), CommandError>              // эмитит ai:plugin_deleted
 ```
 
 **Коды ошибок Фазы 2** (в [`CommandError`]): **`ai_stale_edit`** (устаревший `base_rev`),
-**`ai_apply_failed`** (правка не применилась), **`ai_plugin_invalid`** (валидация не прошла),
+**`ai_apply_failed`** (правка не применилась: невалидная/перекрывающаяся `ops` — атомарная
+проверка, частичного результата нет), **`ai_bad_request`** (изменённый блок диффа больше
+10 000 строк, §10.1), **`ai_plugin_invalid`** (валидация не прошла; небезопасный id/путь,
+`manifest.id != id`, лимиты `source`/манифеста, symlink/junction-гейт),
 **`ai_plugin_exists`** (id занят при создании), **`ai_plugin_not_found`** (id не найден),
-**`ai_io`** (ошибка ФС/временного каталога).
+**`ai_plugin_register_failed`** (регистрация в реестре не удалась не по вине контента;
+отсутствие сайдкара-хоста → `plugin`), **`ai_io`** (ошибка ФС/временного каталога).
 
 **Согласие — без отдельных команд.** Поле `consent_document_send` входит в `AiSettingsView`/
 `AiSettingsInput` и читается/пишется через `ai_get_settings`/`ai_set_settings` (§4.2); команды
@@ -830,13 +875,18 @@ async fn ai_delete_plugin(
 | Событие | Полезная нагрузка | Когда эмитится |
 |---------|-------------------|----------------|
 | `ai:edit_proposed` | `{ doc_id, diff }` | `ai_diff` посчитал минимальный дифф (`diff` — `AiDiff`) |
-| `ai:edit_applied` | `{ doc_id, rev }` | `ai_apply_edit` применил правку; `rev` — новая ревизия |
+| `ai:edit_applied` | `{ doc_id, rev }` | `ai_apply_edit` применил правку; эмитится **после** `document:changed`/`document-updated`; `rev` — новая ревизия |
 | `ai:plugin_created` | `{ plugin_id }` | `ai_create_plugin` зарегистрировал плагин (после `ok=true`) |
 | `ai:plugin_updated` | `{ plugin_id }` | `ai_update_plugin` перезаписал и перезагрузил плагин |
 | `ai:plugin_deleted` | `{ plugin_id }` | `ai_delete_plugin` удалил плагин |
 
 > Событие `ai:message` (показать готовое сообщение) **не вводится**: чат ассистента собирается из
 > `ai:chunk` + `ai:done`, сообщения пользователя рисует фронт локально.
+
+> **Порядок событий правки (Фаза 2):** `ai_diff` → `ai:edit_proposed`; при применении
+> `ai_apply_edit` **сначала** публикует `document:changed` (через `PluginState`, как
+> `update_document`/`undo_document`) и эмитит `document-updated` (фронт тянет снапшот и обновляет
+> редактор/превью, AC-4), **затем** эмитит `ai:edit_applied` (§5.1).
 
 ### 9.3. Структуры данных
 
@@ -999,8 +1049,8 @@ pub struct AiValidationResult {
 |---|----------|----------|
 | AC-1 | Режим AI дока открывается по `#sb-ai`/`#tb-ai` и сворачивается по Esc/повторному клику | E2E: открытие/сворачивание дока |
 | AC-2 | Диалог работает: отправка сообщения, получение ответа от LLM | E2E: отправка сообщения |
-| AC-3 | Правка документа (**Фаза 2**): `ai_diff(doc_id, proposed)` считает минимальный дифф (`AiDiff`/`AiEditOp`), эмитит `ai:edit_proposed`; пользователь применяет (`ai_apply_edit`) или отклоняет; MVP-триггер — «Применить как правку» на сообщении ассистента | E2E: применение диффа |
-| AC-4 | Применённая правка видна в редакторе и превью, `rev` растёт; `ai_apply_edit` идёт через `DocumentStore::apply_edit` и эмитит `ai:edit_applied` (**Фаза 2**) | E2E: проверка редактора |
+| AC-3 | Правка документа (**Фаза 2**): `ai_diff(doc_id, proposed)` считает минимальный дифф (`AiDiff`/`AiEditOp`; изменённый блок > 10 000 строк → `ai_bad_request`), эмитит `ai:edit_proposed`; пользователь применяет (`ai_apply_edit`) или отклоняет; MVP-триггер — «Применить как правку» на сообщении ассистента | E2E: применение диффа |
+| AC-4 | Применённая правка видна в редакторе и превью, `rev` растёт; `ai_apply_edit` идёт через `DocumentStore::apply_edit`, **публикует `document:changed` через `PluginState`** (как `update_document`/`undo_document`) и эмитит `document-updated` (фронт обновляет редактор/превью), **затем** эмитит `ai:edit_applied` (**Фаза 2**) | E2E: проверка редактора |
 | AC-5 | Отмена правки через undo-стек работает (**Фаза 2**) | E2E: отмена правки |
 | AC-6 | Плагин генерируется (**Фаза 2**): модель отдаёт fenced-JSON-блок (`id`/`name`/`version`/`permissions`/`source`), `ai_create_plugin` пишет `main.lua` + `plugin.json`, валидирует и регистрирует; эмитит `ai:plugin_created` | E2E: создание плагина |
 | AC-7 | Плагин проходит валидацию манифеста и прогон в песочнице через `ai_validate_plugin(id, manifest, source)` (CLI `test --json` либо fallback, §6) (**Фаза 2**) | E2E: валидация |
@@ -1023,7 +1073,7 @@ pub struct AiValidationResult {
 | AC-11.13 | `ai.enabled` по умолчанию `false` (opt-in): свежая установка не шлёт запросов до явного включения | Тест: стартовые настройки |
 | AC-11.14 | Согласие хранится в настройках `ai` (`consent_document_send`) и управляется через `ai_get_settings`/`ai_set_settings`; отдельных команд согласия нет | Тест: контракт IPC |
 | AC-11.15 | Порядок вкладок дока — «Журнал \| Мониторинг \| AI-ассистент» | E2E: сегмент режимов |
-| AC-11.16 | **rev-guard (Фаза 2):** `ai_apply_edit` с устаревшим `base_rev` завершается кодом `ai_stale_edit`, правка не применяется | Тест/E2E: устаревший `base_rev` |
+| AC-11.16 | **rev-guard (Фаза 2):** `ai_apply_edit` с устаревшим `base_rev` завершается кодом `ai_stale_edit`, правка не применяется; применение **атомарно** — невалидная/перекрывающаяся `ops` → `ai_apply_failed`, частичного результата нет | Тест/E2E: устаревший `base_rev` |
 
 ### Инварианты и ограничения
 

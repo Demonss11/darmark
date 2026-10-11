@@ -78,8 +78,15 @@ const FALLBACK_SKILLS: readonly AiSkill[] = [
     id: "create-plugin",
     title: "Создать плагин",
     description: "Сгенерировать новый Lua-плагин по описанию",
-    prompt_template:
-      "Сгенерируй Lua-плагин для darmark по описанию: {{input}}. Верни main.lua и plugin.json (host-API и permissions — по песочнице darmark).",
+    // Синхронизирован с Rust (`ai/skills.rs`, `CREATE_PLUGIN_PROMPT`): модель обязана
+    // вернуть РОВНО один fenced ```json с { id, name, version, permissions, source },
+    // иначе карточка плагина не парсится (`extractPluginProposal`).
+    prompt_template: `Ты — генератор Lua-плагинов для darmark. По описанию: {{input}}
+Верни РОВНО один fenced-блок \`\`\`json с одним объектом:
+{"id": "…", "name": "…", "version": "1.0.0", "permissions": [], "source": "полный код main.lua"}
+Правила: id — только строчные латинские буквы, цифры, '-' и '_'; permissions — только из набора
+darmark (document:read, document:write, view:create, view:modify, ui:statusbar); source — полный
+код main.lua с функцией on_activate и host-API песочницы darmark. Никакого текста вне блока.`,
     category: "plugins",
   },
 ];
@@ -190,13 +197,6 @@ interface AiPluginProposal {
   source: string;
   /** Собранный `plugin.json` (без `source`) для `ai_validate_plugin`/`ai_create_plugin`. */
   manifest: Json;
-}
-
-/** Карточка диффа, зарегистрированная для реакции на событие `ai:edit_applied`. */
-interface DiffCard {
-  docId: DocumentId;
-  applied: boolean;
-  markApplied(rev: number): void;
 }
 
 /** Карточка плагина, зарегистрированная для реакции на события `ai:plugin_*`. */
@@ -418,10 +418,11 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
   let pending: Pending | null = null;
   let requestToken = 0;
 
-  // Фаза 2 (harness): карточки диффа/плагина, зарегистрированные для реакции на
-  // события `ai:edit_applied`/`ai:plugin_*`. Счётчик даёт уникальные аддитивные id.
+  // Фаза 2 (harness): карточки плагина, зарегистрированные для реакции на события
+  // `ai:plugin_*`. Карточка диффа НЕ регистрируется: пометку «применено» ставит
+  // синхронный ответ `ai_apply_edit` той карточки, на которой нажали «Применить»
+  // (иначе событие пометило бы все карточки документа). Счётчик даёт уникальные id.
   let cardSeq = 0;
-  const diffCards = new Set<DiffCard>();
   const pluginCards = new Set<PluginCardState>();
 
   // Подсказка пустого чата (внутри live-региона, но скрыта от скринридеров).
@@ -765,13 +766,12 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     col.appendChild(card);
     if (stick) scrollToBottom();
 
-    const state: DiffCard = { docId, applied: false, markApplied };
+    let applied = false;
 
-    /** Правка применена (ответом IPC или событием `ai:edit_applied`): показываем «Отменить». */
+    /** Правка применена (синхронный ответ `ai_apply_edit`): показываем «Отменить». */
     function markApplied(rev: number): void {
-      if (state.applied) return;
-      state.applied = true;
-      diffCards.delete(state);
+      if (applied) return;
+      applied = true;
       actions.textContent = "";
       const undo = actionButton("Отменить", "btn ghost", "Отменить применённую правку");
       undo.id = `ai-diff-undo-${id}`;
@@ -783,7 +783,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     async function undoEdit(button: HTMLButtonElement): Promise<void> {
       button.disabled = true;
       try {
-        await undoDocument(state.docId);
+        await undoDocument(docId);
         if (disposed) return;
         status.textContent = "Правка отменена.";
         actions.textContent = "";
@@ -799,7 +799,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
       reject.disabled = true;
       status.textContent = "Применение…";
       try {
-        const res = await aiApplyEdit(state.docId, diff.base_rev, diff.ops);
+        const res = await aiApplyEdit(docId, diff.base_rev, diff.ops);
         if (disposed) return;
         markApplied(res.rev);
       } catch (e) {
@@ -816,7 +816,6 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
           );
           reconsider.addEventListener("click", () => {
             card.remove();
-            diffCards.delete(state);
             void buildDiff(col, content);
           });
           actions.appendChild(reconsider);
@@ -827,13 +826,11 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     }
 
     function rejectEdit(): void {
-      diffCards.delete(state);
       card.remove();
     }
 
     apply.addEventListener("click", () => void applyEdit());
     reject.addEventListener("click", rejectEdit);
-    diffCards.add(state);
   }
 
   /** Карточка плагина из ```json-блока: предпросмотр, валидация, создание/удаление (§6). */
@@ -1429,14 +1426,10 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
   });
 
   // --- события harness Фазы 2 (host → front) ---
-  // Правка применена (в т.ч. вне карточки) — перевести карточки этого дока в
-  // состояние «применено» с кнопкой «Отменить».
-  subscribe<{ doc_id: string; rev: number }>("ai:edit_applied", (event) => {
-    const { doc_id, rev } = event.payload;
-    for (const card of diffCards) {
-      if (card.docId === doc_id) card.markApplied(rev);
-    }
-  });
+  // `ai:edit_applied` панель для карточек НЕ использует: применённую карточку
+  // помечает синхронный ответ `ai_apply_edit` (иначе событие пометило бы все
+  // карточки того же документа). Обновление редактора/предпросмотра идёт отдельным
+  // путём `document-updated` → `store.applyHostUpdate` (main.ts).
 
   // Жизненный цикл плагина: обновляем бейдж/доступность кнопок в карточке.
   // Карточку, уже обновлённую ответом IPC, событие не перетирает (гейт isInstalled).

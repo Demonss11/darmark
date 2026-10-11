@@ -55,6 +55,8 @@ pub enum ErrorCode {
     AiPluginExists,
     /// AI harness: плагин с таким id не найден.
     AiPluginNotFound,
+    /// AI harness: регистрация плагина в реестре не удалась (не по вине контента).
+    AiPluginRegisterFailed,
     /// AI harness: ошибка ввода-вывода при работе с файлами плагина/временным каталогом.
     AiIo,
 }

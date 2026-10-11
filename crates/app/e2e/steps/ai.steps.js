@@ -10,6 +10,7 @@
 import { Then, When } from "@wdio/cucumber-framework";
 import { browser } from "@wdio/globals";
 import fs from "node:fs";
+import path from "node:path";
 
 // ---------- IPC-шов и конфиг ----------
 
@@ -550,5 +551,313 @@ Then("у AI нет сохранённого ключа", async () => {
       return view?.has_key === false;
     },
     { timeout: 5000, timeoutMsg: "У AI всё ещё есть сохранённый ключ (has_key ≠ false)" }
+  );
+});
+
+// ---------- Фаза 2: harness документа и плагинов (§5–§6; AC-3/AC-4, §9) ----------
+//
+// Живой LLM в E2E недоступен (нет ключа/сети), поэтому карточки диффа/плагина из
+// ответа модели UI-путём не триггерятся (помечены @manual). Сам harness проверяем
+// прямым IPC — тем же швом, что и `ai_set_settings` выше. Ошибки Tauri приходят
+// объектом `{ code, message }`, поэтому вызов не бросаем, а возвращаем исход.
+
+/// Вызов IPC с исходом вместо исключения: { ok, value, code, message }.
+async function invokeOutcome(cmd, args) {
+  return browser.execute(
+    async (c, a) => {
+      const internals = window.__TAURI_INTERNALS__;
+      if (!internals || typeof internals.invoke !== "function") {
+        return {
+          ok: false,
+          code: "no_ipc",
+          message: "window.__TAURI_INTERNALS__.invoke недоступен",
+        };
+      }
+      try {
+        return { ok: true, value: await internals.invoke(c, a) };
+      } catch (e) {
+        const code = e && typeof e === "object" && "code" in e ? e.code : null;
+        const message =
+          e && typeof e === "object" && "message" in e ? e.message : String(e);
+        return { ok: false, code, message };
+      }
+    },
+    cmd,
+    args ?? {}
+  );
+}
+
+/// id активной вкладки — тот же документ, что открыт в `#editor` (main.ts: el.dataset.id).
+async function activeDocId() {
+  const id = await browser.execute(
+    () => document.querySelector('#tab-strip .tab[aria-selected="true"]')?.dataset.id ?? null
+  );
+  if (!id) throw new Error("Нет активной вкладки с data-id");
+  return id;
+}
+
+/// Снапшот документа из Rust-стора (текст/rev).
+async function docSnapshot(id) {
+  const r = await invokeOutcome("document_snapshot", { id });
+  if (!r.ok) throw new Error(`document_snapshot не удался: ${r.code ?? ""} ${r.message}`);
+  return r.value;
+}
+
+/// Ждёт, пока буфер редактора совпадёт с текстом Rust-стора (дебаунс IPC).
+async function waitDocSynced(id) {
+  await browser.waitUntil(
+    async () => {
+      const snap = await docSnapshot(id);
+      const value = await browser.execute(
+        () => document.getElementById("editor")?.value ?? ""
+      );
+      return !!snap && snap.text === value;
+    },
+    { timeout: 5000, timeoutMsg: "Текст редактора не синхронизировался с Rust-стором" }
+  );
+}
+
+/// Независимое применение байтовых операций диффа: сверка ops с original→modified.
+function applyDiffOps(original, ops) {
+  let out = Buffer.from(original, "utf8");
+  for (const op of [...ops].sort((a, b) => b.start - a.start)) {
+    out = Buffer.concat([
+      out.subarray(0, op.start),
+      Buffer.from(op.text, "utf8"),
+      out.subarray(op.end),
+    ]);
+  }
+  return out.toString("utf8");
+}
+
+// Последний запрошенный дифф и его документ — состояние сценария (сброс при запросе).
+let lastDiff = null;
+let lastDiffDocId = null;
+
+When("я запрашиваю у AI дифф правки на:", async (proposed) => {
+  const docId = await activeDocId();
+  await waitDocSynced(docId);
+  const r = await invokeOutcome("ai_diff", { docId, proposed });
+  if (!r.ok) throw new Error(`ai_diff не удался: ${r.code ?? ""} ${r.message}`);
+  lastDiff = r.value;
+  lastDiffDocId = docId;
+});
+
+Then("дифф AI содержит ровно {int} операцию", async (count) => {
+  if (!lastDiff) {
+    throw new Error("Дифф AI не запрошен (нужен шаг «я запрашиваю у AI дифф правки на:»)");
+  }
+  if (lastDiff.ops.length !== count) {
+    throw new Error(`В диффе AI ${lastDiff.ops.length} операций, ожидалось ${count}`);
+  }
+  // Операции должны быть валидны (байтовые UTF-8) и воспроизводить предлагаемый текст.
+  const applied = applyDiffOps(lastDiff.original, lastDiff.ops);
+  if (applied !== lastDiff.modified) {
+    throw new Error(
+      `Операции диффа AI не воспроизводят предлагаемый текст: ${JSON.stringify(applied)}`
+    );
+  }
+});
+
+/// Применяет правку IPC-швом. Синхронный ответ `ai_apply_edit` помечает карточку диффа;
+/// обновление `#editor`/`#preview` идёт отдельно и асинхронно: Rust эмитит
+/// `document-updated` (через PluginState) → фронт тянет снапшот (`store.applyHostUpdate`).
+/// Поэтому проверять видимость правки надо шагами «текст редактора содержит» /
+/// «HTML предпросмотра содержит» — они ждут этого асинхронного пути.
+When("я применяю предложенную правку AI", async () => {
+  if (!lastDiff) throw new Error("Дифф AI не запрошен");
+  const r = await invokeOutcome("ai_apply_edit", {
+    docId: lastDiff.doc_id,
+    baseRev: lastDiff.base_rev,
+    ops: lastDiff.ops,
+  });
+  if (!r.ok) throw new Error(`ai_apply_edit не удался: ${r.code ?? ""} ${r.message}`);
+});
+
+Then("применение диффа AI отклонено с кодом {string}", async (code) => {
+  if (!lastDiff) throw new Error("Дифф AI не запрошен");
+  const r = await invokeOutcome("ai_apply_edit", {
+    docId: lastDiff.doc_id,
+    baseRev: lastDiff.base_rev,
+    ops: lastDiff.ops,
+  });
+  if (r.ok) throw new Error("Устаревшая правка AI неожиданно применилась");
+  if (r.code !== code) throw new Error(`Код ошибки ${r.code}, ожидался ${code}`);
+});
+
+Then("ревизия активного документа выросла", async () => {
+  if (!lastDiff) throw new Error("Дифф AI не запрошен");
+  const snap = await docSnapshot(lastDiffDocId ?? (await activeDocId()));
+  if (!snap || !(snap.rev > lastDiff.base_rev)) {
+    throw new Error(`Ревизия не выросла: база ${lastDiff.base_rev}, текущая ${snap?.rev}`);
+  }
+});
+
+When("я отменяю правку AI", async () => {
+  const id = lastDiffDocId ?? (await activeDocId());
+  const r = await invokeOutcome("undo_document", { id });
+  if (!r.ok) throw new Error(`undo_document не удался: ${r.code ?? ""} ${r.message}`);
+});
+
+Then("документ AI содержит {string}", async (fragment) => {
+  const id = lastDiffDocId ?? (await activeDocId());
+  await browser.waitUntil(
+    async () => {
+      const snap = await docSnapshot(id);
+      return (snap?.text ?? "").includes(fragment);
+    },
+    { timeout: 5000, timeoutMsg: `Документ AI не содержит: ${fragment}` }
+  );
+});
+
+Then("документ AI не содержит {string}", async (fragment) => {
+  const id = lastDiffDocId ?? (await activeDocId());
+  const snap = await docSnapshot(id);
+  if ((snap?.text ?? "").includes(fragment)) {
+    throw new Error(`Документ AI содержит запрещённый фрагмент: ${fragment}`);
+  }
+});
+
+// ---------- Фаза 2: harness плагинов (§6; AC-6) ----------
+
+/// Валидный минимальный исходник плагина (совпадает с шаблоном `plugin-cli init`).
+const AI_PLUGIN_SOURCE = "function on_activate(ctx) end\nfunction on_deactivate(ctx) end\n";
+
+/// Манифест плагина (§6.1): id/name/version/api_version/entry + доп. поля.
+function aiPluginManifest(id, extra = {}) {
+  return {
+    id,
+    name: id,
+    version: "0.1.0",
+    api_version: 1,
+    entry: "main.lua",
+    permissions: [],
+    ...extra,
+  };
+}
+
+/// Каталог изолированных плагинов E2E (DARMARK_PLUGINS_DIR, см. wdio.conf.js).
+function pluginsDir() {
+  const dir = process.env.DARMARK_PLUGINS_DIR;
+  if (!dir) {
+    throw new Error(
+      "DARMARK_PLUGINS_DIR не задан — изоляция плагинов не настроена (wdio.conf.js)"
+    );
+  }
+  return dir;
+}
+
+Then("валидация плагина AI {string} проходит", async (id) => {
+  const r = await invokeOutcome("ai_validate_plugin", {
+    id,
+    manifest: aiPluginManifest(id),
+    source: AI_PLUGIN_SOURCE,
+  });
+  if (!r.ok) throw new Error(`ai_validate_plugin не удался: ${r.code ?? ""} ${r.message}`);
+  if (r.value.ok !== true) {
+    throw new Error(`Плагин ${id} не прошёл валидацию: ${JSON.stringify(r.value.errors)}`);
+  }
+});
+
+Then(
+  "валидация плагина AI {string} с невалидным манифестом не проходит с ошибками",
+  async (id) => {
+    const r = await invokeOutcome("ai_validate_plugin", {
+      id,
+      manifest: aiPluginManifest(id, { permissions: ["quantum:teleport"] }),
+      source: AI_PLUGIN_SOURCE,
+    });
+    if (!r.ok) throw new Error(`ai_validate_plugin не удался: ${r.code ?? ""} ${r.message}`);
+    if (r.value.ok !== false) throw new Error(`Невалидный плагин ${id} прошёл валидацию`);
+    if (!Array.isArray(r.value.errors) || r.value.errors.length === 0) {
+      throw new Error(`У невалидного плагина ${id} не заполнены ошибки`);
+    }
+  }
+);
+
+Then("создание плагина AI с id {string} отклонено с кодом {string}", async (id, code) => {
+  const r = await invokeOutcome("ai_create_plugin", {
+    id,
+    manifest: aiPluginManifest("placeholder"),
+    source: AI_PLUGIN_SOURCE,
+  });
+  if (r.ok) throw new Error(`Создание плагина с id ${JSON.stringify(id)} неожиданно прошло`);
+  if (r.code !== code) throw new Error(`Код ошибки ${r.code}, ожидался ${code}`);
+});
+
+When("я создаю плагин AI {string}", async (id) => {
+  const r = await invokeOutcome("ai_create_plugin", {
+    id,
+    manifest: aiPluginManifest(id),
+    source: AI_PLUGIN_SOURCE,
+  });
+  if (!r.ok) throw new Error(`ai_create_plugin(${id}) не удался: ${r.code ?? ""} ${r.message}`);
+  if (r.value?.id !== id) throw new Error(`Создан плагин ${r.value?.id}, ожидался ${id}`);
+});
+
+When("я обновляю плагин AI {string}", async (id) => {
+  const r = await invokeOutcome("ai_update_plugin", {
+    id,
+    manifest: aiPluginManifest(id),
+    source: AI_PLUGIN_SOURCE,
+  });
+  if (!r.ok) throw new Error(`ai_update_plugin(${id}) не удался: ${r.code ?? ""} ${r.message}`);
+  if (r.value?.id !== id) throw new Error(`Обновлён плагин ${r.value?.id}, ожидался ${id}`);
+});
+
+When("я удаляю плагин AI {string}", async (id) => {
+  const r = await invokeOutcome("ai_delete_plugin", { id });
+  if (!r.ok) throw new Error(`ai_delete_plugin(${id}) не удался: ${r.code ?? ""} ${r.message}`);
+});
+
+Then("повторное создание плагина AI {string} отклонено с кодом {string}", async (id, code) => {
+  const r = await invokeOutcome("ai_create_plugin", {
+    id,
+    manifest: aiPluginManifest(id),
+    source: AI_PLUGIN_SOURCE,
+  });
+  if (r.ok) throw new Error(`Повторное создание плагина ${id} неожиданно прошло`);
+  if (r.code !== code) throw new Error(`Код ошибки ${r.code}, ожидался ${code}`);
+});
+
+Then("повторное удаление плагина AI {string} отклонено с кодом {string}", async (id, code) => {
+  const r = await invokeOutcome("ai_delete_plugin", { id });
+  if (r.ok) throw new Error(`Повторное удаление плагина ${id} неожиданно прошло`);
+  if (r.code !== code) throw new Error(`Код ошибки ${r.code}, ожидался ${code}`);
+});
+
+Then("файл плагина AI {string} существует", async (id) => {
+  const file = path.join(pluginsDir(), id, "main.lua");
+  await browser.waitUntil(async () => fs.existsSync(file), {
+    timeout: 5000,
+    timeoutMsg: `Файл плагина ${id}/main.lua не появился`,
+  });
+});
+
+Then("файла плагина AI {string} нет", async (id) => {
+  const dir = path.join(pluginsDir(), id);
+  await browser.waitUntil(async () => !fs.existsSync(dir), {
+    timeout: 5000,
+    timeoutMsg: `Каталог плагина ${id} не удалён`,
+  });
+});
+
+Then("в списке плагинов AI есть {string}", async (id) => {
+  await browser.waitUntil(
+    async () => {
+      const r = await invokeOutcome("list_plugins");
+      return r.ok && Array.isArray(r.value) && r.value.some((p) => p.id === id);
+    },
+    { timeout: 8000, timeoutMsg: `В list_plugins нет ${id}` }
+  );
+});
+
+Then("в списке плагинов AI нет {string}", async (id) => {
+  await browser.waitUntil(
+    async () => {
+      const r = await invokeOutcome("list_plugins");
+      return r.ok && Array.isArray(r.value) && !r.value.some((p) => p.id === id);
+    },
+    { timeout: 8000, timeoutMsg: `В list_plugins остался ${id}` }
   );
 });
