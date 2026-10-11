@@ -287,6 +287,7 @@ export interface ViewContext {
 | `logPanel.ts` | тело режима «Журнал» нижнего дока: буфер, подписка, рендер (ADR-0029/0030) |
 | `bottomDock.ts` | нижний док `#logs-panel`: режимы «Журнал»/«AI», свёртка, resize, триггеры (ADR-0030) |
 | `aiPanel.ts` | тело режима «AI»: чат, скиллы, диффы, согласие (ADR-0030) |
+| `resourceMonitor.ts` | мониторинг ресурсов: подписка на `resource-metrics`/`plugin-process-exited`, рендер `#logs-resources`, состояния orphan, пороги (ADR-0031) |
 | `sampleDocument.ts` | стартовый документ |
 
 `linkController` строит **один** `RenderIndex` на `rev` и раздаёт его inspector и scrollsync.
@@ -509,6 +510,10 @@ scan(plugins_dir) -> validate(manifest) -> load(src) -> on_activate(ctx)
 | `view:focus` | `view_id` |
 | `command:invoked` | `command_id`, `doc_id` |
 
+> **События фронт-шины (оболочка), аддитивно:** `plugin-status-changed`, `document-event`,
+> `log-entry` (ADR-0029 §2.4); `resource-metrics`, `plugin-process-exited` (ADR-0031 §2.4).
+> Не входят в контракт host↔child и `HOST_API_VERSION`; канал host → front, мажор не поднимают.
+
 ### 9.2. Модель доставки: notify-only + pull
 Событие **не несёт содержимое документа**. Оно несёт `doc_id` и `rev`. Плагин, если ему нужен текст, вызывает `get_document_range`/`get_document_text`. Причины:
 1. Не дублировать большие строки в каждый подписчик.
@@ -639,6 +644,9 @@ scan(plugins_dir) -> validate(manifest) -> load(src) -> on_activate(ctx)
   аддитивно добавляются `#sb-ai`, `#tb-ai`, `#dock-modes`, `#mode-logs-btn`, `#mode-ai-btn`,
   `#ai-mode`, `#ai-skills`, `#ai-chat`, `#ai-input`, `#ai-send`, `#ai-settings`, `#ai-clear`,
   `#ai-model`; `#logs-resources` — logs-режимный слот (скрыт в режиме AI).
+- **Контракты мониторинга ресурсов (ADR-0031):** `#logs-resources` (logs-режимный слот) сохраняется;
+  аддитивно добавляется `#mon-children` (и классы `.mon-*`). События `resource-metrics`,
+  `plugin-process-exited` — аддитивные события фронт-шины (не контракт плагина).
 - **Инварианты скролла и переключения view:** `#editor` и `#preview` — сами скролл-контейнеры
   (e2e читает их `scrollTop`); переключение view — `hidden`-toggle уже смонтированных узлов,
   не пересоздание DOM.
@@ -707,6 +715,7 @@ scan(plugins_dir) -> validate(manifest) -> load(src) -> on_activate(ctx)
 | 28 | Rust-undo: diff-модель `EditOp {start, removed, inserted}`, единый стек ввода/`apply_edit`, команды `undo_document`/`redo_document` (D5, S16) | §4.1, §4.2, §4.3 | ADR-0028 |
 | 29 | Журнал: сворачивающаяся панель-консоль над `#statusbar` (исключение из паттерна дровера) | §5.5, §13.2 | ADR-0029 |
 | 30 | Нижний док: «Журнал» + AI-ассистент, два режима (расширение ADR-0029; исключение из ADR-0024) | §5.5, §13.2 | ADR-0030 |
+| 31 | Источник и границы мониторинга ресурсов: WinAPI (`windows`-crate), главный + child'ы Job Object, 2 с, без авто-kill | §5.5, §10, §14 | F49–F54 |
 
 ---
 
