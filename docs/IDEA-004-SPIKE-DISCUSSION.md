@@ -191,4 +191,4 @@ PluginHost (facade)
 - `docs/DESIGN_DOC.md` — нормативная спецификация архитектуры (§0–§17)
 - `docs/adr/0021-plugin-isolation-process.md` — изоляция плагинов (отдельный процесс)
 - `docs/adr/0022-viewprovider-contract.md` — контракт ViewProvider (два тира)
-- `docs/proto/FINDINGS.md` — результаты прототипов
+- `docs/FINDINGS.md` — результаты прототипов

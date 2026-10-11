@@ -3,7 +3,7 @@
 - **Статус:** **Принят**
 - **Дата:** 07.10.2026
 - **Основание:** ADR-0021 (изоляция процесса), ADR-0022 (контракт ViewProvider);
-  реализация H2 — плагинная система (Фазы 0–6); факты — `docs/proto/FINDINGS.md` (F16–F42)
+  реализация H2 — плагинная система (Фазы 0–6); факты — `docs/FINDINGS.md` (F16–F42)
 - **Связанные:** `docs/DESIGN_DOC.md` §6–§12, §14, §16; `docs/PLUGIN_API.md`;
   `crates/plugin-core`, `crates/plugin-host`, `crates/app/src-tauri/src/plugins`
 
@@ -113,7 +113,7 @@ on_deactivate → terminate`. Ошибка загрузки/активации �
   preview (ADR-0022): единый контракт, единая точка санитизации.
 - «Открыл `.lua` — поправил — `Перезагрузить` — работает» без пересборки и без Lua в базе.
 
-**Цена / ограничения (см. §7 FINDINGS):**
+**Цена / ограничения (см. `docs/FINDINGS.md` F39–F44):**
 - Хост обязан оставаться тонким диспетчером; тяжёлая логика — в child.
 - Синхронные Tauri-команды, доходящие до invoke плагина, помечены `async` (иначе блокируют
   main-поток и нативный диалог `export_html`); host-call может быть долгим — время его
@@ -141,5 +141,5 @@ on_deactivate → terminate`. Ошибка загрузки/активации �
 ## 5. Ссылки
 
 - Плагинная система (Фазы 0–6), `docs/DESIGN_DOC.md` §6–§12/§14, `docs/adr/0021-*`, `docs/adr/0022-*`
-- `docs/proto/FINDINGS.md` F16–F42, `docs/PLUGIN_API.md`
+- `docs/FINDINGS.md` F16–F42, `docs/PLUGIN_API.md`
 - Код: `crates/plugin-core`, `crates/plugin-host`, `crates/app/src-tauri/src/plugins/*`

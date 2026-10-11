@@ -9,7 +9,7 @@
 > ADR-0034 (размещение AI-рантайма; MCP — вне MVP);
 > **ADR-0035** (`docs/adr/0035-ai-provider-config.md` — универсальная конфигурация провайдеров;
 > **принят**, нормативное решение для §3 этого ТЗ);
-> `docs/proto/FINDINGS.md` §10 (F55–F58);
+> `docs/FINDINGS.md` §2.2 (F55–F58);
 > `crates/app/src/aiPanel.ts`, `crates/app/src-tauri/src/ai/`,
 > `crates/app/src-tauri/src/plugins/settings.rs` (SettingsStore, D11)
 >
@@ -435,7 +435,7 @@ MCP — **качественно иная граница**, чем outbound-за
   `AiBackend`/`AiTransport`); **MCP — вне MVP** (§2.5)
 - `docs/adr/0035-ai-provider-config.md` — **универсальная конфигурация провайдеров** (ADR этого ТЗ;
   **принят** — нормативное решение §3)
-- `docs/proto/FINDINGS.md` §10 (F55–F58) — спайк AI-клиента (размер клиентов, TLS, SSE)
+- `docs/FINDINGS.md` §2.2 (F55–F58) — спайк AI-клиента (размер клиентов, TLS, SSE)
 - Внешний референс конфигурации провайдеров (идея): `opencode.json` —
   https://opencode.ai/v2/docs/providers/#custom (раздел **Custom**: `name`, `env`, `package`,
   `settings.baseURL`/`settings.apiKey`/`settings.timeout`, `headers`, `body`, `models`

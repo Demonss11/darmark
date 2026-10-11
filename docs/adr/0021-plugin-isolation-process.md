@@ -2,7 +2,7 @@
 
 - **Статус:** **Принят**
 - **Дата:** 06.10.2026
-- **Основание:** прототип `proto/lua-plugin-host`; факты — `docs/proto/FINDINGS.md` (F1–F36)
+- **Основание:** прототип `proto/lua-plugin-host`; факты — `docs/FINDINGS.md` (F1–F36)
 - **Связанные:** `docs/DESIGN_DOC.md` §7.1, §10, §11.4, §14, §16;
   `reviews/TZ-proto-lua-host-P1-review-v1.4.md` (C-спайк), `reviews/TZ-proto-lua-host-P9-review-v1.0.md` (M10–M12)
 
