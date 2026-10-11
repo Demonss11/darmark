@@ -1,8 +1,7 @@
 <!doctype html>
-<!--
-  ============================================================================
+<!-- ============================================================================
   Прототип-референс: Панель «Журнал» — сворачивающаяся консоль над статусбаром
-  (S11 + IDEA-012)
+  (S11 + IDEA-012) — УПРОЩЁННАЯ РЕДАКЦИЯ
   ============================================================================
   Что это: однофайловый HTML-прототип панели «Журнал» проекта darmark
   с визуальным сравнением «было-стало».
@@ -11,41 +10,39 @@
   событиями/логами. IDEA-012 (ideas/UI-IDEAS.md) — компактный мониторинг
   ресурсов (ОЗУ/CPU) в шапке панели.
 
+  РЕДАКЦИЯ 2 — радикальное упрощение:
+    • Фильтры: 5 табов со счётчиками → тихий сегмент «Все / Ошибки» (без счётчиков).
+    • Мониторинг IDEA-012: список плагинов + CPU → одна приглушённая строка
+      «darmark 156 МБ» в правом углу шапки. Полный мониторинг — отдельная задача.
+    • «Очистить» → только иконка (корзина).
+    • Демо-состояния (Пусто/Переполнение/Свёрнуто) → убраны. Оставлено одно
+      показательное состояние + сворачивание через #sb-logs/шеврон.
+    • Больше воздуха: строки лога на отступах, а не на рамках; границы тише;
+      убраны плотные hover-заливки и яркие подложки.
+    • Resize оставлен, но визуально тоньше (3px) и незаметнее.
+
   ВАЖНОЕ ИЗМЕНЕНИЕ РЕШЕНИЯ (относительно первой редакции прототипа):
     Ранее журнал проектировался как ПРАВЫЙ НЕМОДАЛЬНЫЙ ДРОВЕР 440px.
     Пользователь решил иначе: журнал — НЕ дровер и НЕ модальное окно,
     а ОТДЕЛЬНАЯ СВОРАЧИВАЮЩАЯСЯ ПАНЕЛЬ-КОНСОЛЬ НА ВСЮ ШИРИНУ над
     id="statusbar", ВНУТРИ layout (между рабочей областью и статусбаром).
 
-  Ключевые отличия от дровера:
-    • Расположена ВНУТРИ flex-колонки приложения: workspace → logsPanel →
-      statusbar. Не position:fixed, не overlay поверх контента.
-    • При раскрытии СЖИМАЕТ рабочую область (редактор/предпросмотр), а не
-      перекрывает её.
-    • Ведёт себя как консоль/чат: поток записей с метками времени, автоскролл
-      к новым записям.
-    • Сворачивается до тонкой полосы-шапки (~28px); раскрывается/сворачивается
-      кликом по #sb-logs в статусбаре или по шапке панели.
-    • Полная ширина приложения (не 440px).
-    • Горизонтальный drag-handle сверху панели меняет её высоту.
-
   Сравнение:
     • БЫЛО — клик по «Журнал» (#sb-logs) в статусбаре показывает флеш
       «Журнал — скоро», панели нет, бейдж #log-badge не используется.
     • СТАЛО — сворачивающаяся консоль над статусбаром с лентой событий,
-      фильтрами по категориям, бейджем непрочитанных, кнопкой очистки,
-      группировкой по дате и компактным мониторингом ресурсов в шапке.
+      тихим фильтром «Все / Ошибки», бейджем непрочитанных, группировкой
+      по дате и одной строкой памяти в шапке.
 
-  Дата создания: 11.10.2026
+  Дата редакции: 11.10.2026
   Self-contained: все стили inline, без внешних зависимостей, CSP-safe.
-  ============================================================================
--->
+  ============================================================================ -->
 <html lang="ru">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
-    <title>darmark — Панель «Журнал» (консоль над статусбаром)</title>
+    <title>darmark — Панель «Журнал» (упрощённая)</title>
     <style>
       /* ===================== ТОКЕНЫ ПРОЕКТА (style.css) ===================== */
       :root {
@@ -123,45 +120,41 @@
       :focus { outline: none; }
       :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 4px; }
 
-      /* ===================== ПЕРЕКЛЮЧАТЕЛЬ БЫЛО/СТАЛО ===================== */
+      /* ===================== ПЕРЕКЛЮЧАТЕЛЬ БЫЛО/СТАЛО (тихий служебный) ===================== */
       .proto-switch {
         position: fixed;
-        top: 12px;
-        left: 50%;
-        transform: translateX(-50%);
+        top: 8px;
+        right: 10px;
         z-index: 1000;
         display: flex;
         gap: 0;
-        padding: 3px;
-        background: var(--bg-2);
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        box-shadow: var(--shadow-sm);
-      }
-      .proto-switch button {
-        padding: 6px 18px;
-        border: none;
+        padding: 2px;
+        background: var(--bg-1);
+        border: 1px solid var(--line-soft);
         border-radius: 6px;
+        opacity: 0.6;
+        transition: opacity 0.15s;
+      }
+      .proto-switch:hover { opacity: 1; }
+      .proto-switch button {
+        padding: 3px 10px;
+        border: none;
+        border-radius: 4px;
         background: transparent;
         color: var(--fg-mute);
         font: inherit;
-        font-size: 12px;
-        font-weight: 600;
+        font-size: 10.5px;
+        font-weight: 500;
         cursor: pointer;
-        transition: background 0.15s, color 0.15s;
       }
-      .proto-switch button:hover { color: var(--fg); }
-      .proto-switch button.active {
-        background: var(--accent-soft);
-        color: var(--accent);
-      }
+      .proto-switch button.active { background: var(--bg-3); color: var(--fg); }
 
       /* ===================== МАКЕТ ПРИЛОЖЕНИЯ ===================== */
       .app-mock {
         display: flex;
         flex-direction: column;
         height: 100vh;
-        padding-top: 48px; /* место под переключатель */
+        padding-top: 34px; /* место под переключатель */
       }
 
       /* Тулбар */
@@ -326,10 +319,12 @@
       }
 
       /* ===================== ПАНЕЛЬ ЖУРНАЛА (КОНСОЛЬ) =====================
+         — УПРОЩЁННАЯ ВЕРСИЯ —
          Живёт в flex-колонке .app-mock МЕЖДУ .workspace и .statusbar.
          Раскрытая: height: var(--h-logs); body виден.
          Свёрнутая: height: var(--h-logs-bar); видна только шапка.
-         НЕ position:fixed — контент не перекрывается, а сжимается. */
+         НЕ position:fixed — контент не перекрывается, а сжимается.
+         Строки лога разделены воздухом, а не рамками. */
       .logs-panel {
         position: relative;
         display: flex;
@@ -338,21 +333,20 @@
         height: var(--h-logs);
         min-height: var(--h-logs-bar);
         background: var(--bg-1);
-        border-top: 1px solid var(--line);
+        border-top: 1px solid var(--line-soft);
         overflow: hidden;
       }
       .logs-panel.collapsed { height: var(--h-logs-bar); }
       .logs-panel.collapsed .logs-body { display: none; }
 
-      /* Шапка панели */
+      /* Шапка панели — максимально тихая */
       .logs-head {
         display: flex;
         align-items: center;
         gap: 8px;
         height: var(--h-logs-bar);
-        padding: 0 8px 0 4px;
+        padding: 0 6px 0 4px;
         background: var(--bg-1);
-        border-bottom: 1px solid var(--line-soft);
         flex-shrink: 0;
         user-select: none;
       }
@@ -361,8 +355,8 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        width: 24px;
-        height: 24px;
+        width: 22px;
+        height: 22px;
         padding: 0;
         border: none;
         border-radius: var(--r-sm);
@@ -372,8 +366,8 @@
         flex-shrink: 0;
         transition: background 0.12s, color 0.12s;
       }
-      .logs-caret:hover { background: var(--bg-3); color: var(--fg); }
-      .logs-caret svg { width: 14px; height: 14px; transition: transform 0.18s; }
+      .logs-caret:hover { background: var(--bg-2); color: var(--fg); }
+      .logs-caret svg { width: 13px; height: 13px; transition: transform 0.18s; }
       .logs-panel.collapsed .logs-caret svg { transform: rotate(180deg); }
       .logs-title {
         display: inline-flex;
@@ -386,95 +380,72 @@
       }
       .logs-count { color: var(--fg-mute); font-weight: 500; font-size: 11px; }
 
-      /* Фильтры-табы в шапке */
+      /* Тихий фильтр-сегмент «Все / Ошибки» — без счётчиков, без рамок */
       .logs-filter {
-        display: flex;
-        gap: 2px;
-        flex-shrink: 1;
-        min-width: 0;
-        overflow-x: auto;
+        display: inline-flex;
+        gap: 0;
+        flex-shrink: 0;
+        padding: 1px;
+        background: var(--bg-0);
+        border-radius: 5px;
       }
-      .logs-filter::-webkit-scrollbar { height: 0; }
       .filter-btn {
-        padding: 3px 10px;
+        padding: 2px 8px;
         border: none;
-        border-radius: var(--r-sm);
+        border-radius: 4px;
         background: transparent;
         color: var(--fg-mute);
         font: inherit;
-        font-size: 11px;
+        font-size: 10.5px;
         font-weight: 500;
         cursor: pointer;
         white-space: nowrap;
         transition: background 0.12s, color 0.12s;
       }
-      .filter-btn:hover { background: var(--bg-3); color: var(--fg); }
-      .filter-btn.active { background: var(--accent-soft); color: var(--accent); }
-      .filter-btn .cnt {
-        margin-left: 4px;
-        font-size: 10px;
-        opacity: 0.7;
-      }
+      .filter-btn:hover { background: var(--bg-2); color: var(--fg); }
+      .filter-btn.active { background: var(--bg-3); color: var(--fg); }
 
       .logs-head-spacer { flex: 1; min-width: 8px; }
 
-      /* Компактный мониторинг ресурсов в шапке (IDEA-012) */
+      /* Строка памяти (IDEA-012 — минимальный след, без яркости) */
       .mon-compact {
         display: inline-flex;
         align-items: center;
-        gap: 12px;
+        gap: 4px;
         flex-shrink: 0;
-        padding: 0 8px;
+        font-family: "Cascadia Code", ui-monospace, monospace;
         font-size: 10.5px;
         color: var(--fg-mute);
         font-variant-numeric: tabular-nums;
         white-space: nowrap;
       }
-      .mon-compact .mon-item { display: inline-flex; align-items: center; gap: 5px; }
-      .mon-compact .mon-item b {
-        font-weight: 600;
-        color: var(--fg-dim);
-        font-family: "Cascadia Code", ui-monospace, monospace;
-      }
-      .mon-compact .mon-item.warn b { color: var(--warning); }
-      .mon-compact .mon-item.crit b { color: var(--error); }
-      .mon-compact .pdot {
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        background: var(--pc, var(--accent));
-        flex-shrink: 0;
-      }
-      .mon-compact .sep { width: 1px; height: 12px; background: var(--line); opacity: 0.7; }
 
-      /* Кнопка очистки в шапке */
+      /* Кнопка очистки — только иконка */
       .logs-clear {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        gap: 5px;
         flex-shrink: 0;
+        width: 22px;
         height: 22px;
-        padding: 0 9px;
-        border: 1px solid var(--line);
+        padding: 0;
+        border: none;
         border-radius: var(--r-sm);
-        background: var(--bg-2);
-        color: var(--fg-dim);
-        font: inherit;
-        font-size: 11px;
+        background: transparent;
+        color: var(--fg-mute);
         cursor: pointer;
         transition: background 0.12s, color 0.12s;
       }
-      .logs-clear:hover { background: var(--bg-3); color: var(--fg); }
-      .logs-clear svg { width: 12px; height: 12px; }
+      .logs-clear:hover { background: var(--bg-2); color: var(--fg); }
+      .logs-clear svg { width: 13px; height: 13px; }
 
-      /* Drag-handle для изменения высоты панели */
+      /* Drag-handle — тонкий, незаметный */
       .logs-resize {
         position: absolute;
         top: 0;
         left: 0;
         right: 0;
-        height: 5px;
+        height: 3px;
         cursor: ns-resize;
         z-index: 3;
         background: transparent;
@@ -489,52 +460,54 @@
         transition: opacity 0.12s;
       }
       .logs-resize:hover::after,
-      .logs-panel.resizing .logs-resize::after { opacity: 1; }
+      .logs-panel.resizing .logs-resize::after { opacity: 0.6; }
       .logs-panel.resizing { cursor: ns-resize; user-select: none; }
 
-      /* Тело панели — лента событий (консоль/чат) */
+      /* Тело панели — лента событий.
+         Строки разделены воздухом, а не рамками. */
       .logs-body {
         flex: 1;
         min-height: 0;
         overflow-y: auto;
-        padding: 2px 0 12px;
+        padding: 4px 0 16px;
         background: var(--bg-0);
       }
+      /* Разделитель даты — только воздух, без линии */
       .log-date-separator {
         position: sticky;
         top: 0;
         z-index: 1;
-        padding: 5px 12px 3px;
+        padding: 10px 14px 5px;
         background: var(--bg-0);
         color: var(--fg-mute);
         font-size: 10px;
         font-weight: 600;
         text-transform: uppercase;
-        letter-spacing: 0.04em;
-        border-bottom: 1px solid var(--line-soft);
+        letter-spacing: 0.05em;
       }
       .log-item {
         display: flex;
         align-items: baseline;
-        gap: 8px;
-        padding: 3px 12px;
-        border-bottom: 1px solid var(--line-soft);
+        gap: 10px;
+        padding: 7px 14px;
+        border-bottom: none;
         transition: background 0.12s;
       }
       .log-item:hover { background: var(--bg-1); }
-      .log-item.unread { background: color-mix(in srgb, var(--accent) 5%, transparent); }
+      .log-item.unread { background: color-mix(in srgb, var(--accent) 4%, transparent); }
       .log-dot {
         flex-shrink: 0;
-        width: 6px;
-        height: 6px;
+        width: 5px;
+        height: 5px;
         border-radius: 50%;
         transform: translateY(-1px);
+        opacity: 0.7;
       }
       .log-dot.plugin { background: var(--accent); }
       .log-dot.document { background: var(--accent-2); }
-      .log-dot.error { background: var(--error); }
+      .log-dot.error { background: var(--error); opacity: 1; }
       .log-dot.system { background: var(--fg-mute); }
-      .log-dot.warning { background: var(--warning); }
+      .log-dot.warning { background: var(--amber); opacity: 0.85; }
       .log-time {
         flex-shrink: 0;
         font-family: "Cascadia Code", ui-monospace, Consolas, monospace;
@@ -547,7 +520,7 @@
         min-width: 0;
         color: var(--fg);
         font-size: 12px;
-        line-height: 1.4;
+        line-height: 1.5;
         overflow-wrap: break-word;
       }
       .log-detail {
@@ -604,7 +577,6 @@
         cursor: pointer;
       }
       .stat.clickable:hover { background: var(--bg-3); color: var(--fg-dim); }
-      /* Триггер #sb-logs в активном (раскрытом) состоянии */
       .stat.clickable.active { background: var(--accent-soft); color: var(--accent); }
       .stat.clickable svg { transition: transform 0.18s; }
       .stat.clickable.active svg { transform: rotate(90deg); }
@@ -639,34 +611,6 @@
       }
       .flash.show { opacity: 1; }
 
-      /* ===================== КНОПКИ ДЕМО-СОСТОЯНИЙ ===================== */
-      .demo-states {
-        position: fixed;
-        bottom: 12px;
-        left: 12px;
-        z-index: 1000;
-        display: flex;
-        gap: 6px;
-        padding: 6px;
-        background: var(--bg-2);
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        box-shadow: var(--shadow-sm);
-      }
-      .demo-states button {
-        padding: 4px 10px;
-        border: 1px solid var(--line);
-        border-radius: var(--r-sm);
-        background: var(--bg-0);
-        color: var(--fg-dim);
-        font: inherit;
-        font-size: 11px;
-        cursor: pointer;
-        transition: background 0.12s, color 0.12s;
-      }
-      .demo-states button:hover { background: var(--bg-3); color: var(--fg); }
-      .demo-states button.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
-
       /* Reduced motion */
       @media (prefers-reduced-motion: reduce) {
         *, *::before, *::after {
@@ -679,18 +623,10 @@
     </style>
   </head>
   <body>
-    <!-- Переключатель БЫЛО/СТАЛО -->
+    <!-- Переключатель БЫЛО/СТАЛО (тихий служебный) -->
     <div class="proto-switch">
       <button id="btn-before" class="active" type="button">БЫЛО</button>
       <button id="btn-after" type="button">СТАЛО</button>
-    </div>
-
-    <!-- Кнопки демонстрации состояний -->
-    <div class="demo-states" id="demo-states" hidden>
-      <button type="button" data-state="normal" class="active">Норма</button>
-      <button type="button" data-state="empty">Пусто</button>
-      <button type="button" data-state="overflow">Переполнение</button>
-      <button type="button" data-state="collapsed">Свёрнуто</button>
     </div>
 
     <!-- ===================== МАКЕТ ПРИЛОЖЕНИЯ ===================== -->
@@ -767,9 +703,10 @@
 
       <!-- ============ ПАНЕЛЬ ЖУРНАЛА (КОНСОЛЬ над статусбаром) ============
            Внутри layout, между workspace и statusbar. Раскрытая сжимает
-           рабочую область; свёрнутая — тонкая полоса-шапка. -->
+           рабочую область; свёрнутая — тонкая полоса-шапка.
+           УПРОЩЕНО: фильтр «Все / Ошибки», строка памяти, иконка очистки. -->
       <section class="logs-panel" id="logs-panel" role="region" aria-label="Журнал событий" aria-labelledby="logs-title" hidden>
-        <!-- drag-handle изменения высоты -->
+        <!-- drag-handle изменения высоты (тонкий) -->
         <div class="logs-resize" id="logs-resize" role="separator" aria-orientation="horizontal" aria-label="Изменить высоту журнала" title="Потяните, чтобы изменить высоту"></div>
 
         <!-- Шапка панели -->
@@ -782,35 +719,25 @@
           <span class="logs-title" id="logs-title">Журнал</span>
           <span class="logs-count" id="logs-count">0</span>
 
-          <!-- Фильтры-табы -->
-          <div class="logs-filter" role="tablist" aria-label="Фильтр событий">
-            <button class="filter-btn active" role="tab" data-filter="all" aria-selected="true" type="button">Все<span class="cnt" data-cnt="all"></span></button>
-            <button class="filter-btn" role="tab" data-filter="plugin" aria-selected="false" type="button">Плагины<span class="cnt" data-cnt="plugin"></span></button>
-            <button class="filter-btn" role="tab" data-filter="document" aria-selected="false" type="button">Документы<span class="cnt" data-cnt="document"></span></button>
-            <button class="filter-btn" role="tab" data-filter="error" aria-selected="false" type="button">Ошибки<span class="cnt" data-cnt="error"></span></button>
-            <button class="filter-btn" role="tab" data-filter="system" aria-selected="false" type="button">Система<span class="cnt" data-cnt="system"></span></button>
+          <!-- Тихий фильтр-сегмент -->
+          <div class="logs-filter" role="group" aria-label="Фильтр событий">
+            <button class="filter-btn active" data-filter="all" type="button">Все</button>
+            <button class="filter-btn" data-filter="error" type="button">Ошибки</button>
           </div>
 
           <span class="logs-head-spacer"></span>
 
-          <!-- Компактный мониторинг ресурсов (IDEA-012) -->
-          <span class="mon-compact" id="mon-compact" role="group" aria-label="Мониторинг ресурсов">
-            <span class="mon-item">
-              <span>darmark</span><b id="mon-main-mem">156 МБ</b>
-            </span>
-            <span class="mon-item"><span>CPU</span><b id="mon-main-cpu">3%</b></span>
-            <span class="sep" aria-hidden="true"></span>
-            <span class="mon-item"><span class="pdot" style="--pc: #9d8fff"></span><span>word-count</span><b>24 МБ</b></span>
-            <span class="mon-item"><span class="pdot" style="--pc: #6ea8fe"></span><span>export-html</span><b>18 МБ</b></span>
+          <!-- Строка памяти (IDEA-012 — минимальный след) -->
+          <span class="mon-compact" id="mon-compact" role="note" aria-label="Потребление памяти">
+            darmark&nbsp;<b>156 МБ</b>
           </span>
 
-          <!-- Кнопка очистки -->
-          <button class="logs-clear" id="logs-clear" type="button" title="Очистить журнал">
+          <!-- Кнопка очистки — только иконка -->
+          <button class="logs-clear" id="logs-clear" type="button" title="Очистить журнал" aria-label="Очистить журнал">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
               <polyline points="3 6 5 6 21 6" />
               <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
             </svg>
-            <span>Очистить</span>
           </button>
         </div>
 
@@ -821,7 +748,7 @@
       </section>
 
       <!-- Статусбар -->
-      <footer class="statusbar">
+      <footer class="statusbar" id="statusbar">
         <span class="stat"><span class="stat-dot"></span><span>Готов</span></span>
         <span class="stat" id="stat-msg" role="status" aria-live="polite"></span>
         <button class="stat clickable" id="sb-logs" type="button" title="Журнал и события" aria-label="Журнал и события" aria-expanded="false" aria-controls="logs-panel">
@@ -847,7 +774,6 @@
 
         // ===================== ДАННЫЕ ЖУРНАЛА =====================
         var LOG_ENTRIES = [
-          // Сегодня
           { date: 'Сегодня', time: '14:32:15', type: 'system', msg: 'Приложение запущено', detail: 'darmark v0.1.0' },
           { date: 'Сегодня', time: '14:32:16', type: 'system', msg: 'Плагины загружены', detail: '2 активных' },
           { date: 'Сегодня', time: '14:32:18', type: 'plugin', msg: 'Плагин «word-count» включён', detail: 'версия 1.0.0' },
@@ -860,13 +786,11 @@
           { date: 'Сегодня', time: '14:35:01', type: 'error', msg: 'Плагин «word-count»: падение', detail: 'необработанное исключение' },
           { date: 'Сегодня', time: '14:35:02', type: 'system', msg: 'Плагин «word-count»: карантин', detail: '3 падения подряд' },
           { date: 'Сегодня', time: '14:35:30', type: 'document', msg: 'Документ сохранён', detail: '156 символов' },
-          // Вчера
           { date: 'Вчера', time: '18:22:10', type: 'system', msg: 'Приложение запущено', detail: 'darmark v0.1.0' },
           { date: 'Вчера', time: '18:22:15', type: 'plugin', msg: 'Плагин «word-count» включён', detail: 'версия 1.0.0' },
           { date: 'Вчера', time: '18:25:33', type: 'document', msg: 'Открыт файл «заметки.md»', detail: '256 символов' },
           { date: 'Вчера', time: '18:30:00', type: 'document', msg: 'Документ сохранён', detail: '312 символов' },
           { date: 'Вчера', time: '18:35:45', type: 'system', msg: 'Приложение закрыто', detail: '' },
-          // 10 октября
           { date: '10 октября', time: '10:15:00', type: 'system', msg: 'Приложение запущено', detail: 'darmark v0.1.0' },
           { date: '10 октября', time: '10:15:05', type: 'plugin', msg: 'Плагин «export-html» включён', detail: 'версия 1.2.0' },
           { date: '10 октября', time: '10:20:00', type: 'document', msg: 'Открыт файл «тест.md»', detail: '64 символа' },
@@ -874,30 +798,18 @@
           { date: '10 октября', time: '10:30:00', type: 'system', msg: 'Приложение закрыто', detail: '' }
         ];
 
-        var OVERFLOW_MSG = 'Журнал очищен (лимит 200 записей)';
-
-        var FILTER_LABELS = {
-          all: 'Все',
-          plugin: 'Плагины',
-          document: 'Документы',
-          error: 'Ошибки',
-          system: 'Система'
-        };
-
         // ===================== СОСТОЯНИЕ =====================
         var state = {
           view: 'before',      // 'before' | 'after'
-          filter: 'all',
+          filter: 'all',       // 'all' | 'error'
           entries: [],
           unreadCount: 0,
-          panelOpen: false,     // панель развёрнута (не свёрнута)
-          demoState: 'normal'   // 'normal' | 'empty' | 'overflow' | 'collapsed'
+          panelOpen: false    // панель развёрнута (не свёрнута)
         };
 
         // ===================== DOM =====================
         var btnBefore = document.getElementById('btn-before');
         var btnAfter = document.getElementById('btn-after');
-        var demoStates = document.getElementById('demo-states');
         var sbLogs = document.getElementById('sb-logs');
         var logBadge = document.getElementById('log-badge');
         var logsPanel = document.getElementById('logs-panel');
@@ -919,17 +831,6 @@
             : state.entries.filter(function(e) { return e.type === state.filter; });
         }
 
-        function updateTabCounts() {
-          var counts = { all: state.entries.length, plugin: 0, document: 0, error: 0, system: 0 };
-          state.entries.forEach(function(e) {
-            if (counts[e.type] !== undefined) counts[e.type]++;
-          });
-          Object.keys(counts).forEach(function(key) {
-            var el = document.querySelector('.filter-btn[data-filter="' + key + '"] .cnt');
-            if (el) el.textContent = counts[key] > 0 ? String(counts[key]) : '';
-          });
-        }
-
         function renderLogs() {
           var filtered = filteredEntries();
           logsBody.innerHTML = '';
@@ -943,7 +844,7 @@
             var title = document.createElement('div');
             title.textContent = state.entries.length === 0
               ? 'Событий пока нет'
-              : 'Нет событий по фильтру «' + FILTER_LABELS[state.filter] + '»';
+              : 'Нет событий по фильтру «Ошибки»';
             var hint = document.createElement('div');
             hint.style.fontSize = '11px';
             hint.style.marginTop = '4px';
@@ -1000,7 +901,6 @@
           });
 
           logsCount.textContent = String(filtered.length);
-          updateTabCounts();
           if (stick) scrollToBottom();
         }
 
@@ -1075,9 +975,7 @@
           state.filter = filter;
           var buttons = document.querySelectorAll('.filter-btn');
           buttons.forEach(function(btn) {
-            var isActive = btn.getAttribute('data-filter') === filter;
-            btn.classList.toggle('active', isActive);
-            btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+            btn.classList.toggle('active', btn.getAttribute('data-filter') === filter);
           });
           stick = true;
           renderLogs();
@@ -1087,19 +985,12 @@
           state.entries = [];
           state.unreadCount = 0;
           updateBadge();
-          updateTabCounts();
           renderLogs();
         }
 
         function loadDemoData() {
           state.entries = [];
           state.unreadCount = 0;
-
-          if (state.demoState === 'empty') {
-            renderLogs();
-            updateBadge();
-            return;
-          }
 
           LOG_ENTRIES.forEach(function(e, i) {
             state.entries.push({
@@ -1112,36 +1003,9 @@
             });
           });
 
-          if (state.demoState === 'overflow') {
-            // Переполнение: в шапке — предупреждение о лимите (первой записью ленты)
-            state.entries.unshift({
-              date: 'Сегодня',
-              time: '14:36:00',
-              type: 'warning',
-              msg: OVERFLOW_MSG,
-              detail: '',
-              unread: true,
-              overflow: true
-            });
-          }
-
           state.unreadCount = state.entries.filter(function(e) { return e.unread; }).length;
           renderLogs();
           updateBadge();
-        }
-
-        function setDemoState(demoState) {
-          state.demoState = demoState;
-          var buttons = demoStates.querySelectorAll('button');
-          buttons.forEach(function(btn) {
-            btn.classList.toggle('active', btn.getAttribute('data-state') === demoState);
-          });
-          loadDemoData();
-          if (demoState === 'collapsed') {
-            collapsePanel();
-          } else if (state.view === 'after') {
-            expandPanel();
-          }
         }
 
         // ===================== СОБЫТИЯ =====================
@@ -1150,7 +1014,6 @@
           state.view = 'before';
           btnBefore.classList.add('active');
           btnAfter.classList.remove('active');
-          demoStates.hidden = true;
           hidePanel();
         });
 
@@ -1158,12 +1021,6 @@
           state.view = 'after';
           btnAfter.classList.add('active');
           btnBefore.classList.remove('active');
-          demoStates.hidden = false;
-          // Автоматически раскрываем панель для демонстрации
-          state.demoState = 'normal';
-          demoStates.querySelectorAll('button').forEach(function(btn) {
-            btn.classList.toggle('active', btn.getAttribute('data-state') === 'normal');
-          });
           loadDemoData();
           expandPanel();
         });
@@ -1182,17 +1039,10 @@
 
         logsClear.addEventListener('click', clearLogs);
 
-        // Фильтры
+        // Фильтры (два)
         document.querySelectorAll('.filter-btn').forEach(function(btn) {
           btn.addEventListener('click', function() {
             setFilter(btn.getAttribute('data-filter'));
-          });
-        });
-
-        // Демо-состояния
-        demoStates.querySelectorAll('button').forEach(function(btn) {
-          btn.addEventListener('click', function() {
-            setDemoState(btn.getAttribute('data-state'));
           });
         });
 
