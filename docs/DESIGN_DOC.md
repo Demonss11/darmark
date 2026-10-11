@@ -1,14 +1,10 @@
 # DESIGN_DOC — darmark
 
-> **Тип: нормативная спецификация целевого состояния.** Документ описывает архитектуру, которой
-> обязана следовать кодовая база; он не описывает текущее состояние, ход работ и результаты
-> измерений. Продукт — лёгкий Markdown-редактор с плагинным UX «открыл `.lua` — поправил — работает».
+> **Тип: нормативная спецификация целевого состояния.** Описывает архитектуру, которой обязана следовать кодовая база; не описывает текущее состояние, ход работ и измерения. Продукт — лёгкий Markdown-редактор с плагинным UX «открыл `.lua` — поправил — работает».
 >
-> **Правила чистоты:**
-> - трассировка решений и измерений — только §16 и `docs/adr/*` / `docs/proto/FINDINGS.md`;
-> - в теле нет номеров фактов FINDINGS, чисел измерений, статусов принятия и процессного нарратива;
-> - нумерация разделов §0–§17 **заморожена**: на неё ссылаются ADR (§7.1, §10, §11.4, §14, §16);
-> - дорожная карта — `docs/ROADMAP.md`.
+> **Правила чистоты:** трассировка решений и измерений — только §16 и `docs/adr/*` / `docs/proto/FINDINGS.md`; в теле нет номеров фактов FINDINGS, чисел измерений, статусов принятия и процессного нарратива; нумерация §0–§17 **заморожена** (ссылки ADR: §7.1, §10, §11.4, §14, §16); бэклог идей — `docs/BACKLOG.md`.
+>
+> **Детали вынесены:** host-API, манифест, CLI — `docs/PLUGIN_API.md`; гайд и примеры — `docs/PLUGIN_GUIDE.md`; обоснования — `docs/adr/*`; механика песочницы — навык `plugin-sandbox`.
 
 ---
 
@@ -18,27 +14,25 @@
 
 | # | Ограничение / допущение | Обоснование |
 |---|---|---|
-| D1 | Плагинный рантайм — `mlua` 0.12 + vendored Lua 5.5; LuaJIT и wasmi не используются | Один лёгкий рантайм; текстовый скрипт правится без пересборки. Wasmi отклонён: платит размером и сложностью за экосистему языков, которая не нужна. LuaJIT запрещён: `ffi` даёт доступ к произвольному C — дыра в песочнице. |
-| D2 | Preview — встроенный тир-1 провайдер на хосте, не плагин | Горячий путь (каждый debounce) недопустимо гнать через интерпретатор; плагинная система доказывается на холодных плагинах. |
-| D3 | Протокол плагинов — вызовы host-функций с JSON-совместимым конвертом; между хостом и Lua-плагином транспорт — stdio (граница процесса) | JSON-RPC не нужен как обязательный транспорт; конверт `Request`/`Response`/`Error` — единый формат данных (§7). |
-| D4 | `Pane = { views: ViewId[], active: ViewId }` закладывается сразу | Иначе вкладки потребуют переделки модели данных, а не только UI. |
-| D5 | Владелец текста и undo-стека — Rust `Document` | Плагинный `apply_edit` требует единой точки правок с ревизиями. |
-| D6 | Размер базы ≤ 6 МБ; «нулевая база»: ни одного встроенного `.lua`/`.wasm` в дистрибутиве | Размер — продуктовая метрика. Плагины не уменьшают базу, а ограничивают её будущий рост. |
-| D7 | Единая точка санитизации на хосте; SVG — allowlist-подмножество; `data-p-<pluginid>-*` переживают санитизацию | Иначе диаграммные/интерактивные плагины невозможны. |
-| D8 | Имя продукта `darmark`: identifier `dev.darmark.app`, productName `darmark`, каталог `%APPDATA%/darmark/` | Имя обязано быть согласовано во всех артефактах и e2e-фикстурах. |
-| D9 | Лимиты памяти плагина — средствами рантайма/ОС; собственные аллокаторы и арены (`bumpalo`) не применяются | См. §10; отклонение арен — §16 (ADR-16). |
-| D10 | Язык документации — русский (код, комментарии, ТЗ, ADR); публичный API-референс — русский, en-перевод отложен | — |
-| D11 | Порядок принятия: решения фиксируются этим документом, проверяются измерительным стендом, затем оформляются как ADR | ADR предшествуют реализации; трассировка — §16, дорожная карта — `docs/ROADMAP.md` |
-| D12 | Excel-таблицы не развиваются; существующий функционал `tables.ts` сохраняется и остаётся рабочим | Размер усилий не окупается; приоритет — плагинная платформа и Document/View/Pane. |
-| D13 | Только Lua 5.5; сравнение с 5.4 не планируется | 5.5 даёт требуемые возможности (§6.1.1). |
-| D14 | Транспорт host↔child — stdio с JSON-совместимым конвертом; кадр `u32 LE длина \|\| JSON` | Единый конверт для данных и dev-режима; не требует дополнительной библиотеки поверх пайпа |
-| D15 | Результаты измерений (размер, память, производительность) фиксируются в `docs/proto/FINDINGS.md` | Нормативная спецификация не содержит чисел измерений; трассировка — §16 |
-| D16 | Изоляция плагинов — отдельный дочерний процесс; GUI-хост без `mlua`, на `panic = "abort"` | Убирает хрупкость in-process (panic-стратategия, оверхед hook, патч `pcall`, C-ABI) и даёт изоляцию отказов. In-process `unwind` отклонён (размер ломает D6), in-process C-hook — отклонён (хрупкость). См. §6, §10, §11.4. |
-| D17 | `rawget`/`rawset` чистятся из `BASE` вместе с `load`/`collectgarbage` | Не нужны плагину и снимают обход санитизации метатаблицами. |
+| D1 | Плагинный рантайм — `mlua` 0.12 + vendored Lua 5.5; LuaJIT и wasmi не используются | один лёгкий рантайм; LuaJIT (`ffi` → произвольный C) и wasmi отклонены |
+| D2 | Preview — встроенный тир-1 провайдер на хосте, не плагин | горячий путь (debounce) не гнать через интерпретатор |
+| D3 | Протокол — вызовы host-функций с JSON-совместимым конвертом; транспорт хост↔Lua — stdio (граница процесса) | JSON-RPC не обязателен; конверт `Request`/`Response`/`Error` — единый формат (§7) |
+| D4 | `Pane = { views: ViewId[], active: ViewId }` закладывается сразу | иначе вкладки потребуют переделки модели данных |
+| D5 | Владелец текста и undo-стека — Rust `Document` | `apply_edit` требует единой точки правок с ревизиями |
+| D6 | База ≤ 6 МБ; «нулевая база»: ни одного встроенного `.lua`/`.wasm` в дистрибутиве | размер — продуктовая метрика |
+| D7 | Единая точка санитизации на хосте; SVG — allowlist-подмножество; `data-p-<pluginid>-*` переживают санитизацию | иначе диаграммные/интерактивные плагины невозможны |
+| D8 | Имя `darmark`: identifier `dev.darmark.app`, productName `darmark`, каталог `%APPDATA%/darmark/` | имя согласовано во всех артефактах и e2e-фикстурах |
+| D9 | Лимиты памяти плагина — средствами рантайма/ОС; собственные аллокаторы и арены (`bumpalo`) не применяются | см. §10; ADR-16 |
+| D10 | Язык документации — русский; публичный API-референс — русский, en-перевод отложен | — |
+| D11 | Порядок принятия: решения фиксируются документом → проверяются стендом → оформляются как ADR | ADR предшествуют реализации; трассировка — §16 |
+| D12 | Excel-таблицы не развиваются; функционал `tables.ts` сохраняется рабочим | приоритет — плагинная платформа и Document/View/Pane |
+| D13 | Только Lua 5.5; сравнение с 5.4 не планируется | 5.5 даёт требуемые возможности (§6.1.1) |
+| D14 | Транспорт host↔child — stdio с JSON-конвертом; кадр `u32 LE длина \|\| JSON` | единый конверт; без доп. библиотеки поверх пайпа |
+| D15 | Результаты измерений (размер, память, производительность) — в `docs/proto/FINDINGS.md` | спецификация без чисел; трассировка — §16 |
+| D16 | Изоляция плагинов — отдельный дочерний процесс; GUI-хост без `mlua`, на `panic = "abort"` | изоляция отказов; in-process `unwind`/C-hook отклонены (§6, §10, §11.4) |
+| D17 | `rawget`/`rawset` чистятся из `BASE` вместе с `load`/`collectgarbage` | не нужны плагину и снимают обход санитизации метатаблицами |
 
-**Порядок принятия (D11).** Решения D1–D17 фиксируются этим документом, проверяются измерительным
-стендом, затем оформляются как ADR; ADR предшествуют реализации. Трассировка — §16, дорожная
-карта — `docs/ROADMAP.md`.
+**Порядок принятия (D11).** Решения D1–D17 фиксируются этим документом, проверяются измерительным стендом, затем оформляются как ADR; ADR предшествуют реализации. Трассировка — §16, бэклог идей — `docs/BACKLOG.md`.
 
 ---
 
@@ -62,43 +56,19 @@
 
 ## 2. Слои системы
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│ TS-оболочка (crates/app/src)                                │
-│  layout.ts · paneHost.ts · viewRegistry.ts · main.ts(корень) │
-│  тир-2 провайдеры: editorView, tablesView                    │
-│  previewView — тир-1 контракт, но встроен на хосте (D2)      │
-├─────────────────────────────────────────────────────────────┤
-│ IPC-граница (Tauri commands)                                 │
-│  документы · рендер · плагины · настройки                    │
-├─────────────────────────────────────────────────────────────┤
-│ Rust-хост (crates/app/src-tauri/src)                         │
-│  DocumentStore · RenderCache · Sanitizer                     │
-│  EventBus · SettingsStore                                    │
-│  plugins/: supervisor · manager · services · bus · scan ·    │
-│            settings · views                                  │
-├─────────────────────────────────────────────────────────────┤
-│ Child-хост плагина (отдельный процесс, stdio-RPC)            │
-│  PluginHost(mlua) · Lua 5.5 · Job Object                     │
-├─────────────────────────────────────────────────────────────┤
-│ Rust-ядро (crates/md-core) — чистые функции, без UI          │
-│  to_html · to_html_with · to_html_mapped · sanitize_html     │
-└─────────────────────────────────────────────────────────────┘
-```
+| Слой | Содержимое |
+|---|---|
+| TS-оболочка (`crates/app/src`) | `layout.ts`·`paneHost.ts`·`viewRegistry.ts`·`main.ts`(корень); тир-2: `editorView`, `tablesView`; `previewView` — тир-1, но встроен на хосте (D2) |
+| IPC-граница (Tauri commands) | документы · рендер · плагины · настройки |
+| Rust-хост (`src-tauri/src`) | `DocumentStore`·`RenderCache`·`Sanitizer`·`EventBus`·`SettingsStore`; `plugins/`: supervisor·manager·services·bus·scan·settings·views |
+| Child-хост плагина (отдельный процесс, stdio) | `PluginHost`(mlua)·Lua 5.5·Job Object |
+| Rust-ядро (`crates/md-core`) | чистые функции без UI: `to_html`·`to_html_with`·`to_html_mapped`·`sanitize_html` |
 
-Правила слоёв:
-1. `md-core` **не знает** про Tauri, Lua, плагины, состояние. Только `&str -> String`.
-2. Rust-хост владеет **данными** (текст, ревизии, кэш рендера, конфиг, реестр плагинов).
-3. TS владеет **представлением и взаимодействием** (dirty, selection, scroll, фокус, layout).
-4. TS не парсит Markdown и не санитизирует HTML — только рендерит готовый HTML и украшает DOM.
-5. Плагины не видят DOM. Единственный канал — host-функции.
-6. Плагин исполняется в отдельном процессе; хост не разделяет с ним адресное пространство (§10, §11.4).
+Правила слоёв: (1) `md-core` **не знает** про Tauri, Lua, плагины, состояние — только `&str -> String`; (2) Rust-хост владеет **данными** (текст, ревизии, кэш рендера, конфиг, реестр плагинов); (3) TS владеет **представлением и взаимодействием** (dirty, selection, scroll, фокус, layout); (4) TS не парсит Markdown и не санитизирует HTML — только рендерит готовый HTML и украшает DOM; (5) плагины не видят DOM, единственный канал — host-функции; (6) плагин исполняется в отдельном процессе, хост не разделяет с ним адресное пространство (§10, §11.4).
 
 ---
 
 ## 3. Контракт ядра `md-core`
-
-Публичный API ядра:
 
 ```rust
 pub const DEFAULT_OPTIONS: Options;
@@ -108,7 +78,7 @@ pub fn to_html_mapped(markdown: &str) -> String;
 pub fn to_html_mapped_with(markdown: &str, options: Options) -> String;
 ```
 
-`to_html_mapped` и `to_html_mapped_with` оборачивают топ-блоки в `<div class="md-block" data-md="start,end">` (байтовые смещения UTF-8). Это **замороженный контракт** — на нём держатся inspector и scrollsync. Вариант с `Options` нужен плагинам, чтобы управлять рендером, не форкая ядро.
+`to_html_mapped`/`to_html_mapped_with` оборачивают топ-блоки в `<div class="md-block" data-md="start,end">` (байтовые смещения UTF-8). Это **замороженный контракт** — на нём держатся inspector и scrollsync. Вариант с `Options` нужен плагинам, чтобы управлять рендером, не форкая ядро.
 
 ---
 
@@ -116,25 +86,16 @@ pub fn to_html_mapped_with(markdown: &str, options: Options) -> String;
 
 ### 4.1. Структуры
 ```rust
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(transparent)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)] #[serde(transparent)]
 pub struct DocumentId(String);
 
-pub struct DocumentStore {
-    docs: HashMap<DocumentId, Document>,
-    order: Vec<DocumentId>,
-}
+pub struct DocumentStore { docs: HashMap<DocumentId, Document>, order: Vec<DocumentId> }
 
 pub struct Document {
-    pub id: DocumentId,
-    pub path: Option<PathBuf>,
-    pub text: String,
-    pub rev: u64,
+    pub id: DocumentId, pub path: Option<PathBuf>, pub text: String, pub rev: u64,
     pub cached: Option<RenderCache>,      // (mapped, rev) -> html
-    pub undo: Vec<EditOp>,                 // D5
-    pub redo: Vec<EditOp>,
+    pub undo: Vec<EditOp>, pub redo: Vec<EditOp>,   // D5
 }
-
 // D5 (ADR-0028): операция — замена байтового диапазона UTF-8.
 pub struct EditOp { pub start: usize, pub removed: String, pub inserted: String }
 pub struct RenderCache { pub mapped: bool, pub rev: u64, pub html: String }
@@ -144,31 +105,23 @@ pub struct UndoResult { pub text: String, pub rev: u64, pub start: usize, pub en
 
 ### 4.2. Кто чем владеет
 
-| Данные | Владелец | Обоснование |
-|---|---|---|
-| текст документа | **Rust** | плагин не видит DOM; текст — единственный общий знаменатель |
-| `rev` (ревизия) | **Rust** | ключ кэша рендера и инвалидации индексов |
-| `id ↔ path` | **Rust** | сохранение, recent files, плагинные host-функции |
-| кэш HTML | **Rust** | ключ `(mapped, rev)` → html; TS отрендеренный HTML не хранит |
-| undo/redo стек | **Rust** | единая точка правок для `apply_edit` |
-| dirty-флаг | TS (проекция) | нужен синхронно на каждое нажатие |
-| selection, scroll, фокус | TS | UI-состояние, IPC на клавишу недопустим |
-| layout, panes, tabs | TS | UI-состояние |
+| Данные | Владелец | Данные | Владелец |
+|---|---|---|---|
+| текст документа | **Rust** | dirty-флаг | TS (проекция) |
+| `rev` (ревизия) | **Rust** | selection, scroll, фокус | TS |
+| `id ↔ path` | **Rust** | layout, panes, tabs | TS |
+| кэш HTML, undo/redo стек | **Rust** | | |
 
-**Правило:** TS-`docStore` — **проекция** Rust-стора, а не второй источник истины. Любая правка текста идёт через Rust.
+**Правило:** TS-`docStore` — **проекция** Rust-стора, а не второй источник истины; любая правка текста идёт через Rust.
 
 ### 4.3. Команды (IPC) — 1:1 к host-функциям плагинов
 
-| Команда | Сигнатура |
-|---|---|
-| `new_document` | `(text?) -> DocMeta` |
-| `open_document` | `(path) -> DocMeta` |
-| `update_document` | `(id, text, mapped) -> RenderResult` |
-| `render_document` | `(id, mapped) -> RenderResult` |
-| `save_document` | `(id, path?) -> DocMeta` |
-| `close_document` | `(id) -> ()` |
-| `undo_document` | `(id) -> UndoResult` |
-| `redo_document` | `(id) -> UndoResult` |
+| Команда | Сигнатура | Команда | Сигнатура |
+|---|---|---|---|
+| `new_document` | `(text?) -> DocMeta` | `save_document` | `(id, path?) -> DocMeta` |
+| `open_document` | `(path) -> DocMeta` | `close_document` | `(id) -> ()` |
+| `update_document` | `(id, text, mapped) -> RenderResult` | `undo_document` | `(id) -> UndoResult` |
+| `render_document` | `(id, mapped) -> RenderResult` | `redo_document` | `(id) -> UndoResult` |
 
 ```rust
 pub struct DocMeta { pub id: DocumentId, pub path: Option<String>, pub rev: u64, pub dirty_hint: bool }
@@ -184,26 +137,15 @@ pub struct UndoResult { pub text: String, pub rev: u64, pub start: usize, pub en
 ### 5.1. Идентификаторы
 ```ts
 type Brand<T, K extends string> = T & { readonly __b: K };
-export type DocumentId = Brand<string, "doc">;
-export type PaneId     = Brand<string, "pane">;
-export type ViewId     = Brand<string, "view">;
+export type DocumentId = Brand<string, "doc">;  export type PaneId = Brand<string, "pane">;
+export type ViewId = Brand<string, "view">;
 ```
 Строки, а не числа: единый формат с Rust (`#[serde(transparent)]`) и с Lua-плагинами (строковые ключи в таблицах).
 
 ### 5.2. Layout — дерево
 ```ts
-export interface Pane {
-  kind: "pane";
-  id: PaneId;
-  views: ViewId[];      // D4: модель под вкладки закладывается сразу
-  active: ViewId;
-}
-export interface Split {
-  kind: "split";
-  id: string;
-  dir: "row" | "column";
-  children: [LayoutNode, LayoutNode];
-}
+export interface Pane { kind: "pane"; id: PaneId; views: ViewId[]; active: ViewId }  // D4: модель под вкладки сразу
+export interface Split { kind: "split"; id: string; dir: "row" | "column"; children: [LayoutNode, LayoutNode] }
 export type LayoutNode = Pane | Split;
 const MAX_PANES = 2;    // ограничение v1
 ```
@@ -213,39 +155,27 @@ const MAX_PANES = 2;    // ограничение v1
 
 **Тир 1 — plugin-safe** (JSON на входе, HTML на выходе):
 ```ts
-export interface HtmlViewProvider {
-  readonly kind: ViewKind;
-  readonly title: string;
-  createView(ctx: ViewContext, opts: Json): HtmlView;
-}
-export interface HtmlView {
-  render(doc: DocumentSnapshot): Promise<void>;
-  dispose(): void;
-}
+export interface HtmlViewProvider { readonly kind: ViewKind; readonly title: string;
+  createView(ctx: ViewContext, opts: Json): HtmlView }
+export interface HtmlView { render(doc: DocumentSnapshot): Promise<void>; dispose(): void }
 ```
 
 **Тир 2 — built-in only** (полный DOM: редактор, Excel-таблицы, инспектор):
 ```ts
-export interface DomViewProvider {
-  readonly kind: ViewKind;
-  readonly title: string;
-  createView(ctx: ViewContext, host: HTMLElement, opts: Json): DomView;
-}
+export interface DomViewProvider { readonly kind: ViewKind; readonly title: string;
+  createView(ctx: ViewContext, host: HTMLElement, opts: Json): DomView }
 export interface DomView { activate(): void; deactivate(): void; dispose(): void }
 ```
 
-Preview реализуется как тир-1 провайдер, **встроенный на хосте** (D2).
+Preview реализуется как тир-1 провайдер, **встроенный на хосте** (D2). Детали контракта — ADR-0022.
 
 ### 5.4. ViewContext — единственная «песочница»
 ```ts
 export interface ViewContext {
-  readonly paneId: PaneId;
-  readonly viewId: ViewId;
-  document(): DocumentSnapshot | null;
-  edit(text: string): void;
+  readonly paneId: PaneId; readonly viewId: ViewId;
+  document(): DocumentSnapshot | null; edit(text: string): void;
   render(text: string, mapped: boolean): Promise<RenderResult>;
-  status(msg: string): void;
-  openExternal(url: string): void;
+  status(msg: string): void; openExternal(url: string): void;
   onDocument(cb: (d: DocumentSnapshot) => void): () => void;
 }
 ```
@@ -253,48 +183,20 @@ export interface ViewContext {
 
 ### 5.5. Модульная карта
 
-| Модуль | Ответственность |
+| Группа | Модули |
 |---|---|
-| `main.ts` | композиционный корень: собрать всё, повесить тулбар |
-| `ids.ts` | брендированные id + генераторы |
-| `docStore.ts` | проекция Rust-стора, подписки, dirty |
-| `layout.ts` | дерево, операции, валидация |
-| `paneHost.ts` | монтирование панелей в DOM, фокус |
-| `viewRegistry.ts` | реестр провайдеров тир-1/тир-2 |
-| `editorView.ts` | тир-2 редактор (textarea) |
-| `previewView.ts` | тир-1 preview |
-| `linkController.ts` | inspector + scrollsync на общем `RenderIndex` |
-| `mapping.ts` | карты «байты ↔ code units» |
-| `tables.ts` | украшение таблиц (функционал заморожен, D12) |
-| `tauri.ts` | IPC-обёртки |
-| `drawer.ts` | правый модальный дровер плагинов: видимость, focus-trap, `inert` на `#app` |
-| `statusBar.ts` | статусбар: состояние, сообщения, позиция |
-| `fileActions.ts` | файловые операции (новый/открыть/сохранить) |
-| `shell.ts` | оболочка: палитра, диалоги, toast |
-| `formatActions.ts` | Markdown-обёртки над выделением |
-| `gutter.ts` | номера строк редактора |
-| `inspector.ts` | двусторонняя подсветка блоков |
-| `images.ts` | относительные src → asset-URL |
-| `scrollsync.ts` | синхронная прокрутка редактор ↔ превью |
-| `renderIndex.ts` | единый индекс на ревизию |
-| `palette.ts` | палитра команд (Ctrl+K) |
-| `dialog.ts` | модальная инфраструктура |
-| `toast.ts` | уведомления |
-| `pluginManager.ts` | панель плагинов, карточки, согласие |
-| `pluginViews.ts` | тир-1 представления плагинов |
-| `pluginStatusBar.ts` | per-plugin статусбар |
-| `pluginColor.ts` | цвета плагинов |
-| `logPanel.ts` | тело режима «Журнал» нижнего дока: буфер, подписка, рендер (ADR-0029/0030) |
-| `bottomDock.ts` | нижний док `#logs-panel`: режимы «Журнал»/«AI», свёртка, resize, триггеры (ADR-0030) |
-| `aiPanel.ts` | тело режима «AI»: чат, скиллы, диффы, согласие, **настройки провайдеров** (список `provider/model`; провайдеры LLM задаёт пользователь в `config.json`, `ai.providers`, ADR-0035; протокол OpenAI-совместимый, ADR-0032; HTTP-клиент `reqwest`/SChannel + SSE, ADR-0033; AI-рантайм в процессе GUI за швом `AiBackend`/`AiTransport`, включаемость `ai.enabled`/состояния, ADR-0034; ADR-0030) |
-| `resourceMonitor.ts` | мониторинг ресурсов: подписка на `resource-metrics`/`plugin-process-exited`, рендер `#logs-resources`, состояния orphan, пороги (ADR-0031) |
-| `sampleDocument.ts` | стартовый документ |
+| Композиция/оболочка | `main.ts`(корень), `shell.ts`(палитра, диалоги, toast), `palette.ts`(Ctrl+K), `dialog.ts`, `toast.ts`, `statusBar.ts`, `fileActions.ts`, `sampleDocument.ts` |
+| Идентификаторы/состояние/IPC | `ids.ts`, `docStore.ts`(проекция Rust-стора, подписки, dirty), `tauri.ts` |
+| Layout/pane/view | `layout.ts`, `paneHost.ts`, `viewRegistry.ts`, `editorView.ts`(тир-2 textarea), `previewView.ts`(тир-1) |
+| Редактор/рендер/связка | `formatActions.ts`, `gutter.ts`, `mapping.ts`, `renderIndex.ts`, `linkController.ts`(inspector+scrollsync), `inspector.ts`, `scrollsync.ts`, `images.ts`, `tables.ts`(заморожен, D12) |
+| Плагины | `drawer.ts`, `pluginManager.ts`(карточки, согласие), `pluginViews.ts`, `pluginStatusBar.ts`, `pluginColor.ts` |
+| Журнал/док/AI/мониторинг | `logPanel.ts`(ADR-0029/0030), `bottomDock.ts`(ADR-0030), `aiPanel.ts`(чат, скиллы, диффы, согласие, настройки `provider/model` — ADR-0030/0032/0033/0034/0035), `resourceMonitor.ts`(ADR-0031) |
 
 `linkController` строит **один** `RenderIndex` на `rev` и раздаёт его inspector и scrollsync.
 
 ### 5.6. Ограничения TS-слоя
 - Нативный undo textarea: программная смена `value` при переключении документа ломает undo-стек браузера; целевое решение — Rust-undo (D5).
-- Элементы, вешаемые в `document.body` (например, меню фильтров таблиц), обязаны иметь per-view подписку и `dispose()`.
+- Элементы в `document.body` (например, меню фильтров таблиц) обязаны иметь per-view подписку и `dispose()`.
 - E2E-контракты id: `id="editor"`/`id="preview"` — на элементах первичной панели; при двух панелях добавляются `data-pane`/`data-view`.
 
 ---
@@ -302,160 +204,37 @@ export interface ViewContext {
 ## 6. Плагинная система: Lua
 
 ### 6.1. Рантайм
-```toml
-mlua = { version = "0.12", features = ["lua55", "vendored"] }
-```
-- `vendored` — Lua 5.5 компилируется из исходников; C-тулчейн уже требуется для Tauri на Windows.
-- **LuaJIT запрещён**: `ffi` даёт доступ к произвольному C — дыра в песочнице.
-- Плагин компилируется `lua.load(src).set_name(name)`; на каждый плагин — **отдельный процесс и отдельное Lua-состояние** (изоляция глобальных). См. §10, §11.4.
+`mlua = { version = "0.12", features = ["lua55", "vendored"] }`: `vendored` — Lua 5.5 из исходников (C-тулчейн уже нужен для Tauri на Windows). **LuaJIT запрещён** (`ffi` → произвольный C — дыра в песочнице). Плагин компилируется `lua.load(src).set_name(name)`; на каждый плагин — **отдельный процесс и отдельное Lua-состояние**. См. §10, §11.4; референс — `docs/PLUGIN_API.md` §5.
 
 #### 6.1.1. Версия Lua: 5.5
 
-Требуемая версия — **Lua 5.5**. Она обязана давать:
+Требуется **Lua 5.5**: декларации глобальных (`global x`) делают опечатку ошибкой компиляции вместо тихого `nil`; компактные массивы укладывают документ в массив строк в лимит памяти; внешние строки отдают текст без копирования в Lua-кучу; доступен `table.create`. API-референс плагинов **обязан** быть под 5.5, не копия 5.1/5.4.
 
-| Возможность 5.5 | Зачем нужна |
-|---|---|
-| **Декларации глобальных переменных** (`global x`) | В скопе с явной декларацией неявные глобалы запрещены — опечатка становится ошибкой компиляции, а не тихим `nil`. |
-| **Компактные массивы** | Крупные массивы заметно компактнее — плагин, читающий документ в массив строк, укладывается в лимит памяти. |
-| **Внешние строки** (память не управляется Lua) | Текст документа отдаётся плагину без копирования в Lua-кучу. |
+**Библиотеки** (`Lua::new_with`): включаются `STRING`, `TABLE`, `MATH`, `UTF8`; `BASE` — неявно, **с чисткой**; **не** включаются `COROUTINE` (API синхронный), `OS`/`IO` (только через host-функции с permission), `PACKAGE` (нет `require`), `DEBUG`. Чистка: удалить `load`, `loadfile`, `dofile`, `collectgarbage`, `rawget`, `rawset`; `print` → `host.log("info", ...)` (D17).
 
-Также доступен `table.create`. API-референс плагинов **обязан** быть написан явно под 5.5, а не скопирован из материалов под 5.1/5.4.
-
-**Набор стандартных библиотек** — задаётся через `Lua::new_with(StdLib, LuaOptions)` (перечисляются только включаемые библиотеки):
-
-| Библиотека | Включаем | Причина |
-|---|---|---|
-| `BASE` | да, **с чисткой** | `pairs`, `ipairs`, `type`, `tostring`, `error`, `pcall`, метатаблицы строк |
-| `STRING`, `TABLE`, `MATH`, `UTF8` | да | базовые операции, `utf8` нужен для Markdown; `TABLE` даёт `table.create` |
-| `COROUTINE` | **нет** | плагинный API синхронный; корутины вне контракта |
-| `OS`, `IO` | **нет** | файлы и время — только через host-функции с permission |
-| `PACKAGE` | **нет** | нет `require`; модули подключает хост |
-| `DEBUG` | **нет** | библиотека не предоставляется плагину |
-
-**Чистка после загрузки `BASE`:** удалить `load`, `loadfile`, `dofile`, `collectgarbage`, `rawget`, `rawset`; `print` перенаправить в `host.log("info", ...)`.
-
-> **Уточнение.** В `mlua` 0.12 отдельного флага `BASE` нет: базовая библиотека грузится **неявно**. Поэтому в `new_with` передаются только `STRING|TABLE|MATH|UTF8`, а опасные входы базовой библиотеки удаляются из глобалов после создания состояния (строка `BASE` выше и D17).
+> **Уточнение.** В `mlua` 0.12 флага `BASE` нет: базовая библиотека грузится **неявно**, поэтому в `new_with` передаются только `STRING|TABLE|MATH|UTF8`, а опасные входы базовой библиотеки удаляются из глобалов после создания состояния.
 
 ### 6.2. Модель: плагин = код, инстанс = привязка
-```
-plugin (код)         = манифест + .lua файл(ы)
-instance (состояние) = привязка к view/подписке; слот состояния хранит ХОСТ
-```
-Хост хранит таблицу `PluginState` и передаёт её плагину как аргумент — плагины остаются **stateless по коду**, состояние живёт в хосте. Это упрощает `dispose()` и перезагрузку.
+`plugin = манифест + .lua`; `instance = привязка к view/подписке`. Состояние хранит хост (таблица `PluginState` передаётся плагину аргументом) — плагины **stateless по коду**, что упрощает `dispose()` и перезагрузку.
 
 ### 6.3. API плагина (host-функции)
 
-**Документ:**
-```lua
-host.get_document_len(doc_id)                -> integer
-host.get_document_range(doc_id, start, len)  -> string   -- основной путь чтения
-host.get_document_version(doc_id)            -> integer
-host.apply_edit(doc_id, start, stop, text)   -- только с permission document:write
-host.get_document_text(doc_id)               -> string   -- вспомогательный, не основной
-```
+Референс и сигнатуры — `docs/PLUGIN_API.md` §3. Группы: **документ** (`get_document_len`, `get_document_range` — основной путь чтения, `get_document_version`, `get_document_text`, `apply_edit` с `document:write`); **view** (`get_view_state` → `{scroll, cursor}`, `set_view_content` — тир-1, `on_event`); **хост** (`log(level, message)` → stderr, `show_message` с `ui:statusbar`, `export_html` — нативный диалог); **Lua-нативные** (`md.to_html`/`md.to_html_mapped`, `json.encode`/`decode`); **настройки** (`get_setting`/`set_setting` — только своего плагина, §12).
 
-**View:**
-```lua
-host.get_view_state(view_id)     -> table {scroll, cursor}
-host.set_view_content(view_id, html)        -- только для тир-1 view
-host.on_event(view_id, event_name, handler) -- подписка на события view
-```
-
-**Хост:**
-```lua
-host.log(level, message)         -- level: "debug"|"info"|"warn"|"error" -> stderr хоста
-host.show_message(text)          -- уведомление в статусбар (permission ui:statusbar)
-host.export_html(text)           -- (ok, err): нативный диалог сохранения; filesystem:write не нужен
-```
-
-**Lua-нативные удобства** (регистрируются хостом, не требуют JSON-прослойки):
-```lua
-md.to_html(text, opts?)          -> string   -- обёртка над md-core
-md.to_html_mapped(text, opts?)   -> string
-json.encode(value) / json.decode(s)
-```
-
-> **Контракт ошибок host-функций.** Функции, зависящие от permission, возвращают в Lua два
-> значения `(value, err)`: при успехе `err = nil`, при отказе `value = nil`, а `err` — таблица
-> `{ code, message, permission? }`. `permission_denied` приходит плагину **значением**, а не
-> исключением Lua (§8): обработчик продолжает работу и сам решает, что делать. `host.log`,
-> `md.*`, `json.*` ошибок permission не несут и возвращают одно значение.
+> **Ошибки host-функций.** Функции с permission возвращают `(value, err)`: успех — `err = nil`; отказ — `value = nil`, `err = { code, message, permission? }`. `permission_denied` приходит **значением**, не исключением Lua (§8). `host.log`, `md.*`, `json.*` ошибок permission не несут и возвращают одно значение.
 
 ### 6.4. Точки расширения (`contributes`)
-Манифест декларирует, что плагин добавляет:
-
-> **Примечание:** `contributes.toolbar` объявляется, но `ui:toolbar` не реализуется — кнопка
-> появится только после реализации соответствующего разрешения (§8).
-```json
-{
-  "id": "word-count",
-  "name": "Word Count",
-  "version": "1.0.0",
-  "api_version": 1,
-  "entry": "main.lua",
-  "permissions": ["document:read", "view:create", "ui:statusbar"],
-  "contributes": {
-    "views":     [{ "kind": "wordcount", "title": "Статистика", "tier": 1 }],
-    "commands":  [{ "id": "wordcount.count", "title": "Посчитать слова", "keybinding": "Ctrl+Alt+W" }],
-    "statusbar": [{ "id": "wordcount.status", "text": "Слова: {n}" }],
-    "toolbar":   [{ "id": "wordcount.btn", "title": "Статистика", "command": "wordcount.count" }],
-    "settings":  { "type": "object", "properties": { "ignore_code": { "type": "boolean", "default": true } } }
-  }
-}
-```
+Манифест декларирует `views` (тир-1), `commands` (с `keybinding`), `statusbar`, `toolbar`, `settings` (JSON-схема); формат и пример — `docs/PLUGIN_API.md` §1–§2. `contributes.toolbar` объявляется, но `ui:toolbar` не реализуется (§8).
 
 ### 6.5. Пример плагина (эталон документации)
-
-Подписчик получает `(name, payload)`; `doc_id` (и `rev`) лежат в `payload`, а не
-передаются отдельным аргументом:
-
-```lua
--- word-count/main.lua
-local function count_words(text)
-  local n = 0
-  for _ in text:gmatch("%S+") do n = n + 1 end
-  return n
-end
-
-function on_activate(ctx)
-  ctx.subscribe("document:changed", function(name, payload)
-    local doc_id = payload.doc_id
-    local len = host.get_document_len(doc_id)
-    local text = host.get_document_range(doc_id, 0, len)
-    host.show_message("Слова: " .. count_words(text))
-  end)
-end
-
-function on_deactivate(ctx) end
-```
-
-Команды из `contributes.commands` приходят тем же каналом подписки. Событие
-`command:invoked` несёт `{command_id, doc_id}`: у плагина нет собственного
-«активного» документа, поэтому текущий `doc_id` передаётся вместе с командой.
-
-```lua
--- export-html/main.lua
-function on_activate(ctx)
-  ctx.subscribe("command:invoked", function(name, payload)
-    if payload.command_id == "export-html.export" then
-      local doc_id = payload.doc_id
-      local len = host.get_document_len(doc_id)
-      local text = host.get_document_range(doc_id, 0, len)
-      host.export_html(md.to_html(text))
-    end
-  end)
-end
-```
+Примеры (`word-count`, `export-html`) и разбор — `docs/PLUGIN_GUIDE.md` §7, `docs/PLUGIN_API.md` §7. Норма: подписчик получает `(name, payload)`; `doc_id` (и `rev`) — в `payload`; команды из `contributes.commands` приходят тем же каналом, `command:invoked` несёт `{command_id, doc_id}`.
 
 ### 6.6. Жизненный цикл
 ```
 scan(plugins_dir) -> validate(manifest) -> load(src) -> on_activate(ctx)
-                                                   -> [события/команды]
-                                                   -> on_deactivate(ctx) -> unload
+                 -> [события/команды] -> on_deactivate(ctx) -> unload
 ```
-- Перезагрузка: `unload` старого инстанса → `load` нового файла с диска. **Без перезапуска приложения.**
-- Ошибка загрузки (синтаксис, отсутствует `on_activate`) → плагин помечается `failed`, показывается сообщение, приложение работает.
-- Автоперезагрузка по изменению файла (fs-watch) — опционально, off by default.
+Перезагрузка — `unload` → `load` нового файла с диска, **без перезапуска приложения**. Ошибка загрузки (синтаксис, нет `on_activate`) → плагин `failed` + сообщение, приложение работает. Автоперезагрузка (fs-watch) — off by default.
 
 ---
 
@@ -468,10 +247,10 @@ scan(plugins_dir) -> validate(manifest) -> load(src) -> on_activate(ctx)
 | **Хост ↔ Lua-плагин** | тот же JSON-совместимый конверт | stdio, граница процесса |
 | **Dev** | тот же конверт как JSON-строки | stdio (`darmark --debug-plugin <path>`) |
 
-Конверт `Request`/`Response`/`Error` — единый формат данных; JSON-RPC не является обязательным транспортом. Детали и обоснование — §16 (ADR-0021).
+Конверт `Request`/`Response`/`Error` — единый формат данных; JSON-RPC не является обязательным транспортом. Детали — §16 (ADR-0021).
 
 ### 7.2. Версионирование
-Поле `api_version` в манифесте. Хост отвергает плагин с `api_version > HOST_API_VERSION`. Обратная совместимость host-функций — семантическое версионирование, удаление функций запрещено без мажора.
+Поле `api_version` в манифесте. Хост отвергает плагин с `api_version > HOST_API_VERSION`. Обратная совместимость host-функций — семантическое версионирование, удаление функций запрещено без мажора. Политика совместимости (двухступенчатая депрекация) — ADR-0027.
 
 ---
 
@@ -510,27 +289,18 @@ scan(plugins_dir) -> validate(manifest) -> load(src) -> on_activate(ctx)
 | `view:focus` | `view_id` |
 | `command:invoked` | `command_id`, `doc_id` |
 
-> **События фронт-шины (оболочка), аддитивно:** `plugin-status-changed`, `document-event`,
-> `log-entry` (ADR-0029 §2.4); `resource-metrics`, `plugin-process-exited` (ADR-0031 §2.4).
-> Не входят в контракт host↔child и `HOST_API_VERSION`; канал host → front, мажор не поднимают.
+> **События фронт-шины (оболочка), аддитивно:** `plugin-status-changed`, `document-event`, `log-entry` (ADR-0029 §2.4); `resource-metrics`, `plugin-process-exited` (ADR-0031 §2.4). Не входят в контракт host↔child и `HOST_API_VERSION`; канал host → front, мажор не поднимают.
 
 ### 9.2. Модель доставки: notify-only + pull
-Событие **не несёт содержимое документа**. Оно несёт `doc_id` и `rev`. Плагин, если ему нужен текст, вызывает `get_document_range`/`get_document_text`. Причины:
-1. Не дублировать большие строки в каждый подписчик.
-2. Плагин может пропустить события (backpressure) без потери данных.
+Событие **не несёт содержимое документа** — только `doc_id` и `rev`; плагин при необходимости вызывает `get_document_range`/`get_document_text` (нет дублирования больших строк в подписчиков; события можно пропустить без потери данных).
 
 ### 9.3. Коалесинг и порядок
 - События по одному `doc_id` **коалесцируются по `rev`**: доставляется только последняя ревизия за тик.
 - Порядок доставки: FIFO внутри одного типа события.
 - Подписка возвращает `unsubscribe`-функцию; `dispose()` view/плагина **обязан** отписаться (иначе — утечка на закрытой DOM-ноде).
-- При (ре)старте плагина хост **адресно** (только этому плагину) переиздаёт `document:opened`
-  для последнего документа, о котором публиковались `document:opened`/`document:changed`. Это
-  нужно, когда тир-1 view наполняется по подписке, а не в `on_activate`: после
-  `reload`/`set_plugin_enabled(true)`/`set_plugin_permissions` view перерегистрируется с пустым
-  HTML, и без переиздания вкладка осталась бы пустой.
+- При (ре)старте плагина хост **адресно** переиздаёт `document:opened` для последнего документа, о котором публиковались `document:opened`/`document:changed` — иначе тир-1 view, наполняемый по подписке, после `reload`/`set_plugin_enabled(true)`/`set_plugin_permissions` остался бы пустым.
 
 ### 9.4. Обратная маршрутизация из тир-1 view
-Как клик/ввод внутри HTML-плагина возвращается в плагин:
 ```
 клик по [data-p-<pluginid>-action="foo"]
   -> делегированный слушатель на контейнере view (один на view)
@@ -584,7 +354,7 @@ scan(plugins_dir) -> validate(manifest) -> load(src) -> on_activate(ctx)
 |---|---|
 | SVG | allowlist-подмножество: `svg`, `g`, `path`, `rect`, `circle`, `line`, `polyline`, `text`, `defs`, `use` — без событий и внешних ссылок; иначе растровый fallback |
 | Атрибуты плагина | `data-p-<pluginid>-*` переживают санитизацию (единственная правка allowlist ядра) |
-| Классы | атрибут `class` входит в глобальный allowlist и сохраняется как есть; для плагинов зарезервирован префикс `p-<pluginid>-`. Ужесточение до «только `p-*`» **не выполняется** |
+| Классы | `class` входит в глобальный allowlist и сохраняется как есть; для плагинов зарезервирован префикс `p-<pluginid>-`. Ужесточение до «только `p-*`» **не выполняется** |
 | Схемы URL | `http`, `https`, `mailto`, `tel`; плагинам `http` в `src`/`href` дополнительно запрещён без permission `network` |
 
 ### 11.3. CSP
@@ -601,12 +371,9 @@ scan(plugins_dir) -> validate(manifest) -> load(src) -> on_activate(ctx)
 ## 12. Настройки, состояние, recent files
 
 - **Конфиг приложения**: `%APPDATA%/darmark/config.json`, владелец — Rust `SettingsStore`.
-- **AI-провайдеры**: секция `ai` — map `ai.providers` (ключ — id провайдера; поля `name`/`env`/
-  `package`/`settings` (`baseURL`/`apiKey`/`timeout`)/`headers`/`body`/`models`) + активная пара
-  `ai.active_provider`/`ai.active_model`; ссылка на модель — `provider/model` (ADR-0035; структура —
-  раздел **Custom** `opencode.json`, <https://opencode.ai/v2/docs/providers/#custom>).
+- **AI-провайдеры**: секция `ai` — map `ai.providers` (ключ — id провайдера; поля `name`/`env`/`package`/`settings` (`baseURL`/`apiKey`/`timeout`)/`headers`/`body`/`models`) + активная пара `ai.active_provider`/`ai.active_model`; ссылка на модель — `provider/model` (ADR-0035; структура — раздел **Custom** `opencode.json`, <https://opencode.ai/v2/docs/providers/#custom>).
 - **Плагины**: `%APPDATA%/darmark/plugins/<id>/` (манифест + `.lua`); постоянные настройки плагина — `%APPDATA%/darmark/plugin-settings/<id>.json` (per-plugin JSON-объект; UI-схема `contributes.settings` рендерится в менеджере — секция «Настройки», S5b).
-- **Состояние окна**: размер/позиция окна, layout (дерево), открытые документы, активная панель — восстанавливается между сессиями.
+- **Состояние окна**: размер/позиция, layout (дерево), открытые документы, активная панель — восстанавливается между сессиями.
 - **Recent files**: список путей + время, лимит 20.
 - Доступ плагина к настройкам: `host.get_setting(key)`, `host.set_setting(key, value)` — только своего плагина.
 
@@ -678,8 +445,7 @@ scan(plugins_dir) -> validate(manifest) -> load(src) -> on_activate(ctx)
 ## 14. Бюджет размера
 
 - **База (GUI-хост) — ≤ 6 МБ**; size-gate в CI: размер release-exe ≤ 6 МБ.
-- **AI-клиент (ADR-0033):** ориентир — **маргинальный прирост ≤1.0 МБ** (пересмотрен с ≤0.5 МБ по
-  F55–F58: `reqwest`+SChannel +0.71 МиБ standalone); общий gate ≤6 МБ не меняется.
+- **AI-клиент (ADR-0033):** ориентир — **маргинальный прирост ≤1.0 МБ** (пересмотрен с ≤0.5 МБ по F55–F58: `reqwest`+SChannel +0.71 МиБ standalone); общий gate ≤6 МБ не меняется.
 - GUI-хост **не содержит `mlua`**; Lua-рантайм — в отдельном child-бинарнике.
 - Пользовательские `.lua` в дистрибутив не входят (нулевая база, D6).
 - Собственные аллокаторы/арены не добавляются (D9).
@@ -690,7 +456,7 @@ scan(plugins_dir) -> validate(manifest) -> load(src) -> on_activate(ctx)
 
 ## 15. Порядок работ
 
-Дорожная карта — `docs/ROADMAP.md`. Порядок принятия решений — §0 (проверочный стенд → ADR → реализация).
+Бэклог идей — `docs/BACKLOG.md`. Порядок принятия решений — §0 (проверочный стенд → ADR → реализация).
 
 ---
 
