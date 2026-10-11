@@ -11,8 +11,8 @@
 > шов `AiBackend`/`AiTransport`, сайдкар отложен; включаемость `ai.enabled`; MCP — вне MVP);
 > `crates/app/src/docStore.ts`; `crates/app/src-tauri/src/state.rs`;
 > `crates/app/src-tauri/src/plugins/`; `crates/app/src-tauri/src/plugins/services.rs`
-> **Референс протокола:** `ideas/openai_deepseek.txt` — фрагмент OpenAI-совместимого клиента
-> (`base_url = https://routerai.ru/api/v1`, модель `deepseek/deepseek-v4.1-flash`).
+> **Референс протокола:** OpenAI-совместимый клиент (`base_url = https://routerai.ru/api/v1`,
+> модель `deepseek/deepseek-v4.1-flash`).
 >
 > **Решения PM (11.10.2026):** стриминг (SSE) — **в MVP (Фаза 1)**; лимиты приняты как есть
 > (§10.1); порядок вкладок дока — «**Журнал | Мониторинг | AI-ассистент**»; **Фаза 2 (harness
@@ -159,7 +159,7 @@ ADR/спайк).
 **Протокол и точка.** Протокол — **OpenAI-совместимый** (`POST /chat/completions`, Bearer-токен, формат
 `messages`/`choices[].message.content`), поэтому клиент может быть любым OpenAI-совместимым. Базовая
 точка — **`https://routerai.ru/api/v1`** (сторонний роутер; далее запрос уходит к выбранной модели).
-Референс-фрагмент — `ideas/openai_deepseek.txt`.
+Референс протокола — OpenAI-совместимый вызов (`base_url`, модель ниже).
 
 **Конфигурация провайдера** (в `%APPDATA%/darmark/config.json` — существующий settings-store D11,
 секция `ai`):
@@ -1197,7 +1197,7 @@ pub struct AiValidationResult {
 - `docs/adr/0033-ai-http-client-streaming.md` — HTTP-клиент `reqwest`+native-tls, TLS — системный SChannel (не rustls), стриминг — SSE; бюджет AI-клиента ≤1.0 МиБ
 - `docs/adr/0034-ai-runtime-placement.md` — размещение AI-рантайма: **в процессе GUI** (`src-tauri/src/ai/`), шов `AiBackend`/`AiTransport`, сайдкар отложен; включаемость `ai.enabled`; `plugin-cli` — инструмент, не рантайм; MCP — вне MVP (ADR этого ТЗ)
 - `docs/proto/FINDINGS.md` §10 (F55–F58) — спайк AI-клиента: размер клиентов, вклад TLS, SSE-стриминг (mock-сервер)
-- `ideas/openai_deepseek.txt` — референс-фрагмент OpenAI-совместимого клиента (`base_url` routerai.ru, модель `deepseek/deepseek-v4.1-flash`)
+- Референс OpenAI-совместимого клиента (фрагмент удалён): `base_url` routerai.ru, модель `deepseek/deepseek-v4.1-flash`
 - `crates/app/src/docStore.ts` — документный стор
 - `crates/app/src-tauri/src/state.rs` — DocumentStore, apply_edit
 - `crates/app/src-tauri/src/plugins/` — плагинная подсистема
