@@ -19,26 +19,29 @@ async function activeTabIndex() {
   });
 }
 
+/// Дожидается точного числа вкладок: создание/закрытие — асинхронный IPC
+/// (`newDocument`/`closeTab`), поэтому проверяем с ожиданием, а не мгновенно.
+/// Поддерживаем только #tab-strip — единственный контейнер вкладок.
+async function expectTabCount(selector, expected) {
+  await browser.waitUntil(
+    async () => (await tabCount()) === expected,
+    {
+      timeout: 5000,
+      timeoutMsg: `В ${selector} не стало ${expected} вкладок`,
+    }
+  );
+}
+
 Then("в {string} {int} вкладка", async (selector, expected) => {
-  // Поддерживаем только #tab-strip — единственный контейнер вкладок.
-  const count = await tabCount();
-  if (count !== expected) {
-    throw new Error(
-      `В ${selector} ${count} вкладок, ожидалось ${expected}`
-    );
-  }
+  await expectTabCount(selector, expected);
 });
 
 Then("в {string} {int} вкладки", async (selector, expected) => {
-  const count = await tabCount();
-  if (count !== expected) {
-    throw new Error(
-      `В ${selector} ${count} вкладок, ожидалось ${expected}`
-    );
-  }
+  await expectTabCount(selector, expected);
 });
 
 When("я создаю новый документ", async () => {
+  const before = await tabCount();
   const ok = await browser.execute(() => {
     const btn = document.getElementById("btn-new");
     if (!btn) return false;
@@ -46,13 +49,10 @@ When("я создаю новый документ", async () => {
     return true;
   });
   if (!ok) throw new Error("Кнопка #btn-new не найдена");
-  // Даём store.newDocument() завершить IPC и обновить вкладки
+  // Даём store.newDocument() завершить IPC и обновить вкладки: новая ровно одна.
   await browser.waitUntil(
-    async () => {
-      const count = await tabCount();
-      return count >= 1; // минимальная проверка; точное число — в Then
-    },
-    { timeout: 5000, timeoutMsg: "Вкладка не создалась" }
+    async () => (await tabCount()) === before + 1,
+    { timeout: 5000, timeoutMsg: "Новая вкладка не создалась" }
   );
 });
 
