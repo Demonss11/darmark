@@ -43,7 +43,7 @@ Best-effort observability: потеря записей журнала не кр�
 
 ### В scope
 
-1. **Панель-дровер «Журнал»** — правый немодальный дровер (440px), переиспользующий паттерн дровера плагинов (ADR-0024 §2.2).
+1. **Панель-консоль «Журнал»** — сворачивающаяся панель на всю ширину над `#statusbar`, **внутри layout** (сжимает рабочую область, не перекрывает контент). Развёрнутое/свёрнутое состояние, resize по высоте.
 2. **Лента событий** — ring buffer на фронте, последние 200 записей, автопрокрутка с заморозкой.
 3. **Источники событий** — существующие Tauri-события + новые события Rust (обогащение payload).
 4. **Бейдж `#log-badge`** — счётчик непрочитанных событий, цвет по уровню.
@@ -56,7 +56,7 @@ Best-effort observability: потеря записей журнала не кр�
 
 | Задача | Обоснование |
 |--------|-------------|
-| **IDEA-012** — мониторинг ресурсов (ОЗУ/CPU) | Отдельный источник данных (WinAPI), спайк, ADR. Другой продуктовый сценарий. **UX-видение согласовано** (см. §6.8): футер `#logs-footer`, Windows-only, 2 сек опроса, без авто-kill. |
+| **IDEA-012** — мониторинг ресурсов (ОЗУ/CPU) | Отдельный источник данных (WinAPI), спайк, ADR. Другой продуктовый сценарий. **UX-видение согласовано** (см. §6.8): строка `#logs-resources` в шапке панели, Windows-only, 2 сек опроса, без авто-kill. |
 | **Персистентность на диск** | Требует дизайна формата (JSON lines?), ретеншена по дате/размеру, приватности. Для беты достаточно in-memory истории сессии. |
 | **Экспорт лога в файл** | Удобно, но не критично для беты. |
 | **Поиск по журналу** | Для 200 записей не критично. |
@@ -118,7 +118,7 @@ Best-effort observability: потеря записей журнала не кр�
 - **Новый файл:** `crates/app/src/logPanel.ts` — контроллер панели журнала (буфер + подписка + рендер).
 - **Изменения в `shell.ts`:** заменить заглушку `commands.flash("Журнал — скоро")` на вызов `logPanel.toggle()`.
 - **Изменения в `main.ts`:** создать экземпляр `logPanel`, передать в `createShell`.
-- **Изменения в `index.html`:** добавить разметку дровера журнала (`#logs-drawer`, `#logs-close`, `#logs-filter`, `#logs-list`).
+- **Изменения в `index.html`:** добавить разметку панели журнала **между рабочей областью и `#statusbar`** (`#logs-panel`, `#logs-resize`, `#logs-head`, `#logs-collapse`, `#logs-filter`, `#logs-list`, `#logs-clear`).
 - **Изменения в `style.css`:** стили панели журнала (токены, записи, фильтры, бейдж).
 
 ### 4.2. Модель данных
@@ -149,12 +149,14 @@ type LogCategory = "plugin" | "document" | "error" | "system";
 - **Pull при открытии:** не требуется (буфер копится с запуска приложения).
 - **Гарантии:** best-effort; порядок FIFO в пределах источника; потеря при закрытии окна допустима.
 
-### 4.5. Взаимоисключение
+### 4.5. Размещение и состояния панели
 
-- Открытие журнала закрывает дровер плагинов и палитру (Ctrl+K), и наоборот.
-- Триггер `#sb-logs` получает `aria-expanded`, состояние `.active` при открытом журнале.
-- Журнал — **немодальный** дровер: пользователь работает с документом и видит события в реальном времени.
-- Закрытие: кнопка `#logs-close`, повторный клик по `#sb-logs`, Esc (когда журнал в фокусе). Клик по фону **не** закрывает.
+- Панель — **внутри layout**, в flex-колонке между рабочей областью и `#statusbar` (не `position:fixed`, не overlay). Раскрытие **сжимает** рабочую область.
+- **Состояния:** развёрнута (высота по умолчанию `--h-logs: 220px`), свёрнута (полоса-шапка `--h-logs-bar: 28px`), скрыта.
+- **Resize:** drag-handle сверху панели, высота клампится (мин ~28px, макс ~520px / ≤50% окна).
+- Триггер `#sb-logs` в статусбаре: клик — развернуть/свернуть; получает `aria-expanded` и `.active` при раскрытой панели.
+- Свёртывание: клик по `#sb-logs`, шеврон `#logs-collapse` в шапке, Esc (когда фокус в панели).
+- Взаимоисключение с дровером плагинов и палитрой **не требуется** — панель не перекрывает контент.
 
 ### 4.6. Приватность и безопасность
 
@@ -191,33 +193,41 @@ type LogCategory = "plugin" | "document" | "error" | "system";
 
 ### 6.1. Размещение
 
-- Правый немодальный дровер, ширина `--w-drawer: 440px` (на узком окне ≤900px — 100vw, как дровер плагинов).
-- Высота: во всю высоту окна, `position: fixed; right: 0; top: 0; bottom: 0; z-index: 70`.
-- Анимация открытия: `transform: translateX(100%)` → `none`, `transition: 0.22s cubic-bezier(0.2, 0.9, 0.3, 1)` (как `.drawer`).
+- Сворачивающаяся панель на **всю ширину** приложения, **внутри layout** между рабочей областью и `#statusbar` (не `position:fixed`, не overlay).
+- **Развёрнута:** высота по умолчанию `--h-logs: 220px`; рабочая область сжимается.
+- **Свёрнута:** полоса-шапка `--h-logs-bar: 28px` (тело скрыто).
+- **Скрыта:** панель отсутствует в layout (`hidden`).
+- **Resize:** drag-handle `#logs-resize` сверху; высота клампится (~28–520px / ≤50% окна).
+- Анимация: плавная смена высоты (`transition: height 0.18s`).
 
 ### 6.2. Структура DOM
 
 ```html
-<aside class="logs-drawer" id="logs-drawer" role="region" aria-label="Журнал событий" hidden>
+<section class="logs-panel" id="logs-panel" role="region" aria-label="Журнал событий" aria-labelledby="logs-title" hidden>
+  <div class="logs-resize" id="logs-resize" role="separator" aria-orientation="horizontal" aria-label="Изменить высоту панели журнала"></div>
   <div class="logs-head">
+    <button class="logs-caret" id="logs-collapse" aria-expanded="true" aria-controls="logs-body" aria-label="Свернуть журнал">▾</button>
     <span class="side-title" id="logs-title">Журнал</span>
     <span class="side-count" id="logs-count">0</span>
-    <button class="tbtn tbtn-sm" id="logs-close" aria-label="Закрыть журнал">✕</button>
+    <div class="logs-filter" role="tablist" aria-label="Фильтр событий">
+      <button role="tab" data-filter="all" class="active">Все</button>
+      <button role="tab" data-filter="plugin">Плагины</button>
+      <button role="tab" data-filter="document">Документы</button>
+      <button role="tab" data-filter="error">Ошибки</button>
+      <button role="tab" data-filter="system">Система</button>
+    </div>
+    <div class="logs-spacer"></div>
+    <div class="logs-resources" id="logs-resources" aria-label="Мониторинг ресурсов">
+      <!-- IDEA-012: ОЗУ/CPU компактной строкой -->
+    </div>
+    <button class="tbtn tbtn-sm" id="logs-clear" aria-label="Очистить журнал">Очистить</button>
   </div>
-  <div class="logs-filter" role="tablist" aria-label="Фильтр событий">
-    <button role="tab" data-filter="all" class="active">Все</button>
-    <button role="tab" data-filter="plugin">Плагины</button>
-    <button role="tab" data-filter="document">Документы</button>
-    <button role="tab" data-filter="error">Ошибки</button>
-    <button role="tab" data-filter="system">Система</button>
+  <div class="logs-body" id="logs-body">
+    <div class="logs-list" id="logs-list" role="log" aria-live="polite" aria-relevant="additions">
+      <!-- .log-item -->
+    </div>
   </div>
-  <div class="logs-list" id="logs-list" role="log" aria-live="polite" aria-relevant="additions">
-    <!-- .log-item -->
-  </div>
-  <div class="logs-footer" id="logs-footer" hidden>
-    <!-- IDEA-012: мониторинг ресурсов (отдельная задача) -->
-  </div>
-</aside>
+</section>
 ```
 
 ### 6.3. Запись журнала
@@ -269,7 +279,7 @@ type LogCategory = "plugin" | "document" | "error" | "system";
 ### 6.8. Секция мониторинга ресурсов (IDEA-012)
 
 > **Статус:** UX-видение согласовано. Реализация — отдельная задача (спайк + ADR + TZ).
-> **Место:** футер `#logs-footer` панели журнала (уже предусмотрен §6.2).
+> **Место:** компактная строка `#logs-resources` **в шапке панели** журнала (правая часть, §6.2); при узком окне может переноситься в отдельную строку.
 
 #### Что показываем
 
@@ -303,41 +313,31 @@ type LogCategory = "plugin" | "document" | "error" | "system";
 
 #### Визуальная структура
 
-- Футер `.logs-footer` (≈120–160px), граница `border-top: 1px solid var(--line-soft)`.
-- Заголовок: «Ресурсы», итого ОЗУ, время обновления.
-- Строки: главный процесс + child'ы (с `--pc` точкой).
-- Тонкий прогресс-бар (4px) + число.
+- Компактная строка `.logs-resources` в правой части шапки панели (высота шапки `--h-logs-bar`).
+- Формат: `darmark 156 МБ · CPU 3% | ● word-count 24 МБ · ● export-html 18 МБ` (точки плагинов — цвет `--pc`).
+- Число + компактный прогресс-бар (4px) у плагинов; при узком окне — перенос в отдельную строку.
 - Без спарклайна (MVP). Спарклайн — отдельная панель «Производительность» (H3+).
 
 #### DOM
 
 ```html
-<div class="logs-footer" id="logs-footer" hidden>
-  <button class="mon-toggle" id="mon-toggle" aria-expanded="true" aria-controls="mon-body">
-    <span class="mon-arrow">▾</span>
-    <span class="mon-title">Ресурсы</span>
-    <span class="mon-total" id="mon-total">—</span>
-    <span class="mon-updated" id="mon-updated">—</span>
-  </button>
-  <div class="mon-body" id="mon-body">
-    <div class="mon-row mon-main" data-pid="main">
-      <span class="mon-name">darmark</span>
-      <span class="mon-bar" aria-hidden="true"><i style="width: 42%"></i></span>
-      <span class="mon-val" id="mon-main-mem">42 МБ</span>
-      <span class="mon-cpu" id="mon-main-cpu">CPU 3%</span>
-    </div>
-    <div class="mon-children" id="mon-children"></div>
-    <div class="mon-summary" id="mon-summary">Плагины: 3 активно</div>
+<div class="logs-resources" id="logs-resources" aria-label="Мониторинг ресурсов">
+  <div class="mon-row mon-main" data-pid="main">
+    <span class="mon-name">darmark</span>
+    <span class="mon-val" id="mon-main-mem">156 МБ</span>
+    <span class="mon-cpu" id="mon-main-cpu">CPU 3%</span>
+  </div>
+  <div class="mon-children" id="mon-children">
+    <!-- .mon-row.mon-child[data-plugin-id] с точкой --pc -->
   </div>
 </div>
 ```
 
 #### ARIA
 
-- `#logs-footer`: `role="region"`, `aria-label="Мониторинг ресурсов"`.
-- `#mon-toggle`: `aria-expanded`, `aria-controls="mon-body"`.
-- Строка: `role="listitem"`, `aria-label="<имя>: <ОЗУ>, CPU <N>%"`.
-- При превышении: запись в журнал (скринридер слышит через `aria-live="polite"` ленты).
+- `#logs-resources`: `role="group"`, `aria-label="Мониторинг ресурсов"`.
+- Строка процесса: `aria-label="<имя>: <ОЗУ>, CPU <N>%"`.
+- При превышении порога: запись в журнал (скринридер слышит через `aria-live="polite"` ленты).
 
 ---
 
@@ -359,9 +359,9 @@ type LogCategory = "plugin" | "document" | "error" | "system";
 
 | # | Критерий | Проверка |
 |---|----------|----------|
-| AC-1 | Клик на `#sb-logs` открывает правый дровер с заголовком «Журнал» и лентой событий (не флеш «Журнал — скоро») | E2E: открытие дровера по клику |
-| AC-2 | Дровер закрывается по Esc, повторному клику по `#sb-logs`, кнопке `#logs-close`; фокус возвращается на `#sb-logs` | E2E: закрытие тремя способами |
-| AC-3 | Взаимоисключение с палитрой (Ctrl+K) и дровером плагинов: открытие одного закрывает другой | E2E: открыть палитру → открыть журнал → палитра закрыта |
+| AC-1 | Клик на `#sb-logs` **разворачивает панель-консоль** над `#statusbar` с заголовком «Журнал» и лентой событий (не флеш «Журнал — скоро») | E2E: развёртывание панели по клику |
+| AC-2 | Панель сворачивается до полосы-шапки по Esc, повторному клику по `#sb-logs`, шеврону `#logs-collapse`; фокус возвращается на `#sb-logs` | E2E: свёртывание тремя способами |
+| AC-3 | При раскрытии панель **сжимает** рабочую область (не перекрывает контент); высота изменяется drag-handle | E2E/ручная: проверить `workspace` и resize |
 | AC-4 | События `plugins-changed`, `plugin-views-changed`, `plugin-message`, `document-updated` появляются в ленте с меткой времени и категорией | E2E: выполнить действия → проверить записи |
 | AC-5 | Новые события Rust (`plugin-status-changed`, `document-event`, `log-entry`) появляются в ленте | E2E: падение плагина, открытие/сохранение документа |
 | AC-6 | Бейдж `#log-badge` увеличивается при новых событиях при закрытой панели и сбрасывается при открытии | E2E: закрыть панель → выполнить действие → проверить бейдж → открыть → бейдж сброшен |
@@ -388,7 +388,7 @@ type LogCategory = "plugin" | "document" | "error" | "system";
 |---|----------|
 | AC-18 | Потребление памяти лентой: 200 записей × ~200 байт = ~40 КБ |
 | AC-19 | Задержка появления записи в ленте после Tauri-события: < 50 мс |
-| AC-20 | Дровер журнала открывается за < 100 мс (без пересоздания DOM) |
+| AC-20 | Панель разворачивается/сворачивается за < 100 мс (без пересоздания DOM — высота через CSS-класс) |
 
 ### Критерии готовности для IDEA-012 (мониторинг ресурсов)
 
@@ -396,7 +396,7 @@ type LogCategory = "plugin" | "document" | "error" | "system";
 
 | # | Критерий | Проверка |
 |---|----------|----------|
-| AC-M1 | ОЗУ главного процесса отображается в футере журнала | E2E: открыть журнал → проверить значение |
+| AC-M1 | ОЗУ главного процесса отображается в строке `#logs-resources` шапки панели | E2E: открыть журнал → проверить значение |
 | AC-M2 | ОЗУ каждого активного плагина отображается с привязкой к `plugin_id` | E2E: активировать плагин → проверить значение |
 | AC-M3 | Метрики обновляются по таймеру (2 сек) | Ручная проверка |
 | AC-M4 | При crash/kill child метрики удаляются из списка через 5 сек | E2E: вызвать crash → проверить удаление |
@@ -412,7 +412,7 @@ type LogCategory = "plugin" | "document" | "error" | "system";
 ### Фаза 1: Каркас (MVP)
 
 1. Создать `logPanel.ts` с типом `LogEntry`, ring buffer (200), контроллером.
-2. Добавить разметку дровера журнала в `index.html`.
+2. Добавить разметку панели-консоли журнала в `index.html` (между рабочей областью и `#statusbar`).
 3. Заменить заглушку в `shell.ts` на вызов `logPanel.toggle()`.
 4. Подписаться на существующие события в `logPanel.ts`.
 5. Реализовать бейдж `#log-badge`.
@@ -432,7 +432,7 @@ type LogCategory = "plugin" | "document" | "error" | "system";
 13. Реализовать автопрокрутку с заморозкой.
 14. Реализовать группировку по дате.
 15. Реализовать состояния (пустой, переполнение).
-16. Добавить стили в `style.css`.
+16. Добавить стили в `style.css` (панель-консоль, `--h-logs`/`--h-logs-bar`, resize, свёртка).
 
 ### Фаза 4: Проверка стабилизации
 
@@ -448,10 +448,10 @@ type LogCategory = "plugin" | "document" | "error" | "system";
 | Риск | Влияние | Митигация |
 |------|---------|-----------|
 | Централизация подписки на события может сломать существующие контроллеры | Среднее | Сохранить существующие `listen()` в `pluginManager.ts` / `pluginViews.ts` и продублировать в `logPanel.ts` (события idempotent) |
-| Два дровера (плагины + журнал) могут конфликтовать | Низкое | Взаимоисключение через единый модальный слой |
+| Панель занимает вертикаль у пользователя, работающего на маленьком экране | Низкое | Сворачивание до полосы-шапки, resize, дефолт 220px |
 | XSS через сообщения плагинов | Высокое | Только `textContent`, без `innerHTML` |
 | Раздувание памяти при интенсивных событиях | Низкое | Лимит 200 записей |
-| Немодальный журнал может перекрывать контент | Среднее | Дровер 440px, как дровер плагинов; контент не перекрывается (дровер fixed справа) |
+| Drag-resize конфликтует с выделением текста | Низкое | `user-select: none` на время драга, pointer capture |
 
 ---
 
@@ -469,7 +469,8 @@ type LogCategory = "plugin" | "document" | "error" | "system";
 ## 12. Ссылки
 
 - `tasks/TZ-STABILIZATION.md` — план стабилизации (S11)
-- `docs/adr/0024-plugin-drawer-placement.md` — ADR по размещению
+- `docs/adr/0024-plugin-drawer-placement.md` — ADR по размещению (дроверы плагинов; журнал — исключение: панель-консоль)
+- `ideas/front_idea-s11-log-panel.html` — прототип панели-консоли (было-стало)
 - `docs/DESIGN_DOC.md` §5, §9, §13.2 — нормативная спецификация
 - `ideas/UI-IDEAS.md` IDEA-012 — мониторинг ресурсов (UX-видение в §6.8)
 - `crates/app/src/shell.ts:81` — текущая заглушка

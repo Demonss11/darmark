@@ -13,7 +13,7 @@ permission:
   read: allow
   glob: allow
   grep: allow
-  edit: ask
+  edit: allow
   bash: ask
   webfetch: allow
   websearch: allow
