@@ -105,7 +105,23 @@ When("я переключаю тумблер {string}", async (selector) => {
     return label.id;
   }, selector);
   if (!labelId) throw new Error(`Тумблер ${selector} не найден`);
-  await browser.$(`#${labelId}`).click();
+  // Реальный указатель через W3C pointer-actions: переводит браузер в «мышиную»
+  // модальность (программный `.click()` этого не делает → ложно остаётся
+  // `:focus-visible`). Используем `browser.action`, а не `browser.$().click()`:
+  // элементные WebDriver-команды дёргают пробу окна tauri-service (~5 с простоя;
+  // см. комментарий в smoke.steps.js).
+  const point = await browser.execute((id) => {
+    const el = document.getElementById(id);
+    el.scrollIntoView({ block: "center", inline: "center" });
+    const r = el.getBoundingClientRect();
+    return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
+  }, labelId);
+  await browser
+    .action("pointer", { parameters: { pointerType: "mouse" } })
+    .move({ origin: "viewport", x: point.x, y: point.y })
+    .down()
+    .up()
+    .perform();
   await browser.pause(50);
 });
 
