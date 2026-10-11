@@ -1,24 +1,37 @@
 <!doctype html>
 <!-- ============================================================================
   Прототип-референс: AI-ассистент — режим нижней панели-дока
-  (IDEA-013 / tasks/TZ-AI-ASSISTANT.md)
+  (IDEA-013 / tasks/TZ-AI-ASSISTANT.md; ADR-0029/0030, дополнение 11.10.2026)
   ============================================================================
   Что это: однофайловый HTML-прототип AI-ассистента проекта darmark
   с визуальным сравнением «было-стало».
+
+  РЕДАКЦИЯ 3 — выравнивание дока под текущее устройство (IDEA-015).
+    Нижний док теперь несёт ТРИ режима-вкладки: «Журнал | Мониторинг |
+    AI-ассистент» (#mode-logs-btn / #mode-mon-btn / #mode-ai-btn) и три
+    состояния видимости: hidden / collapsed / expanded. Эталон дока —
+    ideas/front_idea-dock-monitoring.html; здесь активна вкладка «AI-ассистент».
 
   РЕДАКЦИЯ 2 — смена решения по размещению.
     Ранее AI-ассистент проектировался как ПРАВЫЙ МОДАЛЬНЫЙ ДРОВЕР 480px.
     Решение отменено: AI-чат живёт в НИЖНЕЙ ПАНЕЛИ-ДОКЕ, ровно там же,
     где панель «Журнал» (docs/adr/0029-journal-bottom-panel.md).
 
-  ПРИНЯТОЕ РЕШЕНИЕ ПО СОСУЩЕСТВОВАНИЮ С ЖУРНАЛОМ (вариант «а»):
-    Один нижний док, два РЕЖИМА-ВКЛАДКИ: «Журнал | AI-ассистент».
-    Обе панели — консольного типа, обеим нужен один и тот же слот
-    (над id="statusbar", внутри layout). Второй док съел бы вертикаль
-    и продублировал бы resize/свёртку; overlay-вариант конфликтует
-    с инвариантом «панель сжимает рабочую область, а не перекрывает её».
-    Итог: один док, один resize-handle, одно состояние свёртки,
-    переключение режима — тихим сегментом в шапке.
+  ОДИН ДОК, ТРИ РЕЖИМА-ВКЛАДКИ:
+    Все режимы консольного типа делят один слот (над id="statusbar", внутри
+    layout), один resize-handle, одно состояние свёртки; переключение режима —
+    тихим сегментом в шапке. Второй док съел бы вертикаль и продублировал бы
+    resize/свёртку; overlay конфликтует с инвариантом «панель сжимает рабочую
+    область, а не перекрывает её». Мониторинг ресурсов (ADR-0031) переехал из
+    строки в шапке в отдельную вкладку (#mon-body → #logs-resources → #mon-rows).
+
+  СОСТОЯНИЯ ДОКА (ADR-0030, дополнение 11.10.2026):
+    • hidden    — дока нет в layout (возврат — триггер статусбара);
+    • collapsed — полоса-шапка 28px (шеврон «развернуть»);
+    • expanded  — тело вкладки видно.
+    • × (#logs-close) — полное скрытие (hidden);
+    • шеврон (#logs-collapse) — свернуть/развернуть (полоса);
+    • Esc — прогрессивный (фокус в доке): expanded → collapsed → hidden.
 
   Сравнение «было-стало»:
     • БЫЛО — AI-ассистента нет: ни кнопки в тулбаре, ни панели;
@@ -28,23 +41,25 @@
       чат (текст, карточка диффа, карточка плагина, индикатор загрузки,
       карточка ошибки), поле ввода; диалог согласия — модальный.
 
-  Показанные состояния (без отдельной панели демо-кнопок):
+  Показанные состояния (кнопки «состояние» слева сверху):
     • Дифф + плагин + ошибка — в стартовой сцене чата.
     • Индикатор загрузки — при отправке сообщения.
     • Пустое состояние — кнопка «Очистить» (корзина) в шапке дока.
-    • Свёртка/разворот — шеврон в шапке, `#sb-ai`/`#sb-logs`, Esc.
+    • Скрытие (× → hidden), свёртка (шеврон → полоса 28px), разворот.
+    • Триггеры статусбара #sb-logs / #sb-mon / #sb-ai.
     • Resize — тонкий drag-handle сверху (28–520px).
 
-  ИДЕНТИФИКАТОРЫ (выровнено под ADR-0030):
-    Док переиспользует существующий контейнер `#logs-panel` и замороженные
-    id журнала `#logs-resize` / `#logs-collapse` / `#logs-body` / `#logs-list` /
-    `#logs-clear` (ADR-0029/0030). Рабочие имена `#bottom-dock` / `#dock-*`
-    в продукте НЕ используются. AI-направление — аддитивно: `#ai-*`
-    (`#ai-mode`, `#ai-skills`, `#ai-chat`, `#ai-input`, `#ai-send`,
+  ИДЕНТИФИКАТОРЫ (выровнено под ADR-0030 + дополнение 11.10.2026):
+    Док переиспользует замороженные id: `#logs-panel`, `#logs-resize`,
+    `#logs-collapse`, `#logs-body`, `#logs-list`, `#logs-clear`,
+    `#logs-resources`. Аддитивные: `#logs-close` (×), сегмент `.dock-modes` +
+    `#mode-logs-btn` / `#mode-mon-btn` / `#mode-ai-btn`, тело `#mon-body`,
+    строки `#mon-rows`, сводка `#mon-summary`, триггер `#sb-mon`, AI-поля
+    `#ai-*` (`#ai-mode`, `#ai-skills`, `#ai-chat`, `#ai-input`, `#ai-send`,
     `#ai-settings`, `#ai-clear`, `#ai-model`), `#sb-ai`, `#tb-ai`, `#ai-dot`,
-    `#log-badge`, сегмент режимов `#dock-modes` / `#mode-logs-btn` / `#mode-ai-btn`.
-    Общие токены высоты: `--h-dock: 300px` (развёрнут), `--h-dock-bar: 28px`
-    (свёрнут); кламп resize — 28–520px.
+    `#log-badge`. Рабочие имена `#bottom-dock` / `#dock-*` в продукте НЕ
+    используются. Общие токены высоты: `--h-dock: 300px` (развёрнут),
+    `--h-dock-bar: 28px` (свёрнут); кламп resize — 28–520px.
 
   Дата редакции: 11.10.2026
   Self-contained: все стили inline, без внешних зависимостей, CSP-safe
@@ -170,6 +185,45 @@
         cursor: pointer;
       }
       .proto-switch button.active { background: var(--bg-3); color: var(--fg); }
+
+      /* Кнопки состояний дока (служебные, демонстрация hidden/collapsed/expanded) */
+      .proto-states {
+        position: fixed;
+        top: 8px;
+        left: 10px;
+        z-index: 1000;
+        display: flex;
+        gap: 2px;
+        padding: 2px;
+        background: var(--bg-1);
+        border: 1px solid var(--line-soft);
+        border-radius: 6px;
+        opacity: 0.65;
+        transition: opacity 0.15s;
+      }
+      .proto-states:hover { opacity: 1; }
+      .proto-states::before {
+        content: "состояние";
+        align-self: center;
+        padding: 0 6px 0 4px;
+        color: var(--fg-mute);
+        font-size: 9.5px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+      .proto-states button {
+        padding: 3px 9px;
+        border: none;
+        border-radius: 4px;
+        background: transparent;
+        color: var(--fg-mute);
+        font: inherit;
+        font-size: 10.5px;
+        font-weight: 500;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .proto-states button.active { background: var(--bg-3); color: var(--fg); }
 
       /* ===================== МАКЕТ ПРИЛОЖЕНИЯ ===================== */
       .app-mock {
@@ -463,6 +517,17 @@
       }
       .dock-icon-btn:hover { background: var(--bg-2); color: var(--fg); }
       .dock-icon-btn svg { width: 13px; height: 13px; }
+      .dock-icon-btn.close:hover { background: rgba(248, 113, 113, 0.12); color: var(--error); }
+
+      /* Тихая сводка мониторинга в шапке — одна строка (детали во вкладке) */
+      .mon-summary {
+        flex-shrink: 0;
+        font-family: "Cascadia Code", ui-monospace, monospace;
+        font-size: 10.5px;
+        color: var(--fg-mute);
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+      }
 
       /* Полоса готовых скиллов — одна строка, «воздушные» чипы, скролл по X */
       .dock-skills {
@@ -510,6 +575,80 @@
         text-align: center;
         line-height: 1.7;
       }
+
+      /* ===================== ВКЛАДКА «МОНИТОРИНГ» (упрощённый вид) ===================== */
+      .mon-tab {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        padding: 10px 16px 12px;
+      }
+      .mon-list { flex: 1; min-height: 0; overflow-y: auto; }
+      .mon-grid {
+        display: grid;
+        grid-template-columns: 16px minmax(120px, 1fr) 104px 132px 66px 96px;
+        align-items: center;
+        gap: 0 12px;
+      }
+      .mon-head-row {
+        padding: 0 10px 8px;
+        color: var(--fg-mute);
+        font-size: 9.5px;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        border-bottom: 1px solid var(--line-soft);
+        margin-bottom: 4px;
+      }
+      .mon-head-row .c-cpu,
+      .mon-head-row .c-age { text-align: right; }
+      .mon-row {
+        padding: 9px 10px;
+        border-radius: var(--r-sm);
+        font-family: "Cascadia Code", ui-monospace, Consolas, monospace;
+        font-size: 11.5px;
+        font-variant-numeric: tabular-nums;
+        transition: background 0.12s;
+      }
+      .mon-row:hover { background: var(--bg-1); }
+      .mon-row.mon-main { color: var(--fg); background: var(--bg-1); margin-bottom: 2px; font-weight: 600; }
+      .mon-row.mon-child { color: var(--fg-dim); }
+      .mon-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--pc, var(--fg-mute)); }
+      .mon-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .mon-val { color: var(--fg-mute); }
+      .mon-row.mon-child .mon-val { color: var(--fg-dim); }
+      .mon-cpu { color: var(--fg-dim); text-align: right; }
+      .mon-age { color: var(--fg-mute); opacity: 0.85; text-align: right; }
+      .mon-bar { display: block; height: 6px; border-radius: 3px; background: var(--bg-3); overflow: hidden; }
+      .mon-bar > i { display: block; height: 100%; width: var(--fill, 0%); background: var(--pc, var(--accent)); }
+      .mon-row.warn .mon-val { color: var(--warning); }
+      .mon-row.warn .mon-bar > i { background: var(--warning); }
+      .mon-row.crit .mon-val { color: var(--error); }
+      .mon-row.crit .mon-bar > i { background: var(--error); }
+      .mon-note {
+        flex-shrink: 0;
+        padding: 8px 10px 0;
+        color: var(--fg-mute);
+        font-size: 10.5px;
+        line-height: 1.5;
+      }
+      .mon-legend {
+        flex-shrink: 0;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 14px;
+        padding: 8px 10px 0;
+        border-top: 1px solid var(--line-soft);
+        margin-top: 6px;
+        color: var(--fg-mute);
+        font-size: 10px;
+      }
+      .mon-legend .k { display: inline-flex; align-items: center; gap: 5px; }
+      .mon-legend .sw { width: 8px; height: 8px; border-radius: 2px; }
+      .mon-legend .sw.w { background: var(--warning); }
+      .mon-legend .sw.c { background: var(--error); }
+      .mon-legend .sw.p { background: var(--pc, var(--accent)); }
 
       /* Drag-handle — тонкий, незаметный */
       .dock-resize {
@@ -906,6 +1045,13 @@
       <button id="btn-after" type="button">СТАЛО</button>
     </div>
 
+    <!-- Кнопки состояний дока (демонстрация hidden / collapsed / expanded) -->
+    <div class="proto-states" id="proto-states">
+      <button data-state="expanded" type="button">Развёрнут</button>
+      <button data-state="collapsed" type="button">Свёрнут</button>
+      <button data-state="hidden" type="button">Скрыт</button>
+    </div>
+
     <!-- ===================== МАКЕТ ПРИЛОЖЕНИЯ ===================== -->
     <div class="app-mock">
       <!-- Тулбар -->
@@ -1007,7 +1153,7 @@
             </svg>
           </button>
 
-          <!-- Переключатель режимов одного дока -->
+          <!-- Переключатель режимов одного дока: «Журнал | Мониторинг | AI-ассистент» -->
           <div class="dock-modes" role="tablist" aria-label="Режим нижней панели">
             <button class="mode-btn" id="mode-logs-btn" type="button" role="tab" aria-selected="false" aria-controls="logs-list" data-mode="logs" title="Журнал событий (панель уже реализована, ADR-0029)">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
@@ -1015,6 +1161,12 @@
                 <line x1="12" y1="19" x2="20" y2="19" />
               </svg>
               <span>Журнал</span>
+            </button>
+            <button class="mode-btn" id="mode-mon-btn" type="button" role="tab" aria-selected="false" aria-controls="mon-body" data-mode="mon" title="Мониторинг ресурсов (ADR-0031)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                <path d="M3 12h4l3 8 4-16 3 8h4" />
+              </svg>
+              <span>Мониторинг</span>
             </button>
             <button class="mode-btn active" id="mode-ai-btn" type="button" role="tab" aria-selected="true" aria-controls="ai-mode" data-mode="ai" title="AI-ассистент">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
@@ -1025,6 +1177,9 @@
           </div>
 
           <span class="dock-head-spacer"></span>
+
+          <!-- Тихая сводка мониторинга — только режим «Мониторинг» -->
+          <span class="mon-summary mon-only" id="mon-summary">darmark 156 МБ · плагинов 2 · 2 сек назад</span>
 
           <!-- Очистка журнала — кнопка режима «Журнал» (logs-only) -->
           <button class="dock-icon-btn logs-only" id="logs-clear" type="button" title="Очистить журнал" aria-label="Очистить журнал">
@@ -1047,6 +1202,14 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
               <polyline points="3 6 5 6 21 6" />
               <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+            </svg>
+          </button>
+
+          <!-- × — скрыть док целиком (hidden). Возврат — триггер статусбара. -->
+          <button class="dock-icon-btn close" id="logs-close" type="button" title="Скрыть панель" aria-label="Скрыть панель">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
             </svg>
           </button>
         </div>
@@ -1086,7 +1249,53 @@
           <div class="mode-note" id="logs-list" role="log" aria-live="polite" aria-labelledby="mode-logs-btn" hidden>
             Панель «Журнал» уже занимает этот нижний слот (ADR-0029).<br />
             В этом прототипе она не перерисовывается — показан только режим-переключатель.<br />
-            Обе панели — консольного типа, поэтому живут в одном доке.
+            Три консольных режима живут в одном доке: «Журнал | Мониторинг | AI-ассистент».
+          </div>
+
+          <!-- Режим «Мониторинг» (tabpanel). #logs-resources сохраняет id и role (AC-11). -->
+          <div class="mon-tab" id="mon-body" role="tabpanel" aria-labelledby="mode-mon-btn" hidden>
+            <div class="mon-list" id="logs-resources" role="note" aria-label="Мониторинг ресурсов">
+              <div class="mon-grid mon-head-row">
+                <span aria-hidden="true"></span>
+                <span>Процесс</span>
+                <span>ОЗУ</span>
+                <span>Нагрузка</span>
+                <span class="c-cpu">CPU</span>
+                <span class="c-age">Обновлено</span>
+              </div>
+              <div id="mon-rows">
+                <div class="mon-row mon-main mon-grid" title="рабочий набор 156 МБ, CPU 3%">
+                  <span class="mon-dot" aria-hidden="true" style="--pc:#8a90b0"></span>
+                  <span class="mon-name">darmark</span>
+                  <span class="mon-val">156 МБ</span>
+                  <span></span>
+                  <span class="mon-cpu">CPU 3%</span>
+                  <span class="mon-age">2 сек назад</span>
+                </div>
+                <div class="mon-row mon-child mon-grid" title="commit 24 МБ из 64 МБ (38%), CPU 0%">
+                  <span class="mon-dot" aria-hidden="true" style="--pc:#9d8fff"></span>
+                  <span class="mon-name">word-count</span>
+                  <span class="mon-val">24 / 64 МБ</span>
+                  <span><span class="mon-bar" aria-hidden="true"><i style="--fill:38%"></i></span></span>
+                  <span class="mon-cpu">CPU 0%</span>
+                  <span class="mon-age"></span>
+                </div>
+                <div class="mon-row mon-child mon-grid" title="commit 18 МБ из 64 МБ (28%), CPU 0%">
+                  <span class="mon-dot" aria-hidden="true" style="--pc:#6ea8fe"></span>
+                  <span class="mon-name">export-html</span>
+                  <span class="mon-val">18 / 64 МБ</span>
+                  <span><span class="mon-bar" aria-hidden="true"><i style="--fill:28%"></i></span></span>
+                  <span class="mon-cpu">CPU 0%</span>
+                  <span class="mon-age"></span>
+                </div>
+              </div>
+            </div>
+            <div class="mon-note">Пороги: плагин ≥75% лимита — warn (янтарь), ≥90% — crit (красный); darmark &gt;800 МБ / &gt;1.5 ГБ. Детали — ADR-0031.</div>
+            <div class="mon-legend">
+              <span class="k"><span class="sw p" aria-hidden="true"></span>commit / лимит Job Object</span>
+              <span class="k"><span class="sw w" aria-hidden="true"></span>warn: плагин ≥75% · darmark &gt;800 МБ</span>
+              <span class="k"><span class="sw c" aria-hidden="true"></span>crit: плагин ≥90% · darmark &gt;1.5 ГБ</span>
+            </div>
           </div>
 
           <!-- Режим «AI-ассистент» -->
@@ -1211,7 +1420,7 @@ end</pre>
       <footer class="statusbar" id="statusbar">
         <span class="stat"><span class="stat-dot"></span><span>Готов</span></span>
         <span class="spacer"></span>
-        <!-- Триггеры нижнего дока: два режима одной панели -->
+        <!-- Триггеры нижнего дока: три режима одной панели -->
         <button class="stat clickable" id="sb-logs" type="button" title="Журнал событий" aria-label="Журнал событий" aria-expanded="false" aria-controls="logs-panel">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="12" height="12" aria-hidden="true">
             <polyline points="4 17 10 11 4 5" />
@@ -1219,6 +1428,12 @@ end</pre>
           </svg>
           <span>Журнал</span>
           <span class="badge" id="log-badge" title="События в журнале">3</span>
+        </button>
+        <button class="stat clickable" id="sb-mon" type="button" title="Мониторинг ресурсов" aria-label="Мониторинг ресурсов" aria-expanded="false" aria-controls="logs-panel">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="12" height="12" aria-hidden="true">
+            <path d="M3 12h4l3 8 4-16 3 8h4" />
+          </svg>
+          <span>Мониторинг</span>
         </button>
         <button class="stat clickable" id="sb-ai" type="button" title="AI-ассистент" aria-label="AI-ассистент" aria-expanded="false" aria-controls="logs-panel">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="12" height="12" aria-hidden="true">
@@ -1257,10 +1472,13 @@ end</pre>
         'use strict';
 
         // ===================== СОСТОЯНИЕ =====================
+        // view: 'before' | 'after'; mode: 'logs' | 'mon' | 'ai';
+        // hidden — дока нет в layout; collapsed — полоса-шапка 28px (ADR-0030).
         var state = {
           view: 'before',        // 'before' | 'after'
-          mode: 'ai',            // 'ai' | 'logs'
-          open: false,           // док развёрнут
+          mode: 'ai',            // 'logs' | 'mon' | 'ai'
+          hidden: false,         // дока нет в layout
+          collapsed: false,      // полоса-шапка 28px
           consentGiven: false,
           model: 'ollama · qwen2.5:7b'
         };
@@ -1269,35 +1487,41 @@ end</pre>
         var pendingSend = null;  // текст, ждущий согласия
 
         // ===================== DOM =====================
-        var btnBefore = document.getElementById('btn-before');
-        var btnAfter = document.getElementById('btn-after');
-        var toolbarAi = document.getElementById('tb-ai');
-        var aiDot = document.getElementById('ai-dot');
-        var dock = document.getElementById('logs-panel');
-        var dockCaret = document.getElementById('logs-collapse');
-        var dockResize = document.getElementById('logs-resize');
-        var dockBody = document.getElementById('logs-body');
-        var modeLogsBtn = document.getElementById('mode-logs-btn');
-        var modeAiBtn = document.getElementById('mode-ai-btn');
-        var paneLogs = document.getElementById('logs-list');
-        var paneAi = document.getElementById('ai-mode');
-        var skillsRow = document.getElementById('ai-skills');
-        var aiModel = document.getElementById('ai-model');
-        var aiSettings = document.getElementById('ai-settings');
-        var aiClear = document.getElementById('ai-clear');
-        var logsClear = document.getElementById('logs-clear');
-        var chat = document.getElementById('ai-chat');
-        var chatInner = document.getElementById('chat-inner');
-        var chatEmpty = document.getElementById('chat-empty');
-        var typingRow = document.getElementById('typing-row');
-        var input = document.getElementById('ai-input');
-        var sendBtn = document.getElementById('ai-send');
-        var sbLogs = document.getElementById('sb-logs');
-        var sbAi = document.getElementById('sb-ai');
-        var consent = document.getElementById('consent');
-        var consentCancel = document.getElementById('consent-cancel');
-        var consentAccept = document.getElementById('consent-accept');
-        var flash = document.getElementById('flash');
+        var $ = function (id) { return document.getElementById(id); };
+        var btnBefore = $('btn-before');
+        var btnAfter = $('btn-after');
+        var toolbarAi = $('tb-ai');
+        var aiDot = $('ai-dot');
+        var dock = $('logs-panel');
+        var dockCaret = $('logs-collapse');
+        var dockResize = $('logs-resize');
+        var dockBody = $('logs-body');
+        var closeBtn = $('logs-close');
+        var modeLogsBtn = $('mode-logs-btn');
+        var modeMonBtn = $('mode-mon-btn');
+        var modeAiBtn = $('mode-ai-btn');
+        var paneLogs = $('logs-list');
+        var paneMon = $('mon-body');
+        var paneAi = $('ai-mode');
+        var skillsRow = $('ai-skills');
+        var aiModel = $('ai-model');
+        var aiSettings = $('ai-settings');
+        var aiClear = $('ai-clear');
+        var logsClear = $('logs-clear');
+        var chat = $('ai-chat');
+        var chatInner = $('chat-inner');
+        var chatEmpty = $('chat-empty');
+        var typingRow = $('typing-row');
+        var input = $('ai-input');
+        var sendBtn = $('ai-send');
+        var sbLogs = $('sb-logs');
+        var sbMon = $('sb-mon');
+        var sbAi = $('sb-ai');
+        var consent = $('consent');
+        var consentCancel = $('consent-cancel');
+        var consentAccept = $('consent-accept');
+        var flash = $('flash');
+        var statesBar = $('proto-states');
 
         // ===================== УТИЛИТЫ =====================
         function nowTime() {
@@ -1371,27 +1595,37 @@ end</pre>
           return row;
         }
 
-        // ===================== ДОК: ОТКРЫТИЕ/РЕЖИМ =====================
+        // ===================== ДОК: РЕЖИМ =====================
+        function toggleAll(sel, show) {
+          var list = dock.querySelectorAll(sel);
+          for (var i = 0; i < list.length; i++) list[i].hidden = !show;
+        }
+
         function setMode(mode) {
           state.mode = mode;
           dock.setAttribute('data-mode', mode);
-          modeAiBtn.classList.toggle('active', mode === 'ai');
-          modeLogsBtn.classList.toggle('active', mode === 'logs');
-          modeAiBtn.setAttribute('aria-selected', mode === 'ai' ? 'true' : 'false');
-          modeLogsBtn.setAttribute('aria-selected', mode === 'logs' ? 'true' : 'false');
-          paneAi.hidden = mode !== 'ai';
-          paneLogs.hidden = mode !== 'logs';
-          // Поля только режима AI
-          var aiOnly = dock.querySelectorAll('.ai-only');
-          for (var i = 0; i < aiOnly.length; i++) aiOnly[i].hidden = mode !== 'ai';
-          // Поля только режима «Журнал» (взаимоисключающе с ai-only)
-          var logsOnly = dock.querySelectorAll('.logs-only');
-          for (var j = 0; j < logsOnly.length; j++) logsOnly[j].hidden = mode !== 'logs';
-          if (mode === 'ai') stick = true;
+          var isLogs = mode === 'logs', isMon = mode === 'mon', isAi = mode === 'ai';
+          modeLogsBtn.classList.toggle('active', isLogs);
+          modeMonBtn.classList.toggle('active', isMon);
+          modeAiBtn.classList.toggle('active', isAi);
+          modeLogsBtn.setAttribute('aria-selected', String(isLogs));
+          modeMonBtn.setAttribute('aria-selected', String(isMon));
+          modeAiBtn.setAttribute('aria-selected', String(isAi));
+          paneLogs.hidden = !isLogs;
+          paneMon.hidden = !isMon;
+          paneAi.hidden = !isAi;
+          // Режимные поля шапки/тела (взаимоисключающе)
+          toggleAll('.ai-only', isAi);
+          toggleAll('.logs-only', isLogs);
+          toggleAll('.mon-only', isMon);
+          if (isAi) stick = true;
+          syncTriggers();
         }
 
-        function expand() {
-          state.open = true;
+        // ===================== ДОК: ВИДИМОСТЬ (hidden / collapsed / expanded) =====================
+        function expandDock() {
+          state.hidden = false;
+          state.collapsed = false;
           dock.hidden = false;
           dock.classList.remove('collapsed');
           dockCaret.setAttribute('aria-expanded', 'true');
@@ -1405,38 +1639,67 @@ end</pre>
           }
         }
 
-        function collapse() {
-          state.open = false;
+        function collapseDock() {
+          state.collapsed = true;
+          state.hidden = false;
+          dock.hidden = false;
           dock.classList.add('collapsed');
           dockCaret.setAttribute('aria-expanded', 'false');
           syncTriggers();
         }
 
+        function hideDock() {
+          state.hidden = true;
+          state.collapsed = false;
+          dock.hidden = true;
+          dockCaret.setAttribute('aria-expanded', 'false');
+          syncTriggers();
+          showFlash('Док скрыт — вернуть: триггер в статусбаре');
+        }
+
         function syncTriggers() {
-          var logsActive = state.open && state.mode === 'logs';
-          var aiActive = state.open && state.mode === 'ai';
+          var visible = !state.hidden && !state.collapsed;
+          var logsActive = visible && state.mode === 'logs';
+          var monActive = visible && state.mode === 'mon';
+          var aiActive = visible && state.mode === 'ai';
           sbLogs.classList.toggle('active', logsActive);
+          sbMon.classList.toggle('active', monActive);
           sbAi.classList.toggle('active', aiActive);
-          sbLogs.setAttribute('aria-expanded', logsActive ? 'true' : 'false');
-          sbAi.setAttribute('aria-expanded', aiActive ? 'true' : 'false');
+          sbLogs.setAttribute('aria-expanded', String(logsActive));
+          sbMon.setAttribute('aria-expanded', String(monActive));
+          sbAi.setAttribute('aria-expanded', String(aiActive));
           toolbarAi.classList.toggle('active', aiActive);
-          toolbarAi.setAttribute('aria-expanded', aiActive ? 'true' : 'false');
+          toolbarAi.setAttribute('aria-expanded', String(aiActive));
+          updateStateButtons();
+        }
+
+        function updateStateButtons() {
+          if (!statesBar) return;
+          var name = state.hidden ? 'hidden' : state.collapsed ? 'collapsed' : 'expanded';
+          var btns = statesBar.querySelectorAll('button[data-state]');
+          for (var i = 0; i < btns.length; i++) {
+            btns[i].classList.toggle('active', btns[i].getAttribute('data-state') === name);
+          }
         }
 
         function openMode(mode) {
           if (state.view !== 'after') return;
+          expandDock();
           setMode(mode);
-          expand();
           if (mode === 'ai') input.focus();
         }
 
-        function toggleMode(mode) {
-          if (state.view !== 'after') return;
-          if (state.open && state.mode === mode) {
-            collapse();
-          } else {
-            openMode(mode);
+        // Логика триггера (ADR-0030 §2.2 №9):
+        // скрыт/свёрнут → открыть в своём режиме; открыт в другом → переключить;
+        // открыт в том же → свернуть.
+        function trigger(mode) {
+          if (state.view !== 'after') {
+            showFlash('БЫЛО: доступен только «Журнал» (ADR-0029)');
+            return;
           }
+          if (state.hidden || state.collapsed) { openMode(mode); return; }
+          if (state.mode === mode) { collapseDock(); return; }
+          setMode(mode);
         }
 
         // ===================== ЧАТ =====================
@@ -1478,39 +1741,77 @@ end</pre>
           showFlash('Чат очищен');
         }
 
-        // ===================== СОБЫТИЯ: ПЕРЕКЛЮЧАТЕЛЬ =====================
+        // ===================== ВИД БЫЛО / СТАЛО =====================
+        function applyView() {
+          var after = state.view === 'after';
+          toolbarAi.hidden = !after;
+          sbAi.hidden = !after;
+          sbMon.hidden = !after;
+          if (!after) {
+            // БЫЛО: AI-ассистента нет; журнал уже реализован (ADR-0029).
+            dock.hidden = true;
+            state.hidden = true;
+            state.collapsed = false;
+            aiDot.hidden = true;
+            sbLogs.classList.remove('active');
+            sbMon.classList.remove('active');
+            sbAi.classList.remove('active');
+            sbLogs.setAttribute('aria-expanded', 'false');
+            sbMon.setAttribute('aria-expanded', 'false');
+            sbAi.setAttribute('aria-expanded', 'false');
+            updateStateButtons();
+          } else {
+            openMode('ai');
+          }
+        }
+
+        // ===================== СОБЫТИЯ: ПЕРЕКЛЮЧАТЕЛЬ БЫЛО/СТАЛО =====================
         btnBefore.addEventListener('click', function () {
           state.view = 'before';
           btnBefore.classList.add('active');
           btnAfter.classList.remove('active');
-          dock.hidden = true;
-          state.open = false;
-          toolbarAi.hidden = true;
-          sbAi.hidden = true;
-          aiDot.hidden = true;
+          applyView();
         });
 
         btnAfter.addEventListener('click', function () {
           state.view = 'after';
           btnAfter.classList.add('active');
           btnBefore.classList.remove('active');
-          toolbarAi.hidden = false;
-          sbAi.hidden = false;
-          openMode('ai');
+          applyView();
         });
+
+        // Кнопки-состояния дока (демонстрация hidden / collapsed / expanded)
+        if (statesBar) {
+          var stateButtons = statesBar.querySelectorAll('button[data-state]');
+          for (var sb = 0; sb < stateButtons.length; sb++) {
+            stateButtons[sb].addEventListener('click', function () {
+              if (state.view !== 'after') { showFlash('Сначала выберите СТАЛО'); return; }
+              var s = this.getAttribute('data-state');
+              if (s === 'expanded') { expandDock(); }
+              else if (s === 'collapsed') { collapseDock(); }
+              else { hideDock(); }
+            });
+          }
+        }
 
         // ===================== СОБЫТИЯ: ДОК =====================
         modeAiBtn.addEventListener('click', function () { setMode('ai'); });
+        modeMonBtn.addEventListener('click', function () { setMode('mon'); });
         modeLogsBtn.addEventListener('click', function () { setMode('logs'); });
+
+        // Шеврон: свернуть <-> развернуть (полоса-шапка 28px).
         dockCaret.addEventListener('click', function () {
-          if (state.open) { collapse(); } else { expand(); }
+          if (state.collapsed) { expandDock(); } else { collapseDock(); }
         });
-        sbLogs.addEventListener('click', function () {
-          if (state.view !== 'after') { showFlash('Журнал — панель по ADR-0029'); return; }
-          toggleMode('logs');
-        });
-        sbAi.addEventListener('click', function () { toggleMode('ai'); });
-        toolbarAi.addEventListener('click', function () { toggleMode('ai'); });
+
+        // × — скрыть док целиком (hidden). Возврат — триггер в статусбаре.
+        closeBtn.addEventListener('click', function () { hideDock(); });
+
+        // Триггеры статусбара (логика ADR-0030 §2.2 №9).
+        sbLogs.addEventListener('click', function () { trigger('logs'); });
+        sbMon.addEventListener('click', function () { trigger('mon'); });
+        sbAi.addEventListener('click', function () { trigger('ai'); });
+        toolbarAi.addEventListener('click', function () { trigger('ai'); });
 
         aiSettings.addEventListener('click', function () { showFlash('Настройки AI — скоро'); });
         aiClear.addEventListener('click', clearChat);
@@ -1590,16 +1891,19 @@ end</pre>
           }
         });
 
-        // Клавиатура: Esc сворачивает док, Ctrl+Shift+A — режим AI
+        // Клавиатура: прогрессивный Esc (фокус в доке) и Ctrl+Shift+A (AI).
         document.addEventListener('keydown', function (e) {
-          if (e.key === 'Escape' && state.view === 'after' && state.open && consent.hidden) {
-            collapse();
-            (state.mode === 'ai' ? sbAi : sbLogs).focus();
+          if (e.key === 'Escape' && state.view === 'after' && !state.hidden && consent.hidden) {
+            // Esc не перехватываем у редактора/превью — только при фокусе внутри дока.
+            if (!dock.contains(document.activeElement)) return;
+            e.preventDefault();
+            if (!state.collapsed) { collapseDock(); return; }
+            hideDock();
             return;
           }
           if (e.ctrlKey && e.shiftKey && (e.key === 'A' || e.key === 'a')) {
             e.preventDefault();
-            toggleMode('ai');
+            trigger('ai');
           }
         });
 
@@ -1614,8 +1918,10 @@ end</pre>
           dragStartY = e.clientY;
           dragStartH = dock.offsetHeight;
           dock.classList.add('resizing');
+          state.hidden = false;
+          state.collapsed = false;
+          dock.hidden = false;
           dock.classList.remove('collapsed');
-          state.open = true;
           dockCaret.setAttribute('aria-expanded', 'true');
           syncTriggers();
           if (dockResize.setPointerCapture) dockResize.setPointerCapture(e.pointerId);
@@ -1641,8 +1947,11 @@ end</pre>
         // ===================== ИНИЦИАЛИЗАЦИЯ =====================
         // Старт в состоянии СТАЛО (главный предмет прототипа — новый док с AI);
         // БЫЛО — один клик по переключателю справа сверху.
+        state.view = 'after';
+        btnAfter.classList.add('active');
+        btnBefore.classList.remove('active');
         refreshEmpty();
-        btnAfter.click();
+        applyView();
       })();
     </script>
   </body>
