@@ -133,6 +133,12 @@ pub struct PluginInfo {
     pub commands: Vec<CommandInfo>,
     /// Формулировки границы изоляции/доступа к документу (F38).
     pub notices: Vec<String>,
+    /// Схема настроек из манифеста (`contributes.settings`) для UI-формы (S5b);
+    /// `null`, если плагин настроек не объявил.
+    pub settings_schema: Option<serde_json::Value>,
+    /// Текущие сохранённые значения настроек плагина (JSON-объект) для UI-формы (S5b);
+    /// пустой объект, если настроек нет. Обогащается хостом из `PluginSettingsStore`.
+    pub settings_values: serde_json::Value,
 }
 
 /// Платформенно-нейтральное состояние плагинной подсистемы для Tauri-команд.
@@ -540,6 +546,33 @@ fn set_plugin_permissions(
     }
 }
 
+/// Записывает значение настройки плагина из UI-формы (S5b).
+///
+/// В отличие от host-call `set_setting` (scope — внедрённый `Supervisor` `_plugin_id`),
+/// здесь значение приходит от пользователя из интерфейса, поэтому владелец задаётся
+/// параметром `id` напрямую. Запись идёт через `PluginSettingsStore` хоста; менеджер
+/// получает `plugins-changed` и перечитывает `list_plugins`, показывая новое значение.
+#[tauri::command(async)]
+fn set_plugin_setting(
+    id: String,
+    key: String,
+    value: serde_json::Value,
+    state: tauri::State<'_, PluginState>,
+) -> Result<(), CommandError> {
+    #[cfg(windows)]
+    {
+        state
+            .host
+            .plugin_setting_set(&id, &key, value)
+            .map_err(|error| CommandError::new(error::ErrorCode::Plugin, error.message))
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (id, key, value, state);
+        Err(plugin_unavailable())
+    }
+}
+
 /// Исполняет команду плагина: публикует `command:invoked{command_id, doc_id}` в шину.
 ///
 /// `doc_id` — текущий документ: у плагина нет собственного доступа к «активному»
@@ -706,6 +739,7 @@ pub fn run() {
             list_plugins,
             set_plugin_enabled,
             set_plugin_permissions,
+            set_plugin_setting,
             reload_plugin,
             remove_plugin,
             run_plugin_command,

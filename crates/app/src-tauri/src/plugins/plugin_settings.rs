@@ -59,8 +59,10 @@ impl PluginSettingsStore {
 
     /// Читает настройку. Отсутствующий ключ/плагин/файл → `None`.
     ///
-    /// Некорректный ключ (пустой/слишком длинный) → ошибка `bad_args` (значением, не паникой).
+    /// Некорректный `plugin_id`/ключ (пустой/опасный/слишком длинный) → ошибка `bad_args`
+    /// (значением, не паникой).
     pub fn get(&mut self, plugin_id: &str, key: &str) -> Result<Option<Value>, PluginError> {
+        validate_id(plugin_id)?;
         validate_key(key)?;
         Ok(self.load(plugin_id).get(key).cloned())
     }
@@ -69,6 +71,7 @@ impl PluginSettingsStore {
     ///
     /// При превышении лимита файла изменение откатывается: кэш и диск остаются прежними.
     pub fn set(&mut self, plugin_id: &str, key: &str, value: Value) -> Result<(), PluginError> {
+        validate_id(plugin_id)?;
         validate_key(key)?;
 
         let value_len = serde_json::to_vec(&value)
@@ -105,10 +108,25 @@ impl PluginSettingsStore {
         self.write(plugin_id, &bytes)
     }
 
+    /// Весь объект настроек плагина (из кэша/диска) как [`Value::Object`] для UI-формы (S5b).
+    ///
+    /// Отсутствующий файл → пустой объект. Некорректный `plugin_id` → `bad_args`: id
+    /// подставляется в имя файла `<plugin_id>.json`, поэтому `../evil` увели бы чтение
+    /// за пределы каталога настроек.
+    pub fn all(&mut self, plugin_id: &str) -> Result<Value, PluginError> {
+        validate_id(plugin_id)?;
+        Ok(Value::Object(self.load(plugin_id).clone()))
+    }
+
     /// Удаляет настройки плагина (файл + кэш). Вызывается при удалении плагина.
-    pub fn remove_plugin(&mut self, plugin_id: &str) {
+    ///
+    /// Некорректный `plugin_id` → `bad_args`: иначе `remove_file` ушёл бы за пределы
+    /// каталога настроек (`<plugin_id>.json`).
+    pub fn remove_plugin(&mut self, plugin_id: &str) -> Result<(), PluginError> {
+        validate_id(plugin_id)?;
         self.cache.remove(plugin_id);
         let _ = std::fs::remove_file(self.path_for(plugin_id));
+        Ok(())
     }
 
     /// Настройки плагина из кэша; при первом обращении — читаются с диска.
@@ -134,6 +152,29 @@ impl PluginSettingsStore {
             PluginError::new("io_error", format!("{}: {e}", path.display()))
         })
     }
+}
+
+/// Проверяет `plugin_id`: непустой безопасный идентификатор (`[a-z0-9_-]+`).
+///
+/// `plugin_id` подставляется в имя файла `<plugin_id>.json`, поэтому `../evil`, `a/b`,
+/// `..\evil` увели бы чтение/запись за пределы каталога настроек (traversal). Опасный id →
+/// `bad_args` (значением, не паникой) — по образцу [`validate_key`].
+fn validate_id(plugin_id: &str) -> Result<(), PluginError> {
+    if plugin_id.is_empty() {
+        return Err(PluginError::new("bad_args", "пустой id плагина"));
+    }
+    if !plugin_id
+        .bytes()
+        .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_')
+    {
+        return Err(PluginError::new(
+            "bad_args",
+            format!(
+                "недопустимый id плагина {plugin_id:?}: только строчные латинские, цифры, '-' и '_'"
+            ),
+        ));
+    }
+    Ok(())
 }
 
 /// Проверяет ключ настройки: непустой и в пределах лимита.
@@ -262,8 +303,54 @@ mod tests {
         let (dir, mut store) = temp_store();
         store.set("p", "k", json!(1)).unwrap();
         assert!(dir.path().join("p.json").exists());
-        store.remove_plugin("p");
+        store.remove_plugin("p").unwrap();
         assert!(!dir.path().join("p.json").exists());
         assert_eq!(store.get("p", "k").unwrap(), None);
+    }
+
+    #[test]
+    fn all_returns_saved_values_and_isolates_plugins() {
+        let (_dir, mut store) = temp_store();
+        store.set("a", "k", json!(1)).unwrap();
+        store.set("a", "s", json!("x")).unwrap();
+        store.set("b", "k", json!(2)).unwrap();
+
+        assert_eq!(store.all("a").unwrap(), json!({ "k": 1, "s": "x" }));
+        assert_eq!(store.all("b").unwrap(), json!({ "k": 2 }), "изоляция по id");
+        assert_eq!(
+            store.all("missing").unwrap(),
+            json!({}),
+            "нет файла → пустой объект"
+        );
+    }
+
+    #[test]
+    fn unsafe_plugin_id_is_rejected() {
+        let (dir, mut store) = temp_store();
+        for bad in ["../evil", "a/b", "a\\b", "", ".", "..", "A", "a b"] {
+            assert_eq!(
+                store.get(bad, "k").unwrap_err().code,
+                "bad_args",
+                "get {bad:?}"
+            );
+            assert_eq!(
+                store.set(bad, "k", json!(1)).unwrap_err().code,
+                "bad_args",
+                "set {bad:?}"
+            );
+            assert_eq!(store.all(bad).unwrap_err().code, "bad_args", "all {bad:?}");
+            assert_eq!(
+                store.remove_plugin(bad).unwrap_err().code,
+                "bad_args",
+                "remove {bad:?}"
+            );
+        }
+        // Traversal не сработал: вне и внутри каталога настроек ничего не создано.
+        assert!(!dir.path().parent().unwrap().join("evil.json").exists());
+        assert_eq!(
+            std::fs::read_dir(dir.path()).unwrap().count(),
+            0,
+            "каталог настроек пуст"
+        );
     }
 }

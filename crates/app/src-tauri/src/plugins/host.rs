@@ -179,8 +179,23 @@ impl PluginHost {
     }
 
     /// `list_plugins`: снимок реестра плагинов для менеджера UI (Фаза 5).
+    ///
+    /// Схема настроек (`settings_schema`) приходит из манифеста (менеджер); текущие
+    /// значения (`settings_values`) обогащаются из `PluginSettingsStore`, если он подключён
+    /// (S5b). Без стора значения остаются пустым объектом.
     pub fn list_plugins(&self) -> Vec<PluginInfo> {
-        lock(&self.manager).list_plugins()
+        let mut infos = lock(&self.manager).list_plugins();
+        if let Some(settings) = &self.plugin_settings {
+            let mut store = lock(settings);
+            for info in &mut infos {
+                // Небезопасный id в реестр не попадает (валидирован манифестом), но
+                // ошибку `all` не разносим: значение остаётся пустым объектом.
+                if let Ok(values) = store.all(&info.id) {
+                    info.settings_values = values;
+                }
+            }
+        }
+        infos
     }
 
     /// `plugin_view_action`: обратная маршрутизация из тир-1 view (§9.4).
@@ -378,6 +393,27 @@ impl PluginHost {
         self.notify_all();
     }
 
+    /// `set_plugin_setting`: записывает настройку плагина из UI-формы (S5b).
+    ///
+    /// В отличие от host-call `set_setting` (scope — внедрённый `Supervisor` `_plugin_id`),
+    /// здесь значение приходит от пользователя: владелец (`id`) задаётся явно. Ошибка
+    /// `no_settings`, если хранилище не подключено. После записи — [`Self::notify_plugins`]:
+    /// менеджер перечитает `list_plugins` и покажет новое значение.
+    pub fn plugin_setting_set(&self, id: &str, key: &str, value: Value) -> Result<(), PluginError> {
+        let store = self.plugin_settings.as_ref().ok_or_else(|| {
+            PluginError::new(
+                "no_settings",
+                "хранилище настроек недоступно в этом окружении",
+            )
+        })?;
+        {
+            let mut guard = lock(store);
+            guard.set(id, key, value)?;
+        }
+        self.notify_plugins();
+        Ok(())
+    }
+
     /// `set_plugin_enabled`: вкл/выкл плагина (IPC-команда менеджера, Фаза 5).
     ///
     /// **Порядок критичен:** при включении contributed view регистрируются в реестре
@@ -452,7 +488,9 @@ impl PluginHost {
 
         // Удаляем постоянные настройки плагина (F43/S5): отдельный файл per-plugin.
         if let Some(settings) = &self.plugin_settings {
-            lock(settings).remove_plugin(id);
+            if let Err(e) = lock(settings).remove_plugin(id) {
+                eprintln!("не удалить настройки плагина {id}: {}", e.message);
+            }
         }
 
         // Удаляем каталог плагина с диска.

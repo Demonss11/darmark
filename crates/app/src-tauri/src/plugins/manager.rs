@@ -58,6 +58,9 @@ pub struct PluginRuntime {
     /// `run_plugin_command` публикует `command:invoked` с этим `command_id`.
     #[allow(dead_code)]
     pub commands: Vec<CommandContrib>,
+    /// Схема настроек из манифеста (`contributes.settings`) для UI-формы (S5b).
+    /// `None`, если плагин не объявил `contributes.settings`.
+    pub settings: Option<Value>,
     quarantine: Quarantine,
     exe: PathBuf,
     /// Кэш исходника; используется, если [`PluginRuntime::entry_path`] не задан (тесты).
@@ -93,6 +96,7 @@ impl PluginRuntime {
             status: PluginStatus::Stopped,
             views,
             commands,
+            settings: None,
             quarantine: Quarantine::new(QUARANTINE_THRESHOLD),
             exe: exe.into(),
             source: source.into(),
@@ -136,6 +140,13 @@ impl PluginRuntime {
     /// Задаёт согласованные пользователем права (обычно из [`SettingsStore`]).
     pub fn with_granted(mut self, granted: Vec<String>) -> Self {
         self.granted = granted;
+        self
+    }
+
+    /// Задаёт схему настроек из манифеста (`contributes.settings`) — для UI-формы (S5b).
+    /// `None`, если плагин настроек не объявил.
+    pub fn with_settings_schema(mut self, schema: Option<Value>) -> Self {
+        self.settings = schema;
         self
     }
 
@@ -340,6 +351,10 @@ impl PluginManager {
                     .into_iter()
                     .map(str::to_string)
                     .collect(),
+                // Схема — из манифеста; значения обогащает host (`PluginHost::list_plugins`)
+                // из `PluginSettingsStore` (S5b). Здесь — пустой объект-заглушка.
+                settings_schema: p.settings.clone(),
+                settings_values: serde_json::json!({}),
             })
             .collect();
         infos.sort_by(|a, b| a.id.cmp(&b.id));
@@ -470,6 +485,9 @@ pub fn load_plugins(
         );
         let contributes = discovered.manifest.contributes.views.clone();
         let commands = discovered.manifest.contributes.commands.clone();
+        // Схема настроек UI-формы (`contributes.settings`) — до частичного перемещения
+        // `discovered` (S5b).
+        let settings_schema = discovered.manifest.contributes.settings.clone();
         // Человекочитаемые имя/версия — в IPC-проекцию `PluginInfo` (S12a). Берём до
         // перемещения `source`, чтобы не полагаться на частичные перемещения `discovered`.
         let name = discovered.manifest.name.clone();
@@ -497,7 +515,8 @@ pub fn load_plugins(
         .with_identity(name, version)
         .with_entry_path(discovered.entry_path)
         .with_dir(discovered.dir)
-        .with_granted(granted);
+        .with_granted(granted)
+        .with_settings_schema(settings_schema);
         runtime.set_enabled(enabled);
         manager.register(runtime);
     }
