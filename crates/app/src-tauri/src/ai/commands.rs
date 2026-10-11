@@ -63,7 +63,7 @@ pub async fn ai_chat(
         return Err(err);
     };
 
-    state.enforce_rate_limit();
+    state.enforce_rate_limit().await;
 
     let message_id = next_message_id();
     let backend = state.backend();
@@ -203,6 +203,7 @@ mod tests {
         );
         assert_eq!(error_code_str(ErrorCode::AiServerError), "ai_server_error");
         assert_eq!(error_code_str(ErrorCode::AiOffline), "ai_offline");
+        assert_eq!(error_code_str(ErrorCode::AiBadSettings), "ai_bad_settings");
     }
 
     #[test]

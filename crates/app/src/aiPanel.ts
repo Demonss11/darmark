@@ -167,6 +167,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
   const modelInput = byId<HTMLInputElement>("ai-model");
   const keyInput = byId<HTMLInputElement>("ai-key");
   const keySave = byId<HTMLButtonElement>("ai-key-save");
+  const keyClear = byId<HTMLButtonElement>("ai-key-clear");
   const keyHint = byId<HTMLElement>("ai-key-hint");
   const testBtn = byId<HTMLButtonElement>("ai-test");
   const testResult = byId<HTMLElement>("ai-test-result");
@@ -260,6 +261,8 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     modelInput.disabled = !enabled;
     keyInput.disabled = !enabled;
     keySave.disabled = !enabled;
+    // «Удалить ключ» доступна только когда ключ реально задан.
+    keyClear.disabled = !enabled || !(settings?.has_key ?? false);
     testBtn.disabled = !enabled;
 
     if (settings) {
@@ -571,6 +574,14 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
   }
 
   function clearChat(): void {
+    // Инвалидируем текущий запрос: осиротевший ответ не должен дописаться в
+    // удалённый пузырь и не попадёт в очищенную history.
+    requestToken++;
+    if (pending) {
+      pending.finalized = true;
+      pending = null;
+    }
+    setBusy(false);
     chat.textContent = "";
     history = [];
     lastRequest = null;
@@ -585,8 +596,9 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     const content = document.createElement("div");
     content.className = "ai-consent";
     const p = document.createElement("p");
+    // Формулировка — канон TZ §4.2: явно называем получателя и модель.
     p.textContent =
-      "AI-ассистент может отправлять содержимое документа и историю чата в облачный сервис routerai.ru. Разрешить?";
+      "AI-ассистент может отправлять содержимое документа и историю чата в облачный сервис routerai.ru (для запроса к модели deepseek/deepseek-v4.1-flash). Разрешить?";
     const warn = document.createElement("div");
     warn.className = "ai-consent-warning";
     warn.textContent = "Содержимое уйдёт на внешний сервер. Не отправляйте конфиденциальные документы.";
@@ -666,10 +678,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
 
   async function saveKey(): Promise<void> {
     const key = keyInput.value.trim();
-    if (!key) {
-      keyInput.focus();
-      return;
-    }
+    // Пустое поле + «Сохранить»/«Удалить ключ» = очистка: Rust трактует "" как снятие ключа.
     try {
       await aiSetApiKey(key);
       keyInput.value = "";
@@ -677,7 +686,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
       authError = false;
       lastError = false;
       applyState();
-      log("info", "system", "AI: API-ключ сохранён");
+      log("info", "system", key ? "AI: API-ключ сохранён" : "AI: API-ключ удалён");
     } catch (e) {
       log("error", "system", `AI: ключ не сохранён (${errorMessage(e)})`);
     }
@@ -738,6 +747,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
   // --- обработчики ---
 
   const onInputKeyDown = (e: KeyboardEvent): void => {
+    // Enter и Ctrl+Enter — отправить; Shift+Enter — перенос строки (TZ §8.7).
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       submitInput();
@@ -755,6 +765,10 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
   const onSettingsClick = (): void => toggleSettings();
   const onSettingsClose = (): void => closeSettings();
   const onKeySave = (): void => void saveKey();
+  const onKeyClear = (): void => {
+    keyInput.value = ""; // явная очистка: пустой ключ → ai_set_api_key("")
+    void saveKey();
+  };
   const onTest = (): void => void testConnection();
   const onEnableClick = (): void => void enableFromStub();
   const onEnabledChange = (): void => {
@@ -792,6 +806,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
   settingsBtn.addEventListener("click", onSettingsClick);
   settingsClose.addEventListener("click", onSettingsClose);
   keySave.addEventListener("click", onKeySave);
+  keyClear.addEventListener("click", onKeyClear);
   testBtn.addEventListener("click", onTest);
   enableBtn.addEventListener("click", onEnableClick);
   enabledInput.addEventListener("change", onEnabledChange);
@@ -848,7 +863,9 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
       ensureSkills();
       input.focus();
     }
-    if (mode !== "ai") closeSettings();
+    // Поповер настроек живёт только при активном раскрытии режима AI: при уходе в
+    // другой режим, свёртке или скрытии дока он теряет якорь — закрываем.
+    if (!active) closeSettings();
     wasAiExpanded = active;
   }
 
@@ -864,6 +881,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     settingsBtn.removeEventListener("click", onSettingsClick);
     settingsClose.removeEventListener("click", onSettingsClose);
     keySave.removeEventListener("click", onKeySave);
+    keyClear.removeEventListener("click", onKeyClear);
     testBtn.removeEventListener("click", onTest);
     enableBtn.removeEventListener("click", onEnableClick);
     enabledInput.removeEventListener("change", onEnabledChange);

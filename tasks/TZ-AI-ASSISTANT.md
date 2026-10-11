@@ -70,7 +70,7 @@ AI-ассистент — **встроенная подсистема хоста
    `https://routerai.ru/api/v1`, модель по умолчанию `deepseek/deepseek-v4.1-flash` — как **единственный
    реализуемый в MVP**. Клиент — любой OpenAI-совместимый; интерфейс провайдера держим расширяемым
    (Anthropic и пр. — позже), локальная LLM — вне scope (см. ниже).
-3. **Настройки AI** — ввод и хранение **API-ключа** локально в `%APPDATA%/darmark/config.json` (секция `ai`, поле `api_key`; существующий `SettingsStore`, D11) и **выбор модели** в UI (`#ai-settings-pop`).
+3. **Настройки AI** — ввод и хранение **API-ключа** локально в `%APPDATA%/darmark/config.json` (секция `ai`, поле `api_key`; существующий `SettingsStore`, D11) и **выбор модели** в UI (`#ai-settings-pop`); **очистка ключа** — пустой строкой через `ai_set_api_key("")` (после `trim` → `api_key = None`, §3.2/§9.1).
 4. **Rust-сетевой слой** — HTTP-клиент на Rust-стороне, обход CSP.
 5. **Библиотека скиллов — ровно 2 готовых промта в MVP:** «Объяснить файл» (`explain`) и «Создать плагин» (`create-plugin`). Остальные (переструктурировать, конспект, отладить плагин, добавить view, объяснить синтаксис) — Фаза 3/«позже».
 6. **Harness для документа (Фаза 2, тот же релиз)** — предложение диффов с предпросмотром и применением через `apply_edit`.
@@ -197,6 +197,7 @@ ADR/спайк).
   **не логируется**, права каталога `%APPDATA%/darmark/` — пользовательские (как у остального конфига).
 - Ключ **не попадает** в TS-код, логи, снапшоты и события (кроме маскированного отображения в UI).
 - Ввод — в UI (`#ai-key`, `type="password"`); наружу (в TS) уходит только факт `has_key` — в UI показывается **маска-заглушка** (само значение не отдаётся).
+- **Очистка ключа:** `ai_set_api_key("")` (пустая строка, в т.ч. из пробелов, после `trim`) записывает `api_key = None` — секрет удаляется из `config.json`; команда не возвращает значение (наружу — только `has_key = false`).
 
 ### 3.3. Правки документа
 
@@ -247,6 +248,14 @@ ADR/спайк).
 | **Маппинг ошибок (OpenAI-совместимый)** | `401` — неверный/отсутствующий ключ; `429` — rate limit/quota (+ `Retry-After`); `400` (context length exceeded) — запрос длиннее контекста модели → предложить фрагмент/сокращение; `5xx` — транзиентные, ретрай с backoff (ограниченное число попыток); сеть/таймаут — понятная офлайн-ошибка без падения приложения. **Примечание:** сторонний роутер `routerai.ru` может отдавать собственные коды/сообщения о квотах и лимитах — обрабатывать их устойчиво (не падать на незнакомом теле/коде, показывать текст роутера, если распознать не удалось) |
 | **Обработка ошибок** | Сетевые ошибки, ошибки API, ошибки парсинга — все показываются в чате |
 
+> **Hardening — реализовано (ревью кода).** В `crates/app/src-tauri/src/ai/`: запрет редиректов
+> (`Policy::none` — тело не уходит на хост, не названный в согласии); лимит накопленного ответа
+> (`MAX_RESPONSE_BYTES ≈8 МиБ`) и буфера SSE (`MAX_BUFFER_BYTES ≈1 МиБ`); bounded-read тела ошибки
+> (`MAX_ERROR_BODY_BYTES ≈64 КиБ`); `stream_options.include_usage = true` (иначе `usage` при стриминге
+> не приходит); валидация `base_url` (`https://` всегда; `http://` — только loopback; иначе код
+> **`ai_bad_settings`**). Секрет не попадает в `{:?}` (ручной `Debug` с `<redacted>`); ретрай/rate-limit
+> — `tokio::time::sleep` (без блокировки воркера).
+
 ### 4.2. Модель согласия
 
 ```
@@ -282,6 +291,7 @@ D11); читается/пишется через `ai_get_settings`/`ai_set_setti
 | Создание/редактирование плагина | Да, явное | Предпросмотр файлов + кнопка «Сохранить» |
 | Удаление плагина | Да, явное | Диалог подтверждения |
 | Запуск плагина в песочнице | Нет (безопасно) | `plugin-host --self-test` в child-процессе |
+| Проверка соединения (`ai_test_connection`, `GET /models`) | Нет (содержимое документа не отправляется) | Только Rust-сторона; проверяются `ai.enabled` и наличие ключа; согласие — про содержимое документа, а не про проверку ключа (§4.2/§9.1) |
 
 ---
 
@@ -648,7 +658,7 @@ PluginManager::reload_plugin (перезагрузка без перезапус
 - Карточка диффа: `role="group"`, `aria-label="Предлагаемая правка"`.
 - Карточка плагина: `role="group"`, `aria-label="Плагин {{name}} версии {{version}}"`.
 - Скиллы: `role="button"`, `aria-label="{{title}}: {{description}}"`.
-- Клавиатура: `Ctrl+Shift+A` — открыть/свернуть режим AI, `Ctrl+Enter` — отправить, `Esc` — свернуть док.
+- Клавиатура: `Ctrl+Shift+A` — открыть/свернуть режим AI; `Enter` — отправить (в поле ввода), `Shift+Enter` — перенос строки; `Esc` — свернуть док / закрыть поповер настроек.
 - Фокус: при открытии режима AI — в поле ввода; при сворачивании дока — на триггер **активного** режима (`#sb-ai`/`#sb-logs`).
 
 ---
@@ -661,26 +671,30 @@ PluginManager::reload_plugin (перезагрузка без перезапус
 
 ```rust
 // src-tauri/src/ai/commands.rs
+// Все команды принимают `State<'_, AiState>` (внедрение состояния Tauri).
 
 #[tauri::command]
-async fn ai_get_settings() -> Result<AiSettingsView, CommandError>
+fn ai_get_settings(state: State<'_, AiState>) -> AiSettingsView   // синхронная, БЕЗ Result
 
 #[tauri::command]
-async fn ai_set_settings(app: tauri::AppHandle, settings: AiSettingsInput) -> Result<AiSettingsView, CommandError>
+fn ai_set_settings(settings: AiSettingsInput, state: State<'_, AiState>) -> Result<(), CommandError>
 
-// Секрет: пишется в config.json (AppData, секция ai); наружу — только has_key (ключ не возвращается)
+// Секрет: пишется в config.json (AppData, секция ai); наружу — только has_key (ключ не возвращается).
+// Пустая строка (после trim) ОЧИЩАЕТ ключ: api_key = None.
 #[tauri::command]
-async fn ai_set_api_key(app: tauri::AppHandle, key: String) -> Result<(), CommandError>
+fn ai_set_api_key(key: String, state: State<'_, AiState>) -> Result<(), CommandError>
 
 #[tauri::command]
-async fn ai_list_skills() -> Result<Vec<AiSkill>, CommandError>
+fn ai_list_skills() -> Vec<AiSkill>   // синхронная, БЕЗ Result
 
 // Стриминг (SSE): ответ приходит событиями ai:chunk/ai:done (§9.2); возврат — итоговый AiResponse
 #[tauri::command]
-async fn ai_chat(app: tauri::AppHandle, messages: Vec<AiMessage>) -> Result<AiResponse, CommandError>
+async fn ai_chat(app: tauri::AppHandle, messages: Vec<AiMessage>, state: State<'_, AiState>) -> Result<AiResponse, CommandError>
 
+// Tauri требует Result для async-команд; Err НЕ порождается — исход проверки всегда в AiTestResult.
+// Гейт: ai.enabled + наличие ключа (согласие НЕ требуется — содержимое не отправляется, §4.3).
 #[tauri::command]
-async fn ai_test_connection() -> Result<AiTestResult, CommandError>
+async fn ai_test_connection(state: State<'_, AiState>) -> Result<AiTestResult, CommandError>
 ```
 
 **Фаза 2 (harness — тот же релиз, после Фазы 1; §5/§6):**
@@ -706,7 +720,7 @@ async fn ai_validate_plugin(app: tauri::AppHandle, source: String) -> Result<AiV
 `AiSettingsInput` и читается/пишется через `ai_get_settings`/`ai_set_settings` (§4.2); команды
 `ai_get_consent`/`ai_set_consent` **не вводятся**.
 
-**Ключ не логируется** (не в события/логи, не в снапшоты). `ai_set_api_key` пишет ключ в `config.json` (секция `ai`) и **не возвращает** его; `ai_get_settings` возвращает **только `has_key: bool`** — полное значение наружу (в TS) не уходит, UI показывает маску-заглушку.
+**Ключ не логируется** (не в события/логи, не в снапшоты). `ai_set_api_key` пишет ключ в `config.json` (секция `ai`) и **не возвращает** его; **пустая строка (после `trim`) очищает ключ** (`api_key = None`). `ai_get_settings` возвращает **только `has_key: bool`** — полное значение наружу (в TS) не уходит, UI показывает маску-заглушку.
 
 **Размещение и шов (ADR-0034):** команды `ai_*` остаются **IPC-фасадом** над AI-модулем; вызов
 провайдера и передача текста инкапсулированы за трейтом **`AiBackend`/`AiTransport`** (в MVP — одна
@@ -767,6 +781,7 @@ pub struct AiSkill {
     pub title: String,
     pub description: String,
     pub prompt_template: String,     // {{doc}} / {{input}} — подставляет фронт (§3.6)
+    pub category: String,            // "document" | "plugins"
 }
 
 // Настройки для UI: БЕЗ ключа; секрет не отдаётся, только факт его наличия.
@@ -797,7 +812,8 @@ pub struct AiSettingsInput {
 #[derive(Clone, Debug, serde::Serialize)]
 pub struct AiTestResult {
     pub ok: bool,
-    pub message: String,
+    pub model: Option<String>,   // имя модели из `GET /models` (если ответ распознан)
+    pub error: Option<String>,   // понятное сообщение при сбое (ключ/сеть/статус); None при успехе
 }
 
 // --- Фаза 2 (harness) ---
@@ -842,6 +858,7 @@ pub struct AiValidationResult {
 |-------------|------------|
 | Сетевые вызовы только с Rust | Все HTTP в `src-tauri/src/ai/`; TLS — системный SChannel (`native-tls`, ADR-0033) |
 | Согласие на отправку | Проверка поля `consent_document_send` перед запросом (§4.2) |
+| Проверка соединения без согласия | `ai_test_connection` (`GET /models`) шлёт запрос **без** содержимого документа и **без** согласия — согласие относится к отправке содержимого, не к проверке ключа (§4.3) |
 | Ключ локально в `config.json` (AppData) | **Не** в TS, **не** в логах; в UI маскируется; каталог `%APPDATA%/darmark/` — пользовательский (как остальной конфиг) |
 | Логирование без содержимого | Только метаданные (timestamp, model, tokens); текст документа/чата и ключ не логируются |
 | Плагины в песочнице | `plugin-host --self-test` в child-процессе |

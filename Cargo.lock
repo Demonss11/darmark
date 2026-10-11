@@ -672,6 +672,7 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-opener",
  "tempfile",
+ "tokio",
  "webview2-com",
  "windows",
  "windows-core",

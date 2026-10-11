@@ -131,6 +131,9 @@ export function createShell(opts: ShellOptions): void {
     else if (k === "s" && e.shiftKey) { e.preventDefault(); commands.saveAs(); }
     else if (k === "s") { e.preventDefault(); commands.saveFile(); }
     else if (k === "p") { e.preventDefault(); chkPreview.click(); }
+    // Ctrl+Shift+A — открыть/свернуть режим «AI-ассистент» дока (тот же путь, что
+    // триггеры #sb-ai/#tb-ai: режимами владеет logPanel, не shell).
+    else if (k === "a" && e.shiftKey) { e.preventDefault(); opts.logPanel.toggleMode("ai"); }
     // Dev-only: DevTools. WebView2 по настройке глушит свои акселераторы
     // DevTools (F12 / Ctrl+Shift+C) — см. disable_browser_accelerator_keys в Rust,
     // поэтому даём явный вход на стандартном Chromium-хоткее Ctrl+Shift+I.

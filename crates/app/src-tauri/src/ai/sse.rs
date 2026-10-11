@@ -6,6 +6,10 @@
 
 use crate::ai::types::AiUsage;
 
+/// Максимум байт неполной строки в буфере. Защита от неограниченного роста, если в
+/// недоверенном потоке нет `\n` (валидные SSE-строки на порядки короче).
+const MAX_BUFFER_BYTES: usize = 1024 * 1024;
+
 /// Разобранное событие SSE-потока.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SseEvent {
@@ -43,6 +47,10 @@ impl SseParser {
                 line.pop(); // CRLF: убрать '\r'
             }
             events.extend(parse_line(&line));
+        }
+        // Неполная строка без `\n` дольше лимита — отбрасываем, чтобы буфер не рос безгранично.
+        if self.buffer.len() > MAX_BUFFER_BYTES {
+            self.buffer.clear();
         }
         events
     }
@@ -211,5 +219,40 @@ mod tests {
         let mut parser = SseParser::new();
         let events = parser.push(b"data: {\"choices\":[{\"message\":{\"content\":\"x\"}}]}\n");
         assert!(events.is_empty());
+    }
+
+    #[test]
+    fn oversized_partial_line_is_dropped() {
+        // Поток без `\n` длиннее лимита не должен расти бесконечно (защита под panic=abort).
+        let mut parser = SseParser::new();
+        let chunk = vec![b'x'; MAX_BUFFER_BYTES + 1024];
+        assert!(parser.push(&chunk).is_empty());
+        assert_eq!(
+            parser.pending_len(),
+            0,
+            "переполненный буфер неполной строки сброшен"
+        );
+    }
+
+    #[test]
+    fn buffer_stays_bounded_across_many_chunks_without_newline() {
+        let mut parser = SseParser::new();
+        for _ in 0..8 {
+            parser.push(&vec![b'x'; 256 * 1024]);
+            assert!(
+                parser.pending_len() <= MAX_BUFFER_BYTES,
+                "буфер не превышает лимит: {}",
+                parser.pending_len()
+            );
+        }
+    }
+
+    #[test]
+    fn complete_lines_after_overflow_are_still_parsed() {
+        // Сброс неполной строки не мешает разбору последующих корректных событий.
+        let mut parser = SseParser::new();
+        parser.push(&vec![b'x'; MAX_BUFFER_BYTES + 1024]);
+        let events = parser.push(b"data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n");
+        assert_eq!(events, vec![delta("ok")]);
     }
 }

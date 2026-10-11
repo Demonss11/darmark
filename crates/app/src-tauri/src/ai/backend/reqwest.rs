@@ -19,6 +19,10 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_ATTEMPTS: u32 = 2;
 /// Пауза перед ретраем на 5xx.
 const RETRY_BACKOFF: Duration = Duration::from_secs(1);
+/// Лимит накопленного текста ответа: недоверенное тело не должно исчерпать память под `panic=abort`.
+const MAX_RESPONSE_BYTES: usize = 8 * 1024 * 1024;
+/// Лимит чтения тела ошибки/списка моделей перед разбором (защита от гигантского тела).
+const MAX_ERROR_BODY_BYTES: usize = 64 * 1024;
 
 /// HTTP-клиент AI на `reqwest` + SChannel. `reqwest::Client` строится лениво (ADR-0034 §2.3).
 pub struct ReqwestBackend {
@@ -39,6 +43,8 @@ impl ReqwestBackend {
         }
         let built = reqwest::Client::builder()
             .timeout(REQUEST_TIMEOUT)
+            // Редиректы запрещены: тело (документ) не должно уходить на хост, не названный в согласии (H2).
+            .redirect(reqwest::redirect::Policy::none())
             .build()
             .map_err(|e| {
                 CommandError::new(ErrorCode::AiOffline, format!("не создать HTTP-клиент: {e}"))
@@ -58,6 +64,36 @@ fn endpoint(base_url: &str, path: &str) -> String {
     format!("{}/{}", base_url.trim_end_matches('/'), path)
 }
 
+/// Проверяет, что накопленный ответ вместе с новой дельтой не превышает лимит (H1).
+fn ensure_within_response_limit(current: usize, incoming: usize) -> Result<(), CommandError> {
+    if current.saturating_add(incoming) > MAX_RESPONSE_BYTES {
+        Err(CommandError::new(
+            ErrorCode::AiBadRequest,
+            "ответ провайдера превысил допустимый размер",
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+/// Читает тело ответа, но не более `limit` байт (недоверенное тело не читается целиком).
+async fn read_body_limited(response: reqwest::Response, limit: usize) -> String {
+    let mut stream = response.bytes_stream();
+    let mut buf: Vec<u8> = Vec::new();
+    while buf.len() < limit {
+        let Some(chunk) = stream.next().await else {
+            break;
+        };
+        let Ok(chunk) = chunk else {
+            break; // обрыв чтения тела — вернём то, что успели (без паники)
+        };
+        let remaining = limit - buf.len();
+        let take = chunk.len().min(remaining);
+        buf.extend_from_slice(&chunk[..take]);
+    }
+    String::from_utf8_lossy(&buf).into_owned()
+}
+
 impl AiTransport for ReqwestBackend {
     fn chat<'a>(
         &'a self,
@@ -73,6 +109,8 @@ impl AiTransport for ReqwestBackend {
                 "max_tokens": request.max_tokens,
                 "temperature": request.temperature,
                 "stream": true,
+                // Без include_usage провайдер не присылает `usage` в стриме — расход токенов не показать.
+                "stream_options": { "include_usage": true },
             });
             let auth = format!("Bearer {}", request.api_key);
 
@@ -91,7 +129,7 @@ impl AiTransport for ReqwestBackend {
                     Ok(response)
                         if response.status().is_server_error() && attempt < MAX_ATTEMPTS =>
                     {
-                        std::thread::sleep(RETRY_BACKOFF);
+                        tokio::time::sleep(RETRY_BACKOFF).await;
                     }
                     Ok(response) => break response,
                     Err(e) => {
@@ -110,7 +148,7 @@ impl AiTransport for ReqwestBackend {
                     .get(reqwest::header::RETRY_AFTER)
                     .and_then(|value| value.to_str().ok())
                     .map(str::to_string);
-                let error_body = response.text().await.unwrap_or_default();
+                let error_body = read_body_limited(response, MAX_ERROR_BODY_BYTES).await;
                 return Err(map_status(
                     status.as_u16(),
                     &error_body,
@@ -129,6 +167,7 @@ impl AiTransport for ReqwestBackend {
                 for event in parser.push(&chunk) {
                     match event {
                         SseEvent::Delta(delta) => {
+                            ensure_within_response_limit(content.len(), delta.len())?;
                             content.push_str(&delta);
                             on_delta(delta);
                         }
@@ -164,7 +203,7 @@ impl AiTransport for ReqwestBackend {
                     )
                 })?;
             let status = response.status();
-            let body = response.text().await.unwrap_or_default();
+            let body = read_body_limited(response, MAX_ERROR_BODY_BYTES).await;
             if !status.is_success() {
                 return Err(map_status(status.as_u16(), &body, None));
             }
@@ -181,5 +220,32 @@ impl AiTransport for ReqwestBackend {
                 });
             Ok(model)
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn endpoint_avoids_double_slash() {
+        assert_eq!(
+            endpoint("https://example.test/v1/", "chat/completions"),
+            "https://example.test/v1/chat/completions"
+        );
+    }
+
+    #[test]
+    fn response_limit_allows_just_under_and_rejects_over() {
+        assert!(ensure_within_response_limit(0, MAX_RESPONSE_BYTES).is_ok());
+        let err = ensure_within_response_limit(MAX_RESPONSE_BYTES, 1).unwrap_err();
+        assert_eq!(err.code, ErrorCode::AiBadRequest);
+    }
+
+    #[test]
+    fn response_limit_is_saturating() {
+        // Переполнение usize не должно паниковать (защита под panic=abort).
+        let err = ensure_within_response_limit(usize::MAX, 1).unwrap_err();
+        assert_eq!(err.code, ErrorCode::AiBadRequest);
     }
 }

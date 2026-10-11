@@ -14,7 +14,7 @@ use crate::error::CommandError;
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
 /// Запрос к провайдеру (после гейта: включён, ключ есть, согласие выдано).
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct ChatRequest {
     pub base_url: String,
     pub model: String,
@@ -24,11 +24,35 @@ pub struct ChatRequest {
     pub temperature: f32,
 }
 
+/// Ручной `Debug`: секрет (`api_key`) маскируется и не попадает в `{:?}`/логи (H4).
+impl std::fmt::Debug for ChatRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ChatRequest")
+            .field("base_url", &self.base_url)
+            .field("model", &self.model)
+            .field("api_key", &"<redacted>")
+            .field("messages", &self.messages)
+            .field("max_tokens", &self.max_tokens)
+            .field("temperature", &self.temperature)
+            .finish()
+    }
+}
+
 /// Лёгкая проверка соединения (`GET /models`); содержимое не отправляется.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct TestRequest {
     pub base_url: String,
     pub api_key: String,
+}
+
+/// Ручной `Debug`: секрет (`api_key`) маскируется и не попадает в `{:?}`/логи (H4).
+impl std::fmt::Debug for TestRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TestRequest")
+            .field("base_url", &self.base_url)
+            .field("api_key", &"<redacted>")
+            .finish()
+    }
 }
 
 /// Итог чата: склеенный текст ответа и (если провайдер прислал) `usage`.
@@ -56,4 +80,44 @@ pub trait AiTransport: Send + Sync + 'static {
         &self,
         request: TestRequest,
     ) -> BoxFuture<'_, Result<Option<String>, CommandError>>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn chat_request_debug_masks_secret() {
+        let request = ChatRequest {
+            base_url: "https://example.test/v1".to_string(),
+            model: "m".to_string(),
+            api_key: "sk-secret-1234".to_string(),
+            messages: vec![AiMessage {
+                role: "user".to_string(),
+                content: "hi".to_string(),
+            }],
+            max_tokens: 16,
+            temperature: 0.0,
+        };
+        let rendered = format!("{request:?}");
+        assert!(!rendered.contains("sk-secret"), "секрет скрыт: {rendered}");
+        assert!(
+            rendered.contains("<redacted>"),
+            "секрет маскируется: {rendered}"
+        );
+    }
+
+    #[test]
+    fn test_request_debug_masks_secret() {
+        let request = TestRequest {
+            base_url: "https://example.test/v1".to_string(),
+            api_key: "sk-secret-1234".to_string(),
+        };
+        let rendered = format!("{request:?}");
+        assert!(!rendered.contains("sk-secret"), "секрет скрыт: {rendered}");
+        assert!(
+            rendered.contains("<redacted>"),
+            "секрет маскируется: {rendered}"
+        );
+    }
 }

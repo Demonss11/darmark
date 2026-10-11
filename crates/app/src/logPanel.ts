@@ -38,6 +38,11 @@ export interface LogPanel {
   /** Полностью скрыть док (убрать из layout). */
   hide(): void;
   /**
+   * Открыть/переключить/свернуть режим дока — тот же путь, что триггеры
+   * `#sb-logs`/`#sb-mon`/`#sb-ai` (хоткей `Ctrl+Shift+A` в shell.ts).
+   */
+  toggleMode(next: DockMode): void;
+  /**
    * Единая точка записи в ленту для внешних модулей (шов ресурс-монитора, TZ §6.5):
    * те не подписываются на `log-entry` повторно, а отдают готовую запись владельцу ленты.
    */
@@ -692,6 +697,7 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
     mode: () => mode,
     collapse,
     hide,
+    toggleMode: triggerMode,
     log: push,
     dispose(): void {
       disposed = true; // до очистки: pending-listen увидит флаг и отпишется сам

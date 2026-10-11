@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 use crate::ai::settings;
 use crate::ai::transport::AiTransport;
 use crate::ai::types::{AiSettings, AiSettingsInput};
-use crate::error::CommandError;
+use crate::error::{CommandError, ErrorCode};
 
 /// Минимальный интервал между запросами (клиентский rate limit ≥1 зап/с, TZ §10.1).
 const MIN_REQUEST_INTERVAL: Duration = Duration::from_secs(1);
@@ -70,6 +70,7 @@ impl AiState {
 
     /// Обновляет несекретные настройки (ключ здесь не трогается) и сохраняет в конфиг.
     pub fn update_settings(&self, input: AiSettingsInput) -> Result<(), CommandError> {
+        validate_base_url(&input.base_url)?;
         let mut settings = lock(&self.settings);
         settings.enabled = input.enabled;
         settings.provider = input.provider;
@@ -97,21 +98,81 @@ impl AiState {
 
     /// Клиентский rate limit: гарантирует паузу ≥1 с между запросами (TZ §10.1).
     ///
-    /// Блокирующий сон ≤1 с здесь оправдан: команда инициируется пользователем, а сеть и так
-    /// асинхронна; блокируется один worker tokio, не UI-поток.
-    pub fn enforce_rate_limit(&self) {
-        let wait = {
-            let mut last = lock(&self.rate_limit);
-            let wait = last
-                .map(|previous| MIN_REQUEST_INTERVAL.saturating_sub(previous.elapsed()))
-                .unwrap_or_default();
-            *last = Some(Instant::now() + wait);
-            wait
-        };
+    /// Асинхронный сон (не блокирующий `thread::sleep`): не занимает worker tokio.
+    pub async fn enforce_rate_limit(&self) {
+        let wait = self.reserve_rate_limit_slot();
         if !wait.is_zero() {
-            std::thread::sleep(wait);
+            tokio::time::sleep(wait).await;
         }
     }
+
+    /// Резервирует слот и возвращает, сколько нужно подождать до следующего запроса.
+    ///
+    /// Вынесено из [`Self::enforce_rate_limit`], чтобы проверяться синхронно в тестах.
+    fn reserve_rate_limit_slot(&self) -> Duration {
+        let mut last = lock(&self.rate_limit);
+        let wait = last
+            .map(|previous| MIN_REQUEST_INTERVAL.saturating_sub(previous.elapsed()))
+            .unwrap_or_default();
+        *last = Some(Instant::now() + wait);
+        wait
+    }
+}
+
+/// Проверяет `base_url` (H3): разрешён только `https://`; `http://` — лишь для loopback
+/// (`127.0.0.1`/`localhost`/`[::1]`) ради E2E и локальных тестов.
+///
+/// Не-`https`/loopback адрес отклоняется, чтобы тело документа не ушло по незащищённому
+/// каналу на произвольный хост.
+pub fn validate_base_url(base_url: &str) -> Result<(), CommandError> {
+    let trimmed = base_url.trim();
+    let Some((scheme, rest)) = trimmed.split_once("://") else {
+        return Err(bad_settings(
+            "адрес провайдера должен начинаться с https:// (или http:// для локального хоста)",
+        ));
+    };
+    let host = host_of(rest);
+    match scheme.to_ascii_lowercase().as_str() {
+        "https" if !host.is_empty() => Ok(()),
+        "https" => Err(bad_settings("в адресе провайдера не указан хост")),
+        "http" if is_loopback_host(host) => Ok(()),
+        "http" => Err(bad_settings(
+            "http:// разрешён только для локального хоста (127.0.0.1/localhost/[::1]); \
+             для внешних адресов используйте https://",
+        )),
+        other => Err(bad_settings(format!(
+            "неподдерживаемая схема адреса провайдера: {other}"
+        ))),
+    }
+}
+
+/// Ошибка настроек с единым кодом `ai_bad_settings`.
+fn bad_settings(message: impl Into<String>) -> CommandError {
+    CommandError::new(ErrorCode::AiBadSettings, message)
+}
+
+/// Хост из остатка URL после `://` (без userinfo, порта, пути и query).
+fn host_of(rest: &str) -> &str {
+    // Authority — до первого `/`, `?` или `#`; `@` внутри пути не является userinfo.
+    let authority_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    let authority = &rest[..authority_end];
+    let host_port = authority
+        .rsplit_once('@')
+        .map(|(_, host)| host)
+        .unwrap_or(authority);
+    if let Some(stripped) = host_port.strip_prefix('[') {
+        // IPv6 в скобках: `[::1]:8080` → `::1`.
+        stripped.split(']').next().unwrap_or(stripped)
+    } else {
+        // Отбрасываем порт: `host:8080` → `host`.
+        host_port.split(':').next().unwrap_or(host_port)
+    }
+}
+
+/// Loopback-хост (`127.0.0.1`, `localhost`, `[::1]`).
+fn is_loopback_host(host: &str) -> bool {
+    let host = host.trim_matches(|c| c == '[' || c == ']');
+    matches!(host, "127.0.0.1" | "localhost" | "::1")
 }
 
 /// Выбор бэкенда по платформе: `reqwest` (Windows) либо заглушка (не-Windows).
@@ -277,7 +338,81 @@ mod tests {
     #[test]
     fn rate_limit_does_not_panic_without_config() {
         let state = state_with(AiSettings::default(), None);
-        state.enforce_rate_limit();
-        state.enforce_rate_limit();
+        // Первый слот свободен (wait = 0), второй — уже занят (wait ≥ 0).
+        assert!(state.reserve_rate_limit_slot().is_zero());
+        let _ = state.reserve_rate_limit_slot();
+    }
+
+    #[test]
+    fn update_settings_accepts_https() {
+        let state = state_with(AiSettings::default(), None);
+        let input = AiSettingsInput {
+            enabled: true,
+            provider: "openai-compatible".to_string(),
+            base_url: "https://routerai.ru/api/v1".to_string(),
+            model: "m".to_string(),
+            max_tokens: 128,
+            temperature: 0.1,
+            consent_document_send: false,
+        };
+        assert!(state.update_settings(input).is_ok());
+    }
+
+    #[test]
+    fn update_settings_accepts_http_loopback() {
+        for base_url in [
+            "http://127.0.0.1:8080/v1",
+            "http://localhost:5173/v1",
+            "http://[::1]:9000/v1",
+        ] {
+            let state = state_with(AiSettings::default(), None);
+            let input = AiSettingsInput {
+                enabled: true,
+                provider: "openai-compatible".to_string(),
+                base_url: base_url.to_string(),
+                model: "m".to_string(),
+                max_tokens: 128,
+                temperature: 0.1,
+                consent_document_send: false,
+            };
+            assert!(state.update_settings(input).is_ok(), "принят: {base_url}");
+        }
+    }
+
+    #[test]
+    fn update_settings_rejects_http_remote_and_bad_scheme() {
+        for base_url in [
+            "http://example.com/v1",
+            "http://192.168.0.1/v1",
+            "ftp://example.com",
+            "example.com/v1",
+        ] {
+            let state = state_with(AiSettings::default(), None);
+            let input = AiSettingsInput {
+                enabled: true,
+                provider: "openai-compatible".to_string(),
+                base_url: base_url.to_string(),
+                model: "m".to_string(),
+                max_tokens: 128,
+                temperature: 0.1,
+                consent_document_send: false,
+            };
+            let err = state
+                .update_settings(input)
+                .expect_err(&format!("отклонён: {base_url}"));
+            assert_eq!(err.code, ErrorCode::AiBadSettings, "код для {base_url}");
+        }
+    }
+
+    #[test]
+    fn validate_base_url_edge_cases() {
+        assert!(validate_base_url("https://example.test").is_ok());
+        assert!(validate_base_url("  https://example.test/v1  ").is_ok());
+        assert!(validate_base_url("http://127.0.0.1").is_ok());
+        assert!(validate_base_url("https://").is_err());
+        assert!(validate_base_url("http://user:pass@localhost/v1").is_ok());
+        assert!(validate_base_url("http://user:pass@evil.test/v1").is_err());
+        assert!(validate_base_url("http://[::1]/v1").is_ok());
+        assert!(validate_base_url("http://[2001:db8::1]/v1").is_err());
     }
 }

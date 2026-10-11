@@ -44,7 +44,7 @@ pub struct AiSkill {
 ///
 /// `Default` — opt-in: `enabled = false`, согласие не выдано. Пропущенные поля в старом
 /// конфиге заполняются значениями по умолчанию (`#[serde(default)]`).
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AiSettings {
     /// Включаемость без бинарника (ADR-0034 §2.3); по умолчанию выключено.
@@ -82,6 +82,22 @@ impl AiSettings {
             .as_deref()
             .map(|key| !key.trim().is_empty())
             .unwrap_or(false)
+    }
+}
+
+/// Ручной `Debug`: секрет (`api_key`) маскируется и не попадает в `{:?}`/логи (H4).
+impl std::fmt::Debug for AiSettings {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AiSettings")
+            .field("enabled", &self.enabled)
+            .field("provider", &self.provider)
+            .field("base_url", &self.base_url)
+            .field("model", &self.model)
+            .field("max_tokens", &self.max_tokens)
+            .field("temperature", &self.temperature)
+            .field("consent_document_send", &self.consent_document_send)
+            .field("api_key", &self.api_key.as_ref().map(|_| "<redacted>"))
+            .finish()
     }
 }
 
@@ -198,5 +214,22 @@ mod tests {
         assert_eq!(settings.model, "deepseek/deepseek-v4.1-flash");
         assert_eq!(settings.max_tokens, 4096);
         assert!(settings.api_key.is_none());
+    }
+
+    #[test]
+    fn debug_masks_secret() {
+        let settings = AiSettings {
+            api_key: Some("sk-secret-1234".to_string()),
+            ..AiSettings::default()
+        };
+        let rendered = format!("{settings:?}");
+        assert!(
+            !rendered.contains("sk-secret"),
+            "секрет не должен попадать в Debug: {rendered}"
+        );
+        assert!(
+            rendered.contains("<redacted>"),
+            "секрет маскируется в Debug: {rendered}"
+        );
     }
 }
