@@ -161,7 +161,7 @@ pub struct PluginInfo {
 /// На Windows содержит реальный `plugins::host::PluginHost`; на прочих
 /// платформах — пустую заглушку, чтобы единый `generate_handler!` собирался
 /// (модуль `plugins` включается только под Windows).
-struct PluginState {
+pub struct PluginState {
     #[cfg(windows)]
     host: plugins::host::PluginHost,
 }
@@ -836,7 +836,13 @@ pub fn run() {
             ai::commands::ai_set_api_key,
             ai::commands::ai_list_skills,
             ai::commands::ai_chat,
-            ai::commands::ai_test_connection
+            ai::commands::ai_test_connection,
+            ai::doc_harness::ai_diff,
+            ai::doc_harness::ai_apply_edit,
+            ai::plugin_harness::ai_validate_plugin,
+            ai::plugin_harness::ai_create_plugin,
+            ai::plugin_harness::ai_update_plugin,
+            ai::plugin_harness::ai_delete_plugin
         ])
         .run(tauri::generate_context!())
         .expect("error while running darmark");

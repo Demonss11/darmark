@@ -321,3 +321,69 @@ export function aiChat(messages: AiMessage[]): Promise<AiResponse> {
 export function aiTestConnection(): Promise<AiTestResult> {
   return invoke<AiTestResult>("ai_test_connection");
 }
+
+// --- AI-ассистент: harness Фазы 2 (TZ-AI-ASSISTANT §5–§6, §9) ---
+// Правка документа идёт через `DocumentStore::apply_edit` (D5); плагины — через
+// тот же цикл валидации, что и пользовательские (песочница, D16). Сеть — на Rust.
+
+/** Операция правки документа: байтовые (UTF-8) смещения + новый текст (§9.3). */
+export interface AiEditOp {
+  start: number;
+  end: number;
+  text: string;
+}
+
+/** Предложенная правка: исходный/новый текст и минимальный дифф (§5.3). */
+export interface AiDiff {
+  doc_id: string;
+  base_rev: number;
+  original: string;
+  modified: string;
+  ops: AiEditOp[];
+}
+
+/** Результат валидации плагина (манифест + entry + песочница, §6.4). */
+export interface AiValidationResult {
+  ok: boolean;
+  errors: string[];
+  /** Версионированный отчёт CLI/fallback (`schema_version`); null — отчёта нет. */
+  report: unknown | null;
+}
+
+/** Предлагает правку документа: минимальный дифф текущего текста и `proposed` (§5.3). */
+export function aiDiff(docId: DocumentId, proposed: string): Promise<AiDiff> {
+  return invoke<AiDiff>("ai_diff", { docId, proposed });
+}
+
+/** Применяет правку через `DocumentStore::apply_edit`; `baseRev` защищает от гонок (§5.4). */
+export function aiApplyEdit(
+  docId: DocumentId,
+  baseRev: number,
+  ops: AiEditOp[]
+): Promise<UndoResult> {
+  return invoke<UndoResult>("ai_apply_edit", { docId, baseRev, ops });
+}
+
+/** Валидирует плагин (манифест + entry + прогон в песочнице, §6.4). */
+export function aiValidatePlugin(
+  id: string,
+  manifest: Json,
+  source: string
+): Promise<AiValidationResult> {
+  return invoke<AiValidationResult>("ai_validate_plugin", { id, manifest, source });
+}
+
+/** Создаёт плагин: запись → валидация → регистрация; только при `ok=true` (§6.1). */
+export function aiCreatePlugin(id: string, manifest: Json, source: string): Promise<PluginInfo> {
+  return invoke<PluginInfo>("ai_create_plugin", { id, manifest, source });
+}
+
+/** Обновляет плагин: перезапись → валидация → reload без рестарта приложения (§6.5). */
+export function aiUpdatePlugin(id: string, manifest: Json, source: string): Promise<PluginInfo> {
+  return invoke<PluginInfo>("ai_update_plugin", { id, manifest, source });
+}
+
+/** Удаляет плагин (файлы + настройки), останавливая child-процесс. */
+export function aiDeletePlugin(id: string): Promise<void> {
+  return invoke<void>("ai_delete_plugin", { id });
+}

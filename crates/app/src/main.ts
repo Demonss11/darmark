@@ -108,6 +108,10 @@ ai = createAiPanel({
   root: document.getElementById("ai-mode") as HTMLElement,
   log: (level, category, message, detail) => logPanel.log(level, category, message, detail),
   getDocumentText: () => store.active()?.text ?? "",
+  getActiveDocument: () => {
+    const tab = store.active();
+    return tab ? { id: tab.id, rev: tab.rev } : null;
+  },
 });
 
 // 3. Реестр представлений: тир-1 preview встроен на хосте (D2).

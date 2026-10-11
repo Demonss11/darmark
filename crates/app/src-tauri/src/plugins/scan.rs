@@ -77,6 +77,13 @@ pub fn read_source(entry_path: &Path) -> Result<String, String> {
     String::from_utf8(bytes).map_err(|e| format!("{}: не UTF-8: {e}", entry_path.display()))
 }
 
+/// Читает и валидирует один каталог плагина (harness AI, TZ §6.2).
+///
+/// Общая точка с [`scan_plugins`]: те же проверки манифеста/entry/размера.
+pub fn load_single(dir: &Path) -> Result<DiscoveredPlugin, String> {
+    load_plugin(dir)
+}
+
 /// Читает и валидирует один каталог плагина.
 fn load_plugin(dir: &Path) -> Result<DiscoveredPlugin, String> {
     let manifest_path = dir.join(MANIFEST_FILE);

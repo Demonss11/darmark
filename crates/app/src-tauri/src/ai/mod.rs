@@ -9,8 +9,10 @@
 
 pub mod backend;
 pub mod commands;
+pub mod doc_harness;
 pub mod errors;
 pub mod gate;
+pub mod plugin_harness;
 pub mod settings;
 pub mod skills;
 pub mod sse;
@@ -19,6 +21,6 @@ pub mod transport;
 pub mod types;
 
 pub use types::{
-    AiMessage, AiResponse, AiSettings, AiSettingsInput, AiSettingsView, AiSkill, AiTestResult,
-    AiUsage,
+    AiDiff, AiEditOp, AiMessage, AiResponse, AiSettings, AiSettingsInput, AiSettingsView, AiSkill,
+    AiTestResult, AiUsage, AiValidationResult,
 };

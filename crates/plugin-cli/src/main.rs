@@ -19,6 +19,12 @@ use plugin_host::selftest;
 /// Лимит размера `plugin.json` (совпадает с GUI-сканированием и самопроверкой child).
 const MAX_MANIFEST_BYTES: u64 = 256 * 1024;
 
+/// Версия схемы JSON-отчёта `test --json` (корневое поле `schema_version`).
+///
+/// Аддитивные поля не повышают мажор; harness AI доверяет отчёту только с этой версией
+/// (нет поля / неизвестный мажор → fallback, TZ-AI-ASSISTANT §6.2).
+const REPORT_SCHEMA_VERSION: u32 = 1;
+
 /// Имя файла манифеста в каталоге плагина.
 const MANIFEST_FILE: &str = "plugin.json";
 
@@ -919,8 +925,8 @@ fn print_report_text(report: &TestReport) {
     );
 }
 
-/// JSON-отчёт `test` (один объект).
-fn print_report_json(report: &TestReport) {
+/// JSON-отчёт `test` как значение (один объект) — отделён от печати ради тестов формы.
+fn report_to_json(report: &TestReport) -> serde_json::Value {
     let checks: Vec<serde_json::Value> = report
         .checks
         .iter()
@@ -935,13 +941,18 @@ fn print_report_json(report: &TestReport) {
             })
         })
         .collect();
-    let output = serde_json::json!({
+    serde_json::json!({
+        "schema_version": REPORT_SCHEMA_VERSION,
         "path": report.path.to_string_lossy(),
         "ok": report.ok(),
         "checks": checks,
         "sandbox_logs": report.sandbox_logs,
-    });
-    match serde_json::to_string_pretty(&output) {
+    })
+}
+
+/// JSON-отчёт `test` (один объект).
+fn print_report_json(report: &TestReport) {
+    match serde_json::to_string_pretty(&report_to_json(report)) {
         Ok(text) => println!("{text}"),
         Err(error) => eprintln!("ошибка сериализации JSON: {error}"),
     }
@@ -1112,6 +1123,30 @@ mod tests {
         let report = run_test(&path, false);
         assert!(report.ok(), "checks: {:?}", report.checks);
         assert_eq!(find(&report, "sandbox").status, CheckStatus::Ok);
+    }
+
+    #[test]
+    fn report_json_has_schema_version_and_shape() {
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path().join("valid");
+        write_plugin(
+            &dir,
+            &manifest("valid"),
+            Some("function on_activate(ctx) end\n"),
+        );
+        let report = run_test(&dir, false);
+        let json = report_to_json(&report);
+        assert_eq!(
+            json["schema_version"], 1,
+            "версионированный отчёт (TZ §6.2)"
+        );
+        assert_eq!(json["ok"], true);
+        assert!(json["checks"].is_array(), "checks[] присутствует");
+        assert!(
+            json["sandbox_logs"].is_array(),
+            "sandbox_logs[] присутствует"
+        );
+        assert!(json["path"].is_string(), "path присутствует");
     }
 
     #[test]

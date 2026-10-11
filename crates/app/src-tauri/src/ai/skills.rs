@@ -10,8 +10,15 @@ const EXPLAIN_PROMPT: &str = "Объясни этот документ прос�
 что делает разметка Markdown. Отвечай без правок самого документа.\n\nДокумент:\n{{doc}}";
 
 /// Промт `create-plugin`: подстановка `{{input}}` — описание плагина из чата.
-const CREATE_PLUGIN_PROMPT: &str = "Сгенерируй Lua-плагин для darmark по описанию: {{input}}. \
-Верни main.lua и plugin.json (host-API и permissions — по песочнице darmark).";
+///
+/// Контракт ответа (TZ §6): модель возвращает **только** один fenced-блок ```` ```json ````
+/// с объектом `{ id, name, version, permissions, source }` — его парсит фронт.
+const CREATE_PLUGIN_PROMPT: &str = r#"Ты — генератор Lua-плагинов для darmark. По описанию: {{input}}
+Верни РОВНО один fenced-блок ```json с одним объектом:
+{"id": "…", "name": "…", "version": "1.0.0", "permissions": [], "source": "полный код main.lua"}
+Правила: id — только строчные латинские буквы, цифры, '-' и '_'; permissions — только из набора
+darmark (document:read, document:write, view:create, view:modify, ui:statusbar); source — полный
+код main.lua с функцией on_activate и host-API песочницы darmark. Никакого текста вне блока."#;
 
 /// Список встроенных скиллов MVP (ровно 2, TZ §7.1).
 pub fn skills() -> Vec<AiSkill> {
@@ -57,5 +64,29 @@ mod tests {
         let create = &skills[1];
         assert_eq!(create.category, "plugins");
         assert!(create.prompt_template.contains("{{input}}"));
+    }
+
+    #[test]
+    fn create_plugin_prompt_requires_json_contract() {
+        // Контракт парсинга фронта (TZ §6): только fenced ```json с полями объекта.
+        let create = &skills()[1];
+        let prompt = &create.prompt_template;
+        assert!(prompt.contains("```json"), "промт просит fenced json-блок");
+        for field in [
+            "\"id\"",
+            "\"name\"",
+            "\"version\"",
+            "\"permissions\"",
+            "\"source\"",
+        ] {
+            assert!(
+                prompt.contains(field),
+                "промт задаёт поле {field}: {prompt}"
+            );
+        }
+        assert!(
+            prompt.contains("Никакого текста вне"),
+            "промт запрещает текст вне блока"
+        );
     }
 }

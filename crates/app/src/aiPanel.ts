@@ -7,19 +7,43 @@
 // LLM в innerHTML запрещён). История чата — в памяти на сессию (без персист.).
 // Стриминг: события ai:chunk/ai:done/ai:error дописывают/финализируют текущий
 // пузырь ассистента; отписки сохраняются и снимаются (без утечек).
+//
+// Фаза 2 (harness §5–§6): под ответом ассистента — «Применить как правку» (дифф)
+// и карточка плагина из ```json-блока. Правки документа идут через ai_apply_edit
+// (+ undo_document); плагины — через ai_*_plugin. Карточки собираются DOM API и
+// textContent; сырой вывод модели в innerHTML не попадает.
 
 import { listen, type Event, type UnlistenFn } from "@tauri-apps/api/event";
 import { openDialog, isModalOpen, type Dialog } from "./dialog";
 import {
+  aiApplyEdit,
   aiChat,
+  aiCreatePlugin,
+  aiDeletePlugin,
+  aiDiff,
   aiGetSettings,
   aiListSkills,
   aiSetApiKey,
   aiSetSettings,
   aiTestConnection,
+  aiUpdatePlugin,
+  aiValidatePlugin,
   errorMessage,
+  reloadPlugin,
+  undoDocument,
 } from "./tauri";
-import type { AiMessage, AiSettingsInput, AiSettingsView, AiSkill, AiUsage } from "./tauri";
+import type {
+  AiDiff,
+  AiMessage,
+  AiSettingsInput,
+  AiSettingsView,
+  AiSkill,
+  AiUsage,
+  PluginStatus,
+} from "./tauri";
+import { buildUnitMaps, bytesToUnits } from "./mapping";
+import type { DocumentId } from "./ids";
+import type { Json } from "./viewRegistry";
 import type { DockMode, DockState, LogCategory, LogLevel } from "./logPanel";
 
 /** Лимит текста документа за запрос (§4.1, §10.4). */
@@ -83,6 +107,8 @@ export interface AiPanelOptions {
   log(level: LogLevel, category: LogCategory, message: string, detail?: string): void;
   /** Текущий текст активного документа (для подстановки {{doc}}). */
   getDocumentText(): string;
+  /** Активный документ для harness-правок (id + rev) или `null`, если открытого нет. */
+  getActiveDocument(): { id: DocumentId; rev: number } | null;
 }
 
 export interface AiPanel {
@@ -142,8 +168,195 @@ function shortModel(model: string): string {
   return parts[parts.length - 1] || model;
 }
 
+/** Лимит строк диффа в карточке: защита от огромных правок (§10.1, 10 000 строк). */
+const MAX_DIFF_LINES = 500;
+
+/** Человекочитаемая подпись статуса плагина для бейджа карточки. */
+const PLUGIN_STATUS_LABELS: Record<PluginStatus["state"], string> = {
+  active: "активен",
+  failed: "ошибка",
+  quarantined: "карантин",
+  stopped: "остановлен",
+};
+
+/** Кодовый блок ```json в ответе модели — предложение плагина (скилл create-plugin, §6). */
+const PLUGIN_FENCE = /```json[^\n]*\n([\s\S]*?)```/gi;
+
+/** Предложение плагина, извлечённое из ответа ассистента. */
+interface AiPluginProposal {
+  id: string;
+  name: string;
+  version: string;
+  source: string;
+  /** Собранный `plugin.json` (без `source`) для `ai_validate_plugin`/`ai_create_plugin`. */
+  manifest: Json;
+}
+
+/** Карточка диффа, зарегистрированная для реакции на событие `ai:edit_applied`. */
+interface DiffCard {
+  docId: DocumentId;
+  applied: boolean;
+  markApplied(rev: number): void;
+}
+
+/** Карточка плагина, зарегистрированная для реакции на события `ai:plugin_*`. */
+interface PluginCardState {
+  id: string;
+  /** Установлен ли плагин карточки (идемпотентная реакция на события). */
+  isInstalled(): boolean;
+  installed(label: string, stateClass: string): void;
+  deleted(): void;
+}
+
+/** Код IPC-ошибки из `CommandError { code, message }` (или `undefined`). */
+function errorCode(e: unknown): string | undefined {
+  if (e && typeof e === "object" && "code" in e) {
+    const code = (e as { code?: unknown }).code;
+    if (typeof code === "string") return code;
+  }
+  return undefined;
+}
+
+/** Создаёт элемент с классом: карточки собираются только DOM API (без innerHTML). */
+function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  className?: string
+): HTMLElementTagNameMap[K] {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  return node;
+}
+
+/** Кнопка карточки: тип, подпись и доступное имя (для скринридеров). */
+function actionButton(label: string, className: string, ariaLabel?: string): HTMLButtonElement {
+  const button = el("button", className);
+  button.type = "button";
+  button.textContent = label;
+  if (ariaLabel) button.setAttribute("aria-label", ariaLabel);
+  return button;
+}
+
+/** Разбивает текст на строки; пустой ввод — пустой список (пустую строку не рисуем). */
+function splitLines(text: string): string[] {
+  if (text === "") return [];
+  const lines = text.split("\n");
+  if (lines.length > 1 && lines[lines.length - 1] === "") lines.pop();
+  return lines;
+}
+
+/** Строка диффа: `+`/`-` + текст (только textContent); перенос даёт `display:block`. */
+function appendDiffLine(pre: HTMLElement, kind: "add" | "del", line: string): void {
+  const span = el("span", kind === "add" ? "ai-diff-add" : "ai-diff-del");
+  span.textContent = `${kind === "add" ? "+" : "-"} ${line}`;
+  pre.appendChild(span);
+}
+
+/**
+ * Рисует тело диффа по `ops`: удалённые фрагменты — красным, добавленные — зелёным.
+ * Байтовые (UTF-8) смещения переводятся в UTF-16 едиными картами `mapping.ts`.
+ */
+function renderDiffBody(pre: HTMLElement, diff: AiDiff): void {
+  const maps = buildUnitMaps(diff.original);
+  const ops = [...diff.ops].sort((a, b) => a.start - b.start);
+  let shown = 0;
+  let truncated = false;
+  for (const op of ops) {
+    const removed = diff.original.slice(bytesToUnits(maps, op.start), bytesToUnits(maps, op.end));
+    for (const line of splitLines(removed)) {
+      if (shown >= MAX_DIFF_LINES) {
+        truncated = true;
+        break;
+      }
+      appendDiffLine(pre, "del", line);
+      shown++;
+    }
+    if (truncated) break;
+    for (const line of splitLines(op.text)) {
+      if (shown >= MAX_DIFF_LINES) {
+        truncated = true;
+        break;
+      }
+      appendDiffLine(pre, "add", line);
+      shown++;
+    }
+    if (truncated) break;
+  }
+  if (truncated) {
+    const note = el("span", "ai-diff-more");
+    note.textContent = `… дифф сокращён (лимит ${MAX_DIFF_LINES} строк)`;
+    pre.appendChild(note);
+  }
+}
+
+/** Ищет первый валидный ```json-блок плагина в ответе ассистента (§6). */
+function extractPluginProposal(content: string): AiPluginProposal | null {
+  PLUGIN_FENCE.lastIndex = 0; // глобальный regexp: сбрасываем позицию между вызовами
+  let match: RegExpExecArray | null;
+  while ((match = PLUGIN_FENCE.exec(content)) !== null) {
+    const proposal = parsePluginBlock(match[1]);
+    if (proposal) return proposal;
+  }
+  return null;
+}
+
+/** Разбирает JSON-блок плагина и собирает `plugin.json` (без `source`). */
+function parsePluginBlock(raw: string): AiPluginProposal | null {
+  let data: unknown;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!data || typeof data !== "object" || Array.isArray(data)) return null;
+  const obj = data as Record<string, unknown>;
+  const id = typeof obj.id === "string" ? obj.id.trim() : "";
+  const source = typeof obj.source === "string" ? obj.source : "";
+  if (!id || !source) return null;
+  const name = typeof obj.name === "string" && obj.name.trim() ? obj.name.trim() : id;
+  const version =
+    typeof obj.version === "string" && obj.version.trim() ? obj.version.trim() : "0.1.0";
+  const rawPermissions: unknown[] = Array.isArray(obj.permissions) ? obj.permissions : [];
+  const permissions = rawPermissions.filter((p): p is string => typeof p === "string");
+  // api_version/entry — значения по умолчанию шаблона `darmark-plugin init` (§6.2).
+  const manifest: Json = { id, name, version, api_version: 1, entry: "main.lua", permissions };
+  return { id, name, version, source, manifest };
+}
+
+/** Confirm-диалог удаления плагина через `dialog.ts` (по образцу pluginManager). */
+function confirmDeletePlugin(pluginId: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const content = el("div", "ai-confirm");
+    const text = el("p", "ai-confirm-text");
+    text.textContent = `Плагин «${pluginId}» будет удалён безвозвратно: файлы и настройки.`;
+    content.appendChild(text);
+
+    const buttons = el("div", "dialog-actions");
+    const cancel = actionButton("Отмена", "btn ghost");
+    const confirm = actionButton("Удалить", "btn primary");
+    buttons.append(cancel, confirm);
+    content.appendChild(buttons);
+
+    let dialog: Dialog | null = null;
+    const finish = (value: boolean): void => {
+      // Сначала фиксируем результат: `close()` вызовет `onClose` (resolve(false)),
+      // который после уже принятого resolve игнорируется.
+      resolve(value);
+      dialog?.close();
+    };
+    cancel.addEventListener("click", () => finish(false));
+    confirm.addEventListener("click", () => finish(true));
+
+    dialog = openDialog({
+      title: "Удаление плагина",
+      content,
+      initialFocus: cancel,
+      onClose: () => resolve(false),
+    });
+  });
+}
+
 export function createAiPanel(opts: AiPanelOptions): AiPanel {
-  const { root, log, getDocumentText } = opts;
+  const { root, log, getDocumentText, getActiveDocument } = opts;
 
   // --- DOM ---
   const offStub = byId<HTMLElement>("ai-off");
@@ -204,6 +417,12 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
   }
   let pending: Pending | null = null;
   let requestToken = 0;
+
+  // Фаза 2 (harness): карточки диффа/плагина, зарегистрированные для реакции на
+  // события `ai:edit_applied`/`ai:plugin_*`. Счётчик даёт уникальные аддитивные id.
+  let cardSeq = 0;
+  const diffCards = new Set<DiffCard>();
+  const pluginCards = new Set<PluginCardState>();
 
   // Подсказка пустого чата (внутри live-региона, но скрыта от скринридеров).
   const emptyHint = document.createElement("div");
@@ -464,6 +683,358 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     if (stick) scrollToBottom();
   }
 
+  // --- Фаза 2: harness — карточка диффа и карточка плагина (§5–§6) ---
+
+  /** Короткая заметка под сообщением (info/error) — только textContent. */
+  function appendNotice(col: HTMLElement, text: string, kind: "info" | "error"): void {
+    const note = el("div", kind === "error" ? "ai-note ai-note-error" : "ai-note");
+    note.setAttribute("role", kind === "error" ? "alert" : "status");
+    note.textContent = text;
+    col.appendChild(note);
+    if (stick) scrollToBottom();
+  }
+
+  /**
+   * Считает дифф по ответу ассистента и рисует карточку. `false` — правок нет,
+   * нет активного документа или ошибка IPC (заметка уже показана).
+   */
+  async function buildDiff(col: HTMLElement, content: string): Promise<boolean> {
+    const doc = getActiveDocument();
+    if (!doc) {
+      appendNotice(col, "Нет активного документа — правку применить некуда.", "error");
+      return false;
+    }
+    try {
+      const diff = await aiDiff(doc.id, content);
+      if (disposed) return false;
+      if (diff.ops.length === 0) {
+        appendNotice(col, "Правок не требуется — ответ совпадает с документом.", "info");
+        return false;
+      }
+      renderDiffCard(col, diff, doc.id, content);
+      return true;
+    } catch (e) {
+      if (disposed) return false;
+      appendNotice(col, `Не удалось подготовить правку: ${errorMessage(e)}`, "error");
+      return false;
+    }
+  }
+
+  /** Клик «Применить как правку»: кнопку гасим только при успехе (карточка построена). */
+  async function requestDiff(
+    col: HTMLElement,
+    content: string,
+    button: HTMLButtonElement
+  ): Promise<void> {
+    button.disabled = true;
+    const ok = await buildDiff(col, content);
+    if (!disposed && !ok) button.disabled = false;
+  }
+
+  /** Карточка диффа: предпросмотр по `ops` + «Применить»/«Отклонить»/«Отменить» (§5). */
+  function renderDiffCard(
+    col: HTMLElement,
+    diff: AiDiff,
+    docId: DocumentId,
+    content: string
+  ): void {
+    const id = ++cardSeq;
+    const card = el("div", "ai-diff");
+    card.id = `ai-diff-${id}`;
+    card.setAttribute("role", "group");
+    card.setAttribute("aria-label", "Предлагаемая правка");
+
+    const header = el("div", "ai-diff-header");
+    header.textContent = "Предлагаемая правка";
+
+    const body = el("pre", "ai-diff-body");
+    renderDiffBody(body, diff);
+
+    const status = el("div", "ai-diff-status");
+    status.setAttribute("role", "status");
+    status.textContent = `Изменений: ${diff.ops.length}.`;
+
+    const actions = el("div", "ai-diff-actions");
+    const apply = actionButton("Применить", "btn primary", "Применить правку к документу");
+    apply.id = `ai-diff-apply-${id}`;
+    const reject = actionButton("Отклонить", "btn ghost", "Отклонить правку");
+    reject.id = `ai-diff-reject-${id}`;
+    actions.append(apply, reject);
+
+    card.append(header, body, status, actions);
+    col.appendChild(card);
+    if (stick) scrollToBottom();
+
+    const state: DiffCard = { docId, applied: false, markApplied };
+
+    /** Правка применена (ответом IPC или событием `ai:edit_applied`): показываем «Отменить». */
+    function markApplied(rev: number): void {
+      if (state.applied) return;
+      state.applied = true;
+      diffCards.delete(state);
+      actions.textContent = "";
+      const undo = actionButton("Отменить", "btn ghost", "Отменить применённую правку");
+      undo.id = `ai-diff-undo-${id}`;
+      undo.addEventListener("click", () => void undoEdit(undo));
+      actions.appendChild(undo);
+      status.textContent = `Правка применена (rev ${rev}).`;
+    }
+
+    async function undoEdit(button: HTMLButtonElement): Promise<void> {
+      button.disabled = true;
+      try {
+        await undoDocument(state.docId);
+        if (disposed) return;
+        status.textContent = "Правка отменена.";
+        actions.textContent = "";
+      } catch (e) {
+        if (disposed) return;
+        button.disabled = false;
+        status.textContent = `Не удалось отменить: ${errorMessage(e)}`;
+      }
+    }
+
+    async function applyEdit(): Promise<void> {
+      apply.disabled = true;
+      reject.disabled = true;
+      status.textContent = "Применение…";
+      try {
+        const res = await aiApplyEdit(state.docId, diff.base_rev, diff.ops);
+        if (disposed) return;
+        markApplied(res.rev);
+      } catch (e) {
+        if (disposed) return;
+        apply.disabled = false;
+        reject.disabled = false;
+        if (errorCode(e) === "ai_stale_edit") {
+          // Документ изменился между diff и apply — предлагаем пересчитать (§5.4).
+          status.textContent = "Документ изменился, пересмотрите правку.";
+          const reconsider = actionButton(
+            "Пересмотреть",
+            "btn ghost",
+            "Пересчитать правку по актуальному документу"
+          );
+          reconsider.addEventListener("click", () => {
+            card.remove();
+            diffCards.delete(state);
+            void buildDiff(col, content);
+          });
+          actions.appendChild(reconsider);
+        } else {
+          status.textContent = `Не удалось применить: ${errorMessage(e)}`;
+        }
+      }
+    }
+
+    function rejectEdit(): void {
+      diffCards.delete(state);
+      card.remove();
+    }
+
+    apply.addEventListener("click", () => void applyEdit());
+    reject.addEventListener("click", rejectEdit);
+    diffCards.add(state);
+  }
+
+  /** Карточка плагина из ```json-блока: предпросмотр, валидация, создание/удаление (§6). */
+  function renderPluginCard(col: HTMLElement, proposal: AiPluginProposal): void {
+    const id = ++cardSeq;
+    const card = el("div", "ai-plugin-card");
+    card.id = `ai-plugin-${id}`;
+    card.setAttribute("role", "group");
+    card.setAttribute("aria-label", `Плагин ${proposal.name} версии ${proposal.version}`);
+
+    const header = el("div", "ai-plugin-header");
+    const icon = el("span", "ai-plugin-icon");
+    icon.setAttribute("aria-hidden", "true");
+    icon.textContent = "🧩";
+    const name = el("span", "ai-plugin-name");
+    name.textContent = proposal.name;
+    const version = el("span", "ai-plugin-version");
+    version.textContent = `v${proposal.version}`;
+    const badge = el("span", "ai-plugin-badge");
+    badge.textContent = "предлагается";
+    header.append(icon, name, version, badge);
+
+    const code = el("pre", "ai-plugin-code");
+    code.textContent = proposal.source; // сырой вывод модели — только textContent
+
+    const status = el("div", "ai-plugin-status");
+    status.setAttribute("role", "status");
+    status.textContent = "Проверка…";
+
+    const actions = el("div", "ai-plugin-actions");
+    const save = actionButton("Создать", "btn primary", `Создать плагин ${proposal.id}`);
+    save.id = `ai-plugin-save-${id}`;
+    const reload = actionButton(
+      "Перезагрузить",
+      "btn ghost",
+      `Перезагрузить плагин ${proposal.id}`
+    );
+    reload.id = `ai-plugin-reload-${id}`;
+    reload.disabled = true; // доступна только когда плагин уже установлен
+    const remove = actionButton("Удалить", "btn ghost danger", `Удалить плагин ${proposal.id}`);
+    remove.id = `ai-plugin-remove-${id}`;
+    remove.disabled = true;
+    actions.append(save, reload, remove);
+
+    card.append(header, code, status, actions);
+    col.appendChild(card);
+    if (stick) scrollToBottom();
+
+    let exists = false;
+    const state: PluginCardState = {
+      id: proposal.id,
+      isInstalled: () => exists,
+      installed(label, stateClass) {
+        markInstalled(label, stateClass);
+      },
+      deleted() {
+        markDeleted();
+      },
+    };
+    pluginCards.add(state);
+
+    /** Плагин установлен (создан/обновлён/уже существует): открываем reload/delete. */
+    function markInstalled(label: string, stateClass: string): void {
+      exists = true;
+      badge.className = `ai-plugin-badge ${stateClass}`;
+      badge.textContent = label;
+      save.textContent = "Сохранить";
+      save.setAttribute("aria-label", `Сохранить плагин ${proposal.id}`);
+      save.disabled = false;
+      reload.disabled = false;
+      remove.disabled = false;
+      status.classList.remove("is-error");
+    }
+
+    function markDeleted(): void {
+      exists = false;
+      badge.className = "ai-plugin-badge stopped";
+      badge.textContent = "удалён";
+      save.disabled = true;
+      reload.disabled = true;
+      remove.disabled = true;
+      status.classList.remove("is-error", "is-ok");
+      status.textContent = "Плагин удалён.";
+      pluginCards.delete(state);
+    }
+
+    /** Валидация при появлении карточки (манифест + entry + песочница, §6.4). */
+    async function validate(): Promise<void> {
+      status.textContent = "Проверка…";
+      try {
+        const res = await aiValidatePlugin(proposal.id, proposal.manifest, proposal.source);
+        if (disposed) return;
+        status.classList.toggle("is-ok", res.ok);
+        status.classList.toggle("is-error", !res.ok);
+        status.textContent = res.ok
+          ? "Проверка: ✓ пройдена"
+          : `Проверка не пройдена: ${res.errors.join("; ") || "неизвестная ошибка"}`;
+      } catch (e) {
+        if (disposed) return;
+        status.classList.remove("is-ok");
+        status.classList.add("is-error");
+        status.textContent = `Проверка недоступна: ${errorMessage(e)}`;
+      }
+    }
+
+    /** «Создать»/«Сохранить»: первый клик — create; при существующем плагине — update. */
+    async function savePlugin(): Promise<void> {
+      save.disabled = true;
+      reload.disabled = true;
+      remove.disabled = true;
+      status.classList.remove("is-error", "is-ok");
+      status.textContent = exists ? "Сохранение…" : "Создание…";
+      try {
+        const created = !exists;
+        const info = exists
+          ? await aiUpdatePlugin(proposal.id, proposal.manifest, proposal.source)
+          : await aiCreatePlugin(proposal.id, proposal.manifest, proposal.source);
+        if (disposed) return;
+        markInstalled(PLUGIN_STATUS_LABELS[info.status.state], info.status.state);
+        status.classList.add("is-ok");
+        status.textContent = created ? "Плагин создан." : "Плагин обновлён.";
+      } catch (e) {
+        if (disposed) return;
+        save.disabled = false;
+        handleSaveError(e);
+      }
+    }
+
+    function handleSaveError(e: unknown): void {
+      const code = errorCode(e);
+      status.classList.remove("is-ok");
+      status.classList.add("is-error");
+      if (code === "ai_plugin_exists") {
+        // Плагин уже стоит: переключаем на обновление (update) и открываем reload/delete.
+        exists = true;
+        save.textContent = "Сохранить";
+        save.setAttribute("aria-label", `Сохранить плагин ${proposal.id}`);
+        reload.disabled = false;
+        remove.disabled = false;
+        status.textContent = "Плагин уже существует — нажмите «Сохранить», чтобы обновить.";
+      } else if (code === "ai_plugin_invalid") {
+        status.textContent = `Плагин не прошёл проверку: ${errorMessage(e)}`;
+      } else {
+        status.textContent = `Не удалось создать плагин: ${errorMessage(e)}`;
+      }
+    }
+
+    async function reloadPluginCard(): Promise<void> {
+      reload.disabled = true;
+      try {
+        await reloadPlugin(proposal.id);
+        if (disposed) return;
+        status.classList.remove("is-error");
+        status.textContent = "Плагин перезагружен.";
+      } catch (e) {
+        if (disposed) return;
+        status.classList.add("is-error");
+        status.textContent = `Не удалось перезагрузить: ${errorMessage(e)}`;
+      } finally {
+        if (!disposed) reload.disabled = false;
+      }
+    }
+
+    async function removePluginCard(): Promise<void> {
+      const confirmed = await confirmDeletePlugin(proposal.id);
+      if (!confirmed || disposed) return;
+      remove.disabled = true;
+      try {
+        await aiDeletePlugin(proposal.id);
+        if (disposed) return;
+        markDeleted();
+      } catch (e) {
+        if (disposed) return;
+        status.classList.add("is-error");
+        status.textContent = `Не удалось удалить: ${errorMessage(e)}`;
+        remove.disabled = false;
+      }
+    }
+
+    save.addEventListener("click", () => void savePlugin());
+    reload.addEventListener("click", () => void reloadPluginCard());
+    remove.addEventListener("click", () => void removePluginCard());
+    void validate();
+  }
+
+  /** Действия под ответом ассистента: «Применить как правку» + карточка плагина (§5–§6). */
+  function appendAssistantActions(col: HTMLElement, content: string): void {
+    const actions = el("div", "ai-msg-actions");
+    const apply = actionButton(
+      "Применить как правку",
+      "btn ghost",
+      "Применить ответ ассистента как правку документа"
+    );
+    apply.addEventListener("click", () => void requestDiff(col, content, apply));
+    actions.appendChild(apply);
+    col.appendChild(actions);
+
+    const proposal = extractPluginProposal(content);
+    if (proposal) renderPluginCard(col, proposal);
+  }
+
   // --- отправка ---
 
   function errorActions(kind: ErrorKind, code: string): ErrorAction[] {
@@ -520,6 +1091,8 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     p.bubble.textContent = content;
     if (usage) appendUsage(p.col, usage);
     history = history.concat({ role: "assistant", content });
+    // Фаза 2: действия над готовым ответом (дифф-правка + карточка плагина).
+    appendAssistantActions(p.col, content);
     authError = false;
     lastError = false;
     log(
@@ -853,6 +1426,40 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     const p = pending;
     if (!p) return;
     fail(p, event.payload.code, event.payload.message);
+  });
+
+  // --- события harness Фазы 2 (host → front) ---
+  // Правка применена (в т.ч. вне карточки) — перевести карточки этого дока в
+  // состояние «применено» с кнопкой «Отменить».
+  subscribe<{ doc_id: string; rev: number }>("ai:edit_applied", (event) => {
+    const { doc_id, rev } = event.payload;
+    for (const card of diffCards) {
+      if (card.docId === doc_id) card.markApplied(rev);
+    }
+  });
+
+  // Жизненный цикл плагина: обновляем бейдж/доступность кнопок в карточке.
+  // Карточку, уже обновлённую ответом IPC, событие не перетирает (гейт isInstalled).
+  subscribe<{ plugin_id: string }>("ai:plugin_created", (event) => {
+    for (const card of pluginCards) {
+      if (card.id === event.payload.plugin_id && !card.isInstalled()) {
+        card.installed("установлен", "active");
+      }
+    }
+  });
+
+  subscribe<{ plugin_id: string }>("ai:plugin_updated", (event) => {
+    for (const card of pluginCards) {
+      if (card.id === event.payload.plugin_id && !card.isInstalled()) {
+        card.installed("обновлён", "active");
+      }
+    }
+  });
+
+  subscribe<{ plugin_id: string }>("ai:plugin_deleted", (event) => {
+    for (const card of pluginCards) {
+      if (card.id === event.payload.plugin_id) card.deleted();
+    }
   });
 
   // --- публичный интерфейс ---

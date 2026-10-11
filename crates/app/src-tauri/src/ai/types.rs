@@ -151,6 +151,37 @@ pub struct AiTestResult {
     pub error: Option<String>,
 }
 
+/// Одна операция правки документа (harness, TZ §5): замена `[start, end)` на `text`.
+///
+/// Смещения — **байтовые** UTF-8 (как `data-md` и `DocumentStore::apply_edit`, D5).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AiEditOp {
+    pub start: usize,
+    pub end: usize,
+    pub text: String,
+}
+
+/// Предложенный дифф документа: исходный/новый текст, операции и база для rev-guard.
+#[derive(Clone, Debug, Serialize)]
+pub struct AiDiff {
+    pub doc_id: String,
+    /// Ревизия документа, на которой посчитан дифф (проверяется в `ai_apply_edit`).
+    pub base_rev: u64,
+    pub original: String,
+    pub modified: String,
+    pub ops: Vec<AiEditOp>,
+}
+
+/// Результат валидации плагина (harness, TZ §6): статус, понятные ошибки и сырой отчёт CLI.
+#[derive(Clone, Debug, Serialize)]
+pub struct AiValidationResult {
+    pub ok: bool,
+    pub errors: Vec<String>,
+    /// Сырой JSON-отчёт `darmark-plugin test --json`, если CLI доступен и отчёт версионирован;
+    /// `None` — результат получен fallback-путём.
+    pub report: Option<serde_json::Value>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

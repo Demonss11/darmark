@@ -2344,3 +2344,123 @@ th.filtered .col-filter-btn { color: var(--accent); font-weight: 700; }
 }
 .dialog-actions { display: flex; gap: 8px; margin-top: 12px; }
 .dialog-actions .btn { flex: 1; padding: 7px 12px; font-size: 12px; }
+
+/* ============ AI-АССИСТЕНТ: карточки harness Фазы 2 (aiPanel.ts, §5–§6) ============
+   Карточка диффа и карточка плагина. Строки модели/манифеста — только textContent
+   (сырой вывод LLM в innerHTML запрещён). Все стили — на существующих токенах. */
+
+/* Действия под сообщением ассистента («Применить как правку»). */
+.ai-msg-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.ai-note {
+  padding: 6px 9px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-sm);
+  background: var(--bg-1);
+  color: var(--fg-dim);
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+.ai-note-error {
+  border-color: rgba(248, 113, 113, 0.35);
+  background: rgba(248, 113, 113, 0.07);
+  color: var(--error);
+}
+
+/* Карточка диффа. */
+.ai-diff {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 720px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-1);
+}
+.ai-diff-header { color: var(--head); font-size: 11.5px; font-weight: 600; }
+.ai-diff-body {
+  margin: 0;
+  max-height: 260px;
+  overflow: auto;
+  padding: 6px 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-sm);
+  background: var(--bg-0);
+  font-family: "Cascadia Code", ui-monospace, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre;
+}
+.ai-diff-add { display: block; color: var(--green); }
+.ai-diff-del { display: block; color: var(--red); }
+.ai-diff-more { display: block; color: var(--fg-mute); font-style: italic; }
+.ai-diff-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.ai-diff-status { color: var(--fg-mute); font-size: 10.5px; }
+
+/* Карточка плагина. */
+.ai-plugin-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 720px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-1);
+}
+.ai-plugin-header { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.ai-plugin-icon { font-size: 13px; line-height: 1; }
+.ai-plugin-name { color: var(--fg); font-size: 12px; font-weight: 600; }
+.ai-plugin-version {
+  color: var(--fg-mute);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+.ai-plugin-badge {
+  padding: 1px 7px;
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  background: var(--bg-2);
+  color: var(--fg-dim);
+  font-size: 10px;
+  font-weight: 500;
+}
+.ai-plugin-badge.active { color: var(--green); border-color: rgba(52, 211, 153, 0.35); }
+.ai-plugin-badge.failed { color: var(--red); border-color: rgba(248, 113, 113, 0.35); }
+.ai-plugin-badge.quarantined { color: var(--amber); border-color: rgba(251, 191, 36, 0.35); }
+.ai-plugin-code {
+  margin: 0;
+  max-height: 240px;
+  overflow: auto;
+  padding: 6px 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-sm);
+  background: var(--bg-0);
+  color: var(--fg-dim);
+  font-family: "Cascadia Code", ui-monospace, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre;
+}
+.ai-plugin-status {
+  color: var(--fg-mute);
+  font-size: 10.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+.ai-plugin-status.is-ok { color: var(--green); }
+.ai-plugin-status.is-error { color: var(--error); }
+.ai-plugin-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.btn.danger {
+  background: transparent;
+  border-color: rgba(248, 113, 113, 0.35);
+  color: var(--error);
+}
+.btn.danger:hover { background: rgba(248, 113, 113, 0.12); color: var(--error); }
+
+/* Диалог подтверждения удаления плагина (dialog.ts). */
+.ai-confirm { padding: 0 16px 14px; color: var(--fg-dim); font-size: 12px; line-height: 1.6; }
+.ai-confirm p { margin: 0 0 10px; }

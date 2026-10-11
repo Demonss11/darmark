@@ -9,7 +9,7 @@
 //! блокировку `DocumentStore` до `pump` — host-call `set_view_content`/range идёт в
 //! тот же стор. Здесь, в `pump`, `DocumentStore` не берётся вообще.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread::JoinHandle;
@@ -21,11 +21,12 @@ use serde_json::{json, Value};
 use crate::{PluginInfo, PluginStatus, PluginViewInfo};
 
 use super::bus::EventBus;
-use super::manager::{effective_permissions, PluginManager};
+use super::manager::{effective_permissions, PluginManager, PluginRuntime};
 use super::plugin_settings::PluginSettingsStore;
 use super::resource::{ProcessMetrics, ResourceMonitor, ResourceSink};
 use super::services::PendingChanged;
 use super::settings::SettingsStore;
+use super::supervisor::Supervisor;
 use super::views::PluginViews;
 use super::HostServices;
 
@@ -318,6 +319,84 @@ impl PluginHost {
             }
         }
         infos
+    }
+
+    /// Регистрирует один плагин из каталога на диске (harness AI, TZ §6.2).
+    ///
+    /// Читает каталог тем же контрактом, что и [`super::manager::load_plugins`] (манифест +
+    /// entry), добавляет плагин в реестр и, если он включён в настройках, запускает child.
+    /// `Err` — каталог невалиден, плагин с таким id уже в реестре или child-exe не найден.
+    pub fn register_plugin_dir(&self, dir: &Path) -> Result<PluginInfo, PluginError> {
+        let discovered =
+            super::scan::load_single(dir).map_err(|m| PluginError::new("invalid_plugin", m))?;
+        let id = discovered.manifest.id.clone();
+        if lock(&self.manager).get(&id).is_some() {
+            return Err(PluginError::new(
+                "plugin_exists",
+                format!("плагин уже зарегистрирован: {id}"),
+            ));
+        }
+        let exe = Supervisor::resolve_child_exe().ok_or_else(|| {
+            PluginError::new(
+                "no_host",
+                format!(
+                    "{} не найден рядом с darmark.exe",
+                    super::supervisor::CHILD_EXE_NAME
+                ),
+            )
+        })?;
+
+        let (enabled, granted) = {
+            let settings = lock(&self.settings);
+            (
+                settings.plugin_enabled(&id),
+                effective_permissions(
+                    &discovered.manifest.permissions,
+                    &settings.granted_permissions(&id),
+                ),
+            )
+        };
+        let contributes = discovered.manifest.contributes.views.clone();
+        let commands = discovered.manifest.contributes.commands.clone();
+        let settings_schema = discovered.manifest.contributes.settings.clone();
+        let name = discovered.manifest.name.clone();
+        let version = discovered.manifest.version.clone();
+
+        // Регистрация view — только для включённого плагина (deny-by-default, как load_plugins).
+        if enabled {
+            lock(&self.views).sync(&id, &contributes, &granted);
+        } else {
+            lock(&self.views).remove_plugin(&id);
+        }
+
+        let mut runtime = PluginRuntime::new(
+            id.clone(),
+            exe,
+            discovered.source,
+            discovered.manifest.permissions.clone(),
+            Arc::clone(&self.services),
+            contributes,
+            commands,
+        )
+        .with_identity(name, version)
+        .with_entry_path(discovered.entry_path)
+        .with_dir(discovered.dir)
+        .with_granted(granted)
+        .with_settings_schema(settings_schema);
+        runtime.set_enabled(enabled);
+        if enabled {
+            // Best-effort: ошибка старта отразится в статусе плагина (как start_enabled).
+            let _ = runtime.start();
+        }
+        lock(&self.manager).register(runtime);
+
+        self.pump();
+        self.notify_all();
+        lock(&self.manager)
+            .list_plugins()
+            .into_iter()
+            .find(|info| info.id == id)
+            .ok_or_else(|| PluginError::new("register_failed", "плагин не появился в реестре"))
     }
 
     /// `plugin_view_action`: обратная маршрутизация из тир-1 view (§9.4).

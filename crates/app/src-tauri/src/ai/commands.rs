@@ -204,6 +204,21 @@ mod tests {
         assert_eq!(error_code_str(ErrorCode::AiServerError), "ai_server_error");
         assert_eq!(error_code_str(ErrorCode::AiOffline), "ai_offline");
         assert_eq!(error_code_str(ErrorCode::AiBadSettings), "ai_bad_settings");
+        assert_eq!(error_code_str(ErrorCode::AiStaleEdit), "ai_stale_edit");
+        assert_eq!(error_code_str(ErrorCode::AiApplyFailed), "ai_apply_failed");
+        assert_eq!(
+            error_code_str(ErrorCode::AiPluginInvalid),
+            "ai_plugin_invalid"
+        );
+        assert_eq!(
+            error_code_str(ErrorCode::AiPluginExists),
+            "ai_plugin_exists"
+        );
+        assert_eq!(
+            error_code_str(ErrorCode::AiPluginNotFound),
+            "ai_plugin_not_found"
+        );
+        assert_eq!(error_code_str(ErrorCode::AiIo), "ai_io");
     }
 
     #[test]
