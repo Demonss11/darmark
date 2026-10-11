@@ -139,4 +139,13 @@ After(async () => {
     if (editor) editor.scrollTop = 0;
     if (preview) preview.scrollTop = 0;
   });
+  // Панель «Журнал» тоже живёт в DOM между сценариями (logs.feature): развёрнутая
+  // панель «переезжает» дальше, и сценарии, начинающиеся с клика по #sb-logs,
+  // вместо разворота сворачивали бы её. Возвращаем свёрнутый вид; у скрытой панели
+  // пользовательского состояния ещё нет — не трогаем.
+  await browser.execute(() => {
+    const panel = document.getElementById("logs-panel");
+    if (!panel || panel.hidden || panel.classList.contains("collapsed")) return;
+    document.getElementById("logs-collapse")?.click();
+  });
 });

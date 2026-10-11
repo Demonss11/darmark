@@ -37,20 +37,24 @@ Then("статусбар не содержит флеш «Журнал — ск�
 
 // ---------- Рабочая область ----------
 
+// Высота до раскрытия панели. Модульная переменная, а не свойство `browser`:
+// в WDIO v9 произвольные поля на объекте `browser` не переживают переход
+// между шагами (на следующем шаге читался `undefined`). Сценарии идут
+// последовательно (maxInstances: 1), а Given всегда предшествует Then.
+let editorHeightBefore = null;
+
 Given("я запоминаю высоту рабочей области", async () => {
-  const height = await browser.execute(
+  editorHeightBefore = await browser.execute(
     () => document.getElementById("editor").getBoundingClientRect().height
   );
-  browser.e2e_editorHeightBefore = height;
 });
 
 Then("высота рабочей области уменьшилась", async () => {
   const height = await browser.execute(
     () => document.getElementById("editor").getBoundingClientRect().height
   );
-  const before = browser.e2e_editorHeightBefore;
-  if (!(height < before)) {
-    throw new Error(`Высота рабочей области не уменьшилась: ${height} >= ${before}`);
+  if (!(height < editorHeightBefore)) {
+    throw new Error(`Высота рабочей области не уменьшилась: ${height} >= ${editorHeightBefore}`);
   }
 });
 
@@ -63,7 +67,9 @@ Then("редактор виден", async () => {
   if (!visible) throw new Error("Редактор не виден");
 });
 
-Then("предпросмотр виден", async () => {
+// Имя не пересекается с одноимённым шагом в plugins.steps.js (тот проверяет
+// атрибут hidden): дубликат вызывает «Multiple step definitions match».
+Then("предпросмотр виден в рабочей области", async () => {
   const visible = await browser.execute(() => {
     const el = document.getElementById("preview");
     const r = el.getBoundingClientRect();
