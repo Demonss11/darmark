@@ -662,7 +662,7 @@ name = "darmark"
 version = "0.1.0"
 dependencies = [
  "md-core",
- "plugin-proto",
+ "plugin-core",
  "serde",
  "serde_json",
  "tauri",
@@ -2615,10 +2615,18 @@ dependencies = [
 name = "plugin-cli"
 version = "0.1.0"
 dependencies = [
+ "plugin-core",
  "plugin-host",
- "plugin-proto",
  "serde_json",
  "tempfile",
+]
+
+[[package]]
+name = "plugin-core"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -2627,15 +2635,7 @@ version = "0.1.0"
 dependencies = [
  "md-core",
  "mlua",
- "plugin-proto",
- "serde_json",
-]
-
-[[package]]
-name = "plugin-proto"
-version = "0.1.0"
-dependencies = [
- "serde",
+ "plugin-core",
  "serde_json",
 ]
 

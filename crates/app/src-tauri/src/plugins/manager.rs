@@ -8,10 +8,10 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use plugin_proto::envelope::PluginError;
-use plugin_proto::limits::{DEADLINE_MS, DEFAULT_MEM_BYTES, PROGRESS_TIMEOUT_MS};
-use plugin_proto::manifest::{CommandContrib, ViewContrib};
-use plugin_proto::quarantine::Quarantine;
+use plugin_core::envelope::PluginError;
+use plugin_core::limits::{DEADLINE_MS, DEFAULT_MEM_BYTES, PROGRESS_TIMEOUT_MS};
+use plugin_core::manifest::{CommandContrib, ViewContrib};
+use plugin_core::quarantine::Quarantine;
 use serde_json::Value;
 
 use super::settings::SettingsStore;
@@ -358,7 +358,7 @@ impl PluginManager {
                     })
                     .collect(),
                 // F38: единый источник формулировок границы изоляции/доступа.
-                notices: plugin_proto::notices::permission_notices(&p.permissions)
+                notices: plugin_core::notices::permission_notices(&p.permissions)
                     .into_iter()
                     .map(str::to_string)
                     .collect(),

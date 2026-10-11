@@ -12,9 +12,9 @@ use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
-use plugin_proto::envelope::{self, PluginError, ToChild, ToHost};
-use plugin_proto::job::Job;
-use plugin_proto::limits::{DEADLINE_MS, DEFAULT_MEM_BYTES, PROGRESS_TIMEOUT_MS};
+use plugin_core::envelope::{self, PluginError, ToChild, ToHost};
+use plugin_core::job::Job;
+use plugin_core::limits::{DEADLINE_MS, DEFAULT_MEM_BYTES, PROGRESS_TIMEOUT_MS};
 use serde_json::Value;
 
 use super::HostServices;

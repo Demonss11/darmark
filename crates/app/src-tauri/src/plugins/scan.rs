@@ -1,7 +1,7 @@
 //! Сканирование каталога плагинов (Фаза 3 плагинной системы, §6.6 DESIGN_DOC).
 //!
 //! `scan(plugins_dir) → validate(manifest) → …`. Каждый подкаталог с `plugin.json` валидируется
-//! (`plugin_proto::manifest`) и читается `.lua`-исходник. Ошибки одного плагина не мешают
+//! (`plugin_core::manifest`) и читается `.lua`-исходник. Ошибки одного плагина не мешают
 //! остальным: они собираются в отчёт, а не роняют сканирование.
 //!
 //! Файлы читаются с проверкой размера **до** аллокации (гигантский `plugin.json`/`main.lua`
@@ -10,8 +10,8 @@
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-use plugin_proto::manifest::Manifest;
-use plugin_proto::MAX_PLUGIN_SOURCE_BYTES;
+use plugin_core::manifest::Manifest;
+use plugin_core::MAX_PLUGIN_SOURCE_BYTES;
 
 /// Имя файла манифеста в каталоге плагина.
 pub const MANIFEST_FILE: &str = "plugin.json";

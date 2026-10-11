@@ -66,9 +66,9 @@ PluginHost (facade)
 | `crates/app/src-tauri/src/plugins/manager.rs` | Сканирование, загрузка, quarantine |
 | `crates/app/src-tauri/src/plugins/bus.rs` | EventBus (notify-only + pull) |
 | `crates/app/src-tauri/src/plugins/settings.rs` | `SettingsStore` (config.json) |
-| `crates/plugin-proto/src/envelope.rs` | Протокол: `ToChild`, `ToHost`, `PluginError` |
-| `crates/plugin-proto/src/manifest.rs` | Манифест плагина, валидация permissions |
-| `crates/plugin-proto/src/frame.rs` | Кадр: u32 LE length + JSON |
+| `crates/plugin-core/src/envelope.rs` | Протокол: `ToChild`, `ToHost`, `PluginError` |
+| `crates/plugin-core/src/manifest.rs` | Манифест плагина, валидация permissions |
+| `crates/plugin-core/src/frame.rs` | Кадр: u32 LE length + JSON |
 
 ### 2.4 Ограничения (DESIGN_DOC)
 

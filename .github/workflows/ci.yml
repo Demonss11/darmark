@@ -76,13 +76,13 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: rustfmt
-        run: cargo fmt -p plugin-proto -p plugin-host -p plugin-cli -- --check
+        run: cargo fmt -p plugin-core -p plugin-host -p plugin-cli -- --check
 
       - name: clippy
-        run: cargo clippy -p plugin-proto -p plugin-host -p plugin-cli --all-targets -- -D warnings
+        run: cargo clippy -p plugin-core -p plugin-host -p plugin-cli --all-targets -- -D warnings
 
       - name: tests
-        run: cargo test -p plugin-proto -p plugin-host -p plugin-cli
+        run: cargo test -p plugin-core -p plugin-host -p plugin-cli
 
       # Smoke: CLI проверяет эталонный плагин в песочнице (ожидается код 0).
       - name: plugin-cli smoke (test plugins/word-count)

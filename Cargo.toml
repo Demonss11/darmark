@@ -1,10 +1,10 @@
 [workspace]
 resolver = "2"
-# plugin-proto/plugin-host — продуктовая плагинная система (H2).
+# plugin-core/plugin-host — продуктовая плагинная система (H2).
 members = [
   "crates/md-core",
   "crates/app/src-tauri",
-  "crates/plugin-proto",
+  "crates/plugin-core",
   "crates/plugin-host",
   "crates/plugin-cli",
 ]

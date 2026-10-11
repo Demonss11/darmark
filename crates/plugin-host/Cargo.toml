@@ -12,7 +12,7 @@ name = "darmark-plugin-host"
 path = "src/main.rs"
 
 [dependencies]
-plugin-proto = { path = "../plugin-proto" }
+plugin-core = { path = "../plugin-core" }
 # md.* в child работают нативно (md-core линкуется в child, не в GUI-хост).
 md-core = { path = "../md-core" }
 serde_json = "1"

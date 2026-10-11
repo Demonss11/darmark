@@ -1061,7 +1061,7 @@ fn setup_plugins(app: &mut tauri::App) -> Result<(), String> {
     host.start_resource_monitor(
         resource_provider,
         resource_sink,
-        plugin_proto::limits::DEFAULT_MEM_BYTES,
+        plugin_core::limits::DEFAULT_MEM_BYTES,
     );
 
     app.manage(PluginState { host });

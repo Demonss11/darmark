@@ -12,7 +12,7 @@
 use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 
-use plugin_proto::manifest::Manifest;
+use plugin_core::manifest::Manifest;
 
 /// Файл каталога в каталоге репозитория плагинов.
 pub const CATALOG_FILE: &str = "index.json";

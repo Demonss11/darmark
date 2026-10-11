@@ -19,7 +19,7 @@ pub mod views;
 #[cfg(test)]
 mod tests;
 
-use plugin_proto::envelope::PluginError;
+use plugin_core::envelope::PluginError;
 use serde_json::Value;
 
 /// Услуги хоста, которые плагин вызывает через host-call (range/delta документа, настройки,

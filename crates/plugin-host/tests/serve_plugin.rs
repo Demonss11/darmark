@@ -8,7 +8,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 
-use plugin_proto::envelope::{self, ToChild, ToHost};
+use plugin_core::envelope::{self, ToChild, ToHost};
 use serde_json::json;
 
 fn fixture(name: &str) -> PathBuf {

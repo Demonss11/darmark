@@ -1,13 +1,13 @@
 //! Интеграционный тест Фазы 1: round-trip `on_activate` через **реальный процесс**.
 //!
-//! Спавнит бинарник `darmark-plugin-host`, гоняет конверт `plugin-proto::envelope` поверх
+//! Спавнит бинарник `darmark-plugin-host`, гоняет конверт `plugin-core::envelope` поверх
 //! назначенного stdio: `load` → `activate`, обработка `HostCall` → `Reply`, подтверждение
 //! `Event{done}`. GUI не участвует — изоляция процесса проверяется как есть.
 
 use std::io::Read;
 use std::process::{Command, Stdio};
 
-use plugin_proto::envelope::{self, ToChild, ToHost};
+use plugin_core::envelope::{self, ToChild, ToHost};
 use serde_json::json;
 
 fn read_one<R: Read>(reader: &mut R) -> ToHost {

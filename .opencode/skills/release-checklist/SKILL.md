@@ -27,7 +27,7 @@ description: >
      `bundle.externalBin` рядом с бинарником и падает без файлов `binaries/*-<triple>.exe`.
    - `cd crates/app; npm run build` — сборка фронтенда (tsc + vite); tsc валит
      сборку на любой ошибке типов.
-   - Дополнительно после правок Rust: `cargo test -p plugin-proto -p plugin-host -p plugin-cli`.
+   - Дополнительно после правок Rust: `cargo test -p plugin-core -p plugin-host -p plugin-cli`.
 
 2. **Сверка релизного профиля**
 
@@ -106,7 +106,7 @@ description: >
 
 Опционально (после правок плагинной системы):
 
-- `cargo test -p plugin-proto -p plugin-host -p plugin-cli`
+- `cargo test -p plugin-core -p plugin-host -p plugin-cli`
 - `cargo tree -p darmark | Select-String mlua` — guard-инвариант, вывод пуст.
 
 ## Проверки бюджета размера

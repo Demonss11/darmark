@@ -14,8 +14,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread::JoinHandle;
 
-use plugin_proto::envelope::PluginError;
-use plugin_proto::manifest::ViewContrib;
+use plugin_core::envelope::PluginError;
+use plugin_core::manifest::ViewContrib;
 use serde_json::{json, Value};
 
 use crate::{PluginInfo, PluginStatus, PluginViewInfo};

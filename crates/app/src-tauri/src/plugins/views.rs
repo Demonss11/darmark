@@ -10,8 +10,8 @@
 
 use std::collections::BTreeMap;
 
-use plugin_proto::envelope::PluginError;
-use plugin_proto::manifest::ViewContrib;
+use plugin_core::envelope::PluginError;
+use plugin_core::manifest::ViewContrib;
 
 use crate::PluginViewInfo;
 

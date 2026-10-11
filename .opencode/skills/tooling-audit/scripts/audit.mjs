@@ -57,7 +57,7 @@ const MENTION_DENYLIST = new Set([
 // Backtick-токены вида kebab-case, которые не являются навыками (эвристический
 // стоп-лист: атрибуты, имена крейтов, инструменты, общие термины).
 const TOKEN_DENYLIST = new Set([
-  'data-md', 'md-block', 'md-core', 'plugin-proto', 'plugin-host', 'src-tauri',
+  'data-md', 'md-block', 'md-core', 'plugin-core', 'plugin-host', 'src-tauri',
   'tauri-driver', 'host-call',
   'size-gate', 'opt-level', 'text-align', 'front-end', 'back-end', 'read-only',
   'read-write', 'no-op', 'kebab-case', 'snake-case', 'pull-request', 'one-shot',
@@ -74,7 +74,7 @@ const HARDCODE_TOKENS = [
   { token: 'DESIGN_DOC', label: 'имя документа' },
   { token: 'src-tauri', label: 'путь Tauri-шелла' },
   { token: 'md-core', label: 'имя крейта' },
-  { token: 'plugin-proto', label: 'имя крейта' },
+  { token: 'plugin-core', label: 'имя крейта' },
   { token: 'plugin-host', label: 'имя крейта' },
   { token: 'darmark', label: 'имя проекта' },
 ];

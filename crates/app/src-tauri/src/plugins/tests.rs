@@ -70,7 +70,7 @@ fn workspace_root() -> PathBuf {
 }
 
 /// Путь к child-бинарнику. Пересобирает его, если он отсутствует или **старше** исходников
-/// `plugin-host`/`plugin-proto`/`md-core` — иначе тесты молча гоняли бы устаревший exe (§4.3).
+/// `plugin-host`/`plugin-core`/`md-core` — иначе тесты молча гоняли бы устаревший exe (§4.3).
 fn child_exe() -> PathBuf {
     if let Ok(path) = std::env::var("DARMARK_PLUGIN_HOST_EXE") {
         return PathBuf::from(path);
@@ -98,7 +98,7 @@ fn is_fresh(exe: &Path, root: &Path) -> bool {
     };
     let sources = [
         root.join("crates/plugin-host"),
-        root.join("crates/plugin-proto"),
+        root.join("crates/plugin-core"),
         root.join("crates/md-core"),
     ];
     match sources.iter().filter_map(|dir| newest_mtime(dir)).max() {
@@ -613,8 +613,8 @@ fn doc_text(store: &Arc<Mutex<DocumentStore>>, id: &str) -> String {
 
 // ─── Фаза 4: view через DocumentServices, регистрация contributes ────────
 
-fn view_contrib(kind: &str, title: &str, tier: u8) -> plugin_proto::manifest::ViewContrib {
-    plugin_proto::manifest::ViewContrib {
+fn view_contrib(kind: &str, title: &str, tier: u8) -> plugin_core::manifest::ViewContrib {
+    plugin_core::manifest::ViewContrib {
         kind: kind.to_string(),
         title: title.to_string(),
         tier,
@@ -1916,7 +1916,7 @@ fn list_plugins_reports_commands_and_notices() {
         list[0]
             .notices
             .iter()
-            .any(|n| n == plugin_proto::notices::ISOLATION_NOTICE),
+            .any(|n| n == plugin_core::notices::ISOLATION_NOTICE),
         "notices: {:?}",
         list[0].notices
     );
@@ -1924,7 +1924,7 @@ fn list_plugins_reports_commands_and_notices() {
         list[0]
             .notices
             .iter()
-            .any(|n| n == plugin_proto::notices::DOCUMENT_ACCESS_NOTICE),
+            .any(|n| n == plugin_core::notices::DOCUMENT_ACCESS_NOTICE),
         "notices: {:?}",
         list[0].notices
     );

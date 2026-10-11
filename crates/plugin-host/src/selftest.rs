@@ -10,7 +10,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use mlua::Function;
-use plugin_proto::envelope::PluginError;
+use plugin_core::envelope::PluginError;
 use serde_json::Value;
 
 use crate::{bindings, sandbox};
@@ -118,7 +118,7 @@ fn resolve_source(path: &Path) -> Result<(String, usize, String), String> {
     if path.is_dir() {
         let manifest_path = path.join(MANIFEST_FILE);
         let bytes = read_capped(&manifest_path, MAX_MANIFEST_BYTES)?;
-        let manifest = plugin_proto::manifest::Manifest::from_json(&bytes)
+        let manifest = plugin_core::manifest::Manifest::from_json(&bytes)
             .map_err(|e| format!("{}: {e}", manifest_path.display()))?;
         let entry_path = path.join(&manifest.entry);
         let source = crate::read_plugin_source(&entry_path)?;

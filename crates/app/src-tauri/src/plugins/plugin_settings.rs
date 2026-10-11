@@ -10,7 +10,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use plugin_proto::envelope::PluginError;
+use plugin_core::envelope::PluginError;
 use serde_json::{Map, Value};
 
 /// Лимит размера файла настроек плагина: защита от раздувания при чтении/записи.

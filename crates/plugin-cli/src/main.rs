@@ -13,8 +13,8 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use catalog::{Catalog, CatalogEntry};
+use plugin_core::manifest::Manifest;
 use plugin_host::selftest;
-use plugin_proto::manifest::Manifest;
 
 /// Лимит размера `plugin.json` (совпадает с GUI-сканированием и самопроверкой child).
 const MAX_MANIFEST_BYTES: u64 = 256 * 1024;
@@ -749,7 +749,7 @@ fn check_entry(path: &Path) -> Result<String, String> {
 
     let bytes = std::fs::read(&entry_path)
         .map_err(|e| format!("{}: не читается: {e}", entry_path.display()))?;
-    plugin_proto::manifest::validate_source_len(bytes.len() as u64)
+    plugin_core::manifest::validate_source_len(bytes.len() as u64)
         .map_err(|e| format!("{}: {e}", entry_path.display()))?;
     let source =
         String::from_utf8(bytes).map_err(|e| format!("{}: не UTF-8: {e}", entry_path.display()))?;

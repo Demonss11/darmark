@@ -8,10 +8,10 @@ use std::fmt;
 use std::sync::Arc;
 
 use mlua::{Function, Lua, Result, Table, Value, Variadic};
-use plugin_proto::envelope::PluginError;
+use plugin_core::envelope::PluginError;
 use serde_json::json;
 
-/// Хост-API за границей процесса. Реализация на стороне child шлёт [`ToHost`](plugin_proto::envelope::ToHost)
+/// Хост-API за границей процесса. Реализация на стороне child шлёт [`ToHost`](plugin_core::envelope::ToHost)
 /// и ждёт reply; проверка permissions и доступ к документу — забота GUI-хоста.
 pub trait HostApi: Send + Sync + 'static {
     /// Синхронный host-call. `Err` — отказ (например `permission_denied`), не Lua-исключение на хосте.
@@ -307,7 +307,7 @@ fn register_json(lua: &Lua) -> Result<()> {
 pub fn make_context(lua: &Lua, plugin_id: &str) -> Result<Table> {
     let ctx = lua.create_table()?;
     ctx.set("plugin_id", plugin_id)?;
-    ctx.set("api_version", plugin_proto::HOST_API_VERSION)?;
+    ctx.set("api_version", plugin_core::HOST_API_VERSION)?;
     ctx.set("_subs", lua.create_table()?)?;
     lua.load(
         r#"
@@ -376,7 +376,7 @@ pub fn json_to_lua(lua: &Lua, value: &serde_json::Value) -> Result<Value> {
 /// Конвертация Lua ↔ JSON без `mlua`-фичи `serialize` (она не включена ради размера child).
 mod json_conv {
     use mlua::{Lua, Table, Value};
-    use plugin_proto::envelope::PluginError;
+    use plugin_core::envelope::PluginError;
     use serde_json::Value as Json;
 
     /// Lua → JSON. Функции/потоки/userdata не кодируются — ошибка `lua_error`.
@@ -663,7 +663,7 @@ mod tests {
             )
             .eval()
             .unwrap();
-        assert_eq!(version, plugin_proto::HOST_API_VERSION);
+        assert_eq!(version, plugin_core::HOST_API_VERSION);
     }
 
     #[test]

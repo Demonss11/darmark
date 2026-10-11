@@ -6,7 +6,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use plugin_proto::envelope::PluginError;
+use plugin_core::envelope::PluginError;
 use serde_json::{json, Value};
 
 use crate::state::{DocumentId, DocumentStore};
@@ -18,20 +18,20 @@ use super::HostServices;
 
 /// Потолок одного окна `get_document_range`: основной путь чтения — небольшие окна; гигантский
 /// `len` раздул бы `Reply` и мог бы заблокировать запись в stdin child (§3.2 ревью).
-const MAX_RANGE_BYTES: usize = plugin_proto::frame::MAX_EVENT_FRAME_BYTES;
+const MAX_RANGE_BYTES: usize = plugin_core::frame::MAX_EVENT_FRAME_BYTES;
 
 /// Бюджет ответа `get_document_text` **после JSON-экранирования** (F40/S1).
 ///
 /// Гард `MAX_FILE_SIZE` смотрит сырой `text.len()`, но в кадре ответ — JSON-строка: `"`/`\`
 /// дают 2 Б, управляющий символ — до 6 Б (`\u00XX`). Потолок кадра host→child —
-/// [`plugin_proto::frame::MAX_HOST_FRAME_BYTES`] (16 МиБ); вычитаем запас на обвязку конверта
+/// [`plugin_core::frame::MAX_HOST_FRAME_BYTES`] (16 МиБ); вычитаем запас на обвязку конверта
 /// (`{"msg":"reply","id":N,"result":…}`) и держим отказ ниже него.
 ///
 /// Запас именован и намеренно консервативен: пересмотреть при изменении формата конверта
 /// (добавлении полей ответа).
 const REPLY_ENVELOPE_RESERVE: usize = 1024;
 const MAX_TEXT_REPLY_ESCAPED: usize =
-    plugin_proto::frame::MAX_HOST_FRAME_BYTES - REPLY_ENVELOPE_RESERVE;
+    plugin_core::frame::MAX_HOST_FRAME_BYTES - REPLY_ENVELOPE_RESERVE;
 
 /// Очередь отложенных `document:changed` (плагинные `apply_edit`): `(doc_id, rev)`.
 /// Общая между `DocumentServices` (кладёт) и `PluginHost` (дренит в EventBus).

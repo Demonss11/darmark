@@ -258,7 +258,7 @@ AI-ассистент запрашивает описание плагина (и
   ↓
 LLM возвращает код main.lua + plugin.json
   ↓
-AI-ассистент валидирует манифест (plugin_proto::manifest)
+AI-ассистент валидирует манифест (plugin_core::manifest)
   ↓
 Показывает предпросмотр файлов
   ↓
@@ -277,8 +277,8 @@ AI-ассистент записывает файлы в %APPDATA%/darmark/plugi
 
 | Существующий контракт | Как используется |
 |----------------------|------------------|
-| `plugin_proto::manifest::Manifest` | Валидация `plugin.json` |
-| `plugin_proto::scan::scan_plugins` | Сканирование каталога плагинов |
+| `plugin_core::manifest::Manifest` | Валидация `plugin.json` |
+| `plugin_core::scan::scan_plugins` | Сканирование каталога плагинов |
 | `plugin-host --self-test` | Прогон плагина в песочнице |
 | `PluginManager::load_plugins` | Загрузка нового плагина |
 | `PluginManager::reload_plugin` | Перезагрузка после редактирования |
@@ -287,7 +287,7 @@ AI-ассистент записывает файлы в %APPDATA%/darmark/plugi
 
 Перед сохранением плагин проходит проверки:
 1. **Синтаксис Lua** — `lua.load(src)` без ошибок.
-2. **Манифест** — `plugin_proto::manifest::validate`.
+2. **Манифест** — `plugin_core::manifest::validate`.
 3. **Размер** — `MAX_PLUGIN_SOURCE_BYTES`.
 4. **Песочница** — `plugin-host --self-test` (запуск в child-процессе).
 

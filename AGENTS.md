@@ -33,10 +33,10 @@ Tauri 2 + vanilla TypeScript/Vite на фронте + чистое Rust-ядро
   `scan.rs` — `scan(plugins/)` + валидация манифеста; `settings.rs` — `SettingsStore`
   (`%APPDATA%/darmark/config.json`: вкл/выкл, согласие на permissions, recent files);
   `manager.rs` — жизненный цикл, карантин N=3, `load_plugins` (scan+settings→реестр),
-  `list/set_enabled/reload`. `PluginManager` линкует `plugin-proto`, но **не** `plugin-host`/`mlua`
+  `list/set_enabled/reload`. `PluginManager` линкует `plugin-core`, но **не** `plugin-host`/`mlua`
   (D6/ADR-0021).
 - Задачи только по фронтенду не должны трогать `md-core` и `src-tauri`
-- `crates/plugin-proto/` — продуктовое ядро плагинной системы (H2): кадры транспорта
+- `crates/plugin-core/` — продуктовое ядро плагинной системы (H2): кадры транспорта
   (`frame.rs`), serde-конверт хост↔child (`envelope.rs`), Job Object (`job.rs`), карантин
   (`quarantine.rs`), манифест и валидация (`manifest.rs`), формулировки границы (`notices.rs`),
   бюджеты watchdog (`limits.rs`). **Без mlua и без Tauri** — линкуется и в GUI-хост, и в child.
@@ -63,7 +63,7 @@ Tauri 2 + vanilla TypeScript/Vite на фронте + чистое Rust-ядро
   копирует `bundle.externalBin` рядом с бинарником и падает, если файла нет. Застейджить:
   `cd crates/app; npm run sidecars:dev` (debug) или `npm run sidecars` (release). Команды
   `npx tauri dev`/`npx tauri build` стейджат сами (beforeDev/BeforeBuildCommand), CI — тоже.
-- `cargo test -p plugin-proto -p plugin-host -p plugin-cli` — плагинные крейты (H2) и CLI (H3).
+- `cargo test -p plugin-core -p plugin-host -p plugin-cli` — плагинные крейты (H2) и CLI (H3).
   `plugin-host` тянет `mlua` (vendored) — первая сборка долгая. `cargo run -p plugin-host -- --self-test
   <plugin.lua>` — прогон плагина в песочнице без GUI. `cargo run -p plugin-cli -- test plugins/word-count`
   — проверка плагина CLI (манифест/entry/песочница); `... -- init <dir>` — шаблон нового плагина.

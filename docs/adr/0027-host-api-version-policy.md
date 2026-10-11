@@ -3,18 +3,18 @@
 - **Статус:** **Принят**
 - **Дата:** 10.10.2026
 - **Основание:** gate перед распространением плагинов (S15);
-  `docs/ROADMAP.md` (H3, Фаза 3 «Расширение API — итеративно»); существующий контракт — `crates/plugin-proto` (`HOST_API_VERSION`,
+  `docs/ROADMAP.md` (H3, Фаза 3 «Расширение API — итеративно»); существующий контракт — `crates/plugin-core` (`HOST_API_VERSION`,
   `Manifest::validate`), `docs/DESIGN_DOC.md` §7.2
 - **Связанные:** `docs/DESIGN_DOC.md` §7.2, §8, §16; `docs/PLUGIN_API.md` §1–§4;
   `docs/adr/0021-plugin-isolation-process.md`, `docs/adr/0023-plugin-runtime.md`,
-  `docs/adr/0026-local-plugin-catalog.md`; `crates/plugin-proto`, `crates/plugin-cli`
+  `docs/adr/0026-local-plugin-catalog.md`; `crates/plugin-core`, `crates/plugin-cli`
 
 ---
 
 ## 1. Контекст
 
 H2/H3 зафиксировали контракт host ↔ плагин: единственная версия `HOST_API_VERSION = 1`
-(`crates/plugin-proto/src/lib.rs`). Плагин объявляет `api_version` в `plugin.json`; хост
+(`crates/plugin-core/src/lib.rs`). Плагин объявляет `api_version` в `plugin.json`; хост
 отвергает `api_version == 0` и `api_version > HOST_API_VERSION` (`Manifest::validate`), проверка
 идёт при разборе манифеста (`Manifest::from_json`) — в GUI-скане (`crates/app/src-tauri/src/plugins/scan.rs`)
 и в CLI `darmark-plugin` (`crates/plugin-cli`). В `docs/DESIGN_DOC.md` §7.2 уже объявлен принцип
@@ -88,7 +88,7 @@ H2/H3 зафиксировали контракт host ↔ плагин: еди�
     (`docs/DESIGN_DOC.md` §16) — новым ADR или записью; deprecated-пометка — в `PLUGIN_API.md`.
 15. **Тесты совместимости.** При аддитивном расширении — тест, что манифест/плагин с меньшим
     `api_version` валиден и работает; при несовместимом — тест, что `api_version > HOST_API_VERSION`
-    отвергается. База уже есть: `crates/plugin-proto/src/manifest.rs` (`accepts_reference_manifest`,
+    отвергается. База уже есть: `crates/plugin-core/src/manifest.rs` (`accepts_reference_manifest`,
     `rejects_api_version_too_new`, `rejects_api_version_zero`),
     `crates/app/src-tauri/src/plugins/tests.rs`, `crates/plugin-cli/src/catalog.rs`.
 
@@ -96,7 +96,7 @@ H2/H3 зафиксировали контракт host ↔ плагин: еди�
 
 16. Проверка версии — **на хосте при загрузке манифеста** (`Manifest::from_json`/`validate`), до
     старта child; не в плагине и не в рантайме Lua.
-17. **Ввод новой версии:** поднять `HOST_API_VERSION` в `crates/plugin-proto/src/lib.rs`; обновить
+17. **Ввод новой версии:** поднять `HOST_API_VERSION` в `crates/plugin-core/src/lib.rs`; обновить
     `docs/PLUGIN_API.md` и (при необходимости) §7.2 `DESIGN_DOC.md`; оформить ADR (§2.5); расширить
     тесты (§2.5).
 18. Понижение версии или удаление версии/функции без ADR **запрещено**.
@@ -118,7 +118,7 @@ H2/H3 зафиксировали контракт host ↔ плагин: еди�
 **Положительные:**
 
 - Итерации Фазы 3 не ломают существующие плагины: аддитивные изменения гарантированно совместимы.
-- Единая точка проверки (`plugin-proto`) — GUI-скан и CLI ведут себя одинаково, до spawn child.
+- Единая точка проверки (`plugin-core`) — GUI-скан и CLI ведут себя одинаково, до spawn child.
 - Депрекация даёт авторам окно миграции; мажор — явный, документируемый сигнал о несовместимости.
 
 **Отрицательные / ограничения:**
@@ -157,6 +157,6 @@ H2/H3 зафиксировали контракт host ↔ плагин: еди�
   `docs/PLUGIN_GUIDE.md`.
 - ADR: `docs/adr/0021-plugin-isolation-process.md` (изоляция процесса),
   `docs/adr/0023-plugin-runtime.md` (runtime), `docs/adr/0026-local-plugin-catalog.md` (каталог).
-- Код: `crates/plugin-proto/src/lib.rs` (`HOST_API_VERSION`),
-  `crates/plugin-proto/src/manifest.rs` (`Manifest::validate`, `ManifestError::ApiVersionTooNew`,
+- Код: `crates/plugin-core/src/lib.rs` (`HOST_API_VERSION`),
+  `crates/plugin-core/src/manifest.rs` (`Manifest::validate`, `ManifestError::ApiVersionTooNew`,
   `ManifestError::ApiVersionZero`), `crates/app/src-tauri/src/plugins/scan.rs`, `crates/plugin-cli`.

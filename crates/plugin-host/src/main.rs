@@ -22,12 +22,12 @@ use std::process::ExitCode;
 use std::sync::{Arc, Mutex};
 
 use mlua::{Function, Table};
+use plugin_core::envelope::{self, PluginError, ToChild, ToHost};
+use plugin_core::MAX_PLUGIN_SOURCE_BYTES;
 use plugin_host::bindings::{self, HostApi};
 use plugin_host::sandbox;
 use plugin_host::selftest;
 use plugin_host::{read_plugin_manifest_source, DEFAULT_PLUGIN_ID};
-use plugin_proto::envelope::{self, PluginError, ToChild, ToHost};
-use plugin_proto::MAX_PLUGIN_SOURCE_BYTES;
 use serde_json::{json, Value};
 
 // ─── stdio-транспорт ────────────────────────────────────────────────────

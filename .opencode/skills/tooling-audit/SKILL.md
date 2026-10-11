@@ -58,7 +58,7 @@ node .opencode/skills/tooling-audit/scripts/audit.mjs path/to/.opencode
    как агент».
 5. **Дубли абзацев** между файлами (нормализованный хеш) и внутри одного файла.
 6. **Хардкод путей и имён проекта** в телах агентов (эвристика по списку токенов:
-   пути крейтов, `md-core`, `plugin-proto`, `plugin-host`, `src-tauri`, `DESIGN_DOC`,
+   пути крейтов, `md-core`, `plugin-core`, `plugin-host`, `src-tauri`, `DESIGN_DOC`,
    `docs/adr`, имя проекта).
 7. **Модель**: поле `model` присутствует и имеет формат `провайдер/модель`.
 

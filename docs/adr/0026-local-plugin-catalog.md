@@ -7,7 +7,7 @@
   `crates/plugin-cli` (`darmark-plugin test`/`init`)
 - **Связанные:** `docs/DESIGN_DOC.md` §7.1, §10, §16; `docs/adr/0021-*` (изоляция процесса),
   `docs/adr/0023-*` (плагинный runtime); `docs/PLUGIN_API.md` §6; `crates/plugin-cli`,
-  `crates/plugin-proto` (`manifest`)
+  `crates/plugin-core` (`manifest`)
 
 ---
 
@@ -64,7 +64,7 @@
 
 4. **Метаданные не дублируются.** `name`/`version`/`api_version`/`permissions` берутся только из
    `plugin.json` соответствующего каталога. Индекс — лишь навигация, а не второй источник правды.
-5. **Каждая запись валидируется.** Каталог по `path` разбирается `plugin-proto::manifest`
+5. **Каждая запись валидируется.** Каталог по `path` разбирается `plugin-core::manifest`
    (`Manifest::from_json`), как при GUI-сканировании: те же правила `id` (`is_safe_id`),
    `api_version ≤ HOST_API_VERSION`, разрешения из §8, `entry`. Индекс с записью, не прошедшей
    валидацию, считается недействительным для этой записи (команда сообщает и продолжает/падает —
@@ -107,7 +107,7 @@
     `..`, без абсолютных путей и без разделителей за пределами `plugins/`; фактический источник
     канонизируется и проверяется на принадлежность `--repo`.
 12. Запись в `--dest` **должна** ограничиваться каталогом установки (та же проверка границ);
-    `id` — безопасный идентификатор (те же правила, что `plugin-proto::manifest::is_safe_id`).
+    `id` — безопасный идентификатор (те же правила, что `plugin-core::manifest::is_safe_id`).
 13. `link` на Windows использует **junction** (`mklink /J`) для каталогов: не требует режима
     разработчика/прав администратора, в отличие от симлинка; ошибка при отсутствии прав
     сообщается явно. Источник **канонизируется** (`canonicalize`) — junction указывает на
@@ -126,7 +126,7 @@
 - Разработка быстрее: `link` даёт «правил исходник — видно рантайму» без пересборки.
 - Единый формат `index.json` — **прямой путь к Фазе 2b**: те же записи, расширяемые полями
   источника и подписи.
-- Переиспользование готовой валидации (`plugin-proto::manifest`) — те же правила, что у GUI-скана.
+- Переиспользование готовой валидации (`plugin-core::manifest`) — те же правила, что у GUI-скана.
 - CLI-контракт сразу готов стать бэкендом UI-каталога (ADR-0024), не изобретая второй API.
 
 **Отрицательные / ограничения:**
@@ -180,8 +180,8 @@
 - `docs/ROADMAP.md` — H3 «экосистема», п. 1 «Реестр плагинов: git-репозиторий + `index.json` +
   подпись Ed25519».
 - `docs/adr/0021-plugin-isolation-process.md` (D16), `docs/adr/0023-plugin-runtime.md`
-  (крейты и границы, `plugin-proto`), `docs/adr/0024-plugin-drawer-placement.md` (UI-каталог).
+  (крейты и границы, `plugin-core`), `docs/adr/0024-plugin-drawer-placement.md` (UI-каталог).
 - `docs/PLUGIN_API.md` §6 — CLI `darmark-plugin` (Фаза 1 H3).
-- Код: `crates/plugin-cli` (бинарник `darmark-plugin`), `crates/plugin-proto/src/manifest.rs`
+- Код: `crates/plugin-cli` (бинарник `darmark-plugin`), `crates/plugin-core/src/manifest.rs`
   (`Manifest::from_json`, `is_safe_id`), `crates/app/src-tauri/src/lib.rs` (`plugins_dir()`),
   `crates/app/src-tauri/src/plugins/scan.rs` (GUI-скан), `plugins/` (индекс + эталонные примеры).

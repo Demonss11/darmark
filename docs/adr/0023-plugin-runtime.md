@@ -5,7 +5,7 @@
 - **Основание:** ADR-0021 (изоляция процесса), ADR-0022 (контракт ViewProvider);
   реализация H2 — плагинная система (Фазы 0–6); факты — `docs/proto/FINDINGS.md` (F16–F42)
 - **Связанные:** `docs/DESIGN_DOC.md` §6–§12, §14, §16; `docs/PLUGIN_API.md`;
-  `crates/plugin-proto`, `crates/plugin-host`, `crates/app/src-tauri/src/plugins`
+  `crates/plugin-core`, `crates/plugin-host`, `crates/app/src-tauri/src/plugins`
 
 ---
 
@@ -30,9 +30,9 @@ watchdog F33/F35, карантин F37, range/delta F34, устойчивост�
 | Крейт | Знает про | **Не** знает про | Роль |
 |---|---|---|---|
 | `md-core` | Markdown | Tauri, Lua, плагины | ядро `&str → String`; публичный `sanitize_fragment` |
-| `plugin-proto` | транспорт/конверт/Job/карантин/манифест | Tauri, `mlua` | общий крейт хоста и child |
+| `plugin-core` | транспорт/конверт/Job/карантин/манифест | Tauri, `mlua` | общий крейт хоста и child |
 | `plugin-host` | `mlua`/Lua 5.5 | Tauri | child-бинарник `darmark-plugin-host.exe` |
-| `crates/app/src-tauri` | `plugin-proto` | `plugin-host`/`mlua` | GUI-хост: Supervisor, события, представления, команды |
+| `crates/app/src-tauri` | `plugin-core` | `plugin-host`/`mlua` | GUI-хост: Supervisor, события, представления, команды |
 
 **Инвариант (D6/ADR-0021):** `cargo tree -p darmark` не содержит `mlua`; child спавнится как
 внешний exe, а не как зависимость. Проверяется в CI.
@@ -142,4 +142,4 @@ on_deactivate → terminate`. Ошибка загрузки/активации �
 
 - Плагинная система (Фазы 0–6), `docs/DESIGN_DOC.md` §6–§12/§14, `docs/adr/0021-*`, `docs/adr/0022-*`
 - `docs/proto/FINDINGS.md` F16–F42, `docs/PLUGIN_API.md`
-- Код: `crates/plugin-proto`, `crates/plugin-host`, `crates/app/src-tauri/src/plugins/*`
+- Код: `crates/plugin-core`, `crates/plugin-host`, `crates/app/src-tauri/src/plugins/*`
