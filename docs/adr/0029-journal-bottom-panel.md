@@ -2,7 +2,7 @@
 
 - **Статус:** **Принят**
 - **Дата:** 11.10.2026
-- **Основание:** `tasks/TZ-S11-LOGS-PANEL.md` (S11); упрощённый прототип
+- **Основание:** задача S11 стабилизации; упрощённый прототип
   `ideas/front_idea-s11-log-panel.html` (редакция 2); `docs/adr/0024-plugin-drawer-placement.md`;
   `docs/DESIGN_DOC.md` §5, §9, §13.2
 - **Связанные:** `docs/DESIGN_DOC.md` §5.5 (модульная карта), §13.2 (замороженные контракты),
@@ -159,7 +159,6 @@ flowchart TD
 - `docs/adr/0024-plugin-drawer-placement.md` — правый дровер плагинов; журнал — **исключение**
   (этот ADR).
 - `docs/adr/0027-host-api-version-policy.md` — аддитивные события не поднимают мажор.
-- `tasks/TZ-S11-LOGS-PANEL.md` — ТЗ задачи.
 - `ideas/front_idea-s11-log-panel.html` — упрощённый прототип (редакция 2).
 - `crates/app/src/logPanel.ts`, `shell.ts`, `main.ts`, `index.html`, `style.css` — точки интеграции.
 - `crates/app/src-tauri/src/plugins/host.rs`, `services.rs`, `lib.rs` — эмиттеры событий.

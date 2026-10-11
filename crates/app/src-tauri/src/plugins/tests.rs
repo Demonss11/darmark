@@ -2274,9 +2274,9 @@ fn reference_plugins_validate() {
 
 // ─── S11 (Фаза 2): новые события журнала ────────────────────────────────
 //
-// ТРИ новых события (TZ-S11 §5.2, ADR-0029 §2.4): `plugin-status-changed`,
-// `document-event`, `log-entry`. Реализации (эмиттеры/sink'и) ещё нет — тесты
-// фиксируют контракт по TDD и сейчас падают на компиляции. Ожидаемый API:
+// ТРИ новых события (ADR-0029 §2.4): `plugin-status-changed`,
+// `document-event`, `log-entry`. Реализация — эмиттеры/sink'и (S11 Фаза 2);
+// тесты фиксируют контракт. Ожидаемый API:
 //
 // * `host::StatusChangedSink = Arc<dyn Fn(&str, &str, &str, Option<&str>)>` +
 //   `PluginHost::with_status_changed_sink` — (plugin_id, old_state, new_state, message),
