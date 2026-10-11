@@ -623,7 +623,7 @@ PluginManager::reload_plugin (перезагрузка без перезапус
 
 ### 8.2. Структура DOM (аддитивно)
 
-Добавляемые id (ADR-0030 §2.2): `#sb-ai`, `#tb-ai`, `#ai-dot`, `#dock-modes`, `#mode-logs-btn`, `#mode-mon-btn`, `#mode-ai-btn`, `#ai-mode`, `#ai-skills`, `#ai-chat`, `#ai-input`, `#ai-send`, `#ai-settings`, `#ai-clear`, `#ai-model`, а также поповер настроек `#ai-settings-pop` (`#ai-enabled` — тумблер включения `ai.enabled`, `#ai-provider`, `#ai-model-select`, `#ai-key` — маскированное поле `type="password"`). Id настроек аддитивны и уже присутствуют в прототипе (`ideas/front_idea-ai-assistant.html`). Сохраняются `#logs-panel` и все `#logs-*`.
+Добавляемые id (ADR-0030 §2.2): `#sb-ai`, `#tb-ai`, `#ai-dot`, `#dock-modes`, `#mode-logs-btn`, `#mode-mon-btn`, `#mode-ai-btn`, `#ai-mode`, `#ai-skills`, `#ai-chat`, `#ai-input`, `#ai-send`, `#ai-settings`, `#ai-clear`, `#ai-model`, а также поповер настроек `#ai-settings-pop` (`#ai-enabled` — тумблер включения `ai.enabled`, `#ai-provider`, `#ai-model-select`, `#ai-key` — маскированное поле `type="password"`). Id настроек аддитивны и реализованы (`aiPanel.ts`). Сохраняются `#logs-panel` и все `#logs-*`.
 
 **Включаемость:** тумблер `#ai-enabled` управляет `ai.enabled` (персист в `config.json`, секция `ai`);
 инициализация AI-модуля — **ленивая** (сеть/клиент не поднимаются, пока фича не востребована). Индикатор

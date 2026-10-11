@@ -2,7 +2,7 @@
 
 - **Статус:** **Принят**
 - **Дата:** 11.10.2026
-- **Основание:** прототип `ideas/front_idea-ai-assistant.html` (редакция 2);
+- **Основание:** прототип режима AI (редакция 2; удалён после реализации);
   `tasks/TZ-AI-ASSISTANT.md` (IDEA-013); `docs/adr/0029-journal-bottom-panel.md`;
   `docs/adr/0024-plugin-drawer-placement.md`; `docs/DESIGN_DOC.md` §5, §5.5, §13.2
 - **Связанные:** `docs/DESIGN_DOC.md` §5 (UI), §5.5 (модульная карта), §13.2 (замороженные
@@ -214,5 +214,5 @@ flowchart TD
 - `docs/adr/0031-resource-monitoring-source.md` — мониторинг ресурсов (номер ADR — 0031).
 - `docs/adr/0032-ai-provider-openai.md` — провайдер LLM в MVP: OpenAI-совместимый API (`routerai.ru`);
   локальная LLM отложена (сетевой слой AI, согласие, секреты; расширяет этот ADR по части AI-подсистемы).
-- `ideas/front_idea-ai-assistant.html` — прототип (редакция 2).
+- Прототип режима AI (редакция 2) — удалён после реализации.
 - `crates/app/src/logPanel.ts`, `main.ts`, `shell.ts`, `index.html`, `style.css` — точки интеграции.

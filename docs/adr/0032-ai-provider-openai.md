@@ -9,7 +9,7 @@
 - **Основание:** продуктовое решение 11.10.2026 (пересмотр открытого вопроса №1 IDEA-013 и
   §3.2 TZ-AI-ASSISTANT); `tasks/TZ-AI-ASSISTANT.md` (IDEA-013) §2, §3.2, §4, §14;
   `ideas/UI-IDEAS.md` IDEA-013; `ideas/openai_deepseek.txt` (референс-фрагмент протокола и адресов);
-  `docs/adr/0030-bottom-dock-two-modes.md`; прототип `ideas/front_idea-ai-assistant.html`
+  `docs/adr/0030-bottom-dock-two-modes.md`; прототип режима AI (удалён после реализации)
 - **Связанные:** `docs/DESIGN_DOC.md` §5 (UI), §5.5 (модульная карта), §11 (санитайзер),
   §13.2 (замороженные контракты), §14 (бюджет D6), §16 (реестр ADR);
   `docs/adr/0030-bottom-dock-two-modes.md` (режим AI дока), `docs/adr/0021-plugin-isolation-process.md`
@@ -207,7 +207,7 @@ OpenAI-совместимый провайдер.**
   §9 (команды/события), §10 (лимиты/бюджет), §11 (AC), §12–14 (план/риски/открытые вопросы).
   Правит **аналитик** (отдельная правка).
 - **Идеи:** `ideas/UI-IDEAS.md` IDEA-013 — правит **аналитик** (этот ADR файл не трогает).
-- **Прототип:** `ideas/front_idea-ai-assistant.html` — источник UI; провайдер в UI не виден.
+- **Прототип (удалён после реализации):** источник UI; провайдер в UI не виден.
 - **Дизайн-документ:** §5.5 (`aiPanel.ts`), §12 (настройки/`config.json` — владелец `SettingsStore`),
   §13.2 (AI-контракты), §14 (D6), §16 (реестр ADR).
 - **ADR-0030:** режим AI дока и диалог согласия; ссылка на этот ADR — провайдер/сетевой слой.
@@ -260,7 +260,7 @@ OpenAI-совместимый провайдер.**
 - `ideas/UI-IDEAS.md` IDEA-013 (исходная идея; правит аналитик).
 - `ideas/openai_deepseek.txt` — референс-фрагмент протокола и адресов (OpenAI-совместимый вызов:
   `base_url = https://routerai.ru/api/v1`, `model = deepseek/deepseek-v4.1-flash`).
-- `ideas/front_idea-ai-assistant.html` — прототип режима AI.
+- Прототип режима AI — удалён после реализации.
 - `docs/DESIGN_DOC.md` §5 (UI), §5.5 (модульная карта — `aiPanel.ts`), §11 (санитайзер),
   §12 (настройки/`config.json`), §13.2 (замороженные контракты), §14 (бюджет D6), §16 (реестр ADR).
 - `docs/adr/0030-bottom-dock-two-modes.md` — режим AI нижнего дока, диалог согласия (§2.4);
