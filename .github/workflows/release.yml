@@ -1,6 +1,6 @@
 name: Release
 
-# Релизный workflow (S7 плана tasks/TZ-STABILIZATION.md).
+# Релизный workflow (стабилизация, S7).
 #
 # Запуск:
 #   - push тега вида `v*` (например v0.1.0) — сборка + приложение к GitHub Release;

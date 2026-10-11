@@ -1,8 +1,8 @@
 # TZ-S11 — Панель «Журнал» (`#sb-logs`): наполнение событиями/логами
 
-> **Статус:** план
+> **Статус:** сделано (реализация + E2E)
 > **Приоритет:** P1 (UX, стабилизация к бете)
-> **Источник:** S11 из `tasks/TZ-STABILIZATION.md`; ADR-0024; DESIGN_DOC §5, §9, §13.2
+> **Источник:** задача S11 (стабилизация H2/H3); ADR-0024; DESIGN_DOC §5, §9, §13.2
 > **Связанные:** `ideas/UI-IDEAS.md` IDEA-012 (мониторинг ресурсов — отдельная задача);
 > `ideas/front_idea-s11-log-panel.html` (упрощённый прототип);
 > `crates/app/src/shell.ts:81` (заглушка); `crates/app/index.html:244` (`#sb-logs`, `#log-badge`);
@@ -348,7 +348,6 @@ interface LogEntry {
 **Фаза 4 — проверка стабилизации.**
 9. `npm run build`, `cargo test -p darmark`, `npm run test:e2e` (обновить `a11y.feature`,
    `drawer.feature`, добавить `logs.feature`).
-10. Отметить S11 в `tasks/TZ-STABILIZATION.md`.
 
 ---
 
@@ -376,7 +375,6 @@ interface LogEntry {
 
 ## 12. Ссылки
 
-- `tasks/TZ-STABILIZATION.md` — план стабилизации (S11)
 - `docs/adr/0024-plugin-drawer-placement.md` — размещение (журнал — исключение: панель-консоль)
 - `ideas/front_idea-s11-log-panel.html` — упрощённый прототип панели
 - `docs/DESIGN_DOC.md` §5, §9, §13.2 — нормативная спецификация

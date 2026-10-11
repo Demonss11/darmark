@@ -2,8 +2,8 @@
 
 - **Статус:** **Принят**
 - **Дата:** 11.10.2026
-- **Основание:** `tasks/TZ-STABILIZATION.md` (S16 — дизайн/ADR Rust-undo **перед** реализацией,
-  rev-семантика); D5 (`docs/DESIGN_DOC.md` §0); существующий контракт —
+- **Основание:** дизайн/ADR Rust-undo **перед** реализацией (S16, rev-семантика);
+  D5 (`docs/DESIGN_DOC.md` §0); существующий контракт —
   `crates/app/src-tauri/src/state.rs` (`Document`, `EditOp`, `update`, `apply_edit`),
   `docs/DESIGN_DOC.md` §4.1/§4.2/§4.3
 - **Связанные:** `docs/DESIGN_DOC.md` §4.1, §4.2, §4.3, §13, §16; `docs/adr/0021-plugin-isolation-process.md`,
@@ -31,7 +31,7 @@ D5 принят и зафиксирован в §4.1/§4.2: **владелец �
 и не даёт единой истории для ввода и правок плагинов.
 
 Кэш рендера и `rev` живут в Rust (§4.2); `rev` — ключ кэша `(mapped, rev)` и инвалидации
-индексов. S16 в `tasks/TZ-STABILIZATION.md` — **gate перед реализацией**: зафиксировать
+индексов. S16 — **gate перед реализацией**: зафиксировать
 rev-семантику и контракт undo до кодинга.
 
 ---
@@ -146,7 +146,6 @@ rev-семантику и контракт undo до кодинга.
 
 ## 5. Ссылки
 
-- `tasks/TZ-STABILIZATION.md` (S16 — дизайн/ADR Rust-undo **перед** реализацией, rev-семантика).
 - `docs/DESIGN_DOC.md` §4.1 (структуры `EditOp`/`UndoResult`), §4.2 (владение), §4.3 (IPC-команды),
   §13 (нативный undo — известное ограничение), §16 (реестр ADR).
 - ADR: `docs/adr/0021-plugin-isolation-process.md` (изоляция процесса),
