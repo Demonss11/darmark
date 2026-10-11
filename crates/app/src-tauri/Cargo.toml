@@ -29,6 +29,15 @@ plugin-core = { path = "../../plugin-core" }
 [target.'cfg(windows)'.dependencies]
 webview2-com = "0.39"
 windows-core = "0.62"
+# AI-сетевой слой (ADR-0032/0033): reqwest + системный TLS SChannel (native-tls, без OpenSSL),
+# стриминг SSE. Только Windows — на не-Windows сетевой слой AI не собирается (ADR-0033 §2.1).
+reqwest = { version = "0.13", default-features = false, features = [
+  "native-tls",
+  "json",
+  "stream",
+] }
+# Потоковое чтение SSE-ответа (`Response::bytes_stream` + `StreamExt::next`).
+futures-util = "0.3"
 # WinAPI-путь ресурс-монитора (ADR-0031 §2.1 п.2): прямой доступ к
 # K32GetProcessMemoryInfo/GetProcessTimes/GetProcessHandleCount. Фичи minimal — крейт уже в
 # дереве darmark (windows 0.62.2), новых зависимостей не появляется (F53).

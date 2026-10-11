@@ -6,6 +6,9 @@
 //! «белого списка» каталогов нет — диалог и есть согласие).
 
 mod error;
+// AI-ассистент: Rust-сетевой слой, настройки, скиллы (ADR-0032/0033/0034). Собирается на всех
+// платформах; сетевой бэкенд — только на Windows (внутри модуля).
+pub mod ai;
 // Плагинная подсистема — только Windows: Job Object и CREATE_NO_WINDOW (плагинная система).
 #[cfg(windows)]
 pub mod plugins;
@@ -802,6 +805,8 @@ pub fn run() {
             {
                 app.manage(PluginState::new());
             }
+            // AI-состояние: настройки из конфига + бэкенд шва (ленивый, ADR-0034 §2.3).
+            app.manage(ai::state::AiState::init());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -825,7 +830,13 @@ pub fn run() {
             reload_plugin,
             remove_plugin,
             run_plugin_command,
-            open_devtools
+            open_devtools,
+            ai::commands::ai_get_settings,
+            ai::commands::ai_set_settings,
+            ai::commands::ai_set_api_key,
+            ai::commands::ai_list_skills,
+            ai::commands::ai_chat,
+            ai::commands::ai_test_connection
         ])
         .run(tauri::generate_context!())
         .expect("error while running darmark");

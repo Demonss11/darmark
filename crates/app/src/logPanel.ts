@@ -56,6 +56,10 @@ export interface LogPanelOptions {
   trigger: HTMLElement;
   /** Триггер «Мониторинг» в статусбаре (#sb-mon). */
   monTrigger: HTMLElement;
+  /** Триггер «AI-ассистент» в статусбаре (#sb-ai). */
+  aiTrigger: HTMLElement;
+  /** Триггер «AI-ассистент» в тулбаре (#tb-ai). */
+  aiToolbarTrigger: HTMLElement;
   /** Бейдж непрочитанных (#log-badge). */
   badge: HTMLElement;
   /**
@@ -63,6 +67,11 @@ export interface LogPanelOptions {
    * когда вкладка «Мониторинг» активна (шов без обратной зависимости модулей).
    */
   onLayoutChange?: () => void;
+  /**
+   * Смена режима/состояния дока для AI-панели (шов без обратной зависимости):
+   * фокус в поле ввода при раскрытии режима AI, закрытие поповера при уходе.
+   */
+  onModeChange?: (mode: DockMode, state: DockState) => void;
 }
 
 /** Фильтр ленты (§4.2 ТЗ, AC-8): «Ошибки» — только warn/error. */
@@ -100,7 +109,7 @@ function clampHeight(value: number): number {
 }
 
 export function createLogPanel(opts: LogPanelOptions): LogPanel {
-  const { trigger, monTrigger, badge } = opts;
+  const { trigger, monTrigger, aiTrigger, aiToolbarTrigger, badge } = opts;
 
   const panel = byId<HTMLElement>("logs-panel");
   const body = byId<HTMLElement>("logs-body");
@@ -198,22 +207,24 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
     title.textContent = MODE_TITLE[mode];
     const isLogs = mode === "logs";
     const isMon = mode === "mon";
+    const isAi = mode === "ai";
     modeLogsBtn.classList.toggle("active", isLogs);
     modeMonBtn.classList.toggle("active", isMon);
+    modeAiBtn.classList.toggle("active", isAi);
     modeLogsBtn.setAttribute("aria-selected", String(isLogs));
     modeMonBtn.setAttribute("aria-selected", String(isMon));
-    modeAiBtn.setAttribute("aria-selected", "false");
+    modeAiBtn.setAttribute("aria-selected", String(isAi));
     body.hidden = !isLogs;
     monBody.hidden = !isMon;
-    aiBody.hidden = true; // режим «скоро»: тело не показываем никогда
+    aiBody.hidden = !isAi;
     toggleModeFields(".logs-only", isLogs);
     toggleModeFields(".mon-only", isMon);
-    toggleModeFields(".ai-only", false);
+    toggleModeFields(".ai-only", isAi);
   }
 
   /** Переключить режим дока (без изменения высоты/свёртки, ADR-0030 §2.2 №7). */
   function setMode(next: DockMode): void {
-    if (next === "ai" || next === mode) return; // зарезервирован / уже активен
+    if (next === mode) return;
     mode = next;
     applyMode();
     // Активация «Журнала» при раскрытом доке = прочтение ленты (§6.5).
@@ -230,12 +241,15 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
 
   /** Триггер статусбара активного режима — точка возврата фокуса (§4.5, ADR-0030 №10). */
   function activeTrigger(): HTMLElement {
-    return mode === "mon" ? monTrigger : trigger;
+    if (mode === "mon") return monTrigger;
+    if (mode === "ai") return aiTrigger;
+    return trigger;
   }
 
-  /** Догон отложенного рендера монитора после смены состояния/режима. */
+  /** Догон отложенного рендера монитора + шов AI-панели после смены состояния/режима. */
   function notifyLayout(): void {
     opts.onLayoutChange?.();
+    opts.onModeChange?.(mode, state());
   }
 
   /** Отразить активность триггеров: `.active`/`aria-expanded` только у раскрытого режима. */
@@ -243,10 +257,15 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
     const st = state();
     const logsActive = st === "expanded" && mode === "logs";
     const monActive = st === "expanded" && mode === "mon";
+    const aiActive = st === "expanded" && mode === "ai";
     trigger.classList.toggle("active", logsActive);
     trigger.setAttribute("aria-expanded", String(logsActive));
     monTrigger.classList.toggle("active", monActive);
     monTrigger.setAttribute("aria-expanded", String(monActive));
+    aiTrigger.classList.toggle("active", aiActive);
+    aiTrigger.setAttribute("aria-expanded", String(aiActive));
+    aiToolbarTrigger.classList.toggle("active", aiActive);
+    aiToolbarTrigger.setAttribute("aria-expanded", String(aiActive));
   }
 
   /** Раскрыть док (тело активного режима видно). */
@@ -268,7 +287,11 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
     syncTriggers();
     notifyLayout();
     // §7: фокус — на вкладку активного режима (при resize его не вырываем: moveFocus=false).
-    if (moveFocus) (mode === "mon" ? modeMonBtn : modeLogsBtn).focus({ preventScroll: true });
+    // В режиме AI фокус ставит aiPanel (поле ввода) через onModeChange.
+    if (moveFocus) {
+      if (mode === "mon") modeMonBtn.focus({ preventScroll: true });
+      else if (mode === "logs") modeLogsBtn.focus({ preventScroll: true });
+    }
   }
 
   /** Свернуть док до полосы-шапки (тело скрыто, шапка на месте). */
@@ -302,7 +325,6 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
 
   /** Открыть док в указанном режиме (раскрыть + переключить вкладку). */
   function openMode(next: DockMode): void {
-    if (next === "ai") return; // режим «скоро» не открывается
     setMode(next);
     expand(true);
   }
@@ -312,7 +334,6 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
    * раскрыт в другом → переключить; раскрыт в том же → свернуть. Скрытие — × и Esc.
    */
   function triggerMode(next: DockMode): void {
-    if (next === "ai") return;
     const st = state();
     if (st === "hidden" || st === "collapsed") {
       openMode(next);
@@ -558,19 +579,24 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
   // логика троицы «открыть в своём режиме / переключить / свернуть» (ADR-0030 №9).
   const onLogsTriggerClick = (): void => triggerMode("logs");
   const onMonTriggerClick = (): void => triggerMode("mon");
+  const onAiTriggerClick = (): void => triggerMode("ai");
+  const onAiToolbarClick = (): void => triggerMode("ai");
   const onCaretClick = (): void => toggleCollapse();
   // × — единственный явный возврат в `hidden` (п.1 бага).
   const onCloseClick = (): void => hide();
   const onModeLogsClick = (): void => setMode("logs");
   const onModeMonClick = (): void => setMode("mon");
+  const onModeAiClick = (): void => setMode("ai");
 
   caret.addEventListener("click", onCaretClick);
   closeButton.addEventListener("click", onCloseClick);
   trigger.addEventListener("click", onLogsTriggerClick);
   monTrigger.addEventListener("click", onMonTriggerClick);
+  aiTrigger.addEventListener("click", onAiTriggerClick);
+  aiToolbarTrigger.addEventListener("click", onAiToolbarClick);
   modeLogsBtn.addEventListener("click", onModeLogsClick);
   modeMonBtn.addEventListener("click", onModeMonClick);
-  // #mode-ai-btn — зарезервирован (`aria-disabled`): обработчик не вешаем.
+  modeAiBtn.addEventListener("click", onModeAiClick);
   clearButton.addEventListener("click", clearLog);
   resizeBar.addEventListener("pointerdown", onResizePointerDown);
   resizeBar.addEventListener("pointermove", onResizePointerMove);
@@ -675,8 +701,11 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
       closeButton.removeEventListener("click", onCloseClick);
       trigger.removeEventListener("click", onLogsTriggerClick);
       monTrigger.removeEventListener("click", onMonTriggerClick);
+      aiTrigger.removeEventListener("click", onAiTriggerClick);
+      aiToolbarTrigger.removeEventListener("click", onAiToolbarClick);
       modeLogsBtn.removeEventListener("click", onModeLogsClick);
       modeMonBtn.removeEventListener("click", onModeMonClick);
+      modeAiBtn.removeEventListener("click", onModeAiClick);
       clearButton.removeEventListener("click", clearLog);
       resizeBar.removeEventListener("pointerdown", onResizePointerDown);
       resizeBar.removeEventListener("pointermove", onResizePointerMove);

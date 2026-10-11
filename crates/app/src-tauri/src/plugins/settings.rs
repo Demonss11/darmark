@@ -14,6 +14,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
+use crate::ai::types::AiSettings;
+
 /// Сколько недавних файлов хранить.
 pub const RECENT_FILES_LIMIT: usize = 20;
 
@@ -57,6 +59,9 @@ pub struct SettingsStore {
     /// Недавние файлы, новейшие первыми (≤ [`RECENT_FILES_LIMIT`]).
     #[serde(default)]
     pub recent_files: Vec<RecentFile>,
+    /// Настройки AI-ассистента (секция `ai`, ADR-0032/0034). Секрет `api_key` — здесь же.
+    #[serde(default)]
+    pub ai: AiSettings,
 }
 
 impl SettingsStore {

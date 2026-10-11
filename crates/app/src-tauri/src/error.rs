@@ -25,6 +25,24 @@ pub enum ErrorCode {
     NothingToRedo,
     /// Ошибка плагинной подсистемы (неизвестный плагин/view, отказ invocation).
     Plugin,
+    /// AI: фича выключена пользователем (`ai.enabled = false`, ADR-0034).
+    AiDisabled,
+    /// AI: не задан API-ключ провайдера.
+    AiNoKey,
+    /// AI: нет согласия на отправку содержимого в облако (ADR-0032 §2.3).
+    AiNoConsent,
+    /// AI: ключ отклонён провайдером (HTTP 401).
+    AiBadKey,
+    /// AI: превышен лимит запросов/квота (HTTP 429, ADR-0032 §2.5 п.13).
+    AiRateLimited,
+    /// AI: провайдер отклонил запрос (HTTP 400 и прочие 4xx).
+    AiBadRequest,
+    /// AI: запрос длиннее контекста модели (HTTP 400, context length exceeded).
+    AiContextLength,
+    /// AI: транзиентная ошибка провайдера (HTTP 5xx).
+    AiServerError,
+    /// AI: нет сети/таймаут/провайдер недоступен (без падения приложения).
+    AiOffline,
 }
 
 /// Ошибка команды: код + сообщение (сообщение видит статус-бар и e2e).

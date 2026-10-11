@@ -230,3 +230,94 @@ export function errorMessage(e: unknown): string {
   }
   return String(e);
 }
+
+// --- AI-ассистент (TZ-AI-ASSISTANT §9; ADR-0030/0032/0034) ---
+// Все сетевые вызовы — на Rust-стороне (CSP `default-src 'self'`); здесь только
+// типизированные обёртки IPC. Ключ наружу не отдаётся (только `has_key`).
+
+/** Проекция настроек AI из Rust; API-ключ не отдаётся — только флаг `has_key`. */
+export interface AiSettingsView {
+  enabled: boolean;
+  provider: string;
+  base_url: string;
+  model: string;
+  max_tokens: number;
+  temperature: number;
+  consent_document_send: boolean;
+  has_key: boolean;
+}
+
+/** Вход `ai_set_settings`: полная секция настроек AI без секрета. */
+export interface AiSettingsInput {
+  enabled: boolean;
+  provider: string;
+  base_url: string;
+  model: string;
+  max_tokens: number;
+  temperature: number;
+  consent_document_send: boolean;
+}
+
+/** Сообщение диалога (формат OpenAI-совместимого API). */
+export interface AiMessage {
+  role: "system" | "user" | "assistant";
+  content: string;
+}
+
+/** Расход токенов ответа (prompt + completion). */
+export interface AiUsage {
+  prompt_tokens: number;
+  completion_tokens: number;
+}
+
+/** Ответ `ai_chat`: сообщение ассистента и (опционально) расход токенов. */
+export interface AiResponse {
+  message: AiMessage;
+  usage: AiUsage | null;
+}
+
+/** Готовый скилл (промт) из библиотеки Rust. */
+export interface AiSkill {
+  id: string;
+  title: string;
+  description: string;
+  prompt_template: string;
+  category: string;
+}
+
+/** Результат проверки соединения с провайдером. */
+export interface AiTestResult {
+  ok: boolean;
+  model: string | null;
+  error: string | null;
+}
+
+/** Читает настройки AI (секрет — только маской через `has_key`). */
+export function aiGetSettings(): Promise<AiSettingsView> {
+  return invoke<AiSettingsView>("ai_get_settings");
+}
+
+/** Сохраняет настройки AI (без ключа) в config.json. */
+export function aiSetSettings(settings: AiSettingsInput): Promise<void> {
+  return invoke<void>("ai_set_settings", { settings });
+}
+
+/** Записывает API-ключ в config.json; значение наружу не возвращается. */
+export function aiSetApiKey(key: string): Promise<void> {
+  return invoke<void>("ai_set_api_key", { key });
+}
+
+/** Список встроенных скиллов (промтов). */
+export function aiListSkills(): Promise<AiSkill[]> {
+  return invoke<AiSkill[]>("ai_list_skills");
+}
+
+/** Отправляет историю диалога в LLM; стриминг приходит событиями `ai:*`. */
+export function aiChat(messages: AiMessage[]): Promise<AiResponse> {
+  return invoke<AiResponse>("ai_chat", { messages });
+}
+
+/** Проверяет соединение с провайдером (без отправки документа). */
+export function aiTestConnection(): Promise<AiTestResult> {
+  return invoke<AiTestResult>("ai_test_connection");
+}

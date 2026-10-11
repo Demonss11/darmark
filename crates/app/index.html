@@ -104,6 +104,16 @@
           <kbd>Ctrl+K</kbd>
         </button>
 
+        <!-- триггер AI-ассистента (#tb-ai): открывает нижний док в режиме AI;
+             точка #ai-dot отражает состояние (выкл/нет ключа/готов/ошибка) -->
+        <button class="ipbtn" id="tb-ai" type="button" title="AI-ассистент" aria-label="AI-ассистент" aria-expanded="false" aria-controls="logs-panel">
+          <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path d="M12 3l1.6 4.6L18 9l-4.4 1.4L12 15l-1.6-4.6L6 9l4.4-1.4z" />
+            <path d="M18.5 15.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z" />
+          </svg>
+          <span class="pdot" id="ai-dot" aria-hidden="true"></span>
+        </button>
+
         <!-- триггер дровера плагинов: icon + счётчик активных + точка проблемы -->
         <button class="ipbtn" id="tb-plugins" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="drawer" aria-label="Плагины">
           <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
@@ -269,12 +279,11 @@
               </svg>
               <span>Мониторинг</span>
             </button>
-            <button class="mode-btn" id="mode-ai-btn" type="button" role="tab" aria-selected="false" aria-controls="ai-mode" data-mode="ai" aria-disabled="true" title="AI-ассистент (скоро)">
+            <button class="mode-btn" id="mode-ai-btn" type="button" role="tab" aria-selected="false" aria-controls="ai-mode" data-mode="ai" title="AI-ассистент">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false">
                 <path d="M12 3l1.6 4.6L18 9l-4.4 1.4L12 15l-1.6-4.6L6 9l4.4-1.4z" />
               </svg>
               <span>AI-ассистент</span>
-              <span class="soon">скоро</span>
             </button>
           </div>
 
@@ -291,6 +300,22 @@
 
           <!-- Кнопка очистки журнала — только иконка (режим «Журнал», логика — Фаза 3) -->
           <button class="logs-clear logs-only" id="logs-clear" type="button" title="Очистить журнал" aria-label="Очистить журнал">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false">
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+            </svg>
+          </button>
+
+          <!-- Режимные поля «AI-ассистент» (ai-only): строка модели, настройки, очистка чата.
+               Видимостью управляет logPanel (toggleModeFields по data-mode). -->
+          <span class="ai-model ai-only" aria-hidden="true" hidden></span>
+          <button class="logs-clear ai-only" id="ai-settings" type="button" title="Настройки AI" aria-label="Настройки AI" hidden>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+            </svg>
+          </button>
+          <button class="logs-clear ai-only" id="ai-clear" type="button" title="Очистить чат" aria-label="Очистить чат" hidden>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false">
               <polyline points="3 6 5 6 21 6" />
               <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
@@ -327,11 +352,30 @@
           </div>
         </div>
 
-        <!-- Тело режима «AI-ассистент» (зарезервирован, ADR-0030) -->
-        <div class="mon-tab" id="ai-mode" role="tabpanel" aria-labelledby="mode-ai-btn" hidden>
-          <div class="mon-empty">
-            <span class="t">AI-ассистент — скоро</span>
-            <span class="h">Режим предусмотрен ADR-0030; в этой версии не реализован</span>
+        <!-- Тело режима «AI-ассистент» (aiPanel.ts): скиллы, чат, поле ввода.
+             Ответ модели рендерится только textContent (MVP; innerHTML для
+             ответа LLM запрещён). Состояния/заглушка — по тумблеру #ai-enabled. -->
+        <div class="ai-mode" id="ai-mode" role="tabpanel" aria-labelledby="mode-ai-btn" hidden>
+          <!-- Заглушка при выключенном AI (ai.enabled=false): запросов нет -->
+          <div class="ai-off" id="ai-off">
+            <span class="ai-off-icon" aria-hidden="true">✦</span>
+            <div class="ai-off-title">AI выключен</div>
+            <div class="ai-off-hint">Ассистент встроен в приложение, но отключён в настройках. Сеть — только на Rust-стороне; запросов не отправляется.</div>
+            <button class="btn primary" id="ai-enable" type="button">Включить</button>
+          </div>
+
+          <!-- Сетка скиллов: 2 боевых (explain, create-plugin) + чип «скоро» -->
+          <div class="ai-skills" id="ai-skills" role="toolbar" aria-label="Готовые скиллы"></div>
+
+          <!-- Чат: сообщения добавляет aiPanel (только textContent) -->
+          <div class="ai-chat" id="ai-chat" role="log" aria-live="polite" aria-relevant="additions"></div>
+
+          <!-- Поле ввода: Enter — отправить, Shift+Enter — перенос строки -->
+          <div class="ai-input">
+            <div class="ai-input-inner">
+              <textarea id="ai-input" rows="1" placeholder="Спросите что-нибудь…" aria-label="Сообщение AI-ассистенту"></textarea>
+              <button class="btn-send" id="ai-send" type="button" title="Отправить" aria-label="Отправить">➤</button>
+            </div>
           </div>
         </div>
       </section>
@@ -356,6 +400,13 @@
           </svg>
           <span>Мониторинг</span>
         </button>
+        <!-- AI-ассистент: точка входа из статусбара (режим AI нижнего дока) -->
+        <button class="stat clickable" id="sb-ai" type="button" title="AI-ассистент" aria-label="AI-ассистент" aria-expanded="false" aria-controls="logs-panel">
+          <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="12" height="12">
+            <path d="M12 3l1.6 4.6L18 9l-4.4 1.4L12 15l-1.6-4.6L6 9l4.4-1.4z" />
+          </svg>
+          <span>AI-ассистент</span>
+        </button>
         <span class="plugin-status" id="plugin-status" role="group" aria-label="Плагины"></span>
         <span id="plugin-announcer" class="visually-hidden" role="status" aria-live="polite"></span>
         <span class="spacer"></span>
@@ -364,6 +415,66 @@
         <span class="stat" id="stat-size">0 симв.</span>
         <span class="stat accent" id="stat-inspect" hidden role="status" aria-live="polite"></span>
       </footer>
+
+      <!-- Поповер настроек AI: мастер-тумблер, провайдер/base URL/модель/ключ.
+           Ключ хранится локально в %APPDATA%/darmark/config.json (секция ai). -->
+      <div class="ai-settings-pop" id="ai-settings-pop" role="dialog" aria-label="Настройки AI" hidden>
+        <div class="pop-head">Настройки AI</div>
+        <div class="pop-body">
+          <label class="switch-row" for="ai-enabled">
+            <span class="switch">
+              <input type="checkbox" id="ai-enabled" aria-label="AI-ассистент включён" />
+              <span class="switch-track" aria-hidden="true"></span>
+              <span class="switch-thumb" aria-hidden="true"></span>
+            </span>
+            <span class="switch-text">
+              <span class="switch-title">AI-ассистент</span>
+              <span class="switch-sub" id="ai-enabled-sub">выключен</span>
+            </span>
+          </label>
+
+          <!-- Строка состояния компонента: точка зеркалит #ai-dot -->
+          <div class="pop-status" id="ai-status" role="status">
+            <span class="dot state-off" id="ai-status-dot" aria-hidden="true"></span>
+            <span class="pop-status-text" id="ai-status-text">выключен</span>
+          </div>
+
+          <div class="pop-config" id="ai-config">
+            <label class="pop-row">
+              <span class="pop-label">Провайдер</span>
+              <select class="pop-input" id="ai-provider" aria-label="Провайдер">
+                <option value="openai-compatible">routerai.ru (OpenAI-совместимый)</option>
+              </select>
+            </label>
+            <label class="pop-row">
+              <span class="pop-label">Base URL</span>
+              <input class="pop-input" id="ai-base-url" type="text" readonly spellcheck="false" aria-label="Base URL" />
+            </label>
+            <label class="pop-row">
+              <span class="pop-label">Модель</span>
+              <input class="pop-input" id="ai-model" type="text" spellcheck="false" aria-label="Модель" />
+            </label>
+            <label class="pop-row">
+              <span class="pop-label">API-ключ</span>
+              <input class="pop-input" id="ai-key" type="password" autocomplete="off" spellcheck="false" placeholder="sk-…" aria-label="API-ключ routerai.ru" />
+            </label>
+            <div class="pop-row">
+              <button class="btn ghost" id="ai-key-save" type="button">Сохранить ключ</button>
+              <span class="pop-hint" id="ai-key-hint">Ключ не задан</span>
+            </div>
+          </div>
+
+          <p class="pop-note">Ключ хранится в настройках приложения: %APPDATA%/darmark/config.json.</p>
+
+          <div class="pop-row">
+            <button class="btn ghost" id="ai-test" type="button">Проверить соединение</button>
+            <span class="pop-hint" id="ai-test-result"></span>
+          </div>
+        </div>
+        <div class="pop-foot">
+          <button class="btn ghost" id="ai-settings-close" type="button">Закрыть</button>
+        </div>
+      </div>
     </div>
     <!-- Дровер плагинов и его backdrop: прямые дети body, чтобы `inert` на #app
          не глушил сам дровер (модальность — drawer.ts). -->

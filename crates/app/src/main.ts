@@ -30,6 +30,7 @@ import { createGutter } from "./gutter";
 import { createFormatActions } from "./formatActions";
 import { createLogPanel } from "./logPanel";
 import { createResourceMonitor, type ResourceMonitor } from "./resourceMonitor";
+import { createAiPanel, type AiPanel } from "./aiPanel";
 import { START_TEXT } from "./sampleDocument";
 import { createPalette, type CommandProvider, type PaletteCommand } from "./palette";
 import { toast } from "./toast";
@@ -64,11 +65,16 @@ const format = createFormatActions(editor);
 // `monitor` объявлен заранее: onLayoutChange дёргает его догон при открытии
 // вкладки «Мониторинг» (сам монитор создаётся ниже, после логгера).
 let monitor: ResourceMonitor | null = null;
+// AI-панель создаётся ниже (нужен стор для текста документа); шов — onModeChange.
+let ai: AiPanel | null = null;
 const logPanel = createLogPanel({
   trigger: document.getElementById("sb-logs") as HTMLButtonElement,
   monTrigger: document.getElementById("sb-mon") as HTMLButtonElement,
+  aiTrigger: document.getElementById("sb-ai") as HTMLButtonElement,
+  aiToolbarTrigger: document.getElementById("tb-ai") as HTMLButtonElement,
   badge: document.getElementById("log-badge") as HTMLElement,
   onLayoutChange: () => monitor?.refresh(),
+  onModeChange: (mode, state) => ai?.onDockState(mode, state),
 });
 
 // Вкладка «Мониторинг» (ADR-0031): подписка на
@@ -93,6 +99,16 @@ const store = createDocStore({
 });
 
 const status = createStatusBar({ store, editor, appName: APP_NAME });
+
+// AI-ассистент (TZ-AI-ASSISTANT, ADR-0030/0032/0034): тело режима AI дока —
+// чат, скиллы, настройки, согласие. Сеть — только на Rust-стороне; ответ
+// модели рендерится исключительно textContent. Создаётся после стора: текст
+// документа берётся из активной вкладки (шов getDocumentText).
+ai = createAiPanel({
+  root: document.getElementById("ai-mode") as HTMLElement,
+  log: (level, category, message, detail) => logPanel.log(level, category, message, detail),
+  getDocumentText: () => store.active()?.text ?? "",
+});
 
 // 3. Реестр представлений: тир-1 preview встроен на хосте (D2).
 const registry = createViewRegistry();
