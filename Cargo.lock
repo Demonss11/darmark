@@ -671,6 +671,7 @@ dependencies = [
  "tauri-plugin-opener",
  "tempfile",
  "webview2-com",
+ "windows",
  "windows-core",
 ]
 

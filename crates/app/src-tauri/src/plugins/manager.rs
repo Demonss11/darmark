@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use plugin_proto::envelope::PluginError;
-use plugin_proto::limits::{DEADLINE_MS, PROGRESS_TIMEOUT_MS};
+use plugin_proto::limits::{DEADLINE_MS, DEFAULT_MEM_BYTES, PROGRESS_TIMEOUT_MS};
 use plugin_proto::manifest::{CommandContrib, ViewContrib};
 use plugin_proto::quarantine::Quarantine;
 use serde_json::Value;
@@ -105,7 +105,7 @@ impl PluginRuntime {
             services,
             supervisor: None,
             enabled: true,
-            mem_bytes: 64 * 1024 * 1024,
+            mem_bytes: DEFAULT_MEM_BYTES,
             progress: Duration::from_millis(PROGRESS_TIMEOUT_MS),
             deadline: Duration::from_millis(DEADLINE_MS),
         }
@@ -175,6 +175,17 @@ impl PluginRuntime {
 
     pub fn is_quarantined(&self) -> bool {
         self.quarantine.is_disabled()
+    }
+
+    /// PID живого child'а — только у `Active`-плагина, владеющего `Supervisor` (ADR-0031 §2.6).
+    ///
+    /// `Stopped`/`Failed`/`Quarantined` процессом не владеют → `None` (границы §2.2 п.7).
+    pub fn pid(&self) -> Option<u32> {
+        if matches!(self.status, PluginStatus::Active) {
+            self.supervisor.as_ref().map(Supervisor::pid)
+        } else {
+            None
+        }
     }
 
     /// `spawn → load → on_activate`. Ошибка запуска копит серию карантина.
@@ -423,6 +434,26 @@ impl PluginManager {
 
     pub fn get(&self, id: &str) -> Option<&PluginRuntime> {
         self.plugins.get(id)
+    }
+
+    /// Активные плагины с PID живого child'а (`(plugin_id, pid)`), детерминированно по id.
+    ///
+    /// Источник списка процессов для ресурс-монитора (ADR-0031 §2.2/§2.6): только `Active`
+    /// с живым `Supervisor`. Вызывается под **коротким** локом менеджера — снимок PID;
+    /// WinAPI-замеры и эмит идут вне блокировки (§2.3 п.10).
+    ///
+    // TODO(Фаза 3, ADR-0031 §2.5 п.21): наружу отдаётся лишь `(plugin_id, pid)`, а бюджет
+    //   памяти берётся из общего скаляра `mem_limit_bytes`. При пер-плагинных бюджетах
+    //   (`SupervisorParams::with_mem_bytes`) лимит нужно отдавать per-plugin (из
+    //   `PluginRuntime`), а не одним числом на всех детей.
+    pub fn active_pids(&self) -> Vec<(String, u32)> {
+        let mut pids: Vec<(String, u32)> = self
+            .plugins
+            .values()
+            .filter_map(|plugin| plugin.pid().map(|pid| (plugin.id.clone(), pid)))
+            .collect();
+        pids.sort_by(|a, b| a.0.cmp(&b.0));
+        pids
     }
 
     pub fn get_mut(&mut self, id: &str) -> Option<&mut PluginRuntime> {

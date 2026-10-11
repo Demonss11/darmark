@@ -10,7 +10,9 @@
 //! тот же стор. Здесь, в `pump`, `DocumentStore` не берётся вообще.
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
+use std::thread::JoinHandle;
 
 use plugin_proto::envelope::PluginError;
 use plugin_proto::manifest::ViewContrib;
@@ -21,6 +23,7 @@ use crate::{PluginInfo, PluginStatus, PluginViewInfo};
 use super::bus::EventBus;
 use super::manager::{effective_permissions, PluginManager};
 use super::plugin_settings::PluginSettingsStore;
+use super::resource::{ProcessMetrics, ResourceMonitor, ResourceSink};
 use super::services::PendingChanged;
 use super::settings::SettingsStore;
 use super::views::PluginViews;
@@ -71,7 +74,7 @@ pub type DocumentEventSink = Arc<dyn Fn(&str, Option<&str>, Option<u64>) + Send 
 
 /// Общее состояние плагинной подсистемы (один экземпляр на приложение).
 pub struct PluginHost {
-    manager: Mutex<PluginManager>,
+    manager: Arc<Mutex<PluginManager>>,
     bus: Mutex<EventBus>,
     views: Arc<Mutex<PluginViews>>,
     /// Отложенные `document:changed` от плагинных `apply_edit` (общая с `DocumentServices`).
@@ -102,6 +105,11 @@ pub struct PluginHost {
     status_changed_sink: StatusChangedSink,
     /// Канал `document-event` (S11): действия пользователя над документом (`new`/`open`/…).
     document_event_sink: DocumentEventSink,
+    /// Флаг остановки потока ресурс-монитора (`Arc<AtomicBool>`, ADR-0031 §2.3 п.9).
+    /// Взводится в [`Drop`]; поток завершается, не мешая выходу.
+    resource_stop: Arc<AtomicBool>,
+    /// Дескриптор потока опроса ресурсов (TZ-RESOURCE-MON). `None` — монитор не запущен.
+    resource_thread: Option<JoinHandle<()>>,
 }
 
 /// Максимум раундов `pump`: обработчик события может сам править документ (`apply_edit`)
@@ -124,7 +132,7 @@ impl PluginHost {
     /// пустым списком/ошибкой, GUI продолжает работу (§4.7).
     pub fn empty() -> Self {
         Self {
-            manager: Mutex::new(PluginManager::default()),
+            manager: Arc::new(Mutex::new(PluginManager::default())),
             bus: Mutex::new(EventBus::new()),
             views: Arc::new(Mutex::new(PluginViews::new())),
             pending_changed: Arc::new(Mutex::new(Vec::new())),
@@ -137,6 +145,8 @@ impl PluginHost {
             last_doc: Mutex::new(None),
             status_changed_sink: Arc::new(|_, _, _, _| {}),
             document_event_sink: Arc::new(|_, _, _| {}),
+            resource_stop: Arc::new(AtomicBool::new(false)),
+            resource_thread: None,
         }
     }
 
@@ -148,7 +158,7 @@ impl PluginHost {
         pending_changed: PendingChanged,
     ) -> Self {
         Self {
-            manager: Mutex::new(manager),
+            manager: Arc::new(Mutex::new(manager)),
             bus: Mutex::new(EventBus::new()),
             views,
             pending_changed,
@@ -161,6 +171,8 @@ impl PluginHost {
             last_doc: Mutex::new(None),
             status_changed_sink: Arc::new(|_, _, _, _| {}),
             document_event_sink: Arc::new(|_, _, _| {}),
+            resource_stop: Arc::new(AtomicBool::new(false)),
+            resource_thread: None,
         }
     }
 
@@ -204,6 +216,31 @@ impl PluginHost {
     pub fn with_document_event_sink(mut self, sink: DocumentEventSink) -> Self {
         self.document_event_sink = sink;
         self
+    }
+
+    /// Запускает поток ресурс-монитора (TZ-RESOURCE-MON, ADR-0031 §2.3 п.9).
+    ///
+    /// Список активных PID снимается коротким локом менеджера **внутри** потока
+    /// ([`PluginManager::active_pids`]); WinAPI-замеры и эмит событий идут уже без блокировки
+    /// (§2.3 п.10 — дедлок-инвариант). Поток останавливается флагом в [`Drop`].
+    pub fn start_resource_monitor<S: ResourceSink + 'static>(
+        &mut self,
+        provider: Arc<dyn ProcessMetrics>,
+        sink: Arc<S>,
+        mem_limit_bytes: usize,
+    ) {
+        let manager = Arc::clone(&self.manager);
+        let stop = Arc::clone(&self.resource_stop);
+        let monitor = ResourceMonitor::new(provider, sink, std::process::id(), mem_limit_bytes);
+        // Снимок PID берём **неблокирующим** `try_lock` (ADR-0031 §2.3 п.10): пока лок
+        // менеджера держит, например, диалог, поток не ждёт его, а пропускает тик
+        // (`None`). Иначе блокировка менеджера могла бы задержать опрос на неопределённо
+        // долгий срок. `Err` покрывает и `WouldBlock`, и отравление (в тестах).
+        let children = move || match manager.try_lock() {
+            Ok(guard) => Some(guard.active_pids()),
+            Err(_) => None,
+        };
+        self.resource_thread = Some(monitor.spawn(children, stop));
     }
 
     /// Публикует `document-event` (S11): действие пользователя над документом.
@@ -755,5 +792,18 @@ impl PluginHost {
         // Смена прав меняет статус (перезапуск) и перерегистрирует view — оба сигнала.
         self.notify_all();
         result
+    }
+}
+
+impl Drop for PluginHost {
+    /// Останавливает поток ресурс-монитора при выходе из приложения (ADR-0031 §2.3 п.9).
+    ///
+    /// Флаг взводится, затем поток присоединяется: поток проверяет флаг в цикле сна чанками
+    /// (≤50 мс), поэтому выход не «зависает» на 2-секундном периоде.
+    fn drop(&mut self) {
+        self.resource_stop.store(true, Ordering::Relaxed);
+        if let Some(thread) = self.resource_thread.take() {
+            let _ = thread.join();
+        }
     }
 }

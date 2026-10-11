@@ -225,8 +225,38 @@ impl PluginState {
     }
 }
 
-// ---------- команды документов (1:1 с будущими host-функциями плагинов, §4.3) ----------
+/// Sink ресурс-монитора: конвертирует снимок/событие завершения в Tauri-события
+/// (`resource-metrics`/`plugin-process-exited`, ADR-0031 §2.4 п.15).
+///
+/// Best-effort: сбой `emit` логируется и не роняет монитор. Сам модуль `resource` про Tauri
+/// не знает — адаптер живёт здесь, в `setup_plugins`.
+#[cfg(windows)]
+struct TauriResourceSink {
+    handle: tauri::AppHandle,
+}
 
+#[cfg(windows)]
+impl plugins::resource::ResourceSink for TauriResourceSink {
+    fn metrics(&self, snapshot: &plugins::resource::ResourceSnapshot) {
+        use tauri::Emitter;
+        if let Err(e) = self.handle.emit("resource-metrics", snapshot) {
+            eprintln!("не эмитить resource-metrics: {e}");
+        }
+    }
+
+    fn process_exited(&self, plugin_id: &str, pid: u32, reason: Option<&str>) {
+        use tauri::Emitter;
+        let mut payload = serde_json::json!({ "plugin_id": plugin_id, "pid": pid });
+        if let Some(reason) = reason {
+            payload["reason"] = serde_json::Value::String(reason.to_string());
+        }
+        if let Err(e) = self.handle.emit("plugin-process-exited", payload) {
+            eprintln!("не эмитить plugin-process-exited: {e}");
+        }
+    }
+}
+
+// ---------- команды документов (1:1 с будущими host-функциями плагинов, §4.3) ----------
 /// Создаёт безымянный документ (`text` — стартовый текст или пусто).
 #[tauri::command(async)]
 fn new_document(
@@ -825,6 +855,7 @@ fn setup_plugins(app: &mut tauri::App) -> Result<(), String> {
 
     use plugins::host::{DocumentEventSink, PluginHost, StatusChangedSink};
     use plugins::manager::load_plugins;
+    use plugins::resource::{ProcessMetrics, WinProcessMetrics};
     use plugins::services::{DocumentServices, DocumentSink, Exporter, LogSink, StatusSink};
     use plugins::settings::SettingsStore;
     use plugins::supervisor::Supervisor;
@@ -1019,6 +1050,20 @@ fn setup_plugins(app: &mut tauri::App) -> Result<(), String> {
     }
     // Best-effort старт enabled-плагинов; notify внутри.
     host.start_enabled();
+
+    // Ресурс-монитор (TZ-RESOURCE-MON, Фаза 2): поток опроса 2 с. Список активных PID
+    // снимается коротким локом менеджера внутри потока; замеры/эмит — вне блокировок
+    // (ADR-0031 §2.3 п.10). Лимит Job Object — из общего бюджета плагинов.
+    let resource_provider: Arc<dyn ProcessMetrics> = Arc::new(WinProcessMetrics::new());
+    let resource_sink = Arc::new(TauriResourceSink {
+        handle: app.handle().clone(),
+    });
+    host.start_resource_monitor(
+        resource_provider,
+        resource_sink,
+        plugin_proto::limits::DEFAULT_MEM_BYTES,
+    );
+
     app.manage(PluginState { host });
     Ok(())
 }

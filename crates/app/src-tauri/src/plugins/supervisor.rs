@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 
 use plugin_proto::envelope::{self, PluginError, ToChild, ToHost};
 use plugin_proto::job::Job;
-use plugin_proto::limits::{DEADLINE_MS, PROGRESS_TIMEOUT_MS};
+use plugin_proto::limits::{DEADLINE_MS, DEFAULT_MEM_BYTES, PROGRESS_TIMEOUT_MS};
 use serde_json::Value;
 
 use super::HostServices;
@@ -55,7 +55,7 @@ impl SupervisorParams {
             services,
             progress: Duration::from_millis(PROGRESS_TIMEOUT_MS),
             deadline: Duration::from_millis(DEADLINE_MS),
-            mem_bytes: 64 * 1024 * 1024,
+            mem_bytes: DEFAULT_MEM_BYTES,
         }
     }
 
@@ -177,6 +177,15 @@ impl Supervisor {
 
     pub fn plugin_id(&self) -> &str {
         &self.plugin_id
+    }
+
+    /// PID живого child-процесса (`Child::id()`).
+    ///
+    /// Наружу выдаётся только из [`Self`] — владения процессом (ADR-0031 §2.6): пока
+    /// `Supervisor` жив, PID принадлежит нашему `darmark-plugin-host.exe`, а не чужому
+    /// процессу с тем же номером (F52).
+    pub fn pid(&self) -> u32 {
+        self.child.id()
     }
 
     /// Вызывает `on_activate` плагина.
