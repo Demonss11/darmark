@@ -105,17 +105,105 @@ impl Registry {
     }
 
     /// Чтение ресурса по URI.
+    ///
+    /// Сначала точное совпадение (статические ресурсы), затем — шаблонные регистрации
+    /// (`darmark://plugins/{id}/manifest`): без этого шаблонный ресурс недостижим, так как
+    /// запрос всегда несёт конкретный URI, а не шаблон. Читателю передаётся **фактический**
+    /// URI запроса (не шаблон) — он сам извлекает из него параметры.
     pub fn read_resource(&self, uri: &str) -> Result<Value, ResourceError> {
-        let resource = self
+        if let Some(resource) = self.resources.iter().find(|r| r.uri == uri) {
+            return resource.reader.read(uri);
+        }
+        if let Some(resource) = self
             .resources
             .iter()
-            .find(|r| r.uri == uri)
-            .ok_or_else(|| {
-                ResourceError::new(
-                    protocol::RESOURCE_NOT_FOUND,
-                    format!("ресурс не найден: {uri}"),
-                )
-            })?;
-        resource.reader.read(uri)
+            .find(|r| uri_matches_template(&r.uri, uri))
+        {
+            return resource.reader.read(uri);
+        }
+        Err(ResourceError::new(
+            protocol::RESOURCE_NOT_FOUND,
+            format!("ресурс не найден: {uri}"),
+        ))
+    }
+}
+
+/// Сопоставляет запрошенный URI с шаблоном ресурса.
+///
+/// Сегментный матч по `/`: сегмент шаблона вида `{name}` матчит **любой непустой**
+/// сегмент запроса; остальные сегменты должны совпасть буквально. Число сегментов
+/// обязано совпадать, поэтому `{id}` не «съедает» лишние `/`. Шаблон без `{…}` —
+/// обычный точный URI.
+fn uri_matches_template(template: &str, actual: &str) -> bool {
+    if !template.contains('{') {
+        return template == actual;
+    }
+    let template_segments: Vec<&str> = template.split('/').collect();
+    let actual_segments: Vec<&str> = actual.split('/').collect();
+    if template_segments.len() != actual_segments.len() {
+        return false;
+    }
+    template_segments
+        .iter()
+        .zip(actual_segments.iter())
+        .all(|(expected, got)| match placeholder_name(expected) {
+            Some(name) => !name.is_empty() && !got.is_empty(),
+            None => expected == got,
+        })
+}
+
+/// Имя параметра шаблонного сегмента (`{id}` → `Some("id")`), иначе `None`.
+fn placeholder_name(segment: &str) -> Option<&str> {
+    segment.strip_prefix('{')?.strip_suffix('}')
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn exact_uri_matches_only_itself() {
+        assert!(uri_matches_template("darmark://test", "darmark://test"));
+        assert!(!uri_matches_template("darmark://test", "darmark://other"));
+        // URI без `{…}` — не шаблон: лишний сегмент не допускается.
+        assert!(!uri_matches_template(
+            "darmark://test",
+            "darmark://test/extra"
+        ));
+    }
+
+    #[test]
+    fn placeholder_matches_any_non_empty_segment() {
+        let template = "darmark://plugins/{id}/manifest";
+        assert!(uri_matches_template(
+            template,
+            "darmark://plugins/word-count/manifest"
+        ));
+        // Пустой сегмент на месте `{id}` не матчится (id обязателен).
+        assert!(!uri_matches_template(
+            template,
+            "darmark://plugins//manifest"
+        ));
+        // Число сегментов должно совпадать.
+        assert!(!uri_matches_template(
+            template,
+            "darmark://plugins/word-count/manifest/extra"
+        ));
+        assert!(!uri_matches_template(
+            template,
+            "darmark://plugins/word-count"
+        ));
+        // Литеральные сегменты — буквально.
+        assert!(!uri_matches_template(
+            template,
+            "darmark://plugins/word-count/meta"
+        ));
+    }
+
+    #[test]
+    fn placeholder_name_extracts_inner_text() {
+        assert_eq!(placeholder_name("{id}"), Some("id"));
+        assert_eq!(placeholder_name("plugins"), None);
+        assert_eq!(placeholder_name("{}"), Some(""));
     }
 }

@@ -292,13 +292,15 @@ pub fn validate_plugin(dir: &Path) -> AiValidationResult {
     fallback_validate(dir)
 }
 
-/// Fallback-валидация (ADR-0034 §2.4): манифест/entry через `plugin_core` + песочница child-хостом.
-fn fallback_validate(dir: &Path) -> AiValidationResult {
-    let manifest_path = dir.join(MANIFEST_FILE);
-    let source_path = dir.join(ENTRY_FILE);
+/// Статическая валидация каталога плагина: манифест + entry **без** песочницы.
+///
+/// Единая точка проверки «манифест/entry» (TZ-MCP R4/AC-MCP-6): переиспользуется
+/// fallback-валидацией и MCP-адаптером `plugin_validate`, поэтому логика не дублируется.
+/// Без паник: отсутствие/невалидность файлов кодируются в `errors`.
+pub fn validate_plugin_static(dir: &Path) -> AiValidationResult {
     let mut errors = Vec::new();
 
-    match std::fs::read(&manifest_path) {
+    match std::fs::read(dir.join(MANIFEST_FILE)) {
         Ok(bytes) => {
             if let Err(e) = plugin_core::manifest::Manifest::from_json(&bytes) {
                 errors.push(format!("manifest: {e}"));
@@ -306,7 +308,7 @@ fn fallback_validate(dir: &Path) -> AiValidationResult {
         }
         Err(e) => errors.push(format!("manifest: {e}")),
     }
-    match std::fs::read_to_string(&source_path) {
+    match std::fs::read_to_string(dir.join(ENTRY_FILE)) {
         Ok(source) => {
             if let Err(e) = plugin_core::manifest::validate_source_len(source.len() as u64) {
                 errors.push(format!("entry: {e}"));
@@ -315,29 +317,42 @@ fn fallback_validate(dir: &Path) -> AiValidationResult {
         Err(e) => errors.push(format!("entry: {e}")),
     }
 
-    // Песочницу запускаем только при валидных манифесте/entry: без валидного входа она
-    // бессмысленна (как и в `plugin-cli`).
-    if errors.is_empty() {
-        match resolve_sidecar(HOST_ENV, HOST_EXE) {
-            Some(host) => {
-                let mut command = Command::new(host);
-                command.arg("--self-test").arg(&source_path);
-                match run_with_timeout(command, VALIDATION_TIMEOUT) {
-                    Ok(output) if output.success => {}
-                    Ok(output) => errors.push(format!("sandbox: {}", tail(&output.stderr))),
-                    Err(e) => errors.push(format!("sandbox: {}", e.message)),
-                }
-            }
-            None => errors
-                .push("sandbox: darmark-plugin-host не найден рядом с darmark.exe".to_string()),
-        }
-    }
-
     AiValidationResult {
         ok: errors.is_empty(),
         errors,
         report: None,
     }
+}
+
+/// Fallback-валидация (ADR-0034 §2.4): манифест/entry через `plugin_core` + песочница child-хостом.
+fn fallback_validate(dir: &Path) -> AiValidationResult {
+    // Статические проверки — общие с MCP-адаптером `plugin_validate` (R4/AC-MCP-6).
+    let mut result = validate_plugin_static(dir);
+    if !result.ok {
+        return result;
+    }
+
+    // Песочницу запускаем только при валидных манифесте/entry: без валидного входа она
+    // бессмысленна (как и в `plugin-cli`).
+    let source_path = dir.join(ENTRY_FILE);
+    match resolve_sidecar(HOST_ENV, HOST_EXE) {
+        Some(host) => {
+            let mut command = Command::new(host);
+            command.arg("--self-test").arg(&source_path);
+            match run_with_timeout(command, VALIDATION_TIMEOUT) {
+                Ok(output) if output.success => {}
+                Ok(output) => result
+                    .errors
+                    .push(format!("sandbox: {}", tail(&output.stderr))),
+                Err(e) => result.errors.push(format!("sandbox: {}", e.message)),
+            }
+        }
+        None => result
+            .errors
+            .push("sandbox: darmark-plugin-host не найден рядом с darmark.exe".to_string()),
+    }
+    result.ok = result.errors.is_empty();
+    result
 }
 
 /// Записывает `plugin.json` + `main.lua` в каталог (создавая его).
@@ -844,6 +859,40 @@ mod tests {
             "entry": "main.lua"
         });
         assert!(!manifest_errors(&bad_id, "x").is_empty());
+    }
+
+    /// Единая точка статической валидации (TZ-MCP R4/AC-MCP-6): принимает валидный
+    /// каталог и сообщает `manifest`/`entry`-ошибки при отсутствии файлов.
+    #[test]
+    fn static_validation_accepts_valid_plugin_and_reports_missing_files() {
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path().join("p");
+        let manifest = serde_json::json!({
+            "id": "p",
+            "name": "P",
+            "version": "1.0.0",
+            "api_version": 1,
+            "entry": "main.lua"
+        });
+        write_plugin_files(&dir, &manifest, "function on_activate(ctx) end").unwrap();
+        let valid = validate_plugin_static(&dir);
+        assert!(valid.ok, "валидный плагин: {:?}", valid.errors);
+        assert!(valid.errors.is_empty());
+
+        let empty = root.path().join("empty");
+        std::fs::create_dir(&empty).unwrap();
+        let missing = validate_plugin_static(&empty);
+        assert!(!missing.ok);
+        assert!(
+            missing.errors.iter().any(|e| e.starts_with("manifest:")),
+            "{:?}",
+            missing.errors
+        );
+        assert!(
+            missing.errors.iter().any(|e| e.starts_with("entry:")),
+            "{:?}",
+            missing.errors
+        );
     }
 
     #[test]
