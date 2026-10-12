@@ -10,6 +10,7 @@
 import { Then, When } from "@wdio/cucumber-framework";
 import { browser } from "@wdio/globals";
 import fs from "node:fs";
+import http from "node:http";
 import path from "node:path";
 
 // ---------- IPC-шов и конфиг ----------
@@ -415,6 +416,27 @@ When("я не разрешаю отправку в диалоге согласи
 
 When("я разрешаю отправку в диалоге согласия AI", async () => {
   await answerConsent("Разрешить");
+});
+
+/// Подтверждает согласие, ТОЛЬКО если диалог появился: в общем сеансе согласие может быть
+/// уже выдано прошлыми сценариями (тогда запрос уходит без диалога).
+When("я подтверждаю согласие AI при необходимости", async () => {
+  const deadline = Date.now() + 2000;
+  while (Date.now() < deadline) {
+    const clicked = await browser.execute(() => {
+      const consent = document.querySelector("#modal-root .dialog-backdrop .ai-consent");
+      if (!consent) return false;
+      const btn = Array.from(consent.querySelectorAll(".dialog-actions button")).find(
+        (b) => (b.textContent ?? "").trim() === "Разрешить"
+      );
+      if (!btn) return false;
+      btn.click();
+      return true;
+    });
+    if (clicked) return;
+    await browser.pause(100);
+  }
+  // Диалога нет — согласие уже выдано, отправка идёт сразу.
 });
 
 Then("диалог согласия AI закрыт", async () => {
@@ -860,4 +882,137 @@ Then("в списке плагинов AI нет {string}", async (id) => {
     },
     { timeout: 8000, timeoutMsg: `В list_plugins остался ${id}` }
   );
+});
+
+// ---------- Фаза 2: карточка плагина из ответа ассистента (ADR-0026/ADR-0034) ----------
+//
+// Живого LLM в E2E нет, но карточка рождается из текста ответа ассистента
+// (`extractPluginProposal` → `renderPluginCard`). Поднимаем локальный OpenAI-совместимый
+// мок-провайдер (SSE на 127.0.0.1) и направляем AI на него — проверяем разбор ```json-блока
+// и то, что `contributes` из ответа доезжает до записанного plugin.json.
+//
+// Подменять `ai_chat` на IPC-шве нельзя: `window.__TAURI_INTERNALS__` и его `invoke`
+// non-configurable (переопределение бросает «Cannot redefine property»).
+
+/// Ответ ассистента: ровно один ```json-блок с view-плагином (kind=main).
+const AI_VIEW_PROPOSAL = [
+  "```json",
+  JSON.stringify({
+    id: "e2e-ai-view",
+    name: "e2e-ai-view",
+    version: "1.0.0",
+    permissions: ["document:read", "view:create", "view:modify", "ui:statusbar"],
+    source: "function on_activate(ctx) end\nfunction on_deactivate(ctx) end\n",
+    contributes: { views: [{ kind: "main", title: "E2E view", tier: 1 }] },
+  }),
+  "```",
+].join("\n");
+
+/// Локальный SSE-провайдер (однократно за сеанс). Порт — свободный loopback.
+let mockProvider = null;
+let mockProviderPort = 0;
+
+When("я поднимаю мок-провайдера AI с предложением view-плагина", async () => {
+  if (mockProvider) return;
+  mockProvider = http.createServer((req, res) => {
+    req.resume(); // тело запроса не нужно
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    });
+    res.write(
+      `data: ${JSON.stringify({ choices: [{ delta: { content: AI_VIEW_PROPOSAL } }] })}\n\n`
+    );
+    res.write(
+      `data: ${JSON.stringify({
+        choices: [{ delta: {} }],
+        usage: { prompt_tokens: 5, completion_tokens: 9 },
+      })}\n\n`
+    );
+    res.write("data: [DONE]\n\n");
+    res.end();
+  });
+  await new Promise((resolve, reject) => {
+    mockProvider.once("error", reject);
+    mockProvider.listen(0, "127.0.0.1", () => {
+      mockProviderPort = mockProvider.address().port;
+      resolve();
+    });
+  });
+});
+
+/// Направляет AI на поднятый мок-провайдер (base_url = loopback, проходит валидацию схемы).
+When("я направляю AI на мок-провайдера", async () => {
+  if (!mockProvider) throw new Error("Мок-провайдер AI не поднят");
+  const view = await invoke("ai_get_settings");
+  await invoke("ai_set_settings", {
+    settings: {
+      enabled: view.enabled,
+      provider: view.provider,
+      base_url: `http://127.0.0.1:${mockProviderPort}/v1`,
+      model: view.model,
+      max_tokens: view.max_tokens,
+      temperature: view.temperature,
+      consent_document_send: view.consent_document_send,
+    },
+  });
+});
+
+/// Карточка плагина по имени ищется ВНУТРИ страницы (browser.execute), поэтому селекторы
+/// дублируются инлайном, а не выносятся в Node-хелпер.
+
+Then("в чате AI есть карточка плагина {string}", async (name) => {
+  await browser.waitUntil(
+    async () =>
+      browser.execute(
+        (n) =>
+          Array.from(document.querySelectorAll("#ai-chat .ai-plugin-card")).some(
+            (card) => (card.querySelector(".ai-plugin-name")?.textContent ?? "") === n
+          ),
+        name
+      ),
+    { timeout: 5000, timeoutMsg: `В чате AI нет карточки плагина «${name}»` }
+  );
+});
+
+When("я создаю плагин из карточки AI {string}", async (name) => {
+  const clicked = await browser.execute((n) => {
+    const card = Array.from(document.querySelectorAll("#ai-chat .ai-plugin-card")).find(
+      (c) => (c.querySelector(".ai-plugin-name")?.textContent ?? "") === n
+    );
+    const btn = card?.querySelector(".ai-plugin-actions .btn.primary");
+    if (!btn || btn.disabled) return false;
+    btn.click();
+    return true;
+  }, name);
+  if (!clicked) throw new Error(`Кнопка «Создать» карточки плагина «${name}» недоступна`);
+  // Успех: статус карточки помечен `is-ok` (markInstalled после ai_create_plugin).
+  await browser.waitUntil(
+    async () =>
+      browser.execute((n) => {
+        const card = Array.from(
+          document.querySelectorAll("#ai-chat .ai-plugin-card")
+        ).find((c) => (c.querySelector(".ai-plugin-name")?.textContent ?? "") === n);
+        return !!card && card.querySelector(".ai-plugin-status")?.classList.contains("is-ok");
+      }, name),
+    { timeout: 8000, timeoutMsg: `Карточка плагина «${name}» не перешла в статус успеха` }
+  );
+});
+
+Then("манифест плагина AI {string} содержит вид {string}", async (id, kind) => {
+  const file = path.join(pluginsDir(), id, "plugin.json");
+  await browser.waitUntil(async () => fs.existsSync(file), {
+    timeout: 5000,
+    timeoutMsg: `plugin.json плагина ${id} не появился`,
+  });
+  const manifest = JSON.parse(fs.readFileSync(file, "utf8"));
+  const views = manifest?.contributes?.views;
+  if (!Array.isArray(views) || !views.some((v) => v.kind === kind)) {
+    throw new Error(
+      `В манифесте ${id} нет contributes.views.kind=${kind}: ${JSON.stringify(
+        manifest?.contributes
+      )}`
+    );
+  }
 });
