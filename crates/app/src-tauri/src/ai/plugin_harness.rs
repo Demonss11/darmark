@@ -127,13 +127,57 @@ fn canonical_root(root: &Path) -> PathBuf {
     std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf())
 }
 
+/// Отказывает, если любой компонент пути **ниже** `root` — reparse point (symlink/junction).
+///
+/// `canonicalize` раскрывает ссылки, поэтому junction/symlink *внутри* разрешённого каталога
+/// (например `allowed\junction\to\inside`) не виден на каноническом пути и containment его не
+/// ловит. Обходим **исходный** путь от `root` (сам `root` доверенный — не проверяем) до листа.
+/// Если путь лексически не под `root` (относительный/иная раскладка) — пропускаем: containment
+/// по каноническому пути уже проверен вызывающим.
+#[cfg(windows)]
+fn reject_reparse_between(root: &Path, path: &Path) -> Result<(), CommandError> {
+    let Ok(relative) = path.strip_prefix(root) else {
+        return Ok(());
+    };
+    let mut current = root.to_path_buf();
+    for component in relative.components() {
+        current.push(component);
+        if is_reparse_point(&current) {
+            return Err(CommandError::new(
+                ErrorCode::AiPluginInvalid,
+                "путь содержит symlink/junction — доступ запрещён",
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Отказывает, если `plugin.json`/`main.lua` внутри каталога — сами reparse point.
+///
+/// AC-MCP-12: symlink-файл манифеста/entry иначе читался бы вслед за ссылкой (эскейп за
+/// пределы разрешённой области). `symlink_metadata` не следует за ссылкой, поэтому видит
+/// reparse-атрибут самого файла. Отсутствие файла — не ошибка (обработается валидацией).
+#[cfg(windows)]
+fn reject_reparse_plugin_files(dir: &Path) -> Result<(), CommandError> {
+    for name in [MANIFEST_FILE, ENTRY_FILE] {
+        if is_reparse_point(&dir.join(name)) {
+            return Err(CommandError::new(
+                ErrorCode::AiPluginInvalid,
+                format!("файл {name} — symlink/junction, чтение запрещено"),
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Проверяет, что путь лежит в разрешённом каталоге (`plugins/` или `temp/`).
 ///
 /// Единая точка проверки путей для `plugin_validate`/`plugin_test` (TZ-MCP R3/AC-MCP-12):
 /// принуждение живёт здесь, а не в MCP-адаптере. Defense-in-depth: отказ на reparse point
 /// (symlink/junction) → `canonicalize` (раскрывает `..` и ссылки) → `starts_with` по
-/// каноническим корням. Возвращает канонический путь, чтобы дальнейшая работа шла уже с
-/// проверенным значением.
+/// каноническим корням → повторный обход компонентов пути от корня до листа и проверка файлов
+/// манифеста/entry. Возвращает канонический путь, чтобы дальнейшая работа шла уже с проверенным
+/// значением.
 #[cfg(windows)]
 pub fn ensure_plugin_path_allowed(path: &Path) -> Result<PathBuf, CommandError> {
     // Ссылку/junction отклоняем даже если её цель внутри белого списка: цель может быть
@@ -153,18 +197,31 @@ pub fn ensure_plugin_path_allowed(path: &Path) -> Result<PathBuf, CommandError> 
         )
     })?;
 
-    let within_plugins = plugins_root()
-        .ok()
-        .is_some_and(|root| canonical.starts_with(canonical_root(&root)));
-    let within_temp = canonical.starts_with(canonical_root(&std::env::temp_dir()));
-    if within_plugins || within_temp {
-        return Ok(canonical);
+    let plugins = plugins_root().ok();
+    let temp = std::env::temp_dir();
+
+    let within_plugins = plugins
+        .as_ref()
+        .is_some_and(|root| canonical.starts_with(canonical_root(root)));
+    let within_temp = canonical.starts_with(canonical_root(&temp));
+    if !within_plugins && !within_temp {
+        return Err(CommandError::new(
+            ErrorCode::AiPluginInvalid,
+            "путь вне разрешённого каталога (plugins/ или temp/)",
+        ));
     }
 
-    Err(CommandError::new(
-        ErrorCode::AiPluginInvalid,
-        "путь вне разрешённого каталога (plugins/ или temp/)",
-    ))
+    // Обход всех компонентов от разрешённого корня до листа (finding #1): родительский
+    // junction/symlink, ведущий внутрь разрешённой области, иначе прошёл бы containment.
+    if let Some(root) = &plugins {
+        reject_reparse_between(root, path)?;
+    }
+    reject_reparse_between(&temp, path)?;
+
+    // Файлы манифеста/entry не должны быть ссылками (finding #2, AC-MCP-12).
+    reject_reparse_plugin_files(&canonical)?;
+
+    Ok(canonical)
 }
 
 /// Разбирает JSON-отчёт `darmark-plugin test --json`.
@@ -1105,6 +1162,30 @@ mod tests {
 
     // ─── белый список директорий (TZ-MCP R3/AC-MCP-12) ─────────────────
 
+    /// Создаёт junction (`mklink /J`, без прав администратора). `false` — окружение не
+    /// позволило; вызывающий тест должен явно сообщить о пропуске.
+    #[cfg(windows)]
+    fn try_junction(link: &Path, target: &Path) -> bool {
+        let status = Command::new("cmd")
+            .args(["/C", "mklink", "/J"])
+            .arg(link)
+            .arg(target)
+            .status();
+        matches!(status, Ok(s) if s.success()) && std::fs::symlink_metadata(link).is_ok()
+    }
+
+    /// Создаёт symlink-файл (`mklink` без `/J`). Требует прав администратора или Developer
+    /// Mode; `false` — недоступно (тест сообщает о пропуске).
+    #[cfg(windows)]
+    fn try_symlink_file(link: &Path, target: &Path) -> bool {
+        let status = Command::new("cmd")
+            .args(["/C", "mklink"])
+            .arg(link)
+            .arg(target)
+            .status();
+        matches!(status, Ok(s) if s.success()) && std::fs::symlink_metadata(link).is_ok()
+    }
+
     #[cfg(windows)]
     #[test]
     fn ensure_plugin_path_allowed_rejects_path_outside_whitelist() {
@@ -1165,19 +1246,136 @@ mod tests {
         let target = base.path().join("target");
         std::fs::create_dir(&target).unwrap();
         let link = base.path().join("link");
-        // Junction создаётся без прав администратора (в отличие от symlink).
-        let status = Command::new("cmd")
-            .args(["/C", "mklink", "/J"])
-            .arg(&link)
-            .arg(&target)
-            .status()
-            .expect("cmd запустился");
-        if !status.success() || !link.exists() {
-            // Окружение не позволяет создать junction — не роняем тест ложно.
+        if !try_junction(&link, &target) {
+            eprintln!(
+                "SKIP ensure_plugin_path_allowed_rejects_junction: mklink /J недоступен: {}",
+                link.display()
+            );
             return;
         }
         // Цель junction внутри temp, но сама ссылка — reparse point: должна быть отклонена.
         let err = ensure_plugin_path_allowed(&link).expect_err("junction отклонён");
         assert_eq!(err.code, ErrorCode::AiPluginInvalid);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn ensure_plugin_path_allowed_rejects_parent_junction_outward() {
+        // `allowed\junction\to\outside`: цель внутри temp (containment её пропустит), но
+        // родительский компонент `junction` — reparse point → должен ловиться обходом.
+        let base = tempfile::tempdir().unwrap();
+        let allowed = base.path().join("allowed");
+        let outside = base.path().join("outside");
+        std::fs::create_dir(&allowed).unwrap();
+        std::fs::create_dir(&outside).unwrap();
+        let junction = allowed.join("junction");
+        if !try_junction(&junction, &outside) {
+            eprintln!(
+                "SKIP ensure_plugin_path_allowed_rejects_parent_junction_outward: mklink /J недоступен: {}",
+                junction.display()
+            );
+            return;
+        }
+        let child = junction.join("child");
+        std::fs::create_dir(&child).unwrap();
+        let err = ensure_plugin_path_allowed(&child).expect_err("родительский junction");
+        assert_eq!(err.code, ErrorCode::AiPluginInvalid);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn ensure_plugin_path_allowed_rejects_symlinked_manifest_file() {
+        let base = tempfile::tempdir().unwrap();
+        let dir = base.path().join("plugin");
+        std::fs::create_dir(&dir).unwrap();
+        let target = base.path().join("secret.json");
+        std::fs::write(&target, b"{}").unwrap();
+        let link = dir.join("plugin.json");
+        if !try_symlink_file(&link, &target) {
+            eprintln!(
+                "SKIP ensure_plugin_path_allowed_rejects_symlinked_manifest_file: symlink недоступен: {}",
+                link.display()
+            );
+            return;
+        }
+        let err = ensure_plugin_path_allowed(&dir).expect_err("symlink plugin.json отклонён");
+        assert_eq!(err.code, ErrorCode::AiPluginInvalid);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn ensure_plugin_path_allowed_rejects_symlinked_entry_file() {
+        let base = tempfile::tempdir().unwrap();
+        let dir = base.path().join("plugin");
+        std::fs::create_dir(&dir).unwrap();
+        let target = base.path().join("secret.lua");
+        std::fs::write(&target, b"-- secret").unwrap();
+        let link = dir.join("main.lua");
+        if !try_symlink_file(&link, &target) {
+            eprintln!(
+                "SKIP ensure_plugin_path_allowed_rejects_symlinked_entry_file: symlink недоступен: {}",
+                link.display()
+            );
+            return;
+        }
+        let err = ensure_plugin_path_allowed(&dir).expect_err("symlink main.lua отклонён");
+        assert_eq!(err.code, ErrorCode::AiPluginInvalid);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn ensure_plugin_path_allowed_rejects_reparse_entry_without_symlink_privilege() {
+        // Детерминированная проверка finding #2 без прав на symlink: junction с именем
+        // `main.lua` — тоже reparse point, и `reject_reparse_plugin_files` обязан его отклонить.
+        let base = tempfile::tempdir().unwrap();
+        let dir = base.path().join("plugin");
+        let target = base.path().join("target");
+        std::fs::create_dir(&dir).unwrap();
+        std::fs::create_dir(&target).unwrap();
+        let link = dir.join("main.lua");
+        if !try_junction(&link, &target) {
+            eprintln!(
+                "SKIP ensure_plugin_path_allowed_rejects_reparse_entry_without_symlink_privilege: mklink /J недоступен: {}",
+                link.display()
+            );
+            return;
+        }
+        let err = ensure_plugin_path_allowed(&dir).expect_err("reparse main.lua отклонён");
+        assert_eq!(err.code, ErrorCode::AiPluginInvalid);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn ensure_plugin_path_allowed_accepts_path_inside_plugins_root() {
+        // Ветка `plugins_root()` (env-override) иначе не покрыта: temp-тесты её не задевают.
+        let root = tempfile::tempdir().unwrap();
+        let plugin_dir = root.path().join("my-plugin");
+        std::fs::create_dir(&plugin_dir).unwrap();
+
+        let previous = std::env::var_os("DARMARK_PLUGINS_DIR");
+        std::env::set_var("DARMARK_PLUGINS_DIR", root.path());
+        let result = ensure_plugin_path_allowed(&plugin_dir);
+        match previous {
+            Some(value) => std::env::set_var("DARMARK_PLUGINS_DIR", value),
+            None => std::env::remove_var("DARMARK_PLUGINS_DIR"),
+        }
+
+        result.expect("путь внутри plugins_root разрешён");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn ensure_plugin_path_allowed_accepts_root_and_normalized_layouts() {
+        let temp = std::env::temp_dir();
+        // Сам корень whitelist — разрешён.
+        ensure_plugin_path_allowed(&temp).expect("сам корень temp разрешён");
+
+        // Лишние разделители/`.`: канонизация нормализует путь.
+        let dotted = temp.join(".").join("");
+        ensure_plugin_path_allowed(&dotted).expect("нормализованная раскладка внутри temp");
+
+        // Иная раскладка регистра: `canonicalize` приводит к реальному регистру.
+        let upper = PathBuf::from(temp.to_string_lossy().to_uppercase());
+        ensure_plugin_path_allowed(&upper).expect("регистр нормализуется канонизацией");
     }
 }
