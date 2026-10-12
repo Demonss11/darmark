@@ -3,6 +3,7 @@
 //! Бизнес-логики здесь нет (TZ-MCP R3/R4): белый список путей и валидация плагина живут
 //! в `plugin_harness`, рендер — в `md-core`. Адаптер только маршрутизирует вызов, убирает
 //! полные пути из ответа/журнала и пишет итог в журнал (R2) — без содержимого документа.
+//! Журнал идёт через инъецированный [`LogSink`]: адаптеры не знают про Tauri.
 
 use std::path::Path;
 use std::sync::Arc;
@@ -11,7 +12,6 @@ use std::time::Instant;
 use mcp_core::handlers::{ToolError, ToolHandler};
 use mcp_core::registry::{Registry, ToolDefinition};
 use serde_json::{json, Value};
-use tauri::{AppHandle, Emitter};
 
 #[cfg(windows)]
 use crate::ai::types::AiValidationResult;
@@ -19,17 +19,26 @@ use crate::ai::types::AiValidationResult;
 /// Префикс verbatim-пути Windows (`\\?\`), который возвращает `canonicalize`.
 const VERBATIM_PREFIX: &str = r"\\?\";
 
+/// Сток журнала MCP: текст записи → приёмник (в продакшне — Tauri-событие `log-entry`).
+///
+/// Инъекция вместо `AppHandle` держит адаптеры независимыми от Tauri: их контракт
+/// «схема ↔ поведение» (AC-MCP-6) и приватность журнала (AC-MCP-13) проверяются
+/// интеграционным тестом без окна, event-loop и mock-рантайма.
+pub type LogSink = Arc<dyn Fn(&str) + Send + Sync>;
+
 /// Регистрирует все MCP tools в реестре.
 ///
 /// Инструменты плагинов — только Windows (целевая платформа; там же живёт белый список
 /// путей `plugin_harness`). Без него `plugin_validate` читал бы произвольные пути.
-pub fn register_tools(registry: &mut Registry, app: &AppHandle) {
+pub fn register_tools(registry: &mut Registry, sink: &LogSink) {
     #[cfg(windows)]
     registry.register_tool(ToolDefinition {
         name: "plugin_validate".to_string(),
         description: "Валидация манифеста и entry плагина без запуска песочницы".to_string(),
         input_schema: path_schema(),
-        handler: Arc::new(PluginValidateTool { app: app.clone() }),
+        handler: Arc::new(PluginValidateTool {
+            sink: Arc::clone(sink),
+        }),
     });
 
     #[cfg(windows)]
@@ -37,21 +46,27 @@ pub fn register_tools(registry: &mut Registry, app: &AppHandle) {
         name: "plugin_test".to_string(),
         description: "Полная проверка плагина с прогоном в песочнице".to_string(),
         input_schema: path_schema(),
-        handler: Arc::new(PluginTestTool { app: app.clone() }),
+        handler: Arc::new(PluginTestTool {
+            sink: Arc::clone(sink),
+        }),
     });
 
     registry.register_tool(ToolDefinition {
         name: "plugin_catalog_list".to_string(),
         description: "Список плагинов из локального каталога (index.json)".to_string(),
         input_schema: json!({"type": "object", "properties": {}}),
-        handler: Arc::new(PluginCatalogListTool { app: app.clone() }),
+        handler: Arc::new(PluginCatalogListTool {
+            sink: Arc::clone(sink),
+        }),
     });
 
     registry.register_tool(ToolDefinition {
         name: "markdown_render".to_string(),
         description: "Рендер Markdown в HTML (с опциональным маппингом блоков)".to_string(),
         input_schema: markdown_schema(),
-        handler: Arc::new(MarkdownRenderTool { app: app.clone() }),
+        handler: Arc::new(MarkdownRenderTool {
+            sink: Arc::clone(sink),
+        }),
     });
 }
 
@@ -83,7 +98,7 @@ fn markdown_schema() -> Value {
 
 #[cfg(windows)]
 struct PluginValidateTool {
-    app: AppHandle,
+    sink: LogSink,
 }
 
 #[cfg(windows)]
@@ -119,7 +134,7 @@ impl ToolHandler for PluginValidateTool {
         // Приватность (R2/AC-MCP-13): из результата и журнала — без полного пути.
         sanitize_validation(&mut result, &canonical);
         log_mcp_call(
-            &self.app,
+            &self.sink,
             &mcp_log_message(
                 "plugin_validate",
                 &path_name(&canonical),
@@ -137,7 +152,7 @@ impl ToolHandler for PluginValidateTool {
 
 #[cfg(windows)]
 struct PluginTestTool {
-    app: AppHandle,
+    sink: LogSink,
 }
 
 #[cfg(windows)]
@@ -172,7 +187,7 @@ impl ToolHandler for PluginTestTool {
         // (`…\plugin.json: …`) — убираем его из результата и журнала.
         sanitize_validation(&mut result, &canonical);
         log_mcp_call(
-            &self.app,
+            &self.sink,
             &mcp_log_message(
                 "plugin_test",
                 &path_name(&canonical),
@@ -189,7 +204,7 @@ impl ToolHandler for PluginTestTool {
 // ─── plugin_catalog_list ───────────────────────────────────────────
 
 struct PluginCatalogListTool {
-    app: AppHandle,
+    sink: LogSink,
 }
 
 impl ToolHandler for PluginCatalogListTool {
@@ -215,7 +230,7 @@ impl ToolHandler for PluginCatalogListTool {
                 // Приватность (R2/AC-MCP-13): ошибки каталога содержат полный путь `index.json`.
                 let message = sanitize_paths(&error, &repo);
                 log_mcp_call(
-                    &self.app,
+                    &self.sink,
                     &mcp_log_message(
                         "plugin_catalog_list",
                         "-",
@@ -245,7 +260,7 @@ impl ToolHandler for PluginCatalogListTool {
 
         // Журнал без пути (R2): только количество записей.
         log_mcp_call(
-            &self.app,
+            &self.sink,
             &mcp_log_message(
                 "plugin_catalog_list",
                 &format!("{} плагинов", items.len()),
@@ -261,7 +276,7 @@ impl ToolHandler for PluginCatalogListTool {
 // ─── markdown_render ───────────────────────────────────────────────
 
 struct MarkdownRenderTool {
-    app: AppHandle,
+    sink: LogSink,
 }
 
 impl ToolHandler for MarkdownRenderTool {
@@ -295,7 +310,7 @@ impl ToolHandler for MarkdownRenderTool {
 
         // Журнал без содержимого документа (R2): только объём входа.
         log_mcp_call(
-            &self.app,
+            &self.sink,
             &mcp_log_message(
                 "markdown_render",
                 &format!("{} символов", text.chars().count()),
@@ -401,16 +416,12 @@ fn mcp_log_message(
     }
 }
 
-/// Публикует запись журнала (best-effort, TZ-MCP R2).
+/// Публикует запись журнала через инъецированный сток (best-effort, TZ-MCP R2).
 ///
-/// Категория `system`: TS-тип `LogCategory` (`plugin`/`document`/`system`) не трогаем.
-fn log_mcp_call(app: &AppHandle, message: &str) {
-    if let Err(e) = app.emit(
-        "log-entry",
-        json!({ "level": "info", "category": "system", "message": message }),
-    ) {
-        eprintln!("не эмитить log-entry: {e}");
-    }
+/// Категория `system` и конверт события задаются стоком (`mcp::app_log_sink`): TS-тип
+/// `LogCategory` (`plugin`/`document`/`system`) не трогаем.
+fn log_mcp_call(sink: &LogSink, message: &str) {
+    sink(message);
 }
 
 #[cfg(test)]

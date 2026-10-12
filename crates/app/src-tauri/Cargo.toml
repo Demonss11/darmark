@@ -56,3 +56,10 @@ windows = { version = "0.62", features = [
 
 [dev-dependencies]
 tempfile = "3"
+# Интеграционные тесты — отдельные крейты: зависимости пакета им не видны, поэтому
+# контракт-тесты MCP (`tests/mcp_contract.rs`) объявляют нужные крейты повторно.
+# Все они уже в графе сборки `darmark` — новых внешних зависимостей не появляется.
+md-core = { path = "../../md-core" }
+mcp-core = { path = "../../mcp-core" }
+plugin-catalog = { path = "../../plugin-catalog" }
+serde_json = "1"

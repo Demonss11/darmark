@@ -8,15 +8,42 @@
 pub mod adapters;
 pub mod resources;
 
-use mcp_core::Registry;
-use tauri::AppHandle;
+use std::sync::Arc;
 
-/// Собирает реестр MCP-инструментов и ресурсов.
+use mcp_core::Registry;
+use tauri::{AppHandle, Emitter};
+
+/// Собирает реестр MCP-инструментов и ресурсов для запущенного приложения.
 pub fn build_registry(app: &AppHandle) -> Registry {
+    build_registry_with_sink(app_log_sink(app))
+}
+
+/// Собирает реестр с заданным стоком журнала — без Tauri.
+///
+/// Единственная точка сборки инвентаря MCP (4 tools + 6 resources, TZ-MCP §4):
+/// [`build_registry`] передаёт сюда продакшн-сток, контракт-тесты — собирающий
+/// (AC-MCP-6/AC-MCP-13), поэтому тест проверяет тот же состав, что и приложение.
+pub fn build_registry_with_sink(sink: adapters::LogSink) -> Registry {
     let mut registry = Registry::new();
-    adapters::register_tools(&mut registry, app);
-    resources::register_resources(&mut registry, app);
+    adapters::register_tools(&mut registry, &sink);
+    resources::register_resources(&mut registry);
     registry
+}
+
+/// Сток журнала MCP → Tauri-событие `log-entry` (TZ-MCP R2, best-effort).
+///
+/// Сбой `emit` логируется и не роняет вызов инструмента: журнал — наблюдаемость,
+/// а не критичный путь.
+fn app_log_sink(app: &AppHandle) -> adapters::LogSink {
+    let handle = app.clone();
+    Arc::new(move |message: &str| {
+        if let Err(e) = handle.emit(
+            "log-entry",
+            serde_json::json!({ "level": "info", "category": "system", "message": message }),
+        ) {
+            eprintln!("не эмитить log-entry: {e}");
+        }
+    })
 }
 
 /// Каталог-источник плагинов: env `DARMARK_PLUGIN_REPO` → автопоиск от CWD → `<cwd>/plugins`.

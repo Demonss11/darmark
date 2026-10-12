@@ -8,13 +8,12 @@ use std::sync::Arc;
 use mcp_core::handlers::{ResourceError, ResourceReader};
 use mcp_core::registry::{Registry, ResourceDefinition};
 use serde_json::{json, Value};
-use tauri::AppHandle;
 
 /// Регистрирует все MCP-ресурсы в реестре.
 ///
-/// `_app` не используется сейчас: ресурсы read-only и не эмитят события; параметр
-/// оставлен для единообразия с [`super::build_registry`] и будущих динамических ресурсов.
-pub fn register_resources(registry: &mut Registry, _app: &AppHandle) {
+/// Tauri здесь не нужен: ресурсы read-only и не эмитят события — модуль не зависит
+/// от `AppHandle` (сужено вместе с инъекцией [`super::adapters::LogSink`]).
+pub fn register_resources(registry: &mut Registry) {
     // Статические контракты (read-only, не меняются в рантайме).
     registry.register_resource(ResourceDefinition {
         uri: "darmark://contracts/plugin-manifest".to_string(),

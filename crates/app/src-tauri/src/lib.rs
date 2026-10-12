@@ -810,6 +810,11 @@ pub fn run() {
             }
             // AI-состояние: настройки из конфига + бэкенд шва (ленивый, ADR-0034 §2.3).
             app.manage(ai::state::AiState::init());
+            // MCP-сервер (ADR-0036): реестр адаптеров + протокольное ядро в state.
+            // Клиент (План 2) обратится к нему через `app.state::<McpServer>()`.
+            app.manage(mcp_core::server::McpServer::new(mcp::build_registry(
+                app.handle(),
+            )));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
