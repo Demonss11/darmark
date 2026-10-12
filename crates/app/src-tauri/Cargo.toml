@@ -22,6 +22,10 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 md-core = { path = "../../md-core" }
 plugin-core = { path = "../../plugin-core" }
+# MCP (ADR-0036): протокольное ядро + каталог плагинов. `plugin-catalog` — чистый крейт
+# (без `mlua`/Tauri), поэтому подключение не ломает «`mlua` вне GUI» (ADR-0021).
+mcp-core = { path = "../../mcp-core" }
+plugin-catalog = { path = "../../plugin-catalog" }
 # Асинхронный сон вместо блокирующего `thread::sleep` в async-путях AI (rate limit/ретрай).
 # Фича `time` — минимум; рантайм предоставляет Tauri (tokio уже в дереве).
 tokio = { version = "1", default-features = false, features = ["time"] }
