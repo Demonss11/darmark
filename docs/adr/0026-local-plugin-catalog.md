@@ -172,6 +172,12 @@
 > закрыта без активных работ; общий статус — этот ADR и `docs/BACKLOG.md`. Возобновление 2b — только
 > при реальной потребности и с отдельным ADR.
 
+> **Обновление (12.10.2026).** Эталонные примеры и индекс перенесены из корня `plugins/` в
+> `examples/plugins/` (корень репозитория — не место для примеров и фикстур). Механика каталога **не
+> меняется**: для **пользовательских** репозиториев плагинов `--repo` по-прежнему ищет
+> `plugins/index.json`; в репозитории darmark каталог теперь `examples/plugins/` (см. `AGENTS.md`,
+> `docs/PLUGIN_GUIDE.md`).
+
 ---
 
 ## 6. Ссылки
@@ -183,4 +189,4 @@
 - `docs/PLUGIN_API.md` §6 — CLI `darmark-plugin` (Фаза 1 H3).
 - Код: `crates/plugin-cli` (бинарник `darmark-plugin`), `crates/plugin-core/src/manifest.rs`
   (`Manifest::from_json`, `is_safe_id`), `crates/app/src-tauri/src/lib.rs` (`plugins_dir()`),
-  `crates/app/src-tauri/src/plugins/scan.rs` (GUI-скан), `plugins/` (индекс + эталонные примеры).
+  `crates/app/src-tauri/src/plugins/scan.rs` (GUI-скан), `examples/plugins/` (индекс + эталонные примеры).

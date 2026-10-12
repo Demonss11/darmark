@@ -1076,12 +1076,12 @@ fn print_usage() {
     println!("  darmark-plugin --version, -V — версия");
     println!();
     println!("Примеры:");
-    println!("  darmark-plugin test plugins/word-count");
+    println!("  darmark-plugin test examples/plugins/word-count");
     println!("  darmark-plugin test . --json");
     println!("  darmark-plugin init my-plugin --name \"Мой плагин\"");
-    println!("  darmark-plugin list");
-    println!("  darmark-plugin install word-count");
-    println!("  darmark-plugin link my-plugin --repo plugins");
+    println!("  darmark-plugin list --repo examples/plugins");
+    println!("  darmark-plugin install word-count --repo examples/plugins");
+    println!("  darmark-plugin link my-plugin --repo examples/plugins");
     println!("  darmark-plugin update");
 }
 
@@ -1197,10 +1197,11 @@ mod tests {
 
     #[test]
     fn test_smoke_word_count_plugin() {
-        // plugin-cli → crates → root → plugins/word-count.
+        // plugin-cli → crates → root → examples/plugins/word-count.
         let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("..")
             .join("..")
+            .join("examples")
             .join("plugins")
             .join("word-count");
         let report = run_test(&path, false);

@@ -788,6 +788,7 @@ mod tests {
         let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("..")
             .join("..")
+            .join("examples")
             .join("plugins");
         let catalog = Catalog::load(&repo).unwrap();
         assert_eq!(catalog.list().len(), 4);

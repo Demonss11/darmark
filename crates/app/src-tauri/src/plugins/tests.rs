@@ -2254,9 +2254,9 @@ fn set_permissions_on_disabled_plugin_only_persists() {
 
 #[test]
 fn reference_plugins_validate() {
-    // Эталонные плагины лежат в корне репозитория (`plugins/`), в дистрибутив не входят (D6).
+    // Эталонные плагины лежат в `examples/plugins/` репозитория, в дистрибутив не входят (D6).
     let repo_root = workspace_root();
-    let report = scan_plugins(&repo_root.join("plugins"));
+    let report = scan_plugins(&repo_root.join("examples").join("plugins"));
     assert!(
         report.errors.is_empty(),
         "ошибки скана эталонных плагинов: {:?}",

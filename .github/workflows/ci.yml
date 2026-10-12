@@ -59,9 +59,9 @@ jobs:
       - name: debug-plugin smoke (runs fixture, stdin closed → exit 0)
         shell: pwsh
         run: |
-          cmd /c "target\debug\darmark.exe --debug-plugin plugins\word-count < NUL"
+          cmd /c "target\debug\darmark.exe --debug-plugin examples\plugins\word-count < NUL"
           if ($LASTEXITCODE -ne 0) { throw "--debug-plugin вернул ненулевой код: $LASTEXITCODE" }
-          "--debug-plugin: plugins\word-count прогнан (exit 0)"
+          "--debug-plugin: examples\plugins\word-count прогнан (exit 0)"
 
   plugin-checks:
     name: plugins · fmt · clippy · tests · mlua-guard
@@ -85,8 +85,8 @@ jobs:
         run: cargo test -p plugin-core -p plugin-host -p plugin-cli
 
       # Smoke: CLI проверяет эталонный плагин в песочнице (ожидается код 0).
-      - name: plugin-cli smoke (test plugins/word-count)
-        run: cargo run -p plugin-cli -- test plugins/word-count
+      - name: plugin-cli smoke (test examples/plugins/word-count)
+        run: cargo run -p plugin-cli -- test examples/plugins/word-count
 
       # Артефакт child для дистрибутива + отдельный бюджет размера (Фаза 6).
       - name: build child release

@@ -27,20 +27,20 @@
 
 ### Установка из каталога и разработка через `link`
 
-Если плагин есть в локальном каталоге (`plugins/index.json` репозитория), копировать файлы вручную
+Если плагин есть в локальном каталоге (`examples/plugins/index.json` репозитория darmark), копировать файлы вручную
 не нужно:
 
 ```text
-darmark-plugin list                    # что доступно в каталоге (id, version, permissions)
-darmark-plugin install word-count      # скопировать в %APPDATA%\darmark\plugins
-darmark-plugin remove word-count       # удалить установленную копию
+darmark-plugin list --repo examples/plugins                 # что доступно в каталоге (id, version, permissions)
+darmark-plugin install word-count --repo examples/plugins   # скопировать в %APPDATA%\darmark\plugins
+darmark-plugin remove word-count                            # удалить установленную копию
 ```
 
 Свой плагин удобно разрабатывать через `link`: это ссылка (junction на Windows) на каталог
 репозитория — правки в `main.lua` сразу видны в приложении, копировать ничего не нужно.
 
 ```text
-darmark-plugin link my-plugin --repo plugins   # привязать каталог плагина ссылкой
+darmark-plugin link my-plugin --repo examples/plugins   # привязать каталог плагина ссылкой
 darmark-plugin update                          # обновить установленные копии до версии каталога
 ```
 
@@ -290,5 +290,5 @@ UI-схема `contributes.settings` **рендерится** в менедже�
 - `docs/adr/0023-plugin-runtime.md` — архитектура плагинной системы
 - `docs/DESIGN_DOC.md` — нормативная спецификация
 - `docs/DESIGN_DOC.md` §13.2 — замороженные e2e-контракты
-- Эталонные примеры — в каталоге `plugins/` репозитория: `word-count` (события + статусбар),
+- Эталонные примеры — в каталоге `examples/plugins/` репозитория: `word-count` (события + статусбар),
   `export-html` (экспорт + команда), `format-selection` (правка документа)
