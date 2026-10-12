@@ -253,7 +253,6 @@ impl ToolHandler for PluginCatalogListTool {
                     "api_version": entry.api_version,
                     "permissions": entry.permissions,
                     "description": entry.description,
-                    "path": entry.path,
                 })
             })
             .collect();

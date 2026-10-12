@@ -198,6 +198,9 @@ pub fn ensure_plugin_path_allowed(path: &Path) -> Result<PathBuf, CommandError> 
     })?;
 
     let plugins = plugins_root().ok();
+    // Весь системный temp — осознанно (TZ-MCP R3): плагины валидируются из временных рабочих
+    // каталогов (в т.ч. `temp_validate_dir`), поэтому сужение до префикса `darmark-ai-validate-*`
+    // сломало бы валидацию. Принуждение — здесь, вне MCP; отказ на reparse ниже сохраняется.
     let temp = std::env::temp_dir();
 
     let within_plugins = plugins
@@ -259,6 +262,10 @@ pub fn parse_cli_report(stdout: &str) -> Option<AiValidationResult> {
 
 /// Валидация манифеста и исходника **без** CLI (fallback, ADR-0034/ADR-0026): те же проверки через
 /// `plugin_core::manifest`. Возвращает понятные ошибки (пусто — валидно).
+///
+/// Только для тестов: продовый путь статической валидации идёт через [`validate_plugin_static`]
+/// (TZ-MCP R4/AC-MCP-6), поэтому в не-тестовой сборке функция не нужна.
+#[cfg(test)]
 pub fn manifest_errors(manifest: &Value, source: &str) -> Vec<String> {
     let mut errors = Vec::new();
     let manifest_check = serde_json::to_vec(manifest)

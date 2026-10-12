@@ -431,6 +431,17 @@ fn catalog_tool_and_resource_match_plugin_catalog_directly() {
         .collect();
     assert_eq!(via_tool, expected);
 
+    // R2-симметрия: tool, как и ресурс `darmark://plugins/catalog`, не отдаёт `path`
+    // (относительный путь агенту не нужен — «пути → только имена»).
+    assert!(
+        payload["plugins"]
+            .as_array()
+            .expect("plugins — массив")
+            .iter()
+            .all(|item| item.get("path").is_none()),
+        "tool не должен отдавать path: {payload}"
+    );
+
     // resource: тот же каталог через `resources/read`.
     let read = result_of(&server.handle(request(
         "resources/read",
