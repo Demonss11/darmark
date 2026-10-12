@@ -3,6 +3,7 @@
 use serde_json::{json, Value};
 
 use crate::protocol::{self, RpcRequest, RpcResponse};
+use crate::registry::CallToolError;
 
 /// Версия MCP-протокола, поддерживаемая сервером.
 pub const MCP_PROTOCOL_VERSION: &str = "2024-11-05";
@@ -43,6 +44,10 @@ impl McpServer {
                 "tools": {},
                 "resources": {},
             },
+            "serverInfo": {
+                "name": "darmark",
+                "version": env!("CARGO_PKG_VERSION"),
+            },
         })
     }
 
@@ -65,7 +70,13 @@ impl McpServer {
                 id,
                 json!({ "content": [{ "type": "text", "text": result.to_string() }] }),
             ),
-            Err(error) => RpcResponse::success(
+            // Неизвестный инструмент — ошибка протокола, а не результат вызова.
+            Err(CallToolError::UnknownTool(name)) => RpcResponse::error(
+                id,
+                protocol::RpcError::new(protocol::INVALID_PARAMS, format!("Unknown tool: {name}")),
+            ),
+            // Ошибка исполнения инструмента — результат с `isError`.
+            Err(CallToolError::Execution(error)) => RpcResponse::success(
                 id,
                 json!({ "isError": true, "content": [{ "type": "text", "text": error.message }] }),
             ),

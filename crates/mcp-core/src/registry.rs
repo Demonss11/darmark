@@ -16,10 +16,27 @@ pub struct ToolDefinition {
 }
 
 /// Определение ресурса в реестре.
+///
+/// `name` обязателен по спецификации MCP (поле `Resource.name`) и отдаётся
+/// агенту в `resources/list` — по нему агент понимает назначение ресурса.
 pub struct ResourceDefinition {
     pub uri: String,
+    pub name: String,
     pub description: String,
     pub reader: Arc<dyn ResourceReader>,
+}
+
+/// Результат `call_tool`: различает protocol-ошибку и ошибку исполнения.
+///
+/// «Инструмент не зарегистрирован» — это ошибка протокола (JSON-RPC error),
+/// а не результат работы инструмента. Смешивать их нельзя: агент по `isError`
+/// судит о сбое самого вызова, а не о неверном имени (спека MCP).
+#[derive(Clone, Debug)]
+pub enum CallToolError {
+    /// Инструмент не зарегистрирован (protocol error, JSON-RPC `-32602`).
+    UnknownTool(String),
+    /// Ошибка исполнения инструмента (отдаётся как результат с `isError: true`).
+    Execution(ToolError),
 }
 
 /// Реестр инструментов и ресурсов.
@@ -66,6 +83,7 @@ impl Registry {
             .map(|r| {
                 json!({
                     "uri": r.uri,
+                    "name": r.name,
                     "description": r.description,
                 })
             })
@@ -74,14 +92,16 @@ impl Registry {
     }
 
     /// Вызов инструмента по имени.
-    pub fn call_tool(&self, name: &str, params: Value) -> Result<Value, ToolError> {
-        let tool = self.tools.iter().find(|t| t.name == name).ok_or_else(|| {
-            ToolError::new(
-                protocol::METHOD_NOT_FOUND,
-                format!("инструмент не найден: {name}"),
-            )
-        })?;
-        tool.handler.call(params)
+    ///
+    /// Неизвестное имя — `CallToolError::UnknownTool` (protocol error);
+    /// ошибка обработчика — `CallToolError::Execution`.
+    pub fn call_tool(&self, name: &str, params: Value) -> Result<Value, CallToolError> {
+        let tool = self
+            .tools
+            .iter()
+            .find(|t| t.name == name)
+            .ok_or_else(|| CallToolError::UnknownTool(name.to_string()))?;
+        tool.handler.call(params).map_err(CallToolError::Execution)
     }
 
     /// Чтение ресурса по URI.
@@ -92,7 +112,7 @@ impl Registry {
             .find(|r| r.uri == uri)
             .ok_or_else(|| {
                 ResourceError::new(
-                    protocol::METHOD_NOT_FOUND,
+                    protocol::RESOURCE_NOT_FOUND,
                     format!("ресурс не найден: {uri}"),
                 )
             })?;

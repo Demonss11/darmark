@@ -10,4 +10,4 @@ pub mod registry;
 pub mod server;
 
 pub use handlers::{ResourceError, ResourceReader, ToolError, ToolHandler};
-pub use registry::{Registry, ResourceDefinition, ToolDefinition};
+pub use registry::{CallToolError, Registry, ResourceDefinition, ToolDefinition};

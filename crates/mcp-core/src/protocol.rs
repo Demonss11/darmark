@@ -16,6 +16,8 @@ pub const METHOD_NOT_FOUND: i64 = -32601;
 pub const INVALID_PARAMS: i64 = -32602;
 /// Код ошибки: внутренняя ошибка.
 pub const INTERNAL_ERROR: i64 = -32603;
+/// Код ошибки: запрошенный ресурс не найден (серверный диапазон MCP).
+pub const RESOURCE_NOT_FOUND: i64 = -32002;
 
 /// Запрос JSON-RPC 2.0.
 #[derive(Clone, Debug, Serialize, Deserialize)]

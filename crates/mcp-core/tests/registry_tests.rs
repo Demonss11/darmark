@@ -1,5 +1,5 @@
 use mcp_core::handlers::{ToolError, ToolHandler};
-use mcp_core::registry::{Registry, ToolDefinition};
+use mcp_core::registry::{CallToolError, Registry, ToolDefinition};
 use serde_json::{json, Value};
 use std::sync::Arc;
 
@@ -34,8 +34,8 @@ fn register_and_call_tool() {
 }
 
 #[test]
-fn call_unknown_tool_returns_method_not_found() {
+fn call_unknown_tool_returns_unknown_tool_error() {
     let registry = Registry::new();
     let err = registry.call_tool("ghost", json!({})).expect_err("ошибка");
-    assert_eq!(err.code, mcp_core::protocol::METHOD_NOT_FOUND);
+    assert!(matches!(err, CallToolError::UnknownTool(name) if name == "ghost"));
 }
