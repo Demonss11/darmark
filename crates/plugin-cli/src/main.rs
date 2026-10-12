@@ -10,9 +10,10 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-// `catalog` живёт в библиотечном таргете крейта: так его переиспользуют
-// MCP-адаптеры (`plugin_cli::catalog`) без запуска CLI-процесса.
-use plugin_cli::catalog::{self, Catalog, CatalogEntry};
+// Каталог вынесен в чистый крейт `plugin-catalog` (без plugin-host/mlua): его
+// переиспользуют и CLI, и будущие MCP-адаптеры (guard D6/ADR-0021).
+use plugin_catalog as catalog;
+use plugin_catalog::{Catalog, CatalogEntry};
 use plugin_core::manifest::Manifest;
 use plugin_host::selftest;
 

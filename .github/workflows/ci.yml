@@ -34,14 +34,15 @@ jobs:
         run: node scripts/prepare-sidecars.mjs --profile debug
 
       # Прототипные крейты (lua-*) исключены намеренно: у них свои правила/зависимости.
+      # plugin-catalog проверяется здесь: чистый крейт каталога, линкуется и в GUI (MCP), без mlua.
       - name: rustfmt
-        run: cargo fmt -p md-core -p darmark -- --check
+        run: cargo fmt -p md-core -p plugin-catalog -p darmark -- --check
 
       - name: clippy
-        run: cargo clippy -p md-core -p darmark --all-targets -- -D warnings
+        run: cargo clippy -p md-core -p plugin-catalog -p darmark --all-targets -- -D warnings
 
       - name: tests
-        run: cargo test -p md-core -p darmark
+        run: cargo test -p md-core -p plugin-catalog -p darmark
 
       - name: frontend build
         working-directory: crates/app

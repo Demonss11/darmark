@@ -7,6 +7,7 @@ members = [
   "crates/app/src-tauri",
   "crates/plugin-core",
   "crates/plugin-host",
+  "crates/plugin-catalog",
   "crates/plugin-cli",
 ]
 
