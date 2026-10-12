@@ -149,7 +149,7 @@ permissions).
     "active_provider": "routerai",
     "active_model": "deepseek/deepseek-v4.1-flash",
     "consent_document_send": false,
-    "max_tokens": 4096,
+    "max_tokens": 32768,
     "temperature": 0.7,
     "providers": {
       "routerai": {
