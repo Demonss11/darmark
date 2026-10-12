@@ -110,17 +110,18 @@
 | `crates/mcp-core/src/server.rs` | Create | `McpServer`: MCP-семантика (initialize, tools/list, tools/call, resources/list, resources/read) |
 | `crates/mcp-core/tests/protocol_tests.rs` | Create | Тесты JSON-RPC envelope |
 | `crates/mcp-core/tests/server_tests.rs` | Create | Тесты MCP-семантики |
-| `Cargo.toml` (workspace) | Modify | Добавить `"crates/mcp-core"` в `members` |
-| `crates/plugin-cli/src/lib.rs` | Create | Библиотечная точка: `pub mod catalog;` (для MCP-адаптеров) |
-| `crates/plugin-cli/src/main.rs` | Modify | `use plugin_cli::catalog;` вместо локального `mod catalog;` |
+| `Cargo.toml` (workspace) | Modify | Добавить `"crates/mcp-core"` и `"crates/plugin-catalog"` в `members` |
+| `crates/plugin-catalog/Cargo.toml` | Create | Чистый крейт каталога (deps: `plugin-core`, `serde_json`) |
+| `crates/plugin-catalog/src/lib.rs` | Create | Каталог плагинов (перенос из `plugin-cli`) — без `mlua` |
+| `crates/plugin-cli/src/main.rs` | Modify | `use plugin_catalog as catalog;` (bin остаётся с `plugin-host`) |
 | `crates/app/src-tauri/src/ai/plugin_harness.rs` | Modify | Добавить `ensure_plugin_path_allowed` (белый список директорий) |
 | `crates/app/src-tauri/src/mcp/mod.rs` | Create | MCP-модуль: сборка реестра, подключение к `AppHandle` |
 | `crates/app/src-tauri/src/mcp/adapters.rs` | Create | Адаптеры tools: `plugin_validate`, `plugin_test`, `plugin_catalog_list`, `markdown_render` |
 | `crates/app/src-tauri/src/mcp/resources.rs` | Create | Ресурсы: контракты (статические) + каталог (динамический) |
 | `crates/app/src-tauri/src/lib.rs` | Modify | `pub mod mcp;` + `app.manage(McpServer)` в `setup` |
-| `crates/app/src-tauri/Cargo.toml` | Modify | Зависимости: `plugin-cli` (задача 8), `mcp-core` (задача 11) |
+| `crates/app/src-tauri/Cargo.toml` | Modify | Зависимости: `plugin-catalog` (задача 8), `mcp-core` (задача 11) |
 | `crates/app/src-tauri/tests/mcp_contract.rs` | Create | Контракт-тесты: схема == поведение (AC-MCP-6), журнал без путей (AC-MCP-13) |
-| `.github/workflows/ci.yml` | Modify | Добавить `-p mcp-core` в fmt/clippy/tests |
+| `.github/workflows/ci.yml` | Modify | Добавить `-p mcp-core` и `-p plugin-catalog` в fmt/clippy/tests |
 
 ---
 
@@ -180,6 +181,7 @@ pub use registry::{Registry, ResourceDefinition, ToolDefinition};
 members = [
   "crates/md-core",
   "crates/mcp-core",
+  "crates/plugin-catalog",
   "crates/app/src-tauri",
   "crates/plugin-core",
   "crates/plugin-host",
@@ -933,7 +935,13 @@ pub fn ensure_plugin_path_allowed(path: &Path) -> Result<PathBuf, CommandError> 
 
 ---
 
-### Задача 7: Библиотека `plugin-cli` (pub mod catalog)
+### Задача 7: Крейт `plugin-catalog` (каталог без `mlua`)
+
+> **Обновление (реализация).** Первоначальный вариант (lib-таргет `plugin-cli`) **отклонён**:
+> lib-таргет наследует `[dependencies]` пакета, а `plugin-cli` зависит от `plugin-host` → `mlua`;
+> это сломало бы guard ADR-0021 при подключении в Задаче 8. Каталог вынесен в **чистый крейт
+> `crates/plugin-catalog`** (deps только `plugin-core` + `serde_json`); `plugin-cli` зависит от него,
+> `src-tauri` (Задача 8) подключает **`plugin-catalog`**, а не `plugin-cli`.
 
 **Goal:** Сделать `catalog` доступным для MCP-адаптеров через библиотечный крейт.
 
@@ -943,7 +951,7 @@ pub fn ensure_plugin_path_allowed(path: &Path) -> Result<PathBuf, CommandError> 
 
 **Interfaces:**
 - Consumes: нет
-- Produces: `plugin_cli::catalog::{Catalog, CatalogEntry, CATALOG_FILE, SCHEMA_VERSION, MAX_CATALOG_BYTES, MAX_MANIFEST_BYTES}`
+- Produces: `plugin_catalog::{Catalog, CatalogEntry, CATALOG_FILE, SCHEMA_VERSION, MAX_CATALOG_BYTES, MAX_MANIFEST_BYTES}`
 
 **Шаги:**
 
@@ -956,10 +964,10 @@ pub fn ensure_plugin_path_allowed(path: &Path) -> Result<PathBuf, CommandError> 
 pub mod catalog;
 ```
 
-2. В `main.rs` заменить `mod catalog;` на `use plugin_cli::catalog;` (в начале файла, после `use`):
+2. В `main.rs` заменить `mod catalog;` на `use plugin_catalog;` (в начале файла, после `use`):
 
 ```rust
-use plugin_cli::catalog::{Catalog, CatalogEntry};
+use plugin_catalog::{Catalog, CatalogEntry};
 ```
 
 И убрать `mod catalog;` (строка 9).
@@ -978,14 +986,14 @@ use plugin_cli::catalog::{Catalog, CatalogEntry};
 - Create: `crates/app/src-tauri/src/mcp/mod.rs`
 - Create: `crates/app/src-tauri/src/mcp/adapters.rs`
 - Modify: `crates/app/src-tauri/src/lib.rs` (добавить `pub mod mcp;`)
-- Modify: `crates/app/src-tauri/Cargo.toml` (добавить зависимость `plugin-cli`)
+- Modify: `crates/app/src-tauri/Cargo.toml` (добавить зависимость `plugin-catalog`)
 
 **Interfaces:**
 - Consumes:
   - `mcp_core::handlers::{ToolError, ToolHandler}`
   - `mcp_core::registry::{Registry, ToolDefinition}`
   - `crate::ai::plugin_harness::{ensure_plugin_path_allowed, manifest_errors, validate_plugin}`
-  - `plugin_cli::catalog::Catalog`
+  - `plugin_catalog::Catalog`
   - `md_core::{to_html, to_html_mapped}`
 - Produces:
   - `pub fn build_registry(app: &AppHandle) -> Registry`
@@ -1034,7 +1042,7 @@ pub(crate) fn catalog_repo() -> std::path::PathBuf {
         return std::path::PathBuf::from(dir);
     }
     let cwd = std::env::current_dir().unwrap_or_default();
-    plugin_cli::catalog::discover_repo(&cwd).unwrap_or_else(|| cwd.join("plugins"))
+    plugin_catalog::discover_repo(&cwd).unwrap_or_else(|| cwd.join("plugins"))
 }
 ```
 
@@ -1235,7 +1243,7 @@ impl ToolHandler for PluginCatalogListTool {
 
     fn call(&self, _params: Value) -> Result<Value, ToolError> {
         let started = Instant::now();
-        let catalog = plugin_cli::catalog::Catalog::load(&super::catalog_repo())
+        let catalog = plugin_catalog::Catalog::load(&super::catalog_repo())
             .map_err(ToolError::internal)?;
         let items: Vec<Value> = catalog
             .list()
@@ -1324,10 +1332,10 @@ fn log_mcp_call(app: &AppHandle, message: &str) {
 }
 ```
 
-4. Добавить зависимость `plugin-cli` в `crates/app/src-tauri/Cargo.toml` (нужна для `plugin_cli::catalog`; lib-таргет создан в задаче 7):
+4. Добавить зависимость `plugin-cli` в `crates/app/src-tauri/Cargo.toml` (нужна для `plugin_catalog`; lib-таргет создан в задаче 7):
 
 ```toml
-plugin-cli = { path = "../../plugin-cli" }
+plugin-catalog = { path = "../../plugin-catalog" }
 ```
 
 5. Проверка: `cargo check -p darmark`.
@@ -1348,7 +1356,7 @@ plugin-cli = { path = "../../plugin-cli" }
 - Consumes:
   - `mcp_core::handlers::ResourceReader`
   - `mcp_core::registry::{Registry, ResourceDefinition}`
-  - `plugin_cli::catalog::Catalog`
+  - `plugin_catalog::Catalog`
   - `plugin_core::HOST_API_VERSION`
 - Produces:
   - `pub fn register_resources(registry: &mut Registry, app: &AppHandle)`
@@ -1479,7 +1487,7 @@ struct PluginsCatalogResource;
 
 impl ResourceReader for PluginsCatalogResource {
     fn read(&self, _uri: &str) -> Result<Value, ResourceError> {
-        let catalog = plugin_cli::catalog::Catalog::load(&super::catalog_repo())
+        let catalog = plugin_catalog::Catalog::load(&super::catalog_repo())
             .map_err(ResourceError::internal)?;
         let items: Vec<Value> = catalog
             .list()
@@ -1510,7 +1518,7 @@ impl ResourceReader for PluginManifestResource {
             .filter(|id| !id.is_empty())
             .ok_or_else(|| ResourceError::internal(format!("некорректный URI ресурса: {uri}")))?;
 
-        let catalog = plugin_cli::catalog::Catalog::load(&super::catalog_repo())
+        let catalog = plugin_catalog::Catalog::load(&super::catalog_repo())
             .map_err(ResourceError::internal)?;
         let entry = catalog
             .get(id)
@@ -1752,9 +1760,9 @@ fn unknown_method_returns_method_not_found() {
 
 1. В `.github/workflows/ci.yml`, в `checks` job:
 
-- rustfmt: `cargo fmt -p md-core -p mcp-core -p darmark -- --check`
-- clippy: `cargo clippy -p md-core -p mcp-core -p darmark --all-targets -- -D warnings`
-- tests: `cargo test -p md-core -p mcp-core -p darmark`
+- rustfmt: `cargo fmt -p md-core -p mcp-core -p plugin-catalog -p darmark -- --check`
+- clippy: `cargo clippy -p md-core -p mcp-core -p plugin-catalog -p darmark --all-targets -- -D warnings`
+- tests: `cargo test -p md-core -p mcp-core -p plugin-catalog -p darmark`
 
 2. `plugin-checks` **не трогаем**: `mcp-core` — чистый крейт без зависимости от плагинных крейтов,
    поэтому входит только в job `checks` (шаг 1). Вынесение `catalog` в lib `plugin-cli` (задача 7)

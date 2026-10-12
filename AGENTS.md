@@ -12,6 +12,7 @@ Tauri 2 + vanilla TypeScript/Vite + чистое Rust-ядро Markdown. Цел�
 - `crates/plugin-core/` — ядро плагинной системы (кадры, конверт, Job Object, карантин, манифест); **без `mlua`/Tauri**.
 - `crates/plugin-host/` — child `darmark-plugin-host` (Lua 5.5, `mlua`); единственный крейт с `mlua`.
 - `crates/plugin-cli/` — CLI `darmark-plugin` (`test`/`init`, каталог `examples/plugins/index.json`).
+- `crates/plugin-catalog/` — чистый каталог плагинов (`index.json`, `Catalog`); **без** `mlua`/Tauri; используется `plugin-cli` и MCP-адаптерами.
 - Задачи только по фронтенду **не трогают** `md-core` и `src-tauri`.
 
 ## Команды
@@ -23,7 +24,7 @@ Tauri 2 + vanilla TypeScript/Vite + чистое Rust-ядро Markdown. Цел�
 | Тесты ядра (без GUI) | `cargo test -p md-core` |
 | Шелл: сборка/тесты | `cargo check -p darmark` / `cargo test -p darmark` |
 | Стейджинг сайдкаров (предусловие шелла) | `cd crates/app; npm run sidecars:dev` |
-| Плагинные крейты + CLI | `cargo test -p plugin-core -p plugin-host -p plugin-cli` |
+| Плагинные крейты + CLI | `cargo test -p plugin-core -p plugin-catalog -p plugin-host -p plugin-cli` |
 | Прогон плагина / CLI | `cargo run -p plugin-host -- --self-test <plugin.lua>`; `cargo run -p plugin-cli -- test examples/plugins/word-count` |
 | Guard: `mlua` вне GUI | `cargo tree -p darmark \| Select-String mlua` (пусто) |
 | Фронт (tsc strict, валит на ошибке типов) | `cd crates/app; npm install; npm run build` |
