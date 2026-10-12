@@ -100,9 +100,11 @@
    `4096 → 32768` (`ai/types.rs`); `finish_reason` проведён сквозняком (SSE → `ChatOutcome` →
    `AiResponse` и в payload `ai:done`), UI при `"length"` показывает заметку об обрыве, а не «Пустой
    ответ» (пустой/частичный ответ не плодит карточек).
-2. **`has_on_activate` (plugin-cli) — узкая эвристика.** Распознаёт только `function on_activate`
-   (ровно один пробел) либо `on_activate =`; варианты `function␣␣on_activate`, таб, перенос строки —
-   ложно «не найдена функция on_activate». Расширить и покрыть тестами.
+2. ~~**`has_on_activate` (plugin-cli) — узкая эвристика.**~~ *Закрыто:* распознаёт любые whitespace
+   между `function` и `on_activate` и перед `=` (`function␣␣on_activate`, таб, перенос), при этом
+   признаёт только **глобальную** точку входа — отвергает `M.on_activate =`/`M:on_activate`/
+   `function M.on_activate` и `local function on_activate`/`local on_activate =` (тесты на полевую форму
+   найдены `rust-tester` как падающие и исправлены).
 
 **Что не проверено.** UI-путь стриминга чанков на живом провайдере (SSE парсили, но панель на живом
 роутере не гоняли).
