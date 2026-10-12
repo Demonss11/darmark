@@ -252,6 +252,7 @@ mod tests {
                 Ok(ChatOutcome {
                     content: text,
                     usage: None,
+                    finish_reason: None,
                 })
             })
         }

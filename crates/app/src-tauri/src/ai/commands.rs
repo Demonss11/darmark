@@ -10,7 +10,7 @@ use crate::ai::skills;
 use crate::ai::state::AiState;
 use crate::ai::transport::{ChatRequest, TestRequest};
 use crate::ai::types::{
-    AiMessage, AiResponse, AiSettingsInput, AiSettingsView, AiSkill, AiTestResult,
+    AiMessage, AiResponse, AiSettingsInput, AiSettingsView, AiSkill, AiTestResult, AiUsage,
 };
 use crate::error::{CommandError, ErrorCode};
 
@@ -96,10 +96,8 @@ pub async fn ai_chat(
         }
     };
 
-    if let Err(e) = app.emit(
-        "ai:done",
-        serde_json::json!({ "message_id": message_id, "usage": outcome.usage }),
-    ) {
+    let done_payload = ai_done_payload(&message_id, outcome.usage, outcome.finish_reason.clone());
+    if let Err(e) = app.emit("ai:done", done_payload) {
         eprintln!("не эмитить ai:done: {e}");
     }
 
@@ -109,6 +107,7 @@ pub async fn ai_chat(
             content: outcome.content,
         },
         usage: outcome.usage,
+        finish_reason: outcome.finish_reason,
     })
 }
 
@@ -151,6 +150,18 @@ pub async fn ai_test_connection(state: State<'_, AiState>) -> Result<AiTestResul
             error: Some(err.message),
         },
     })
+}
+
+/// Формирует payload события `ai:done` для фронтенда.
+///
+/// `finish_reason` прокидывается явно: фронтенд читает его из этого события, чтобы отличить
+/// нормальное завершение (`"stop"`) от обрыва по лимиту (`"length"`).
+fn ai_done_payload(
+    message_id: &str,
+    usage: Option<AiUsage>,
+    finish_reason: Option<String>,
+) -> serde_json::Value {
+    serde_json::json!({ "message_id": message_id, "usage": usage, "finish_reason": finish_reason })
 }
 
 /// Идентификатор сообщения для корреляции `ai:chunk`/`ai:done` (без внешних зависимостей).
@@ -232,5 +243,29 @@ mod tests {
     #[test]
     fn list_skills_returns_two() {
         assert_eq!(ai_list_skills().len(), 2);
+    }
+
+    #[test]
+    fn ai_done_payload_contains_finish_reason() {
+        let payload = ai_done_payload(
+            "ai-123-0",
+            Some(AiUsage {
+                prompt_tokens: 10,
+                completion_tokens: 20,
+            }),
+            Some("length".to_string()),
+        );
+        assert_eq!(payload["message_id"], "ai-123-0");
+        assert_eq!(payload["finish_reason"], "length");
+        assert_eq!(payload["usage"]["prompt_tokens"], 10);
+        assert_eq!(payload["usage"]["completion_tokens"], 20);
+    }
+
+    #[test]
+    fn ai_done_payload_finish_reason_none_serializes_as_null() {
+        let payload = ai_done_payload("ai-123-1", None, None);
+        assert_eq!(payload["message_id"], "ai-123-1");
+        assert_eq!(payload["finish_reason"], serde_json::Value::Null);
+        assert_eq!(payload["usage"], serde_json::Value::Null);
     }
 }

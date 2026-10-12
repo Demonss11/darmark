@@ -480,6 +480,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     content: string;
     messageId: string | null;
     usage: AiUsage | null;
+    finishReason: string | null;
     finalized: boolean;
   }
   let pending: Pending | null = null;
@@ -1123,7 +1124,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     history = history.concat({ role: "user", content });
     const { row, bubble, col } = appendAssistant();
     const token = ++requestToken;
-    pending = { token, row, bubble, col, content: "", messageId: null, usage: null, finalized: false };
+    pending = { token, row, bubble, col, content: "", messageId: null, usage: null, finishReason: null, finalized: false };
     setBusy(true);
     stick = true;
     scrollToBottom();
@@ -1137,6 +1138,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
       const p = pending;
       if (!p || p.token !== token || p.finalized) return;
       if (!p.content) p.content = res.message.content;
+      p.finishReason = res.finish_reason;
       complete(p, res.usage ?? p.usage);
     } catch (e) {
       if (disposed) return;
@@ -1151,12 +1153,25 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     p.finalized = true;
     pending = null;
     setBusy(false);
-    const content = p.content || "Пустой ответ";
+    const isEmpty = p.content === "";
+    const truncated = p.finishReason === "length";
+    // При обрыве по лимиту токенов пустой контент не добавляем в историю
+    // и не вызываем appendAssistantActions — показываем заметку об обрыве.
+    const content = isEmpty ? (truncated ? "" : "Пустой ответ") : p.content;
     p.bubble.textContent = content;
     if (usage) appendUsage(p.col, usage);
-    history = history.concat({ role: "assistant", content });
+    if (!isEmpty || !truncated) {
+      history = history.concat({ role: "assistant", content });
+    }
     // Фаза 2: действия над готовым ответом (дифф-правка + карточка плагина).
-    appendAssistantActions(p.col, content);
+    // Для пустого ответа при обрыве не вызываем — карточки не нужны.
+    if (!isEmpty || !truncated) {
+      appendAssistantActions(p.col, content);
+    }
+    // Обрыв по лимиту токенов — понятная заметка вместо «Пустой ответ».
+    if (truncated) {
+      appendNotice(p.col, "Ответ оборван лимитом токенов — увеличьте max_tokens или повторите запрос.", "error");
+    }
     authError = false;
     lastError = false;
     log(
@@ -1197,7 +1212,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     if (busy || !settings?.enabled || !lastRequest) return;
     const { row, bubble, col } = appendAssistant();
     const token = ++requestToken;
-    pending = { token, row, bubble, col, content: "", messageId: null, usage: null, finalized: false };
+    pending = { token, row, bubble, col, content: "", messageId: null, usage: null, finishReason: null, finalized: false };
     setBusy(true);
     stick = true;
     scrollToBottom();
@@ -1475,13 +1490,15 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     if (stick) scrollToBottom();
   });
 
-  subscribe<{ message_id: string; usage: AiUsage | null }>("ai:done", (event) => {
+  subscribe<{ message_id: string; usage: AiUsage | null; finish_reason: string | null }>("ai:done", (event) => {
     const p = pending;
     if (!p) return;
-    const { message_id, usage } = event.payload;
+    const { message_id, usage, finish_reason } = event.payload;
     if (p.messageId !== null && p.messageId !== message_id) return;
     p.messageId = message_id;
     p.usage = usage;
+    // Rust может не прислать поле — нормализуем undefined → null.
+    p.finishReason = finish_reason ?? null;
     // Пустой стрим (чанков не было) финализирует ответ команды `ai_chat`.
     if (p.content) complete(p, usage);
   });

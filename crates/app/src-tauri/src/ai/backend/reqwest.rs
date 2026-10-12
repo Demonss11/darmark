@@ -159,6 +159,7 @@ impl AiTransport for ReqwestBackend {
             let mut parser = SseParser::new();
             let mut content = String::new();
             let mut usage = None;
+            let mut finish_reason = None;
             let mut stream = response.bytes_stream();
             while let Some(chunk) = stream.next().await {
                 let chunk = chunk.map_err(|e| {
@@ -172,12 +173,17 @@ impl AiTransport for ReqwestBackend {
                             on_delta(delta);
                         }
                         SseEvent::Usage(value) => usage = Some(value),
+                        SseEvent::Finish(reason) => finish_reason = Some(reason),
                         SseEvent::Done => {}
                     }
                 }
             }
 
-            Ok(ChatOutcome { content, usage })
+            Ok(ChatOutcome {
+                content,
+                usage,
+                finish_reason,
+            })
         })
     }
 

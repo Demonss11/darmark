@@ -17,6 +17,8 @@ pub enum SseEvent {
     Delta(String),
     /// Токены использования (`usage`), если провайдер их прислал (часто в последнем чанке).
     Usage(AiUsage),
+    /// Причина завершения (`choices[0].finish_reason`): `"stop"`, `"length"` и т.д.
+    Finish(String),
     /// Терминатор `data: [DONE]`.
     Done,
 }
@@ -99,6 +101,16 @@ fn parse_payload(payload: &str) -> Vec<SseEvent> {
     }
     if let Some(usage) = parse_usage(&value) {
         events.push(SseEvent::Usage(usage));
+    }
+    if let Some(finish_reason) = value
+        .get("choices")
+        .and_then(|choices| choices.get(0usize))
+        .and_then(|choice| choice.get("finish_reason"))
+        .and_then(|reason| reason.as_str())
+    {
+        if !finish_reason.is_empty() {
+            events.push(SseEvent::Finish(finish_reason.to_string()));
+        }
     }
     events
 }
@@ -254,5 +266,75 @@ mod tests {
         parser.push(&vec![b'x'; MAX_BUFFER_BYTES + 1024]);
         let events = parser.push(b"data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n");
         assert_eq!(events, vec![delta("ok")]);
+    }
+
+    #[test]
+    fn parses_finish_reason_before_done() {
+        let mut parser = SseParser::new();
+        let stream = concat!(
+            "data: {\"choices\":[{\"delta\":{\"content\":\"Hello\"}}]}\n\n",
+            "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n",
+            "data: [DONE]\n\n",
+        );
+        let events = parser.push(stream.as_bytes());
+        assert_eq!(
+            events,
+            vec![
+                delta("Hello"),
+                SseEvent::Finish("stop".to_string()),
+                SseEvent::Done,
+            ]
+        );
+    }
+
+    #[test]
+    fn parses_finish_reason_length_on_truncated_response() {
+        // Сценарий FINDINGS §2.3: пустой content + finish_reason="length" при исчерпании max_tokens.
+        let mut parser = SseParser::new();
+        let stream = concat!(
+            "data: {\"choices\":[{\"delta\":{\"content\":\"\"}}]}\n\n",
+            "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"length\"}]}\n\n",
+            "data: [DONE]\n\n",
+        );
+        let events = parser.push(stream.as_bytes());
+        assert_eq!(
+            events,
+            vec![SseEvent::Finish("length".to_string()), SseEvent::Done,]
+        );
+    }
+
+    #[test]
+    fn missing_or_empty_finish_reason_produces_no_event() {
+        let mut parser = SseParser::new();
+        let stream = concat!(
+            "data: {\"choices\":[{\"delta\":{\"content\":\"a\"}}]}\n\n",
+            "data: {\"choices\":[{\"delta\":{}}]}\n\n",
+            "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"\"}]}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"content\":\"b\"}}]}\n\n",
+        );
+        let events = parser.push(stream.as_bytes());
+        assert_eq!(events, vec![delta("a"), delta("b")]);
+    }
+
+    #[test]
+    fn finish_reason_alongside_usage_and_done() {
+        // Провайдер может прислать usage и finish_reason в одном чанке перед [DONE].
+        let mut parser = SseParser::new();
+        let stream = concat!(
+            "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"length\"}],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":20}}\n\n",
+            "data: [DONE]\n\n",
+        );
+        let events = parser.push(stream.as_bytes());
+        assert_eq!(
+            events,
+            vec![
+                SseEvent::Usage(AiUsage {
+                    prompt_tokens: 10,
+                    completion_tokens: 20
+                }),
+                SseEvent::Finish("length".to_string()),
+                SseEvent::Done,
+            ]
+        );
     }
 }

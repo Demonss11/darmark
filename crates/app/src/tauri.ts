@@ -274,6 +274,8 @@ export interface AiUsage {
 export interface AiResponse {
   message: AiMessage;
   usage: AiUsage | null;
+  /** Причина завершения от провайдера: `"stop"`, `"length"` и т.д.; `null` — неизвестно. */
+  finish_reason: string | null;
 }
 
 /** Готовый скилл (промт) из библиотеки Rust. */

@@ -21,11 +21,13 @@ pub struct AiUsage {
     pub completion_tokens: u32,
 }
 
-/// Ответ модели: итоговое сообщение и (если провайдер прислал) `usage`.
+/// Ответ модели: итоговое сообщение, (если провайдер прислал) `usage` и причина завершения.
 #[derive(Clone, Debug, Serialize)]
 pub struct AiResponse {
     pub message: AiMessage,
     pub usage: Option<AiUsage>,
+    /// Причина завершения стрима (`"stop"`, `"length"` и т.д.); `None`, если не пришла.
+    pub finish_reason: Option<String>,
 }
 
 /// Готовый скилл (промт) из встроенной библиотеки (ADR-0032).
@@ -67,7 +69,11 @@ impl Default for AiSettings {
             provider: "openai-compatible".to_string(),
             base_url: "https://routerai.ru/api/v1".to_string(),
             model: "deepseek/deepseek-v4.1-flash".to_string(),
-            max_tokens: 4096,
+            // Запас на reasoning: модель `deepseek-v4.1-flash` тратит львиную долю бюджета на
+            // внутренние рассуждения (живой замер: view-плагин ≈15.5k reasoning + ≈4.5k ответ).
+            // При 4096/8192 ответ обрекается на `finish_reason: "length"` и приходит пустым
+            // (см. docs/FINDINGS.md §2.3–2.4). Платим только за реально сгенерированные токены.
+            max_tokens: 32768,
             temperature: 0.7,
             consent_document_send: false,
             api_key: None,
@@ -197,7 +203,7 @@ mod tests {
         assert_eq!(settings.provider, "openai-compatible");
         assert_eq!(settings.base_url, "https://routerai.ru/api/v1");
         assert_eq!(settings.model, "deepseek/deepseek-v4.1-flash");
-        assert_eq!(settings.max_tokens, 4096);
+        assert_eq!(settings.max_tokens, 32768);
         assert!((settings.temperature - 0.7).abs() < f32::EPSILON);
         assert!(settings.api_key.is_none());
         assert!(!settings.has_key());
@@ -243,7 +249,7 @@ mod tests {
         let settings: AiSettings = serde_json::from_str("{\"enabled\": true}").expect("разбор");
         assert!(settings.enabled);
         assert_eq!(settings.model, "deepseek/deepseek-v4.1-flash");
-        assert_eq!(settings.max_tokens, 4096);
+        assert_eq!(settings.max_tokens, 32768);
         assert!(settings.api_key.is_none());
     }
 
@@ -261,6 +267,43 @@ mod tests {
         assert!(
             rendered.contains("<redacted>"),
             "секрет маскируется в Debug: {rendered}"
+        );
+    }
+
+    #[test]
+    fn ai_response_serializes_finish_reason() {
+        let response = AiResponse {
+            message: AiMessage {
+                role: "assistant".to_string(),
+                content: "обрезано".to_string(),
+            },
+            usage: Some(AiUsage {
+                prompt_tokens: 10,
+                completion_tokens: 20,
+            }),
+            finish_reason: Some("length".to_string()),
+        };
+        let json = serde_json::to_string(&response).expect("AiResponse сериализуется");
+        assert!(
+            json.contains("\"finish_reason\":\"length\""),
+            "finish_reason сериализуется: {json}"
+        );
+    }
+
+    #[test]
+    fn ai_response_serializes_none_finish_reason() {
+        let response = AiResponse {
+            message: AiMessage {
+                role: "assistant".to_string(),
+                content: "ok".to_string(),
+            },
+            usage: None,
+            finish_reason: None,
+        };
+        let json = serde_json::to_string(&response).expect("AiResponse сериализуется");
+        assert!(
+            json.contains("\"finish_reason\":null"),
+            "отсутствующий finish_reason сериализуется как null: {json}"
         );
     }
 }

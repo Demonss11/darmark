@@ -55,11 +55,14 @@ impl std::fmt::Debug for TestRequest {
     }
 }
 
-/// Итог чата: склеенный текст ответа и (если провайдер прислал) `usage`.
+/// Итог чата: склеенный текст ответа, (если провайдер прислал) `usage` и причина завершения.
 #[derive(Clone, Debug, Default)]
 pub struct ChatOutcome {
     pub content: String,
     pub usage: Option<AiUsage>,
+    /// Последнее непустое `finish_reason` из стрима (`"stop"`, `"length"` и т.д.);
+    /// `None`, если провайдер его не прислал.
+    pub finish_reason: Option<String>,
 }
 
 /// Трейт шва: вызов провайдера и передача текста.
