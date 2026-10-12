@@ -144,6 +144,51 @@
 
 Закрыто здесь: живая перепроверка v4 и просмотрщик эвалов (`skill-creator/eval-viewer/generate_review.py`).
 
+### 2.5. MCP-сервер (трек `TZ-MCP`, План 1; 12.10.2026)
+
+**Контекст.** MCP переосмыслен из inbound-сервера внешних клиентов (ADR-0034 §2.5) во **внутренний
+контрактный tool-слой** (ADR-0036: in-memory транспорт, клиент — встроенный AI). Реализован **План 1**
+(`tasks/TZ-MCP.md`, `tasks/PLAN-MCP.md`): крейт `mcp-core` (JSON-RPC 2.0 + семантика MCP), чистый крейт
+`plugin-catalog`, модуль `mcp` в `src-tauri` (4 tools + 6 resources, журнал вызовов, белый список
+путей). Tool-loop ассистента — **План 2** (зависит от поддержки tool-calling провайдером).
+
+**Подтверждённые структурные факты (без `F`-номеров — это не замеры):**
+
+- **`mlua` вне GUI сохранён:** `cargo tree -p darmark | Select-String mlua` пусто и после подключения
+  MCP. Каталог плагинов вынесен из `plugin-cli` в чистый крейт `plugin-catalog` (deps: `plugin-core`,
+  `serde_json`), т.к. **lib-таргет `plugin-cli` наследует `[dependencies]` пакета** → `plugin-host` →
+  `mlua` и сломал бы guard ADR-0021/D6.
+- **Тесты после Плана 1:** `md-core`, `mcp-core` (26), `plugin-catalog` (21), `darmark` (268 lib +
+  13 контрактных `mcp_contract`, 1 `debug_plugin`); `cargo fmt --check` и `clippy -D warnings` — чисто;
+  `npm run build` (tsc strict) — зелено.
+
+**Открытые оговорки и не-блокеры (заведены; для MVP не критичны):**
+
+1. **Tool-loop не реализован (План 2).** AC-MCP-5/14 (ассистент сам вызывает tools; результат —
+   «данные, не инструкции») не закрыты: зависят от tools/function-calling провайдера, которого
+   `ChatRequest` (`ai/transport.rs`) сейчас не несёт.
+2. **`plugin_test` через MCP покрыт только схемой.** Прогон песочницы через MCP Rust-тестом не
+   проверяется (сайдкар → E2E). Остаточный риск паритета с CLI.
+3. **`app_log_sink` (prod-only) не покрыт.** Конверт `log-entry {level,category,message}` проверяется
+   лишь до границы стока; `LogSink = Fn(&str)` не несёт уровень/категорию. MCP-записи идут уровнем
+   `info` — при дефолтном фильтре журнала наблюдаемость R2 зависит от фильтра.
+4. **Белый список путей: разрешён весь системный temp** (решение зафиксировано в TZ-MCP R3) — сужение
+   до `darmark-ai-validate-*` сломало бы валидацию плагинов из произвольных temp-каталогов. FS-поверхность
+   чтения шире буквы R3; клиент доверенный, изоляция (`canonicalize` + `starts_with` + отказ на reparse)
+   сохранена.
+5. **`catalog_repo()` зависит от CWD.** В упакованном приложении каталога может не быть → tool/resource
+   вернут ошибку (открытый вопрос TZ-MCP §8).
+6. **JSON-RPC-упрощения:** поле `jsonrpc` не валидируется; notification (без `id`) получает ответ с
+   `id: null`; `"arguments": null` не нормализуется в `{}`. Для внутреннего клиента не критично.
+7. **Шаблонный ресурс `darmark://plugins/{id}/manifest`** читается через `resources/read` (сегментный
+   матч в `mcp-core::registry`); отдельный `resources/templates/list` (есть в спеке MCP) не вводится.
+8. **Гигиена/мелочи:** `manifest_errors` стал `#[cfg(test)]` (консолидировать с `validate_plugin_static`);
+   `sanitize_text` — prefix-replace без границ пути (best-effort); тесты мутируют глобальные env
+   (`DARMARK_PLUGIN_REPO`/`DARMARK_PLUGINS_DIR`) без лока; цикл `AppHandle` в managed state (осознан,
+   нужен комментарий); дублирование `ToolError`/`ResourceError`; часть тестов `mcp-core` тавтологичны.
+9. **Не-Windows не собирался** (цель — Windows): cfg-ветки MCP (`plugin_validate`/`plugin_test` — только
+   Windows) проверены чтением; CI — `windows-latest`.
+
 ---
 
 ## 3. Индекс закрытых фактов
