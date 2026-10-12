@@ -1,0 +1,15 @@
+[package]
+name = "plugin-catalog"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Локальный каталог плагинов darmark: чтение index.json и установка (без mlua, без Tauri)"
+
+# Чистый крейт: линкуется и в GUI-хост (будущие MCP-адаптеры), поэтому здесь НЕ
+# бывает plugin-host/mlua (D6/ADR-0021). Каталог переиспользуют CLI и MCP.
+[dependencies]
+plugin-core = { path = "../plugin-core" }
+serde_json = "1"
+
+[dev-dependencies]
+tempfile = "3"

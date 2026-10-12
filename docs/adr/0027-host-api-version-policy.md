@@ -91,7 +91,7 @@ H2/H3 зафиксировали контракт host ↔ плагин: еди�
     `api_version` валиден и работает; при несовместимом — тест, что `api_version > HOST_API_VERSION`
     отвергается. База уже есть: `crates/plugin-core/src/manifest.rs` (`accepts_reference_manifest`,
     `rejects_api_version_too_new`, `rejects_api_version_zero`),
-    `crates/app/src-tauri/src/plugins/tests.rs`, `crates/plugin-cli/src/catalog.rs`.
+    `crates/app/src-tauri/src/plugins/tests.rs`, `crates/plugin-catalog/src/lib.rs`.
 
 ### 2.6. Процедура
 

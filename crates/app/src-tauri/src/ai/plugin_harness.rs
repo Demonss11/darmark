@@ -116,6 +116,117 @@ pub fn plugins_root() -> Result<PathBuf, CommandError> {
     Ok(PathBuf::from(base).join("darmark").join("plugins"))
 }
 
+/// Канонизирует корень белого списка; при неудаче — исходный путь.
+///
+/// `canonicalize` на Windows возвращает verbatim-путь (`\\?\…`), поэтому сравнивать
+/// канонический путь надо с каноническим корнем. Если корень не канонизируется
+/// (не существует) — исходный путь не совпадёт с verbatim-путём, т.е. ничего лишнего
+/// не разрешаем (fail-closed).
+#[cfg(windows)]
+fn canonical_root(root: &Path) -> PathBuf {
+    std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf())
+}
+
+/// Отказывает, если любой компонент пути **ниже** `root` — reparse point (symlink/junction).
+///
+/// `canonicalize` раскрывает ссылки, поэтому junction/symlink *внутри* разрешённого каталога
+/// (например `allowed\junction\to\inside`) не виден на каноническом пути и containment его не
+/// ловит. Обходим **исходный** путь от `root` (сам `root` доверенный — не проверяем) до листа.
+/// Если путь лексически не под `root` (относительный/иная раскладка) — пропускаем: containment
+/// по каноническому пути уже проверен вызывающим.
+#[cfg(windows)]
+fn reject_reparse_between(root: &Path, path: &Path) -> Result<(), CommandError> {
+    let Ok(relative) = path.strip_prefix(root) else {
+        return Ok(());
+    };
+    let mut current = root.to_path_buf();
+    for component in relative.components() {
+        current.push(component);
+        if is_reparse_point(&current) {
+            return Err(CommandError::new(
+                ErrorCode::AiPluginInvalid,
+                "путь содержит symlink/junction — доступ запрещён",
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Отказывает, если `plugin.json`/`main.lua` внутри каталога — сами reparse point.
+///
+/// AC-MCP-12: symlink-файл манифеста/entry иначе читался бы вслед за ссылкой (эскейп за
+/// пределы разрешённой области). `symlink_metadata` не следует за ссылкой, поэтому видит
+/// reparse-атрибут самого файла. Отсутствие файла — не ошибка (обработается валидацией).
+#[cfg(windows)]
+fn reject_reparse_plugin_files(dir: &Path) -> Result<(), CommandError> {
+    for name in [MANIFEST_FILE, ENTRY_FILE] {
+        if is_reparse_point(&dir.join(name)) {
+            return Err(CommandError::new(
+                ErrorCode::AiPluginInvalid,
+                format!("файл {name} — symlink/junction, чтение запрещено"),
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Проверяет, что путь лежит в разрешённом каталоге (`plugins/` или `temp/`).
+///
+/// Единая точка проверки путей для `plugin_validate`/`plugin_test` (TZ-MCP R3/AC-MCP-12):
+/// принуждение живёт здесь, а не в MCP-адаптере. Defense-in-depth: отказ на reparse point
+/// (symlink/junction) → `canonicalize` (раскрывает `..` и ссылки) → `starts_with` по
+/// каноническим корням → повторный обход компонентов пути от корня до листа и проверка файлов
+/// манифеста/entry. Возвращает канонический путь, чтобы дальнейшая работа шла уже с проверенным
+/// значением.
+#[cfg(windows)]
+pub fn ensure_plugin_path_allowed(path: &Path) -> Result<PathBuf, CommandError> {
+    // Ссылку/junction отклоняем даже если её цель внутри белого списка: цель может быть
+    // переопределена позже (TOCTOU), и запись уйдёт за пределы разрешённой области.
+    // Проверяем исходный путь — `canonicalize` ссылку уже раскрывает.
+    if is_reparse_point(path) {
+        return Err(CommandError::new(
+            ErrorCode::AiPluginInvalid,
+            "путь является symlink/junction — доступ запрещён",
+        ));
+    }
+
+    let canonical = std::fs::canonicalize(path).map_err(|e| {
+        CommandError::new(
+            ErrorCode::AiPluginInvalid,
+            format!("путь не существует: {e}"),
+        )
+    })?;
+
+    let plugins = plugins_root().ok();
+    // Весь системный temp — осознанно (TZ-MCP R3): плагины валидируются из временных рабочих
+    // каталогов (в т.ч. `temp_validate_dir`), поэтому сужение до префикса `darmark-ai-validate-*`
+    // сломало бы валидацию. Принуждение — здесь, вне MCP; отказ на reparse ниже сохраняется.
+    let temp = std::env::temp_dir();
+
+    let within_plugins = plugins
+        .as_ref()
+        .is_some_and(|root| canonical.starts_with(canonical_root(root)));
+    let within_temp = canonical.starts_with(canonical_root(&temp));
+    if !within_plugins && !within_temp {
+        return Err(CommandError::new(
+            ErrorCode::AiPluginInvalid,
+            "путь вне разрешённого каталога (plugins/ или temp/)",
+        ));
+    }
+
+    // Обход всех компонентов от разрешённого корня до листа (finding #1): родительский
+    // junction/symlink, ведущий внутрь разрешённой области, иначе прошёл бы containment.
+    if let Some(root) = &plugins {
+        reject_reparse_between(root, path)?;
+    }
+    reject_reparse_between(&temp, path)?;
+
+    // Файлы манифеста/entry не должны быть ссылками (finding #2, AC-MCP-12).
+    reject_reparse_plugin_files(&canonical)?;
+
+    Ok(canonical)
+}
+
 /// Разбирает JSON-отчёт `darmark-plugin test --json`.
 ///
 /// `None` — отчёту нельзя доверять: нет `schema_version` или неизвестный мажор → harness
@@ -151,6 +262,10 @@ pub fn parse_cli_report(stdout: &str) -> Option<AiValidationResult> {
 
 /// Валидация манифеста и исходника **без** CLI (fallback, ADR-0034/ADR-0026): те же проверки через
 /// `plugin_core::manifest`. Возвращает понятные ошибки (пусто — валидно).
+///
+/// Только для тестов: продовый путь статической валидации идёт через [`validate_plugin_static`]
+/// (TZ-MCP R4/AC-MCP-6), поэтому в не-тестовой сборке функция не нужна.
+#[cfg(test)]
 pub fn manifest_errors(manifest: &Value, source: &str) -> Vec<String> {
     let mut errors = Vec::new();
     let manifest_check = serde_json::to_vec(manifest)
@@ -184,13 +299,15 @@ pub fn validate_plugin(dir: &Path) -> AiValidationResult {
     fallback_validate(dir)
 }
 
-/// Fallback-валидация (ADR-0034 §2.4): манифест/entry через `plugin_core` + песочница child-хостом.
-fn fallback_validate(dir: &Path) -> AiValidationResult {
-    let manifest_path = dir.join(MANIFEST_FILE);
-    let source_path = dir.join(ENTRY_FILE);
+/// Статическая валидация каталога плагина: манифест + entry **без** песочницы.
+///
+/// Единая точка проверки «манифест/entry» (TZ-MCP R4/AC-MCP-6): переиспользуется
+/// fallback-валидацией и MCP-адаптером `plugin_validate`, поэтому логика не дублируется.
+/// Без паник: отсутствие/невалидность файлов кодируются в `errors`.
+pub fn validate_plugin_static(dir: &Path) -> AiValidationResult {
     let mut errors = Vec::new();
 
-    match std::fs::read(&manifest_path) {
+    match std::fs::read(dir.join(MANIFEST_FILE)) {
         Ok(bytes) => {
             if let Err(e) = plugin_core::manifest::Manifest::from_json(&bytes) {
                 errors.push(format!("manifest: {e}"));
@@ -198,7 +315,7 @@ fn fallback_validate(dir: &Path) -> AiValidationResult {
         }
         Err(e) => errors.push(format!("manifest: {e}")),
     }
-    match std::fs::read_to_string(&source_path) {
+    match std::fs::read_to_string(dir.join(ENTRY_FILE)) {
         Ok(source) => {
             if let Err(e) = plugin_core::manifest::validate_source_len(source.len() as u64) {
                 errors.push(format!("entry: {e}"));
@@ -207,29 +324,42 @@ fn fallback_validate(dir: &Path) -> AiValidationResult {
         Err(e) => errors.push(format!("entry: {e}")),
     }
 
-    // Песочницу запускаем только при валидных манифесте/entry: без валидного входа она
-    // бессмысленна (как и в `plugin-cli`).
-    if errors.is_empty() {
-        match resolve_sidecar(HOST_ENV, HOST_EXE) {
-            Some(host) => {
-                let mut command = Command::new(host);
-                command.arg("--self-test").arg(&source_path);
-                match run_with_timeout(command, VALIDATION_TIMEOUT) {
-                    Ok(output) if output.success => {}
-                    Ok(output) => errors.push(format!("sandbox: {}", tail(&output.stderr))),
-                    Err(e) => errors.push(format!("sandbox: {}", e.message)),
-                }
-            }
-            None => errors
-                .push("sandbox: darmark-plugin-host не найден рядом с darmark.exe".to_string()),
-        }
-    }
-
     AiValidationResult {
         ok: errors.is_empty(),
         errors,
         report: None,
     }
+}
+
+/// Fallback-валидация (ADR-0034 §2.4): манифест/entry через `plugin_core` + песочница child-хостом.
+fn fallback_validate(dir: &Path) -> AiValidationResult {
+    // Статические проверки — общие с MCP-адаптером `plugin_validate` (R4/AC-MCP-6).
+    let mut result = validate_plugin_static(dir);
+    if !result.ok {
+        return result;
+    }
+
+    // Песочницу запускаем только при валидных манифесте/entry: без валидного входа она
+    // бессмысленна (как и в `plugin-cli`).
+    let source_path = dir.join(ENTRY_FILE);
+    match resolve_sidecar(HOST_ENV, HOST_EXE) {
+        Some(host) => {
+            let mut command = Command::new(host);
+            command.arg("--self-test").arg(&source_path);
+            match run_with_timeout(command, VALIDATION_TIMEOUT) {
+                Ok(output) if output.success => {}
+                Ok(output) => result
+                    .errors
+                    .push(format!("sandbox: {}", tail(&output.stderr))),
+                Err(e) => result.errors.push(format!("sandbox: {}", e.message)),
+            }
+        }
+        None => result
+            .errors
+            .push("sandbox: darmark-plugin-host не найден рядом с darmark.exe".to_string()),
+    }
+    result.ok = result.errors.is_empty();
+    result
 }
 
 /// Записывает `plugin.json` + `main.lua` в каталог (создавая его).
@@ -738,6 +868,40 @@ mod tests {
         assert!(!manifest_errors(&bad_id, "x").is_empty());
     }
 
+    /// Единая точка статической валидации (TZ-MCP R4/AC-MCP-6): принимает валидный
+    /// каталог и сообщает `manifest`/`entry`-ошибки при отсутствии файлов.
+    #[test]
+    fn static_validation_accepts_valid_plugin_and_reports_missing_files() {
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path().join("p");
+        let manifest = serde_json::json!({
+            "id": "p",
+            "name": "P",
+            "version": "1.0.0",
+            "api_version": 1,
+            "entry": "main.lua"
+        });
+        write_plugin_files(&dir, &manifest, "function on_activate(ctx) end").unwrap();
+        let valid = validate_plugin_static(&dir);
+        assert!(valid.ok, "валидный плагин: {:?}", valid.errors);
+        assert!(valid.errors.is_empty());
+
+        let empty = root.path().join("empty");
+        std::fs::create_dir(&empty).unwrap();
+        let missing = validate_plugin_static(&empty);
+        assert!(!missing.ok);
+        assert!(
+            missing.errors.iter().any(|e| e.starts_with("manifest:")),
+            "{:?}",
+            missing.errors
+        );
+        assert!(
+            missing.errors.iter().any(|e| e.starts_with("entry:")),
+            "{:?}",
+            missing.errors
+        );
+    }
+
     #[test]
     fn write_plugin_files_roundtrip() {
         let root = tempfile::tempdir().unwrap();
@@ -1050,5 +1214,224 @@ mod tests {
             "вывод прочитан полностью: {} байт",
             output.stdout.len()
         );
+    }
+
+    // ─── белый список директорий (TZ-MCP R3/AC-MCP-12) ─────────────────
+
+    /// Создаёт junction (`mklink /J`, без прав администратора). `false` — окружение не
+    /// позволило; вызывающий тест должен явно сообщить о пропуске.
+    #[cfg(windows)]
+    fn try_junction(link: &Path, target: &Path) -> bool {
+        let status = Command::new("cmd")
+            .args(["/C", "mklink", "/J"])
+            .arg(link)
+            .arg(target)
+            .status();
+        matches!(status, Ok(s) if s.success()) && std::fs::symlink_metadata(link).is_ok()
+    }
+
+    /// Создаёт symlink-файл (`mklink` без `/J`). Требует прав администратора или Developer
+    /// Mode; `false` — недоступно (тест сообщает о пропуске).
+    #[cfg(windows)]
+    fn try_symlink_file(link: &Path, target: &Path) -> bool {
+        let status = Command::new("cmd")
+            .args(["/C", "mklink"])
+            .arg(link)
+            .arg(target)
+            .status();
+        matches!(status, Ok(s) if s.success()) && std::fs::symlink_metadata(link).is_ok()
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn ensure_plugin_path_allowed_rejects_path_outside_whitelist() {
+        let err = ensure_plugin_path_allowed(Path::new("C:\\Windows\\System32"))
+            .expect_err("абсолютный путь вне белого списка");
+        assert_eq!(err.code, ErrorCode::AiPluginInvalid);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn ensure_plugin_path_allowed_rejects_traversal() {
+        // Поднимаемся из temp выше корня и уходим в `C:\Windows` — вне белого списка.
+        // Избыточные `..` на корне игнорируются, поэтому тест устойчив к глубине temp.
+        let mut escaped = std::env::temp_dir();
+        for _ in 0..8 {
+            escaped.push("..");
+        }
+        escaped.push("Windows");
+        let err = ensure_plugin_path_allowed(&escaped).expect_err("path traversal");
+        assert_eq!(err.code, ErrorCode::AiPluginInvalid);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn ensure_plugin_path_allowed_accepts_path_inside_temp() {
+        let dir = tempfile::tempdir().unwrap();
+        let canonical = ensure_plugin_path_allowed(dir.path()).expect("temp разрешён");
+        assert!(canonical.is_absolute(), "возвращается канонический путь");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn ensure_plugin_path_allowed_resolves_traversal_inside_temp() {
+        // `inner/..` лексически содержит `..`, но канонизируется в разрешённый `temp`.
+        let base = tempfile::tempdir().unwrap();
+        let inner = base.path().join("inner");
+        std::fs::create_dir(&inner).unwrap();
+        let via_parent = inner.join("..");
+        ensure_plugin_path_allowed(&via_parent).expect("`..` внутри temp разрешён");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn ensure_plugin_path_allowed_rejects_missing_path() {
+        let missing = std::env::temp_dir().join(format!(
+            "darmark-no-such-dir-{}-{}",
+            std::process::id(),
+            "abc"
+        ));
+        let err = ensure_plugin_path_allowed(&missing).expect_err("несуществующий путь");
+        assert_eq!(err.code, ErrorCode::AiPluginInvalid);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn ensure_plugin_path_allowed_rejects_junction() {
+        let base = tempfile::tempdir().unwrap();
+        let target = base.path().join("target");
+        std::fs::create_dir(&target).unwrap();
+        let link = base.path().join("link");
+        if !try_junction(&link, &target) {
+            eprintln!(
+                "SKIP ensure_plugin_path_allowed_rejects_junction: mklink /J недоступен: {}",
+                link.display()
+            );
+            return;
+        }
+        // Цель junction внутри temp, но сама ссылка — reparse point: должна быть отклонена.
+        let err = ensure_plugin_path_allowed(&link).expect_err("junction отклонён");
+        assert_eq!(err.code, ErrorCode::AiPluginInvalid);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn ensure_plugin_path_allowed_rejects_parent_junction_outward() {
+        // `allowed\junction\to\outside`: цель внутри temp (containment её пропустит), но
+        // родительский компонент `junction` — reparse point → должен ловиться обходом.
+        let base = tempfile::tempdir().unwrap();
+        let allowed = base.path().join("allowed");
+        let outside = base.path().join("outside");
+        std::fs::create_dir(&allowed).unwrap();
+        std::fs::create_dir(&outside).unwrap();
+        let junction = allowed.join("junction");
+        if !try_junction(&junction, &outside) {
+            eprintln!(
+                "SKIP ensure_plugin_path_allowed_rejects_parent_junction_outward: mklink /J недоступен: {}",
+                junction.display()
+            );
+            return;
+        }
+        let child = junction.join("child");
+        std::fs::create_dir(&child).unwrap();
+        let err = ensure_plugin_path_allowed(&child).expect_err("родительский junction");
+        assert_eq!(err.code, ErrorCode::AiPluginInvalid);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn ensure_plugin_path_allowed_rejects_symlinked_manifest_file() {
+        let base = tempfile::tempdir().unwrap();
+        let dir = base.path().join("plugin");
+        std::fs::create_dir(&dir).unwrap();
+        let target = base.path().join("secret.json");
+        std::fs::write(&target, b"{}").unwrap();
+        let link = dir.join("plugin.json");
+        if !try_symlink_file(&link, &target) {
+            eprintln!(
+                "SKIP ensure_plugin_path_allowed_rejects_symlinked_manifest_file: symlink недоступен: {}",
+                link.display()
+            );
+            return;
+        }
+        let err = ensure_plugin_path_allowed(&dir).expect_err("symlink plugin.json отклонён");
+        assert_eq!(err.code, ErrorCode::AiPluginInvalid);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn ensure_plugin_path_allowed_rejects_symlinked_entry_file() {
+        let base = tempfile::tempdir().unwrap();
+        let dir = base.path().join("plugin");
+        std::fs::create_dir(&dir).unwrap();
+        let target = base.path().join("secret.lua");
+        std::fs::write(&target, b"-- secret").unwrap();
+        let link = dir.join("main.lua");
+        if !try_symlink_file(&link, &target) {
+            eprintln!(
+                "SKIP ensure_plugin_path_allowed_rejects_symlinked_entry_file: symlink недоступен: {}",
+                link.display()
+            );
+            return;
+        }
+        let err = ensure_plugin_path_allowed(&dir).expect_err("symlink main.lua отклонён");
+        assert_eq!(err.code, ErrorCode::AiPluginInvalid);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn ensure_plugin_path_allowed_rejects_reparse_entry_without_symlink_privilege() {
+        // Детерминированная проверка finding #2 без прав на symlink: junction с именем
+        // `main.lua` — тоже reparse point, и `reject_reparse_plugin_files` обязан его отклонить.
+        let base = tempfile::tempdir().unwrap();
+        let dir = base.path().join("plugin");
+        let target = base.path().join("target");
+        std::fs::create_dir(&dir).unwrap();
+        std::fs::create_dir(&target).unwrap();
+        let link = dir.join("main.lua");
+        if !try_junction(&link, &target) {
+            eprintln!(
+                "SKIP ensure_plugin_path_allowed_rejects_reparse_entry_without_symlink_privilege: mklink /J недоступен: {}",
+                link.display()
+            );
+            return;
+        }
+        let err = ensure_plugin_path_allowed(&dir).expect_err("reparse main.lua отклонён");
+        assert_eq!(err.code, ErrorCode::AiPluginInvalid);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn ensure_plugin_path_allowed_accepts_path_inside_plugins_root() {
+        // Ветка `plugins_root()` (env-override) иначе не покрыта: temp-тесты её не задевают.
+        let root = tempfile::tempdir().unwrap();
+        let plugin_dir = root.path().join("my-plugin");
+        std::fs::create_dir(&plugin_dir).unwrap();
+
+        let previous = std::env::var_os("DARMARK_PLUGINS_DIR");
+        std::env::set_var("DARMARK_PLUGINS_DIR", root.path());
+        let result = ensure_plugin_path_allowed(&plugin_dir);
+        match previous {
+            Some(value) => std::env::set_var("DARMARK_PLUGINS_DIR", value),
+            None => std::env::remove_var("DARMARK_PLUGINS_DIR"),
+        }
+
+        result.expect("путь внутри plugins_root разрешён");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn ensure_plugin_path_allowed_accepts_root_and_normalized_layouts() {
+        let temp = std::env::temp_dir();
+        // Сам корень whitelist — разрешён.
+        ensure_plugin_path_allowed(&temp).expect("сам корень temp разрешён");
+
+        // Лишние разделители/`.`: канонизация нормализует путь.
+        let dotted = temp.join(".").join("");
+        ensure_plugin_path_allowed(&dotted).expect("нормализованная раскладка внутри temp");
+
+        // Иная раскладка регистра: `canonicalize` приводит к реальному регистру.
+        let upper = PathBuf::from(temp.to_string_lossy().to_uppercase());
+        ensure_plugin_path_allowed(&upper).expect("регистр нормализуется канонизацией");
     }
 }

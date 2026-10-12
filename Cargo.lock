@@ -662,7 +662,9 @@ name = "darmark"
 version = "0.1.0"
 dependencies = [
  "futures-util",
+ "mcp-core",
  "md-core",
+ "plugin-catalog",
  "plugin-core",
  "reqwest",
  "serde",
@@ -2085,6 +2087,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "mcp-core"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "md-core"
 version = "0.1.0"
 dependencies = [
@@ -2706,9 +2716,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "plugin-catalog"
+version = "0.1.0"
+dependencies = [
+ "plugin-core",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "plugin-cli"
 version = "0.1.0"
 dependencies = [
+ "plugin-catalog",
  "plugin-core",
  "plugin-host",
  "serde_json",

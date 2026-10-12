@@ -6,13 +6,14 @@
 //! Коды выхода: `0` — успех/проверки пройдены, `1` — ошибка операции/проверок, `2` — ошибка
 //! аргументов (неизвестная команда/флаг).
 
-mod catalog;
-
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use catalog::{Catalog, CatalogEntry};
+// Каталог вынесен в чистый крейт `plugin-catalog` (без plugin-host/mlua): его
+// переиспользуют и CLI, и будущие MCP-адаптеры (guard D6/ADR-0021).
+use plugin_catalog as catalog;
+use plugin_catalog::{Catalog, CatalogEntry};
 use plugin_core::manifest::Manifest;
 use plugin_host::selftest;
 

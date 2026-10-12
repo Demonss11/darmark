@@ -3,9 +3,11 @@ resolver = "2"
 # plugin-core/plugin-host — продуктовая плагинная система (H2).
 members = [
   "crates/md-core",
+  "crates/mcp-core",
   "crates/app/src-tauri",
   "crates/plugin-core",
   "crates/plugin-host",
+  "crates/plugin-catalog",
   "crates/plugin-cli",
 ]
 
