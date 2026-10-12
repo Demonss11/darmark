@@ -308,6 +308,63 @@ fn plugin_validate_matches_static_validation_and_hides_full_path() {
     );
 }
 
+/// Паритет адаптера с ядром на **непустой** ветке `errors` (AC-MCP-6).
+///
+/// Валидная фикстура даёт пустой `errors`, поэтому совпадение двух пустых массивов не
+/// доказывает, что адаптер не теряет/не переписывает ошибки (`sanitize_validation` как раз
+/// правит эти строки). Здесь манифест заведомо невалиден, а его текст ошибки **не содержит**
+/// полного пути (`ManifestError` пути не несёт) — значит паритет с прямым ядром обязан
+/// сохраняться и на непустом `errors`.
+#[cfg(windows)]
+#[test]
+fn plugin_validate_reports_nonempty_errors_matching_static_validation() {
+    let plugin = temp_plugin_dir(
+        "darmark-mcp-contract-bad",
+        INVALID_MANIFEST,
+        "function on_activate(ctx) end\n",
+    );
+    let (server, records) = server();
+
+    let payload = tool_payload(&call_tool(
+        &server,
+        "plugin_validate",
+        json!({ "path": plugin.path().to_string_lossy() }),
+    ));
+
+    // Прямой вызов той же проверки ядра (AC-MCP-6: адаптер не дублирует логику).
+    let direct = darmark_lib::ai::plugin_harness::validate_plugin_static(plugin.path());
+    assert!(!direct.ok, "фикстура обязана быть невалидной: {direct:?}");
+    assert!(!direct.errors.is_empty(), "ядро вернуло ошибку: {direct:?}");
+    assert_eq!(payload["ok"], direct.ok);
+    assert_eq!(payload["errors"], json!(direct.errors));
+    assert!(
+        !payload["errors"]
+            .as_array()
+            .expect("errors — массив")
+            .is_empty(),
+        "адаптер не теряет errors: {payload}"
+    );
+
+    // Приватность (AC-MCP-13): ни в результате, ни в журнале нет полного пути.
+    let full_path = plugin.path().to_string_lossy().into_owned();
+    assert!(
+        !payload.to_string().contains(&full_path),
+        "результат без полного пути: {payload}"
+    );
+    let log = records_of(&records);
+    assert_eq!(log.len(), 1, "{log:?}");
+    assert!(log[0].contains("plugin_validate"), "{log:?}");
+    assert!(
+        !log[0].contains(&full_path),
+        "журнал без полного пути: {log:?}"
+    );
+    assert!(!log[0].contains(":\\"), "журнал без диска: {log:?}");
+    assert!(
+        log[0].contains(&plugin_dir_name(&full_path)),
+        "журнал несёт имя каталога: {log:?}"
+    );
+}
+
 #[cfg(windows)]
 #[test]
 fn plugin_validate_rejects_path_outside_whitelist() {
@@ -423,6 +480,16 @@ const VALID_MANIFEST: &str = r#"{
   "api_version": 1,
   "entry": "main.lua",
   "permissions": ["document:read"]
+}"#;
+
+/// Невалидный манифест: пустой `id` (`ManifestError::EmptyField` не несёт пути).
+#[cfg(windows)]
+const INVALID_MANIFEST: &str = r#"{
+  "id": "",
+  "name": "x",
+  "version": "1.0.0",
+  "api_version": 1,
+  "entry": "main.lua"
 }"#;
 
 /// Каталог плагина в `temp` — он в белом списке `plugin_harness` (AC-MCP-12).
