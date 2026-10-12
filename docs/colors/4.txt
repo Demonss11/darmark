@@ -1,0 +1,186 @@
+
+
+## Цветовая схема приложения
+
+### Архитектура слоёв
+
+Цветовая схема построена на **HSL-токенах** в CSS-переменных и организована в три уровня:
+
+1. **`core/ui-kit/index.css`** — базовая палитра токенов (zinc, статусные цвета, акцентная палитра)
+2. **`core/styles/vars.css`** — прикладные переменные (z-index, размеры, цвета выделения, иконок)
+3. **`core/styles/themes.css`** — стили для property-карточек (background/border/text по типам)
+
+---
+
+### 1. Фундамент — Zinc Palette (`core/ui-kit/index.css`)
+
+Вся палитра построена на **Zinc** (нейтральные серые из Tailwind). Это монохромная основа, где светлые элементы — светлее, тёмные — темнее.
+
+| Уровень | Light (L) | Dark (L) |
+|---------|-----------|----------|
+| zinc-50 | `98%` | — |
+| zinc-100 | `96%` | — |
+| zinc-200 | `90%` | — |
+| zinc-400 | `65%` | — |
+| zinc-500 | `46%` | — |
+| zinc-700 | `26%` | `200%` |
+| zinc-800 | `16%` | `200%` |
+| zinc-900 | `10%` | — |
+| zinc-950 | `4%` | — |
+
+> **Light:** `primary-bg = 0 0% 97%` (почти белый), `secondary-bg = 0 0% 100%` (чистый белый)
+> **Dark:** `primary-bg = 240 6% 10%` (zinc-900), `secondary-bg = 0 0% 7%` (почти чёрный)
+
+---
+
+### 2. Основные токены UI Kit
+
+#### Primary / Secondary / Tertiary
+
+| Токен | Light | Dark | Назначение |
+|-------|-------|------|------------|
+| `--primary-bg` | `0 0% 97%` | `240 6% 10%` | Фон основного контента |
+| `--primary-bg-hover` | `240 6% 90%` | `240 5% 26%` | Ховер основного фона |
+| `--primary-accent` | `240 6% 10%` | `0 0% 98%` | Основной акцент (текст/элементы) |
+| `--primary-fg` | `240 6% 10%` | `0 0% 98%` | Основной foreground |
+| `--primary-border` | `240 5% 84%` | `240 5% 34%` | Границы |
+| `--secondary-bg` | `0 0% 100%` | `0 0% 7%` | Фон сайдбаров/панелей |
+| `--secondary-fg` | `240 5% 26%` | `240 5% 92%` | Secondary foreground |
+| `--secondary-border` | `240 6% 90%` | `240 5% 26%` | Secondary границы |
+| `--sidebar-bg` | `0 0% 97%` | `240 6% 10%` | Фон навигации |
+| `--muted` | `240 4% 46%` | `240 5% 65%` | Приглушённый текст |
+
+#### Inverse (перевернутая палитра)
+
+| Токен | Light | Dark |
+|-------|-------|------|
+| `--inverse-primary-bg` | `240 6% 10%` | `0 0% 98%` |
+| `--inverse-secondary-bg` | `240 5% 26%` | `240 5% 96%` |
+| `--inverse-primary-fg` | `240 5% 96%` | `240 6% 10%` |
+
+---
+
+### 3. Статусные цвета
+
+| Статус | Light | Dark |
+|--------|-------|------|
+| **Error** | `red-700` (text/bg) | `red-500` (fg), `red-950` (bg) |
+| **Warning** | `amber-700` | `amber-500` (fg), `yellow-950` (bg) |
+| **Success** | `green-700` | `green-500` (fg), `green-950` (bg) |
+| **Info** | `sky-700` | `sky-500` (fg), `sky-950` (bg) |
+| **Purple** | `purple-700` | `purple-500` |
+| **Default** | `zinc-900` / `zinc-50` | `zinc-50` / `zinc-900` |
+
+Каждый статус имеет полные уровни: `bg`, `bg-hover`, `primary-bg`, `primary-border`, `secondary-border`, `fg`, `hover`.
+
+---
+
+### 4. Акцентная палитра (24 цвета)
+
+Распределяются по **light/dark** через насыщенность и lightness, сохраняя hue.
+
+| Токен | Hue | Light (S/L) | Dark (S/L) |
+|-------|-----|-------------|------------|
+| `--peony` | 340° | `100% 91%` | `35% 47%` |
+| `--honey` | 44° | `98% 82%` | `35% 35%` |
+| `--mint` | 120° | `71% 85%` | `34% 34%` |
+| `--turquoise` | 194° | `100% 80%` | `35% 37%` |
+| `--lavender` | 247° | `100% 92%` | `35% 53%` |
+| ...и ещё 19 цветов | | | |
+
+**Иконочные варианты** — те же цвета, но с `l ≈ 35%` (light) / `l ≈ 65%` (dark):
+- `--color-icon-yellow` → от `--honey`, l=35%/65%
+- `--color-icon-green` → от `--mint`, l=35%/65%
+- и т.д.
+
+---
+
+### 5. Прикладные переменные (`vars.css`)
+
+| Переменная | Light | Dark |
+|------------|-------|------|
+| `--color-danger` | `#ff3131` | — |
+| `--color-warning` | `#ffba00cc` | — |
+| `--color-focus` | `#0563d6` | — |
+| `--color-link` | `#126199` | `hsl(205 79% 52%)` |
+| `--color-text-main` | `#686868` | `#a1a3a9` |
+| `--color-text-secondary` | `#969696` | `#73757e` |
+| `--color-placeholder` | `#a9a9a9` | `#abb2d4cc` |
+| `--color-input-bg` | `#fbfbfb` | `#1d2135` |
+| `--color-input-active-text` | `#535353` | `#d6d6e0` |
+| `--color-btn-bg` | `#f8f1e5` | `#252833` |
+| `--color-text-accent` | `#ffa800` | `#ffa800` |
+| `--color-code-bg` | `#00000012` | `#ffffff1a` |
+| `--color-tooltip-bg` | `#2b2a2d` | `#f4f4f5` (inverse) |
+| `--color-added-text` | `#228d2d` | `#64cea0` |
+| `--color-removed-text` | `#ff5252` | — |
+| `--color-status-new` | `#4dbb5f` | — |
+| `--color-status-modified` | `#0ea5e9` | — |
+| `--color-status-deleted` | `#f45c4a` | — |
+
+---
+
+### 6. Property-карточки (`themes.css`)
+
+30 типов карточек (red, blue, green, purple, teal, orange и т.д.) — каждая имеет 3 набора: **bg / border / text**.
+
+Light (пример, red):
+- bg: `#fecaca`, border: `#fca5a5`, text: `#991b1b`
+
+Dark (пример, red):
+- bg: `#991b1b`, border: `#b91c1c`, text: `#fecaca`
+
+---
+
+### 7. Alpha-слои
+
+Два набора alpha-переменных для прозрачности:
+
+| Уровень | Light (zinc-96) | Dark (zinc-4) |
+|---------|-----------------|---------------|
+| `--alpha-03` | `3%` | — |
+| `--alpha-10` | `10%` | — |
+| `--alpha-30` | `30%` | — |
+| `--alpha-50` | `50%` | — |
+| `--alpha-90` | `90%` | — |
+| `--alpha-high-03` | — | `3%` |
+| `--alpha-high-10` | — | `10%` |
+| ... | | |
+
+---
+
+### 8. Glass-эффекты (тени)
+
+4 уровня стеклянных теней для light/dark:
+- `--shadow-glass-sm` — лёгкий
+- `--shadow-glass-md` — средний
+- `--shadow-glass-lg` — большой
+- `--shadow-glass-xl` — максимальный (используется в Tailwind: `shadow-glass-xl`)
+
+---
+
+### Итоговая схема слоёв
+
+```
+core/ui-kit/index.css   ← БАЗОВЫЙ СЛОЙ
+  ├─ Zinc palette (10 уровней)
+  ├─ Primary/Secondary/Tertiary токены
+  ├─ Inverse-палитра
+  ├─ Статусные палитры (error/warning/success/info/purple/default)
+  ├─ Alpha-слои (03–90)
+  ├─ Акцентная палитра (24 цвета: peony→velvet)
+  └─ Chart-палитра (5 цветов)
+
+core/styles/vars.css    ← СЛОЙ ПРИКЛАДНЫХ ПЕРЕМЕННЫХ
+  ├─ Цвета выделения (highlight: honey/mint/lavender/turquoise)
+  ├─ Иконочные цвета (darker/lighter от акцентов)
+  ├─ UI-константы (z-index, размеры, тени)
+  ├─ Статусы версии (new/modified/deleted/rename)
+  ├─ Diff-цвета (added/removed)
+  ├─ Search-подсветка
+  └─ Input/tooltip/cmd/kbd цвета
+
+core/styles/themes.css  ← СЛОЙ СВОЙСТВЕННЫХ КАРТОЧЕК
+  └─ 30 property-карточек (bg/border/text × light/dark)
+
+```

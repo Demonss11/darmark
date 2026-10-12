@@ -1,6 +1,24 @@
 /* darmark — одна тёмная тема. Без тумблера и prefers-color-scheme.
    Скроллерами остаются сами #editor/#preview. */
 
+/* JetBrains Mono — встроенный моноширинный шрифт (OFL 1.1, см. public/fonts/OFL.txt).
+   Начертания 400/700, кириллица+латиница. Лигатуры намеренно не включены:
+   редактор работает с Markdown-исходником, лигатуры в коде мешают. */
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/JetBrainsMono-Regular.woff2") format("woff2");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/JetBrainsMono-Bold.woff2") format("woff2");
+}
+
 :root {
   color-scheme: dark; /* тёмные нативные контролы/скроллбары (Web Interface Guidelines) */
   /* поверхности и текст (ADR-0024: холодные глубокие тона с синим подтоном) */
@@ -55,6 +73,8 @@
   /* токены §11.1 (idea7): акцент-rgb и цвет инлайн-кода */
   --accent-rgb: 157, 143, 255;
   --code-fg: #e9b3ff;
+  /* Единый моноширинный стек: встроенный JetBrains Mono (OFL 1.1) с системными fallback */
+  --font-mono: "JetBrains Mono", "Cascadia Code", ui-monospace, Consolas, monospace;
 
   /* поповеры/диалоги/тосты (§4, §11.1 шаг 3; ADR-0024: синхронизированы с --bg-*) */
   --popover: #181b24;
@@ -167,7 +187,7 @@ body {
   border-radius: 5px;
   border: 1.4px solid var(--accent);
   color: var(--accent);
-  font-family: "Cascadia Code", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-weight: 800;
   font-size: 11px;
 }
@@ -497,7 +517,7 @@ label.tbtn:has(> input:focus-visible) { outline: 2px solid var(--accent); outlin
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-family: "Cascadia Code", ui-monospace, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
   color: var(--fg-mute);
   opacity: 0.85;
@@ -506,7 +526,7 @@ label.tbtn:has(> input:focus-visible) { outline: 2px solid var(--accent); outlin
 /* ===== S12b — права: человекочитаемое имя + сырой токен вторично ===== */
 .pl-perm-token {
   flex-shrink: 0;
-  font-family: "Cascadia Code", ui-monospace, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
   color: var(--fg-mute);
   opacity: 0.85;
@@ -646,7 +666,7 @@ label.tbtn:has(> input:focus-visible) { outline: 2px solid var(--accent); outlin
 .pl-empty-title { color: var(--fg-dim); font-size: 12px; font-weight: 600; margin-bottom: 4px; }
 .pl-empty-hint { font-size: 11px; color: var(--fg-mute); }
 .pl-empty-hint code {
-  font-family: "Cascadia Code", ui-monospace, monospace;
+  font-family: var(--font-mono);
   color: var(--accent-2);
   word-break: break-all;
 }
@@ -797,7 +817,7 @@ label.tbtn:has(> input:focus-visible) { outline: 2px solid var(--accent); outlin
   background: var(--gutter);
   border-right: 1px solid var(--line-soft);
   color: var(--fg-mute);
-  font-family: "Cascadia Code", "JetBrains Mono", ui-monospace, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: var(--ed-fs);
   line-height: var(--ed-lh);
   text-align: right;
@@ -815,7 +835,7 @@ label.tbtn:has(> input:focus-visible) { outline: 2px solid var(--accent); outlin
   background: var(--bg-0);
   color: var(--fg);
   caret-color: var(--accent);
-  font-family: "Cascadia Code", "JetBrains Mono", ui-monospace, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: var(--ed-fs);
   line-height: var(--ed-lh);
   tab-size: 4;
@@ -879,7 +899,7 @@ label.tbtn:has(> input:focus-visible) { outline: 2px solid var(--accent); outlin
 }
 .tl-item.done .tl-text { text-decoration: line-through; color: var(--fg-mute); }
 .tl-ln {
-  margin-left: auto; font-family: "Cascadia Code", ui-monospace, monospace;
+  margin-left: auto; font-family: var(--font-mono);
   font-size: 10px; color: var(--fg-mute);
 }
 
@@ -888,7 +908,7 @@ label.tbtn:has(> input:focus-visible) { outline: 2px solid var(--accent); outlin
 .tl-progress {
   display: inline-block; margin: 4px 0 14px; padding: 5px 12px; border-radius: var(--r-md);
   background: var(--bg-3); border: 1px solid var(--line-soft);
-  font-family: "Cascadia Code", ui-monospace, monospace; font-size: 11px;
+  font-family: var(--font-mono); font-size: 11px;
   letter-spacing: 0.04em; color: var(--fg-dim); white-space: pre;
 }
 
@@ -912,7 +932,7 @@ label.tbtn:has(> input:focus-visible) { outline: 2px solid var(--accent); outlin
 .tl-heading-none { font-style: italic; font-weight: 500; color: var(--fg-mute); }
 .tl-group-progress {
   margin-left: auto; font-size: 10.5px; font-weight: 500; color: var(--fg-mute);
-  font-family: "Cascadia Code", ui-monospace, monospace; letter-spacing: 0.03em;
+  font-family: var(--font-mono); letter-spacing: 0.03em;
 }
 
 /* ===================== СТАТУСБАР ===================== */
@@ -1255,7 +1275,7 @@ label.tbtn:has(> input:focus-visible) { outline: 2px solid var(--accent); outlin
 /* Тихая сводка мониторинга в шапке (детали — во вкладке «Мониторинг»). */
 .mon-summary {
   flex-shrink: 0;
-  font-family: "Cascadia Code", ui-monospace, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 10.5px;
   color: var(--fg-mute);
   white-space: nowrap;
@@ -1323,7 +1343,7 @@ label.tbtn:has(> input:focus-visible) { outline: 2px solid var(--accent); outlin
 .mon-row {
   padding: 9px 10px;
   border-radius: var(--r-sm);
-  font-family: "Cascadia Code", ui-monospace, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 11.5px;
   font-variant-numeric: tabular-nums;
   transition: background 0.12s;
@@ -1476,7 +1496,7 @@ body.logs-resizing { cursor: ns-resize; user-select: none; }
 /* Время приглушено; сообщение — единственный яркий текст в строке. */
 .log-time {
   flex-shrink: 0;
-  font-family: "Cascadia Code", ui-monospace, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 10.5px;
   color: var(--fg-mute);
   font-variant-numeric: tabular-nums;
@@ -1566,7 +1586,7 @@ body.logs-resizing { cursor: ns-resize; user-select: none; }
 .markdown-body a { color: var(--link); text-decoration: none; border-bottom: 1px dashed rgba(91, 140, 255, 0.35); }
 .markdown-body a:hover { color: var(--accent); border-bottom-color: var(--accent); }
 .markdown-body code {
-  font-family: "Cascadia Code", ui-monospace, Consolas, monospace;
+  font-family: var(--font-mono);
   background: var(--bg-3);
   color: var(--code-fg);
   padding: 2px 6px;
@@ -2202,7 +2222,7 @@ th.filtered .col-filter-btn { color: var(--accent); font-weight: 700; }
 /* Строка модели в шапке дока (режим AI). */
 .ai-model {
   flex-shrink: 0;
-  font-family: "Cascadia Code", ui-monospace, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 10.5px;
   color: var(--fg-mute);
   white-space: nowrap;
@@ -2272,7 +2292,7 @@ th.filtered .col-filter-btn { color: var(--accent); font-weight: 700; }
 .pop-input:focus { border-color: var(--accent); }
 .pop-input[readonly] { color: var(--fg-mute); background: var(--bg-1); cursor: default; }
 .pop-input[type="password"] {
-  font-family: "Cascadia Code", ui-monospace, Consolas, monospace;
+  font-family: var(--font-mono);
   letter-spacing: 0.08em;
 }
 .pop-hint { color: var(--fg-mute); font-size: 10.5px; }
@@ -2392,7 +2412,7 @@ th.filtered .col-filter-btn { color: var(--accent); font-weight: 700; }
   border: 1px solid var(--line-soft);
   border-radius: var(--r-sm);
   background: var(--bg-0);
-  font-family: "Cascadia Code", ui-monospace, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   line-height: 1.5;
   white-space: pre;
@@ -2443,7 +2463,7 @@ th.filtered .col-filter-btn { color: var(--accent); font-weight: 700; }
   border-radius: var(--r-sm);
   background: var(--bg-0);
   color: var(--fg-dim);
-  font-family: "Cascadia Code", ui-monospace, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   line-height: 1.5;
   white-space: pre;

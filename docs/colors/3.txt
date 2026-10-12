@@ -1,0 +1,48 @@
+:root {
+  /* --- Типографика --- */
+  --font-ui: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-reading: 'Source Serif 4', Georgia, serif; /* Для основного текста при чтении */
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+
+  /* --- Светлая тема (Light) --- */
+  --bg-primary: #ffffff;        /* Основной фон */
+  --bg-secondary: #fafafa;      /* Фон панелей, сайдбаров */
+  --bg-tertiary: #f4f4f5;       /* Фон блоков кода, инпутов */
+  
+  --text-primary: #18181b;      /* Основной текст (Zinc 900) */
+  --text-secondary: #52525b;    /* Второстепенный текст, метаданные (Zinc 500) */
+  --text-muted: #a1a1aa;        /* Неактивные элементы, плейсхолдеры (Zinc 400) */
+  
+  --accent-primary: #2563eb;    /* Акцент (ссылки, активные состояния, кнопки) */
+  --accent-hover: #1d4ed8;      /* Акцент при наведении */
+  --accent-soft: #eff6ff;       /* Мягкий фон для акцентных элементов (Blue 50) */
+  
+  --border-default: #e4e4e7;    /* Основные разделители (Zinc 200) */
+  --border-focus: #2563eb;      /* Обводка при фокусе */
+  
+  --code-bg: #f4f4f5;           /* Фон inline-кода и блоков */
+  --code-text: #18181b;
+}
+
+/* --- Темная тема (Dark) --- */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-primary: #09090b;      /* Глубокий темный фон (Zinc 950) */
+    --bg-secondary: #18181b;    /* Фон панелей (Zinc 900) */
+    --bg-tertiary: #27272a;     /* Фон блоков кода, инпутов (Zinc 800) */
+    
+    --text-primary: #fafafa;    /* Основной текст (Zinc 50) */
+    --text-secondary: #a1a1aa;  /* Второстепенный текст (Zinc 400) */
+    --text-muted: #52525b;      /* Неактивные элементы (Zinc 500) */
+    
+    --accent-primary: #3b82f6;  /* Акцент (Blue 500, чуть светлее для темного фона) */
+    --accent-hover: #60a5fa;    /* Акцент при наведении */
+    --accent-soft: #1e3a8a;     /* Мягкий фон для акцентных элементов (Blue 900) */
+    
+    --border-default: #27272a;  /* Основные разделители (Zinc 800) */
+    --border-focus: #3b82f6;    /* Обводка при фокусе */
+    
+    --code-bg: #27272a;         /* Фон inline-кода и блоков */
+    --code-text: #fafafa;
+  }
+}

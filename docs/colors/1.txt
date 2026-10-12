@@ -1,0 +1,53 @@
+/* crates/app/src/style.css */
+
+:root {
+  /* === ТИПОГРАФИКА (База для читаемости) === */
+  --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-reading: 'Source Serif 4', 'Georgia', serif; /* Идеален для длинных текстов */
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace; /* Высокая читаемость символов */
+
+  /* === ТЕМНАЯ ТЕМА (Основная, "opencode" inspired) === */
+  --bg-primary: #0F1115;       /* Глубокий, слегка теплый черный (холст редактора) */
+  --bg-secondary: #161920;     /* Панели, сайдбар, тулбар */
+  --bg-tertiary: #1E222B;      /* Блоки кода, инпуты, ховеры */
+  
+  --text-primary: #E6E8EB;     /* Основной текст (не чисто белый, чтобы не слепить) */
+  --text-secondary: #9CA3AF;   /* Метаданные, неактивные вкладки, плейсхолдеры */
+  --text-muted: #6B7280;       /* Самые тихие элементы (разделители, иконки) */
+  
+  --accent-green: #10B981;     /* Emerald 500: Активные состояния, ссылки, успех */
+  --accent-green-soft: #064E3B;/* Мягкий зеленый фон для бейджей/выделения */
+  
+  --accent-orange: #F97316;    /* Orange 500: Предупреждения, вторичные акценты, синтаксис */
+  --accent-orange-soft: #7C2D12;/* Мягкий оранжевый фон */
+  
+  --border-default: #2D333B;   /* Тонкие, едва заметные границы */
+  --border-focus: #10B981;     /* Зеленая обводка при фокусе (вместо синей/фиолетовой) */
+  
+  --code-bg: #1A1D24;          /* Фон inline-кода и блоков (чуть светлее bg-primary) */
+}
+
+/* === СВЕТЛАЯ ТЕМА (Адаптация "Paper" для чтения) === */
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg-primary: #FAFAFA;       /* Мягкий off-white, снижает блики монитора */
+    --bg-secondary: #F3F4F6;     /* Панели */
+    --bg-tertiary: #E5E7EB;      /* Блоки кода, инпуты */
+    
+    --text-primary: #111827;     /* Глубокий серый (почти черный), мягче чем #000 */
+    --text-secondary: #6B7280;   /* Метаданные */
+    --text-muted: #9CA3AF;       /* Тихие элементы */
+    
+    /* Зеленый и оранжевый затемнены для сохранения контраста на светлом */
+    --accent-green: #059669;     /* Emerald 600 */
+    --accent-green-soft: #D1FAE5;
+    
+    --accent-orange: #EA580C;    /* Orange 600 */
+    --accent-orange-soft: #FFEDD5;
+    
+    --border-default: #E5E7EB;
+    --border-focus: #059669;
+    
+    --code-bg: #F3F4F6;
+  }
+}
