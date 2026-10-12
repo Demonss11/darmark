@@ -262,8 +262,9 @@ darmark-plugin update [<id>] [--repo <dir>] [--dest <dir>]  # обновить �
 **Разрешение путей по умолчанию:**
 
 - `--repo` — явный аргумент → env **`DARMARK_PLUGIN_REPO`** → ближайший предок (включая CWD) с
-  `plugins/index.json` → `<cwd>/plugins`. Принимается и каталог-репозиторий (`<dir>/plugins/index.json`),
-  и сам каталог плагинов (`<dir>/index.json`).
+  `plugins/index.json` или `examples/plugins/index.json` → `<cwd>/plugins`. Принимается и
+  каталог-репозиторий (`<dir>/plugins/index.json`, `<dir>/examples/plugins/index.json`), и сам
+  каталог плагинов (`<dir>/index.json`).
 - `--dest` — явный аргумент → env **`DARMARK_PLUGINS_DIR`** → `%APPDATA%/darmark/plugins` (тот же
   каталог, что сканирует GUI-хост).
 

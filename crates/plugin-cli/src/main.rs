@@ -468,7 +468,8 @@ fn parse_update_args(args: &[String]) -> Result<Action, String> {
 }
 
 /// Разрешает каталог репозитория: явный аргумент → env `DARMARK_PLUGIN_REPO` → ближайший
-/// предок (включая CWD) с `plugins/index.json` → `<cwd>/plugins` (ошибку даст загрузка индекса).
+/// предок (включая CWD) с `plugins/index.json` или `examples/plugins/index.json` →
+/// `<cwd>/plugins` (ошибку даст загрузка индекса).
 fn resolve_repo(explicit: Option<PathBuf>) -> PathBuf {
     if let Some(dir) = explicit {
         return normalize_repo(dir);
@@ -483,15 +484,16 @@ fn resolve_repo(explicit: Option<PathBuf>) -> PathBuf {
     cwd.join("plugins")
 }
 
-/// Терпит и каталог-репозиторий (`<dir>/plugins/index.json`), и сам каталог плагинов
-/// (`<dir>/index.json`): пользователь может указать любой из них.
+/// Терпит и каталог-источник (`<dir>/index.json`), и корень репозитория с каталогом плагинов
+/// (`<dir>/plugins/index.json` или `<dir>/examples/plugins/index.json`): можно указать любой из них.
 fn normalize_repo(dir: PathBuf) -> PathBuf {
     if dir.join(catalog::CATALOG_FILE).is_file() {
         return dir;
     }
-    let nested = dir.join("plugins");
-    if nested.join(catalog::CATALOG_FILE).is_file() {
-        return nested;
+    for nested in [dir.join("plugins"), dir.join("examples").join("plugins")] {
+        if nested.join(catalog::CATALOG_FILE).is_file() {
+            return nested;
+        }
     }
     dir
 }
@@ -1067,7 +1069,7 @@ fn print_usage() {
     println!("  darmark-plugin update [<id>] [--repo <dir>] [--dest <dir>]");
     println!("      Обновить установленные копии до версии из каталога (ссылки пропускаются).");
     println!("      --repo      — каталог с index.json (env DARMARK_PLUGIN_REPO,");
-    println!("                    иначе поиск вверх от CWD, иначе <cwd>/plugins)");
+    println!("                    иначе поиск вверх (plugins/ или examples/plugins/), иначе <cwd>/plugins)");
     println!("      --dest      — каталог плагинов приложения (env DARMARK_PLUGINS_DIR,");
     println!("                    иначе %APPDATA%/darmark/plugins)");
     println!("      --force     — перезаписать существующую установку");
@@ -1468,5 +1470,17 @@ mod tests {
         let empty = root.path().join("empty");
         fs::create_dir_all(&empty).unwrap();
         assert_eq!(normalize_repo(empty.clone()), empty);
+    }
+
+    /// Корень репозитория с `examples/plugins/index.json` (эталонный каталог darmark) тоже
+    /// нормализуется; `--repo examples` (родитель каталога) — указатель на тот же каталог.
+    #[test]
+    fn normalize_repo_accepts_examples_layout_root() {
+        let root = tempfile::tempdir().unwrap();
+        let examples = root.path().join("examples").join("plugins");
+        fs::create_dir_all(&examples).unwrap();
+        fs::write(examples.join(catalog::CATALOG_FILE), "{}").unwrap();
+        assert_eq!(normalize_repo(root.path().to_path_buf()), examples);
+        assert_eq!(normalize_repo(root.path().join("examples")), examples);
     }
 }

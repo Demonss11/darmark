@@ -193,13 +193,16 @@ pub fn remove(id: &str, dest: &Path) -> Result<bool, String> {
     Ok(true)
 }
 
-/// Ищет ближайший к `start` (включая сам `start`) предок, внутри которого лежит
-/// `plugins/index.json`, и возвращает путь к каталогу плагинов (`<предок>/plugins`).
+/// Ищет ближайший к `start` (включая сам `start`) предок с каталогом плагинов — generic
+/// `plugins/index.json` или репозиторный `examples/plugins/index.json` (эталонный каталог darmark);
+/// возвращает путь к каталогу-источнику (`<предок>/plugins` или `<предок>/examples/plugins`).
 pub fn discover_repo(start: &Path) -> Option<PathBuf> {
     let mut current: Option<&Path> = Some(start);
     while let Some(dir) = current {
-        if dir.join("plugins").join(CATALOG_FILE).is_file() {
-            return Some(dir.join("plugins"));
+        for candidate in [dir.join("plugins"), dir.join("examples").join("plugins")] {
+            if candidate.join(CATALOG_FILE).is_file() {
+                return Some(candidate);
+            }
         }
         current = dir.parent();
     }
@@ -811,5 +814,17 @@ mod tests {
         // Каталог без `plugins/index.json` выше — не найден.
         let empty = tempfile::tempdir().unwrap();
         assert!(discover_repo(empty.path()).is_none());
+    }
+
+    #[test]
+    fn discover_repo_finds_examples_plugins_layout() {
+        // Репозиторный каталог darmark: `examples/plugins/index.json` — тоже находится автопоиском.
+        let root = tempfile::tempdir().unwrap();
+        let repo = root.path().join("examples").join("plugins");
+        write_plugin(&repo, "alpha", "alpha", "1.0.0");
+        write_index(&repo, &[("alpha", "alpha", "тестовый плагин")]);
+        let nested = root.path().join("a").join("b");
+        fs::create_dir_all(&nested).unwrap();
+        assert_eq!(discover_repo(&nested).unwrap(), repo);
     }
 }
