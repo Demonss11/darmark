@@ -58,7 +58,7 @@
 
 | Слой | Содержимое |
 |---|---|
-| TS-оболочка (`crates/app/src`) | `layout.ts`·`paneHost.ts`·`viewRegistry.ts`·`main.ts`(корень); тир-2: `editorView`, `tablesView`; `previewView` — тир-1, но встроен на хосте (D2) |
+| TS-оболочка (`crates/app/src`) | композиция, layout/pane/view, редактор (тир-2), предпросмотр (тир-1, встроен на хосте — D2); полная карта модулей — §5.5 |
 | IPC-граница (Tauri commands) | документы · рендер · плагины · настройки |
 | Rust-хост (`src-tauri/src`) | `DocumentStore`·`RenderCache`·`Sanitizer`·`EventBus`·`SettingsStore`; `plugins/`: supervisor·manager·services·bus·scan·settings·views |
 | Child-хост плагина (отдельный процесс, stdio) | `PluginHost`(mlua)·Lua 5.5·Job Object |
@@ -126,7 +126,7 @@ pub struct UndoResult { pub text: String, pub rev: u64, pub start: usize, pub en
 ```rust
 pub struct DocMeta { pub id: DocumentId, pub path: Option<String>, pub rev: u64, pub dirty_hint: bool }
 pub struct RenderResult { pub html: String, pub rev: u64, pub changed: bool }
-pub struct UndoResult { pub text: String, pub rev: u64, pub start: usize, pub end: usize }
+// UndoResult определён в §4.1.
 ```
 `changed: false` при неизменной `rev`; TS при `changed: false` **не трогает DOM**.
 
@@ -204,24 +204,18 @@ export interface ViewContext {
 ## 6. Плагинная система: Lua
 
 ### 6.1. Рантайм
-`mlua = { version = "0.12", features = ["lua55", "vendored"] }`: `vendored` — Lua 5.5 из исходников (C-тулчейн уже нужен для Tauri на Windows). **LuaJIT запрещён** (`ffi` → произвольный C — дыра в песочнице). Плагин компилируется `lua.load(src).set_name(name)`; на каждый плагин — **отдельный процесс и отдельное Lua-состояние**. См. §10, §11.4; референс — `docs/PLUGIN_API.md` §5.
+`mlua = { version = "0.12", features = ["lua55", "vendored"] }` (vendored — Lua 5.5 из исходников). **LuaJIT запрещён** (`ffi` → произвольный C — дыра в песочнице). На каждый плагин — **отдельный процесс и отдельное Lua-состояние** (§10, §11.4). Рантайм и его обоснование — ADR-0021, ADR-0023; особенности Lua 5.5 — `docs/PLUGIN_API.md` §5.
 
 #### 6.1.1. Версия Lua: 5.5
 
-Требуется **Lua 5.5**: декларации глобальных (`global x`) делают опечатку ошибкой компиляции вместо тихого `nil`; компактные массивы укладывают документ в массив строк в лимит памяти; внешние строки отдают текст без копирования в Lua-кучу; доступен `table.create`. API-референс плагинов **обязан** быть под 5.5, не копия 5.1/5.4.
-
-**Библиотеки** (`Lua::new_with`): включаются `STRING`, `TABLE`, `MATH`, `UTF8`; `BASE` — неявно, **с чисткой**; **не** включаются `COROUTINE` (API синхронный), `OS`/`IO` (только через host-функции с permission), `PACKAGE` (нет `require`), `DEBUG`. Чистка: удалить `load`, `loadfile`, `dofile`, `collectgarbage`, `rawget`, `rawset`; `print` → `host.log("info", ...)` (D17).
-
-> **Уточнение.** В `mlua` 0.12 флага `BASE` нет: базовая библиотека грузится **неявно**, поэтому в `new_with` передаются только `STRING|TABLE|MATH|UTF8`, а опасные входы базовой библиотеки удаляются из глобалов после создания состояния.
+Обязательна **Lua 5.5**; API-референс плагинов **обязан** быть под 5.5, не копия 5.1/5.4. **Библиотеки** (`Lua::new_with`): включаются `STRING`, `TABLE`, `MATH`, `UTF8`; `BASE` грузится **неявно, с чисткой** (флага `BASE` в `mlua` 0.12 нет — опасные входы удаляются из глобалов после создания состояния); **не** включаются `COROUTINE` (API синхронный), `OS`/`IO` (только через host-функции с permission), `PACKAGE` (нет `require`), `DEBUG`. Чистка: удалить `load`, `loadfile`, `dofile`, `collectgarbage`, `rawget`, `rawset`; `print` → `host.log("info", ...)` (D17). Детали — `docs/PLUGIN_API.md` §5.
 
 ### 6.2. Модель: плагин = код, инстанс = привязка
 `plugin = манифест + .lua`; `instance = привязка к view/подписке`. Состояние хранит хост (таблица `PluginState` передаётся плагину аргументом) — плагины **stateless по коду**, что упрощает `dispose()` и перезагрузку.
 
 ### 6.3. API плагина (host-функции)
 
-Референс и сигнатуры — `docs/PLUGIN_API.md` §3. Группы: **документ** (`get_document_len`, `get_document_range` — основной путь чтения, `get_document_version`, `get_document_text`, `apply_edit` с `document:write`); **view** (`get_view_state` → `{scroll, cursor}`, `set_view_content` — тир-1, `on_event`); **хост** (`log(level, message)` → stderr, `show_message` с `ui:statusbar`, `export_html` — нативный диалог); **Lua-нативные** (`md.to_html`/`md.to_html_mapped`, `json.encode`/`decode`); **настройки** (`get_setting`/`set_setting` — только своего плагина, §12).
-
-> **Ошибки host-функций.** Функции с permission возвращают `(value, err)`: успех — `err = nil`; отказ — `value = nil`, `err = { code, message, permission? }`. `permission_denied` приходит **значением**, не исключением Lua (§8). `host.log`, `md.*`, `json.*` ошибок permission не несут и возвращают одно значение.
+Единственный канал плагина к приложению — host-функции (плюс события, §9). Функции с permission возвращают `(value, err)`: успех — `err = nil`, отказ — `value = nil`, `err = { code, message, permission? }`; `permission_denied` приходит **значением**, не исключением Lua (§8). `host.log`, `md.*`, `json.*` ошибок permission не несут. Группы и сигнатуры — `docs/PLUGIN_API.md` §3.
 
 ### 6.4. Точки расширения (`contributes`)
 Манифест декларирует `views` (тир-1), `commands` (с `keybinding`), `statusbar`, `toolbar`, `settings` (JSON-схема); формат и пример — `docs/PLUGIN_API.md` §1–§2. `contributes.toolbar` объявляется, но `ui:toolbar` не реализуется (§8).
@@ -230,24 +224,14 @@ export interface ViewContext {
 Примеры (`word-count`, `export-html`) и разбор — `docs/PLUGIN_GUIDE.md` §7, `docs/PLUGIN_API.md` §7. Норма: подписчик получает `(name, payload)`; `doc_id` (и `rev`) — в `payload`; команды из `contributes.commands` приходят тем же каналом, `command:invoked` несёт `{command_id, doc_id}`.
 
 ### 6.6. Жизненный цикл
-```
-scan(plugins_dir) -> validate(manifest) -> load(src) -> on_activate(ctx)
-                 -> [события/команды] -> on_deactivate(ctx) -> unload
-```
-Перезагрузка — `unload` → `load` нового файла с диска, **без перезапуска приложения**. Ошибка загрузки (синтаксис, нет `on_activate`) → плагин `failed` + сообщение, приложение работает. Автоперезагрузка (fs-watch) — off by default.
+`scan(plugins_dir) → validate(manifest) → load(src) → on_activate(ctx) → [события/команды] → on_deactivate(ctx) → unload`. Перезагрузка — `unload` → `load` нового файла с диска, **без перезапуска приложения**. Ошибка загрузки (синтаксис, нет `on_activate`) → плагин `failed` + сообщение, приложение работает. Автоперезагрузка (fs-watch) — off by default. Детали — ADR-0023 §2.4.
 
 ---
 
 ## 7. Протокол и транспорт
 
 ### 7.1. Уровни
-| Уровень | Формат | Транспорт |
-|---|---|---|
-| **Данные** | serde-структуры `Request`/`Response`/`Error` (JSON-совместимые) | — |
-| **Хост ↔ Lua-плагин** | тот же JSON-совместимый конверт | stdio, граница процесса |
-| **Dev** | тот же конверт как JSON-строки | stdio (`darmark --debug-plugin <path>`) |
-
-Конверт `Request`/`Response`/`Error` — единый формат данных; JSON-RPC не является обязательным транспортом. Детали — §16 (ADR-0021).
+Единый JSON-совместимый конверт `Request`/`Response`/`Error` (serde-структуры); **основной транспорт host ↔ Lua — stdio** (граница процесса). Dev-режим (`darmark --debug-plugin <path>`) — тот же конверт поверх назначенного stdio. JSON-RPC не обязателен. Детали — ADR-0021 §2.2, ADR-0023 §2.2/§2.7.
 
 ### 7.2. Версионирование
 Поле `api_version` в манифесте. Хост отвергает плагин с `api_version > HOST_API_VERSION`. Обратная совместимость host-функций — семантическое версионирование, удаление функций запрещено без мажора. Политика совместимости (двухступенчатая депрекация) — ADR-0027.
@@ -256,25 +240,10 @@ scan(plugins_dir) -> validate(manifest) -> load(src) -> on_activate(ctx)
 
 ## 8. Модель разрешений
 
-По образцу Tauri ACL: **всё запрещено по умолчанию**, плагин декларирует нужное, пользователь подтверждает при установке/первом запуске и может отозвать.
+По образцу Tauri ACL: **всё запрещено по умолчанию** (deny-by-default); плагин декларирует нужное в `permissions`, пользователь выдаёт подмножество (`granted`), эффективный набор = **`manifest ∩ granted`**. Проверка — **на стороне хоста, до вызова**; плагин без права получает `permission_denied` **значением**, а не исключением Lua (§6.3).
 
-| Разрешение | Что даёт | Статус |
-|---|---|---|
-| `document:read` | `get_document_len`, `get_document_range`, `get_document_version`, `get_document_text` | ✅ реализовано |
-| `document:write` | `apply_edit` | ✅ реализовано |
-| `view:create` | регистрация тир-1 view (гейтит `contributes.views`) | ✅ реализовано |
-| `view:modify` | `set_view_content`, `on_event` | ✅ реализовано |
-| `ui:statusbar` | элемент статусбара | ✅ реализовано |
-| `filesystem:read` | `host.read_file(path)` — со scope (какие пути) | ❌ не реализуется |
-| `filesystem:write` | `host.write_file(path, data)` — со scope | ❌ не реализуется |
-| `network` | `host.http_*` — по умолчанию **не предоставляется вообще** | ❌ не реализуется |
-| `ui:menu` | пункт в меню | ⏳ отложено |
-| `ui:sidebar` | панель в сайдбаре | ⏳ отложено |
-| `ui:toolbar` | кнопка в тулбаре | ⏳ отложено |
-
-Проверка — **на стороне хоста, до вызова**. Плагин без `document:write` получает `error { code = "permission_denied", permission = "document:write" }`, а не исключение Lua.
-
-**Согласие:** пользователь выдаёт подмножество декларированных прав (`granted`), эффективный набор = `manifest ∩ granted` (deny-by-default). Согласие хранится в `%APPDATA%/darmark/config.json`; смена набора у запущенного плагина применяется перезапуском child-процесса.
+- Поддержаны: `document:read`, `document:write`, `view:create`, `view:modify`, `ui:statusbar`. `filesystem:*` и `network` **не предоставляются**; `ui:menu`/`ui:sidebar`/`ui:toolbar` отложены. Привязка прав к функциям — `docs/PLUGIN_API.md` §1; политика версий контракта — ADR-0027.
+- **Согласие:** хранится в `%APPDATA%/darmark/config.json`; смена набора у запущенного плагина применяется перезапуском child-процесса. Предупреждения границы (`ISOLATION_NOTICE`, `DOCUMENT_ACCESS_NOTICE`, `permission_notices`) — ADR-0021 §3; магазин **обязан** показать их в UI (§11.4).
 
 ---
 
@@ -332,7 +301,8 @@ scan(plugins_dir) -> validate(manifest) -> load(src) -> on_activate(ctx)
 - Ошибка плагина (Lua `error`, `MemoryError`, stack overflow) — отказ плагина, не приложения.
 - Падение child-процесса (OOM, эксплойт, паника плагина): хост видит закрытие stdio-границы / ненулевой exit-код, перезапускает child; повторные падения идут в карантин.
 - **Карантин:** после 3 падений подряд плагин автоматически отключается до ручного включения.
-- Ошибка плагина не выходит за границу процесса: хост и плагин не разделяют адресное пространство.
+
+Граница процесса: ошибка плагина не выходит наружу — хост и плагин не разделяют адресное пространство (§11.4). Детали — ADR-0021 §3, ADR-0023 §2.4.
 
 ### 10.3. Три уровня доверия (для трезвости ожиданий)
 
@@ -448,7 +418,6 @@ scan(plugins_dir) -> validate(manifest) -> load(src) -> on_activate(ctx)
 - **AI-клиент (ADR-0033):** ориентир — **маргинальный прирост ≤1.0 МБ** (пересмотрен с ≤0.5 МБ по F55–F58: `reqwest`+SChannel +0.71 МиБ standalone); общий gate ≤6 МБ не меняется.
 - GUI-хост **не содержит `mlua`**; Lua-рантайм — в отдельном child-бинарнике.
 - Пользовательские `.lua` в дистрибутив не входят (нулевая база, D6).
-- Собственные аллокаторы/арены не добавляются (D9).
 
 Фактические измерения размеров и памяти child-процессов — §16 (ADR-0021) и `docs/FINDINGS.md`.
 
