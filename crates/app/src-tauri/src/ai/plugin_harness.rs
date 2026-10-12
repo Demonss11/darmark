@@ -116,6 +116,57 @@ pub fn plugins_root() -> Result<PathBuf, CommandError> {
     Ok(PathBuf::from(base).join("darmark").join("plugins"))
 }
 
+/// Канонизирует корень белого списка; при неудаче — исходный путь.
+///
+/// `canonicalize` на Windows возвращает verbatim-путь (`\\?\…`), поэтому сравнивать
+/// канонический путь надо с каноническим корнем. Если корень не канонизируется
+/// (не существует) — исходный путь не совпадёт с verbatim-путём, т.е. ничего лишнего
+/// не разрешаем (fail-closed).
+#[cfg(windows)]
+fn canonical_root(root: &Path) -> PathBuf {
+    std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf())
+}
+
+/// Проверяет, что путь лежит в разрешённом каталоге (`plugins/` или `temp/`).
+///
+/// Единая точка проверки путей для `plugin_validate`/`plugin_test` (TZ-MCP R3/AC-MCP-12):
+/// принуждение живёт здесь, а не в MCP-адаптере. Defense-in-depth: отказ на reparse point
+/// (symlink/junction) → `canonicalize` (раскрывает `..` и ссылки) → `starts_with` по
+/// каноническим корням. Возвращает канонический путь, чтобы дальнейшая работа шла уже с
+/// проверенным значением.
+#[cfg(windows)]
+pub fn ensure_plugin_path_allowed(path: &Path) -> Result<PathBuf, CommandError> {
+    // Ссылку/junction отклоняем даже если её цель внутри белого списка: цель может быть
+    // переопределена позже (TOCTOU), и запись уйдёт за пределы разрешённой области.
+    // Проверяем исходный путь — `canonicalize` ссылку уже раскрывает.
+    if is_reparse_point(path) {
+        return Err(CommandError::new(
+            ErrorCode::AiPluginInvalid,
+            "путь является symlink/junction — доступ запрещён",
+        ));
+    }
+
+    let canonical = std::fs::canonicalize(path).map_err(|e| {
+        CommandError::new(
+            ErrorCode::AiPluginInvalid,
+            format!("путь не существует: {e}"),
+        )
+    })?;
+
+    let within_plugins = plugins_root()
+        .ok()
+        .is_some_and(|root| canonical.starts_with(canonical_root(&root)));
+    let within_temp = canonical.starts_with(canonical_root(&std::env::temp_dir()));
+    if within_plugins || within_temp {
+        return Ok(canonical);
+    }
+
+    Err(CommandError::new(
+        ErrorCode::AiPluginInvalid,
+        "путь вне разрешённого каталога (plugins/ или temp/)",
+    ))
+}
+
 /// Разбирает JSON-отчёт `darmark-plugin test --json`.
 ///
 /// `None` — отчёту нельзя доверять: нет `schema_version` или неизвестный мажор → harness
@@ -1050,5 +1101,83 @@ mod tests {
             "вывод прочитан полностью: {} байт",
             output.stdout.len()
         );
+    }
+
+    // ─── белый список директорий (TZ-MCP R3/AC-MCP-12) ─────────────────
+
+    #[cfg(windows)]
+    #[test]
+    fn ensure_plugin_path_allowed_rejects_path_outside_whitelist() {
+        let err = ensure_plugin_path_allowed(Path::new("C:\\Windows\\System32"))
+            .expect_err("абсолютный путь вне белого списка");
+        assert_eq!(err.code, ErrorCode::AiPluginInvalid);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn ensure_plugin_path_allowed_rejects_traversal() {
+        // Поднимаемся из temp выше корня и уходим в `C:\Windows` — вне белого списка.
+        // Избыточные `..` на корне игнорируются, поэтому тест устойчив к глубине temp.
+        let mut escaped = std::env::temp_dir();
+        for _ in 0..8 {
+            escaped.push("..");
+        }
+        escaped.push("Windows");
+        let err = ensure_plugin_path_allowed(&escaped).expect_err("path traversal");
+        assert_eq!(err.code, ErrorCode::AiPluginInvalid);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn ensure_plugin_path_allowed_accepts_path_inside_temp() {
+        let dir = tempfile::tempdir().unwrap();
+        let canonical = ensure_plugin_path_allowed(dir.path()).expect("temp разрешён");
+        assert!(canonical.is_absolute(), "возвращается канонический путь");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn ensure_plugin_path_allowed_resolves_traversal_inside_temp() {
+        // `inner/..` лексически содержит `..`, но канонизируется в разрешённый `temp`.
+        let base = tempfile::tempdir().unwrap();
+        let inner = base.path().join("inner");
+        std::fs::create_dir(&inner).unwrap();
+        let via_parent = inner.join("..");
+        ensure_plugin_path_allowed(&via_parent).expect("`..` внутри temp разрешён");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn ensure_plugin_path_allowed_rejects_missing_path() {
+        let missing = std::env::temp_dir().join(format!(
+            "darmark-no-such-dir-{}-{}",
+            std::process::id(),
+            "abc"
+        ));
+        let err = ensure_plugin_path_allowed(&missing).expect_err("несуществующий путь");
+        assert_eq!(err.code, ErrorCode::AiPluginInvalid);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn ensure_plugin_path_allowed_rejects_junction() {
+        let base = tempfile::tempdir().unwrap();
+        let target = base.path().join("target");
+        std::fs::create_dir(&target).unwrap();
+        let link = base.path().join("link");
+        // Junction создаётся без прав администратора (в отличие от symlink).
+        let status = Command::new("cmd")
+            .args(["/C", "mklink", "/J"])
+            .arg(&link)
+            .arg(&target)
+            .status()
+            .expect("cmd запустился");
+        if !status.success() || !link.exists() {
+            // Окружение не позволяет создать junction — не роняем тест ложно.
+            return;
+        }
+        // Цель junction внутри temp, но сама ссылка — reparse point: должна быть отклонена.
+        let err = ensure_plugin_path_allowed(&link).expect_err("junction отклонён");
+        assert_eq!(err.code, ErrorCode::AiPluginInvalid);
     }
 }
