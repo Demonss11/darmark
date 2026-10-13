@@ -5,11 +5,6 @@
 > Образцы — каталог `examples/plugins/` в репозитории.
 
 Плагин — это каталог `%APPDATA%/darmark/plugins/<id>/` с манифестом `plugin.json` и `.lua`-файлом.
-Плагин исполняется в **отдельном процессе** и не видит DOM: единственный доступ к приложению —
-host-функции и события (notify-only + pull).
-
-Заготовку плагина создаёт **`darmark-plugin init <dir>`**, а проверяет **`darmark-plugin test <dir>`**
-(манифест + entry + прогон в песочнице) — см. §6.
 
 ---
 
@@ -48,16 +43,10 @@ host-функции и события (notify-only + pull).
 | `view:modify` | `set_view_content` |
 | `ui:statusbar` | `show_message` |
 
-> Про `view:create`: вкладка регистрируется только у **включённого** плагина, у которого
-> `view:create` входит в эффективный набор прав (`manifest ∩ granted`, deny-by-default). Без
-> согласия на `view:create` `contributes.views` не регистрируется (вкладки нет), хотя плагин
-> загружается и работает. Запись HTML всё равно требует отдельного `view:modify`.
+> `view:create` гейтит регистрацию `contributes.views` (deny-by-default); запись HTML требует отдельного `view:modify`.
 
-- Известные, но **не поддерживаемые** (`ui:menu`, `ui:sidebar`, `ui:toolbar`) отвергаются с сообщением
-  «не реализовано».
-- `filesystem:*`/`network` **не предоставляются**: декларация отвергается валидатором.
-- Проверка — **на хосте, до вызова**. Плагин без нужного разрешения получает `permission_denied`
-  **значением**, а не исключением.
+- Не поддерживаются: `ui:menu`/`ui:sidebar`/`ui:toolbar` (отвергаются), `filesystem:*`/`network` (не предоставляются).
+- Проверка — на хосте, до вызова; `permission_denied` приходит **значением** (см. §3).
 
 ---
 
@@ -74,13 +63,11 @@ function on_action(view_id, action, payload) end  -- опциональна; к�
 
 | `ctx` | Значение |
 |---|---|
-| `plugin_id` | id плагина (строка) |
-| `api_version` | версия контракта (сейчас 1) |
+| `plugin_id`, `api_version` | идентификатор плагина и версия контракта (сейчас 1) |
 | `subscribe(name, handler)` | подписка на событие; возвращает функцию-`unsubscribe` |
 | `unsubscribe(name, handler)` | снять подписку вручную |
 
-Подписчик вызывается как `handler(name, payload)`. `dispose`/деактивация обязаны отписаться
-(иначе утечка). Глобальные `on_event`/`on_action` вызываются дополнительно, если объявлены.
+Подписчик: `handler(name, payload)`; при деактивации отпишитесь вручную. Глобальные `on_event`/`on_action` вызываются дополнительно.
 
 ---
 
@@ -103,8 +90,7 @@ host.apply_edit(doc_id, start, stop, text)   -> (boolean, err)  -- document:writ
 
 - `start`/`stop`/`len` — **байтовые** смещения UTF-8 (как `data-md` в ядре). `end` подрезается
   вниз до границы символа; `start` вне границы символа → ошибка `invalid_range`.
-- `get_document_range` — основной путь: окно ограничено лимитом кадра (**1 МиБ**). Для больших
-  документов читайте **циклом** окон (см. пример `word-count` в §7).
+- `get_document_range` — основной путь: окно ограничено лимитом кадра (1 МиБ). Для больших документов — цикл окон (см. §7).
 - `apply_edit` заменяет `[start, stop)` на `text`; `rev` растёт только при реальной смене (эхо-защита).
 
 ### Представление (тир-1)
@@ -128,33 +114,15 @@ host.get_setting(key)         -- (value, err)     -- постоянная нас
 host.set_setting(key, value)  -- (boolean, err)   -- записать настройку (произвольный JSON)
 ```
 
-`host.log`/`print` в GUI-хосте выводятся в stderr приложения; в dev-режиме
-(`--serve-plugin`/`--debug-plugin`) — кадром `ToHost::Log` в назначенный stdio; в `--self-test` —
-в stderr.
+`host.log`/`print` → stderr (в GUI — stderr приложения; в dev-режиме — кадром `ToHost::Log`).
 
-**Настройки плагина** (`get_setting`/`set_setting`) — постоянное хранилище **per-plugin**:
-каждый плагин читает и пишет только свои настройки (scope по `plugin_id`, подставляется хостом).
-Значение — произвольный JSON (число, строка, массив, объект, `null`); отсутствующий ключ
-возвращает `nil` (`(nil, nil)`, не ошибку). Данные лежат в
-`%APPDATA%/darmark/plugin-settings/<plugin_id>.json` и переживают перезапуск приложения.
+**Настройки плагина** (`get_setting`/`set_setting`) — per-plugin хранилище (JSON, `%APPDATA%/darmark/plugin-settings/<id>.json`); отсутствующий ключ → `nil`. Лимиты: ключ ≤ 256 Б, значение ≤ 64 КиБ, файл ≤ 256 КиБ; превышение → `too_large`.
 
-- Лимиты: ключ ≤ 256 Б; одно значение ≤ 64 КиБ; файл настроек плагина ≤ 256 КиБ. Пустой/слишком
-  длинный ключ → `bad_args`, значение/файл сверх лимита → `too_large` (значением, не паникой).
-- UI-схема `contributes.settings` **рендерится** в менеджере (S5b): секция «Настройки» строит
-  контролы по `properties` (`boolean`→чекбокс, `string`→текст, `integer`/`number`→число,
-  `enum`→select); изменение сохраняется в то же хранилище. Значения можно читать/писать и программно.
-
-`export_html`: `true` — записано, `false` — пользователь отменил диалог; `filesystem:write`
-не требуется (согласие даёт сам диалог).
+`export_html`: `true` — записано, `false` — отмена; `filesystem:write` не требуется.
 
 ### Lua-нативные удобства (без JSON-прослойки)
 
-```lua
-md.to_html(text, opts?)        -> string   -- обёртка над md-core
-md.to_html_mapped(text, opts?) -> string
-json.encode(value)             -> string
-json.decode(s)                 -> value
-```
+`md.to_html(text, opts?)`, `md.to_html_mapped(text, opts?)` — обёртки над `md-core`; `json.encode(value)`, `json.decode(s)`.
 
 ---
 
@@ -166,58 +134,32 @@ json.decode(s)                 -> value
 | Событие | payload |
 |---|---|
 | `document:changed` | `{ doc_id, rev }` |
-| `document:opened` | `{ doc_id, path }` |
-| `document:closed` | `{ doc_id, path }` (`path` всегда `null` — путь закрытого документа хосту неизвестн) |
+| `document:opened` / `document:closed` | `{ doc_id, path }` (`path` в `closed` всегда `null`) |
 | `command:invoked` | `{ command_id, doc_id }` |
 
-`document:changed` по одному `doc_id` **коалесцируется по `rev`** (доставляется последняя
-ревизия за тик). Команды из `contributes.commands` исполняются событием `command:invoked`
-(кнопкой «Выполнить» в менеджере плагинов).
+`document:changed` коалесцируется по `rev`; команды из `contributes.commands` → `command:invoked`.
 
 ---
 
 ## 5. Особенности Lua 5.5
 
-- **Явные глобалы.** Есть декларация `global x`; в скопе с явной декларацией неявные глобалы
-  запрещены — опечатка становится ошибкой компиляции, а не тихим `nil`. Локальные — `local`.
-  Точки входа (`on_activate`, …) — глобальные функции.
-- **Компактные массивы.** Крупные массивы заметно компактнее — плагин, читающий документ в
-  массив строк, укладывается в лимит памяти.
-- **Внешние строки.** Текст документа отдаётся без копирования в Lua-кучу (память не управляется
-  сборщиком Lua).
-- **`table.create(narr, nhash, nelem)`** — создать таблицу с предвыделением (для больших массивов).
+- **Явные глобалы:** `global x`; неявные в скопе с декларацией запрещены (опечатка → ошибка компиляции). Точки входа (`on_activate`, …) — глобальные функции.
+- **Компактные массивы:** крупные массивы строк укладываются в лимит памяти.
+- **Внешние строки:** текст документа отдаётся без копирования в Lua-кучу.
+- **`table.create(narr, nhash, nelem)`** — предвыделение для больших массивов.
 
-Стандартные библиотеки: `BASE` (с чистки), `STRING`, `TABLE`, `MATH`, `UTF8`. **Недоступны:**
-`OS`, `IO`, `PACKAGE`, `COROUTINE`, `DEBUG`; из `BASE` удалены `load`, `loadfile`, `dofile`,
-`collectgarbage`, `rawget`, `rawset` (D17); `print` перенаправлен в `host.log("info", …)`.
+Библиотеки: `BASE` (с чистки), `STRING`, `TABLE`, `MATH`, `UTF8`. Недоступны: `OS`, `IO`, `PACKAGE`, `COROUTINE`, `DEBUG`; из `BASE` удалены `load`, `loadfile`, `dofile`, `collectgarbage`, `rawget`, `rawset`; `print` → `host.log("info", …)`.
 
 ---
 
 ## 6. Отладка
 
-```text
-darmark-plugin test <path>          # проверка плагина: манифест + entry + прогон в песочнице
-darmark-plugin init <dir>           # создать шаблон плагина (plugin.json, main.lua, README.md)
-darmark-plugin-host --self-test <plugin.lua>   # загрузить+активировать, лог в stderr
-darmark-plugin-host --serve-plugin <path>      # load+activate и stdio-конверт (dev-хост)
-darmark --debug-plugin <path>                  # запуск плагина без %APPDATA% (debug-сборка)
-```
-
 ### CLI разработчика `darmark-plugin` (Фаза 1 H3)
 
 Отдельный бинарник `darmark-plugin` (крейт `plugin-cli`) — для проверки и создания плагинов вне GUI.
 
-- **`darmark-plugin test <path> [--json] [--verbose]`** — `<path>` это каталог плагина или `.lua`-файл.
-  Последовательно проверяет: **манифест** (`plugin.json`: id/name/version/`api_version`/`entry`/permissions),
-  **entry** (существует, читается, ≤ 1 МиБ, UTF-8, объявлена `on_activate`) и **прогон в песочнице**
-  (реальный `load` + `on_activate` + `on_deactivate` в изолированном Lua через `plugin-host`).
-  Код выхода `0` — все проверки пройдены, `1` — есть ошибки (ранний провал манифеста/entry
-  пропускает последующие шаги). `--json` — машинночитаемый отчёт одним объектом, `--verbose` —
-  подробности в stderr. host-call'ы в этом режиме отклоняются (документа нет) — это проверка
-  загрузки/активации, а не полноценный прогон с документом.
-- **`darmark-plugin init <dir> [--id <id>] [--name <name>] [--force]`** — разворачивает шаблон
-  (`plugin.json`, `main.lua`, `README.md`) с подстановкой `id`/имени из имени каталога (или
-  `--id`/`--name`). Без `--force` существующие файлы не перезаписываются.
+- **`darmark-plugin test <path> [--json] [--verbose]`** — проверка манифеста, entry и прогона в песочнице; host-call'ы отклоняются (документа нет).
+- **`darmark-plugin init <dir> [--id <id>] [--name <name>] [--force]`** — разворачивает шаблон (`plugin.json`, `main.lua`, `README.md`).
 
 ### Локальный каталог плагинов `plugins/index.json`
 
@@ -247,35 +189,14 @@ darmark-plugin remove <id> [--dest <dir>]                   # удалить у�
 darmark-plugin update [<id>] [--repo <dir>] [--dest <dir>]  # обновить копии до версии каталога
 ```
 
-- **`install`** копирует каталог `<repo>/<path>` → `<dest>/<id>` (манифест перечитывается и
-  валидируется перед копированием). Существующая цель без `--force` — ошибка; с `--force` —
-  удаляется и копируется заново.
-- **`link`** создаёт **junction** на Windows (`mklink /J`, без прав администратора) или symlink на
-  Unix — источник общий, правки в репозитории сразу видны в приложении. Источник канонизируется
-  (`canonicalize`).
-- **`remove`** идемпотентен: удаляет `<dest>/<id>` — ссылку/junction как точку монтирования
-  (`fs::remove_dir`, цель не затрагивается), обычный каталог — целиком; если плагина нет —
-  «нечего удалять» и код выхода `0`.
-- **`update`** переустанавливает копии, у которых версия в источнике отличается от установленной;
-  ссылки пропускаются (источник общий). Без `<id>` — все установленные плагины каталога.
+- **`install`** — копия `<repo>/<path>` → `<dest>/<id>` (с `--force` перезаписывает).
+- **`link`** — junction/symlink на источник (разработка).
+- **`remove`** — идемпотентен; удаляет `<dest>/<id>` или точку монтирования.
+- **`update`** — переустанавливает копии с устаревшей версией; ссылки пропускаются.
 
-**Разрешение путей по умолчанию:**
+**Разрешение путей:** `--repo`: явный → env `DARMARK_PLUGIN_REPO` → предок с `plugins/index.json` → `<cwd>/plugins`. `--dest`: явный → env `DARMARK_PLUGINS_DIR` → `%APPDATA%/darmark/plugins`.
 
-- `--repo` — явный аргумент → env **`DARMARK_PLUGIN_REPO`** → ближайший предок (включая CWD) с
-  `plugins/index.json` или `examples/plugins/index.json` → `<cwd>/plugins`. Принимается и
-  каталог-репозиторий (`<dir>/plugins/index.json`, `<dir>/examples/plugins/index.json`), и сам
-  каталог плагинов (`<dir>/index.json`).
-- `--dest` — явный аргумент → env **`DARMARK_PLUGINS_DIR`** → `%APPDATA%/darmark/plugins` (тот же
-  каталог, что сканирует GUI-хост).
-
-Инвариант сборки: `darmark-plugin` линкует `plugin-host` **как библиотеку** (mlua), но GUI-хост
-`darmark` — нет (D6/ADR-0021; CI проверяет `cargo tree -p darmark`).
-
-В `--serve-plugin`/`--debug-plugin` конверт идёт поверх **назначенного stdio**: host-call'ы
-плагина обслуживает разработчик (mock-хост). Формат кадра — `u32 LE длина || JSON`.
-В dev-режиме плагин загружается и активируется **до** входа в цикл (кадров `done` для этих
-синтетических шагов нет), а `on_deactivate` при EOF не вызывается — это отладочный прогон,
-а не полноценный жизненный цикл хоста.
+В `--serve-plugin`/`--debug-plugin` — stdio-конверт (`u32 LE длина || JSON`), host-call'ы обслуживает разработчик (mock-хост); `on_deactivate` при EOF не вызывается.
 
 ---
 
@@ -284,7 +205,7 @@ darmark-plugin update [<id>] [--repo <dir>] [--dest <dir>]  # обновить �
 ```lua
 local WINDOW = 65536
 
-local function read_all(id)          -- окна: полная длина может превышать лимит одного окна
+local function read_all(id)          -- окна: лимит кадра — 1 МиБ
   local len = host.get_document_len(id)
   if not len then return nil end
   local parts, pos = {}, 0
@@ -307,8 +228,6 @@ function on_activate(ctx)
     end
   end)
 end
-
-function on_deactivate(ctx) end
 ```
 
 ---

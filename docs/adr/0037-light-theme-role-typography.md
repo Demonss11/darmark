@@ -4,9 +4,9 @@
 - **Дата:** 13.10.2026
 - **Основание:** направление A — «ролевые гарнитуры +
   светлая тема»); `docs/adr/0025-*` (пересмотр нормы «одна тёмная тема»); `DESIGN.md` § Colors /
-  § Typography; `docs/DESIGN_DOC.md` §5, §13.2, §16
+  § Typography; `docs/DESIGN_DOC.md` §5, §13.2
 - **Связанные:** `docs/adr/0025-*` (частично заменён настоящим ADR), `DESIGN.md` (Colors,
-  Typography, Do's/Don'ts), `docs/DESIGN_DOC.md` §5, §13.2, §16
+  Typography, Do's/Don'ts), `docs/DESIGN_DOC.md` §5, §13.2
 
 ---
 
@@ -126,7 +126,7 @@ ADR-0025 зафиксировал норму «одна тёмная тема �
 - [ ] E2E-контракты §13.2 не ломадутся (DOM id, селекторы, тексты не меняются).
 - [ ] Акцент остаётся фиолетовым (`--accent`), не зелёным/синим.
 - [ ] `DESIGN.md` обновлён (Colors, Typography, Do's/Don'ts, Components).
-- [ ] `DESIGN_DOC.md` §16 — строка ADR-0037; §5 — при необходимости про токены тем.
+- [ ] `DESIGN_DOC.md` — строка ADR-0037; §5 — при необходимости про токены тем.
 
 ---
 
@@ -171,8 +171,7 @@ ADR-0025 зафиксировал норму «одна тёмная тема �
 - `docs/adr/0025-palette-typography-redesign.md` — **частично заменён настоящим ADR**
   (норма «одна тёмная тема» пересмотрена; семантические токены и WCAG AA остаются в силе).
 - `DESIGN.md` — Colors, Typography, Do's/Don'ts, Components.
-- `docs/DESIGN_DOC.md` §5 (TS-слой: токены), §13.2 (E2E-контракты — проверка на конфликты),
-  §16 (реестр ADR).
+- `docs/DESIGN_DOC.md` §5 (TS-слой: токены), §13.2 (E2E-контракты — проверка на конфликты) ().
 - `crates/app/public/fonts/` — встроенные шрифты (JetBrains Mono уже есть, Inter/Source Serif 4
   добавляются).
 - `crates/app/src/style.css` — `@font-face`, `--font-mono`, токены тем.

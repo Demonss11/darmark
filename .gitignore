@@ -1,28 +1,43 @@
 # Rust/Tauri build artifacts
 target/
 gen/schemas/
+src-tauri/gen/schemas/    # на случай если путь сгенерированного отличается
+crates/app/src-tauri/gen/ # Tauri CLI generated files
 
 # Sidecar-бинарники для tauri build (генерируются scripts/prepare-sidecars.mjs)
 crates/app/src-tauri/binaries/
+*.pdb                    # debug-символы sidecar (Windows)
 
 # Node.js dependencies and build output
 node_modules/
 crates/app/node_modules/
 dist/
+*.tsbuildinfo            # incremental кэш TypeScript
 
 # Environment variables
 .env
 .env.local
 .env.*.local
+
+# OS / IDE
 .next/
 build/
 *.log
-
-
-.gigaide/
 .idea/
+.vscode/                 # если не храните настройки workspace
+.vs/
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*~
 
+# E2E (WebdriverIO)
+crates/app/e2e/results/
+crates/app/e2e/videos/
+
+# Existing
+.gigaide/
 crates/app/e2e/fixtures/ac10-unicode-crlf.md
-
 opencode.json
 .superpowers/

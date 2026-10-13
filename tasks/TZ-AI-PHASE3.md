@@ -4,12 +4,11 @@
 > **Приоритет:** P2 (после релиза Фаз 1–2)
 > **Источник:** IDEA-013 (Ф3) и IDEA-016 (MCP) из `docs/BACKLOG.md`
 > **Связанные:** `docs/DESIGN_DOC.md` §5 (UI), §5.5 (модульная карта), §11 (санитайзер),
-> §13.2 (замороженные контракты), §14 (бюджет D6), §16 (реестр ADR);
+> §13.2 (замороженные контракты) (бюджет D6) (реестр ADR);
 > ADR-0030 (режим AI дока), ADR-0032 (провайдер MVP), ADR-0033 (HTTP-клиент/SSE),
 > ADR-0034 (размещение AI-рантайма; MCP — вне MVP → пересмотрен **ADR-0036**, трек `tasks/TZ-MCP.md`);
 > **ADR-0035** (`docs/adr/0035-ai-provider-config.md` — универсальная конфигурация провайдеров;
 > **принят**, нормативное решение для §3 этого ТЗ);
-> `docs/FINDINGS.md` §2.2 (F55–F58);
 > `crates/app/src/aiPanel.ts`, `crates/app/src-tauri/src/ai/`,
 > `crates/app/src-tauri/src/plugins/settings.rs` (SettingsStore, D11)
 >
@@ -429,7 +428,7 @@ MCP — **качественно иная граница**, чем outbound-за
 
 - `docs/BACKLOG.md` IDEA-013 (исходная идея; Ф1/Ф2 реализованы, Ф3 — это ТЗ) и IDEA-016 (MCP, inbound)
 - `docs/DESIGN_DOC.md` §5 (UI), §5.5 (модульная карта), §11 (санитайзер), §13.2 (замороженные
-  контракты), §14 (бюджет D6), §16 (реестр ADR)
+  контракты) (бюджет D6) (реестр ADR)
 - `docs/adr/0030-bottom-dock-two-modes.md` — режим AI нижнего дока
 - `docs/adr/0032-ai-provider-openai.md` — провайдер LLM в MVP (OpenAI-совместимый, `routerai.ru`);
   расширяемость интерфейса провайдера (§2.2)
@@ -438,7 +437,6 @@ MCP — **качественно иная граница**, чем outbound-за
   `AiBackend`/`AiTransport`); **MCP — вне MVP** (§2.5)
 - `docs/adr/0035-ai-provider-config.md` — **универсальная конфигурация провайдеров** (ADR этого ТЗ;
   **принят** — нормативное решение §3)
-- `docs/FINDINGS.md` §2.2 (F55–F58) — спайк AI-клиента (размер клиентов, TLS, SSE)
 - Внешний референс конфигурации провайдеров (идея): `opencode.json` —
   https://opencode.ai/v2/docs/providers/#custom (раздел **Custom**: `name`, `env`, `package`,
   `settings.baseURL`/`settings.apiKey`/`settings.timeout`, `headers`, `body`, `models`

@@ -188,7 +188,7 @@ PluginHost (facade)
 ## 7. Ссылки
 
 - `docs/BACKLOG.md` — IDEA-004 (исходная идея)
-- `docs/DESIGN_DOC.md` — нормативная спецификация архитектуры (§0–§17)
+- `docs/DESIGN_DOC.md` — нормативная спецификация архитектуры (§0–§13)
 - `docs/adr/0021-plugin-isolation-process.md` — изоляция плагинов (отдельный процесс)
 - `docs/adr/0022-viewprovider-contract.md` — контракт ViewProvider (два тира)
 - `docs/FINDINGS.md` — результаты прототипов

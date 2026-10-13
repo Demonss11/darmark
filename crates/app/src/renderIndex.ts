@@ -1,4 +1,4 @@
-// renderIndex.ts — единый индекс рендера (DESIGN_DOC §5.5, глоссарий §17).
+// renderIndex.ts — единый индекс рендера (DESIGN_DOC §5.5).
 //
 // Раньше `inspector.ts` и `scrollsync.ts` независимо строили одни и те же
 // карты byte↔UTF-16 и списки блоков из одного markdown (двойная работа,

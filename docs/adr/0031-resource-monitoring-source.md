@@ -6,7 +6,7 @@
   «Независимая проверка стенда», 11.10.2026); `docs/BACKLOG.md` IDEA-012;
   порядок «проверочный стенд → ADR → реализация» (`DESIGN_DOC` §0, D11/ADR-18)
 - **Связанные:** `docs/DESIGN_DOC.md` §5 (UI), §5.5 (модульная карта), §9 (события), §10 (лимиты/
-  Job Object), §13.2 (замороженные контракты), §14 (бюджет D6), §16 (реестр ADR);
+  Job Object), §13.2 (замороженные контракты) (бюджет D6) (реестр ADR);
   `docs/adr/0021-plugin-isolation-process.md`, `docs/adr/0027-host-api-version-policy.md`,
   `docs/adr/0029-journal-bottom-panel.md`, `docs/adr/0030-bottom-dock-two-modes.md`;
   `crates/app/src-tauri/src/plugins/supervisor.rs`, `manager.rs`, `services.rs`, `lib.rs`;
@@ -72,11 +72,11 @@ WebView2/event-loop напрямую не тестировался (AC-19 — р
 
 1. Источник — **WinAPI** через крейт `windows` (уже в дереве `darmark`, `windows 0.62.2`):
    `OpenProcess`/`CloseHandle`, `K32GetProcessMemoryInfo` (`PROCESS_MEMORY_COUNTERS_EX`/`EX2`),
-   `GetProcessTimes`, `GetProcessHandleCount`. Хост **не добавляет новых крейтов** (D6/§14).
+   `GetProcessTimes`, `GetProcessHandleCount`. Хост **не добавляет новых крейтов** (D6).
 2. `windows` подключается **прямой зависимостью** `crates/app/src-tauri/Cargo.toml` с **минимальным**
    набором фич (`Win32_Foundation`, `Win32_System_ProcessStatus`, `Win32_System_Threading`), только
    под `#[cfg(windows)]`. Рост `cargo tree -p darmark` и размера release-exe не допускается
-   (F53; size-gate §14).
+   (F53; size-gate).
 3. Основная метрика ОЗУ **зависит от класса процесса** (уточнение п. 21; правка 11.10.2026): для
    child'а плагина — **`PrivateUsage`** (**private/commit**) — та же величина, которую ограничивает
    Job Object (`JOB_OBJECT_LIMIT_PROCESS_MEMORY`); для главного процесса — **приватный рабочий
@@ -194,7 +194,7 @@ WebView2/event-loop напрямую не тестировался (AC-19 — р
 
 **Положительные:**
 
-- **D6/§14 не под угрозой:** `windows` уже в дереве → маргинальная цена по размеру ≈0; size-gate без
+- **D6 не под угрозой:** `windows` уже в дереве → маргинальная цена по размеру ≈0; size-gate без
   изменений.
 - **Дешёвый горячий путь:** µs против мс, большой запас по AC-17.
 - **Честная семантика ошибок:** мёртвый/недоступный PID → пропуск, а не «0» (F51).
@@ -254,7 +254,7 @@ WebView2/event-loop напрямую не тестировался (AC-19 — р
   (11.10.2026).
 - `docs/BACKLOG.md` IDEA-012 (мониторинг ресурсов).
 - `docs/DESIGN_DOC.md` §0 (порядок решений), §5.5 (модульная карта), §9 (события), §10 (лимиты/Job
-  Object), §13.2 (замороженные контракты), §14 (бюджет D6), §16 (реестр ADR).
+  Object), §13.2 (замороженные контракты) (бюджет D6) ().
 - `docs/adr/0021-plugin-isolation-process.md` (child-per-plugin, Job Object, watchdog),
   `docs/adr/0027-host-api-version-policy.md` (§2.4 — аддитивность),
   `docs/adr/0029-journal-bottom-panel.md` / `docs/adr/0030-bottom-dock-two-modes.md`

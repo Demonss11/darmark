@@ -7,7 +7,7 @@
 > **Связанные:** ADR-0034 §2.5/§4 (MCP как inbound — **пересмотрен** ADR-0036);
 > **ADR-0036** (`docs/adr/0036-mcp-server-inmemory.md` — принят: **in-memory** транспорт);
 > `docs/DESIGN_DOC.md` §5.1 (журнал), §5.5 (модульная карта), §11 (санитайзер/границы),
-> §13.2 (замороженные контракты), §14 (бюджет D6), §16 (реестр ADR);
+> §13.2 (замороженные контракты) (бюджет D6) (реестр ADR);
 > ADR-0021 (mlua вне GUI), ADR-0023 (рантайм плагинов), ADR-0027 (аддитивность контрактов);
 > `docs/PLUGIN_API.md`, `docs/PLUGIN_GUIDE.md`, `docs/adr/0026-local-plugin-catalog.md`;
 > код: `crates/app/src-tauri/src/ai/`, `crates/app/src/aiPanel.ts`, `crates/app/src/logPanel.ts`,
@@ -177,7 +177,7 @@ MCP не создаёт второго источника правды для б
 - `docs/adr/0034-ai-runtime-placement.md` §2.5, §4 (MCP как inbound — пересмотрен ADR-0036)
 - `docs/adr/0036-mcp-server-inmemory.md` — **ADR-0036** (принят: in-memory, внутренний клиент)
 - `docs/PLUGIN_API.md` §1/§3/§4, `docs/PLUGIN_GUIDE.md`, `docs/adr/0026-local-plugin-catalog.md`
-- `docs/DESIGN_DOC.md` §5.1 (журнал), §5.5, §11, §13.2, §14, §16
+- `docs/DESIGN_DOC.md` §5.1 (журнал), §5.5, §11, §13.2
 - Код: `crates/app/src-tauri/src/ai/` (ассистент), `crates/app/src/aiPanel.ts` (тело режима AI),
   `crates/app/src/logPanel.ts` (журнал), `crates/app/src-tauri/src/lib.rs` (команды),
   `crates/plugin-cli/` (harness), `crates/md-core/` (рендер/санитайзер)

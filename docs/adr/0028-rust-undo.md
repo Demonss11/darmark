@@ -6,7 +6,7 @@
   D5 (`docs/DESIGN_DOC.md` §0); существующий контракт —
   `crates/app/src-tauri/src/state.rs` (`Document`, `EditOp`, `update`, `apply_edit`),
   `docs/DESIGN_DOC.md` §4.1/§4.2/§4.3
-- **Связанные:** `docs/DESIGN_DOC.md` §4.1, §4.2, §4.3, §13, §16; `docs/adr/0021-plugin-isolation-process.md`,
+- **Связанные:** `docs/DESIGN_DOC.md` §4.1, §4.2, §4.3, §13; `docs/adr/0021-plugin-isolation-process.md`,
   `docs/adr/0023-plugin-runtime.md`, `docs/adr/0027-host-api-version-policy.md`;
   `crates/app/src-tauri/src/state.rs`, `crates/app/src/docStore.ts`, `crates/app/src/formatActions.ts`
 
@@ -147,7 +147,7 @@ rev-семантику и контракт undo до кодинга.
 ## 5. Ссылки
 
 - `docs/DESIGN_DOC.md` §4.1 (структуры `EditOp`/`UndoResult`), §4.2 (владение), §4.3 (IPC-команды),
-  §13 (нативный undo — известное ограничение), §16 (реестр ADR).
+  §13 (нативный undo — известное ограничение) ().
 - ADR: `docs/adr/0021-plugin-isolation-process.md` (изоляция процесса),
   `docs/adr/0023-plugin-runtime.md` (runtime), `docs/adr/0027-host-api-version-policy.md`.
 - Код: `crates/app/src-tauri/src/state.rs` (`Document`, `EditOp`, `update`, `apply_edit`),

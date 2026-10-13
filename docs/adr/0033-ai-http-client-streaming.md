@@ -7,11 +7,11 @@
   вопрос по стримингу; `docs/adr/0032-ai-provider-openai.md` §2.5 п. 11, §2.7 п. 17 (спайк
   вынесен сюда); порядок «проверочный стенд → ADR → реализация» (`DESIGN_DOC` §0, D11/ADR-18)
 - **Связанные:** `docs/DESIGN_DOC.md` §5.5 (модульная карта — `aiPanel.ts`), §13.2 (замороженные
-  контракты), §14 (бюджет D6), §16 (реестр ADR); `docs/adr/0032-ai-provider-openai.md`
+  контракты) (бюджет D6) (реестр ADR); `docs/adr/0032-ai-provider-openai.md`
   (**изменяет** §2.5 п. 11 и §2.7 п. 17), `docs/adr/0030-bottom-dock-two-modes.md` (режим AI дока),
   `docs/adr/0021-plugin-isolation-process.md` (AI — не плагин), `docs/adr/0027-host-api-version-policy.md`
   (аддитивные события), `docs/adr/0031-resource-monitoring-source.md` (образец конвенции);
-  D6 (§14) и Windows-only (§1.3, ADR-0015); `crates/app/src-tauri/src/ai/`, `crates/app/src/aiPanel.ts`
+  D6 () и Windows-only (§1.3, ADR-0015); `crates/app/src-tauri/src/ai/`, `crates/app/src/aiPanel.ts`
 
 ---
 
@@ -29,7 +29,7 @@ AI-ассистент (IDEA-013, ТЗ AI-ассистента, Ф1/Ф2 реал�
 - **Сеть — только Rust-сторона**; CSP не ослабляется (ADR-0032 §2.5 п. 11, ADR-0030 §2.3).
 - **Провайдер** — OpenAI-совместимый API (`routerai.ru`), протокол Chat Completions (ADR-0032).
 - **OpenSSL не используется** (ADR-0032 §2.5 п. 11, §4): системные зависимости и вес.
-- **D6 (release-exe ≤6 МБ, size-gate §14)** — жёсткое ограничение; ТЗ AI-ассистента
+- **D6 (release-exe ≤6 МБ, size-gate)** — жёсткое ограничение; ТЗ AI-ассистента
   (Ф1/Ф2 реализованы) задавало ориентир **«AI-клиент ≤0.5 МБ»**.
 - **AI — не плагин** (ADR-0021): сетевой слой — вне песочницы.
 
@@ -111,7 +111,7 @@ AI-клиента пересмотрен: ориентир ≤1.0 МиБ мар�
     часть HTTP-стека (`tokio`/`url`/`http`/`serde_json`) уже в дереве (F58), поэтому реальный
     прирост **меньше** дельты стенда. Ориентир даёт запас на интеграцию (маппинг ошибок, `usage`,
     SSE-парсер) и подлежит уточнению при сборке `darmark` с AI-модулем.
-13. **Общий size-gate `DESIGN_DOC` §14 (release-exe ≤6 МБ) сохраняется** без изменений. Контроль
+13. **Общий size-gate `DESIGN_DOC` (release-exe ≤6 МБ) сохраняется** без изменений. Контроль
     прироста AI-клиента — тем же size-gate в CI.
 14. Настоящий ADR фиксирует **целевое значение** ориентира (≤1.0 МБ); ТЗ AI-ассистента
     (Ф1/Ф2 реализованы) отражает его.
@@ -196,6 +196,6 @@ TLS-бэкенда не трогает замороженные контракт
   `docs/adr/0021-plugin-isolation-process.md` — AI не плагин; `docs/adr/0027-host-api-version-policy.md`
   §2.4 — аддитивные события; `docs/adr/0031-resource-monitoring-source.md` — образец конвенции.
 - `docs/DESIGN_DOC.md` §0 (порядок решений), §5.5 (модульная карта — `aiPanel.ts`), §13.2
-  (замороженные контракты), §14 (бюджет D6), §16 (реестр ADR).
+  (замороженные контракты) (бюджет D6) ().
 - Код: `crates/app/src-tauri/src/ai/` (HTTP-клиент, SSE, хранение ключа), `crates/app/src/aiPanel.ts`
   (тело режима AI); образцы — `crates/ai-spike/src/{reqwest_client.rs,sse.rs}` (dev-only).

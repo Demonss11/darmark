@@ -1,11 +1,11 @@
-// Генерация docs/E2E-PERFORMANCE.md из JSONL-замеров (см. steps/timing.js).
+// Генерация Markdown-отчёта о времени E2E из JSONL-замеров (см. steps/timing.js).
 //
 // Использование:
 //   cd crates/app
 //   $env:DARMARK_E2E_TIMING="$env:TEMP\darmark-e2e-timing.jsonl"
 //   Remove-Item $env:DARMARK_E2E_TIMING -ErrorAction SilentlyContinue
 //   npm run test:e2e
-//   node e2e/timing-report.mjs "$env:TEMP\darmark-e2e-timing.jsonl" ../../docs/E2E-PERFORMANCE.md
+//   node e2e/timing-report.mjs "$env:TEMP\darmark-e2e-timing.jsonl" <out.md>
 //
 // Файл — снимок последних значений (без дельт), перезаписывается целиком.
 import fs from "node:fs";
@@ -51,7 +51,7 @@ p("> **Метод:** время — wall-clock каждого сценария (
 p("> `result.duration` cucumber (он показывает лишь последний шаг). WDIO запускает");
 p("> каждую `.feature` отдельной сессией, поэтому в первый сценарий сессии входит старт приложения.");
 p("> **Обновление:** файл — снимок последних значений (без дельт); перегенерировать");
-p("> `node e2e/timing-report.mjs <timing.jsonl> ../../docs/E2E-PERFORMANCE.md` (см. шапку скрипта).");
+p("> `node e2e/timing-report.mjs <timing.jsonl> <out.md>` (см. шапку скрипта).");
 p("");
 p("Платформа: Windows x86_64; приложение — release-сборка; WebView2.");
 p("");

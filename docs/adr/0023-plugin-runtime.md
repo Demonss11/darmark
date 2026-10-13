@@ -4,7 +4,7 @@
 - **Дата:** 07.10.2026
 - **Основание:** ADR-0021 (изоляция процесса), ADR-0022 (контракт ViewProvider);
   реализация H2 — плагинная система (Фазы 0–6); факты — `docs/FINDINGS.md` (F16–F42)
-- **Связанные:** `docs/DESIGN_DOC.md` §6–§12, §14, §16; `docs/PLUGIN_API.md`;
+- **Связанные:** `docs/DESIGN_DOC.md` §6–§12; `docs/PLUGIN_API.md`;
   `crates/plugin-core`, `crates/plugin-host`, `crates/app/src-tauri/src/plugins`
 
 ---
@@ -14,12 +14,9 @@
 ADR-0021 выбрал изоляцию плагина отдельным процессом (вариант C): GUI-хост не линкует `mlua`,
 Lua живёт в дочернем процессе. H2 довёл это решение до продуктового runtime: пользователь
 кладёт `word-count.lua` в `%APPDATA%/darmark/plugins/`, правит файл и нажимает «Перезагрузить»
-(§1.2 DESIGN_DOC). Прототип доказал механику (transport F16/F26/F27, Job Object F28/F29,
-watchdog F33/F35, карантин F37, range/delta F34, устойчивость протокола F36), но продуктовые
-крейты, события, представления и UI надо было построить заново.
-
-Нужна зафиксированная архитектура runtime: какие крейты, где проходит граница, как устроены
-транспорт, надзор, жизненный цикл, события, представления, permissions и dev-режим.
+(§1.2 DESIGN_DOC). Прототип доказал механику (transport, Job Object, watchdog, карантин,
+range/delta, устойчивость протокола — см. `docs/FINDINGS.md` F16–F37), но продуктовые крейты,
+события, представления и UI надо было построить заново.
 
 ---
 
@@ -27,12 +24,12 @@ watchdog F33/F35, карантин F37, range/delta F34, устойчивост�
 
 ### 2.1. Крейты и правило границ
 
-| Крейт | Знает про | **Не** знает про | Роль |
-|---|---|---|---|
-| `md-core` | Markdown | Tauri, Lua, плагины | ядро `&str → String`; публичный `sanitize_fragment` |
-| `plugin-core` | транспорт/конверт/Job/карантин/манифест | Tauri, `mlua` | общий крейт хоста и child |
-| `plugin-host` | `mlua`/Lua 5.5 | Tauri | child-бинарник `darmark-plugin-host.exe` |
-| `crates/app/src-tauri` | `plugin-core` | `plugin-host`/`mlua` | GUI-хост: Supervisor, события, представления, команды |
+| Крейт | Роль |
+|---|---|
+| `md-core` | ядро `&str → String`; публичный `sanitize_fragment` |
+| `plugin-core` | общий крейт хоста и child: транспорт/конверт/Job/карантин/манифест |
+| `plugin-host` | child-бинарник `darmark-plugin-host.exe` на Lua 5.5 |
+| `crates/app/src-tauri` | GUI-хост: Supervisor, события, представления, команды |
 
 **Инвариант (D6/ADR-0021):** `cargo tree -p darmark` не содержит `mlua`; child спавнится как
 внешний exe, а не как зависимость. Проверяется в CI.
@@ -55,8 +52,7 @@ watchdog F33/F35, карантин F37, range/delta F34, устойчивост�
 - **reader-поток** (child→host) в канал, **writer-поток** (host→child) из канала: основной поток
   не блокируется на заполненном пайпе (F27);
 - **асинхронные host-call'ы**: `ToHost::HostCall` обслуживаются в цикле ожидания результата
-  (range/delta, настройки, экспорт); время обслуживания host-call исключается из дедлайна
-  (нативный диалог `export_html` не должен считаться «chatty»);
+  (range/delta, настройки, экспорт);
 - **permissions** проверяются **до** host-call (`required_permission`); отказ возвращается
   значением `PluginError{permission_denied}`, а не Lua-исключением;
 - в object-args инжектится `_plugin_id` (хост не доверяет плагину автора view/сообщения).
@@ -71,9 +67,7 @@ on_deactivate → terminate`. Ошибка загрузки/активации �
 ### 2.5. События и представления
 
 - **Событийная шина** (`bus.rs`): notify-only + pull, коалесинг `document:changed` по `rev` на
-  `doc_id`; каталог H2 — `document:changed/opened/closed`, `command:invoked`. Событие не несёт
-  текст; плагин читает окном `get_document_range`. Публикация — вне удержания `DocumentStore`,
-  доставка — `pump` без сторожевых блокировок (дедлок-безопасность).
+  `doc_id`; каталог H2 — `document:changed/opened/closed`, `command:invoked`.
 - **Тир-1 view** (`views.rs` + `pluginViews.ts`): плагин с `contributes.views[].tier==1`
   становится `HtmlViewProvider` в `viewRegistry` (ADR-0022); HTML приходит `host.set_view_content`,
   санитизируется `md_core::sanitize_fragment` (allowlist `data-p-*`, D7) и рендерится в контейнер.
@@ -83,12 +77,9 @@ on_deactivate → terminate`. Ошибка загрузки/активации �
 
 ### 2.6. Хост-функции
 
-Документ: `get_document_len`/`get_document_range` (основной путь чтения)/`get_document_version`/
-`get_document_text`/`apply_edit` (`document:write`). View: `set_view_content` (`view:modify`).
-Хост: `log`, `show_message` (`ui:statusbar`), `export_html` (нативный диалог, без `filesystem:write`),
-`get_setting`/`set_setting` (per-plugin JSON-хранилище, F43/S5). Нативно в child:
-`md.to_html`/`to_html_mapped`, `json.encode/decode`.
-Полный референс — `docs/PLUGIN_API.md`.
+Документ (`get_document_*`, `apply_edit`), view (`set_view_content`), UI (`log`, `show_message`,
+`export_html`), настройки (`get_setting`/`set_setting`, F43/S5), нативные в child (`md.to_html`,
+`json.encode/decode`). Полный референс — `docs/PLUGIN_API.md`.
 
 ### 2.7. Dev-режим
 
@@ -107,39 +98,25 @@ on_deactivate → terminate`. Ошибка загрузки/активации �
 ## 3. Последствия
 
 **Положительные:**
-- Сбой/зависание/OOM плагина не роняет и (при независимых вызовах) не вешает GUI; данные
-  приложения не разделяются с плагином адресно.
-- Плагинные представления используют тот же `HtmlViewProvider`/`ViewContext`, что и встроенный
-  preview (ADR-0022): единый контракт, единая точка санитизации.
+- Сбой/зависание/OOM плагина не роняет GUI (ADR-0021).
+- Плагинные представления используют тот же контракт, что и встроенный preview (ADR-0022, §2.5).
 - «Открыл `.lua` — поправил — `Перезагрузить` — работает» без пересборки и без Lua в базе.
 
 **Цена / ограничения (см. `docs/FINDINGS.md` F39–F44):**
 - Хост обязан оставаться тонким диспетчером; тяжёлая логика — в child.
-- Синхронные Tauri-команды, доходящие до invoke плагина, помечены `async` (иначе блокируют
-  main-поток и нативный диалог `export_html`); host-call может быть долгим — время его
-  обслуживания исключается из дедлайна.
+- Синхронные Tauri-команды, доходящие до invoke плагина, помечены `async` (иначе блокируют main-поток).
 - Согласие на permissions пока не собирается (F39); `get_document_text` ограничен кадром (F40);
   единый `notify` даёт лишний `list_plugins` при смене view (F41).
-- Постоянные настройки плагина (`get_setting`/`set_setting`) реализованы (F43/S5): per-plugin
-  JSON-хранилище `%APPDATA%/darmark/plugin-settings/<id>.json` (scope по `_plugin_id`); UI-схема
-  `contributes.settings` рендерится в менеджере (S5b, секция «Настройки»). `view:create` теперь
-  гейтит регистрацию тир-1 представления (deny-by-default, F44/S4).
+- Постоянные настройки плагина реализованы (F43/S5); `view:create` гейтит регистрацию тир-1 представления (F44/S4).
 
 ---
 
 ## 4. Отклонённые альтернативы
 
-- **In-process Lua** — отклонён ADR-0021 (F9/F10: ошибки из Rust-callback под `abort`).
-- **«Общий child» на все плагины** — отклонён ADR-0021 §2.3 (F31: один сбой валит/блокирует все).
+- **In-process Lua** — отклонён (ADR-0021).
+- **«Общий child» на все плагины** — отклонён (ADR-0021 §2.3).
 - **Сетевой/шифрованный транспорт, named pipes** — не нужны: stdio подтверждён в GUI-конфигурации
   (F26/F27).
-- **Событие с текстом документа** — отклонено (§9.2): дублирование больших строк и потеря данных
-  при backpressure; notify-only + pull.
+- **Событие с текстом документа** — отклонено (§9.2).
 
----
 
-## 5. Ссылки
-
-- Плагинная система (Фазы 0–6), `docs/DESIGN_DOC.md` §6–§12/§14, `docs/adr/0021-*`, `docs/adr/0022-*`
-- `docs/FINDINGS.md` F16–F42, `docs/PLUGIN_API.md`
-- Код: `crates/plugin-core`, `crates/plugin-host`, `crates/app/src-tauri/src/plugins/*`
