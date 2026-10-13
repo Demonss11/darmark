@@ -48,11 +48,46 @@ Tauri 2 + vanilla TypeScript/Vite + чистое Rust-ядро Markdown. Цел�
 - E2E не покрывает нативные диалоги/ОС — помечай сценарий `@manual`.
 - Релизный профиль (`Cargo.toml`): `opt-level="s"`, LTO, `strip`, `panic=abort`. Тяжёлые зависимости — только по согласованию.
 
+## Процесс разработки (superpowers + SDD)
+
+Скиллы лежат **общими для всех проектов** в `dar/.agents/skills/` — правь их там, не копируй в репозиторий.
+
+**Цикл:** `brainstorming` → `writing-plans` → `subagent-driven-development` (SDD) → `finishing-a-development-branch`.
+Отладка идёт через `systematic-debugging`, финальная проверка — `verification-before-completion`.
+Задачи с общим состоянием или строгой последовательностью — не SDD, а `executing-plans` (отдельная сессия).
+
+**Рабочее дерево.** SDD стартует с `using-git-worktrees`. Реализация никогда не начинается на `main` без явного согласия.
+
+**Скрипты SDD — Python, не bash.** `bash` в PATH на этой машине — заглушка WSL без установленного WSL:
+
+```bash
+python <skills>/subagent-driven-development/scripts/sdd-workspace.py PLAN_FILE
+python <skills>/subagent-driven-development/scripts/task-brief.py PLAN_FILE N
+python <skills>/subagent-driven-development/scripts/review-package.py PLAN_FILE BASE HEAD
+```
+
+Артефакты плана — `.superpowers/sdd/<slug>/` (`progress.md` — журнал прогресса, самoигнорируется). Коды выхода: `2` — плохой аргумент, `3` — пустой диапазон/не найдена задача.
+
+**Модель и тиры рассуждения.** Все агенты закреплены на `opencode/space-bunny-free`. Лестница «от дешёвого исполнителя к сильному ревизеру», которую требует SDD, реализована полем `variant`, а не сменой модели:
+
+| Роль | variant |
+| --- | --- |
+| `architect`, `security-reviewer` | `max` |
+| `code-reviewer` | `xhigh` |
+| `*-developer`, `ui-designer`, `release-engineer` | `high` |
+| `*-tester` | `medium` |
+
+Эскалация в раундах фикс-цикла 4–5 делается повышением `variant`, а не сменой модели: `high` → `xhigh` → `max`.
+Правь роли в `~/.config/opencode/agents/*.md` (общий конфиг, действует на все проекты).
+
+**Ревью — не опционально.** SDD требует ревью после каждой задачи (соответствие спецификации + качество) и широкого ревью всей ветки в конце. Ревьюер всегда не ниже исполнителя по `variant`. Контроллер не чинит findings сам — это пропускает ревью.
+
 ## Конвенции
 
 - Комментарии на русском, объясняют **зачем**; отступ 2 пробела (TS), `rustfmt` (Rust).
 - Не коммить и не пушить без прямого запроса.
 - Перед реализацией прочитай соответствующий `tasks/TZ-*.md`.
+- Ветку коммитит SDD-исполнитель по ходу задачи; в `main` не мержи сам.
 
 ## Ссылки
 
