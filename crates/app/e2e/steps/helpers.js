@@ -125,6 +125,55 @@ export async function clickFilterButton(label) {
 // через editor.setSelectionRange. В E2E мы не двигаем настоящую мышь, а
 // диспатчим MouseEvent на нужном [data-md]-блоке — это тот же обработчик.
 
+/// Гасит РЕАЛЬНЫЕ события указателя над `#preview` на время сценария.
+///
+/// Зачем: `pointer-events: none` на предпросмотре (см. setInspectorActive) меняет
+/// цепочку hit-testing под физическим курсором, но WebView2 пересчитывает её
+/// отложенно — уже после того, как тест синтетически «навёл мышь» на ячейку.
+/// В этот момент приходит настоящий (`isTrusted`) `mouseout` на `#preview` с
+/// `relatedTarget` вне предпросмотра, и инспектор по AC-6 штатно снимает
+/// подсветку — шаг падает при исправном приложении (флейк зависел от того, где
+/// стоит курсор мыши). Реальные события глушим в capture-фазе на `document`,
+/// синтетику теста (`isTrusted === false`) пропускаем как раньше.
+const POINTER_GUARD_KEY = "__darmarkE2ePointerGuard";
+const GUARDED_MOUSE_EVENTS = [
+  "mouseover",
+  "mouseout",
+  "mousemove",
+  "mousedown",
+  "mouseup",
+  "click",
+  "dblclick",
+  "contextmenu",
+];
+
+/// Включает/снимает guard (идемпотентно) — состояние живёт в самом webview.
+async function setRealPointerGuard(on) {
+  await browser.execute(
+    (enabled, key, types) => {
+      const installed = window[key];
+      if (installed) {
+        for (const type of installed.types) {
+          document.removeEventListener(type, installed.handler, true);
+        }
+        delete window[key];
+      }
+      const preview = document.getElementById("preview");
+      if (!enabled || !preview) return;
+      const handler = (e) => {
+        if (e.isTrusted && e.target instanceof Node && preview.contains(e.target)) {
+          e.stopPropagation();
+        }
+      };
+      for (const type of types) document.addEventListener(type, handler, true);
+      window[key] = { handler, types };
+    },
+    on,
+    POINTER_GUARD_KEY,
+    GUARDED_MOUSE_EVENTS
+  );
+}
+
 /// Включает (true) или выключает (false) режим инспектора кнопкой тулбара.
 ///
 /// На время активного инспектора предпросмотру отключается hit-testing
@@ -132,7 +181,12 @@ export async function clickFilterButton(label) {
 /// порождает настоящие mouseover/mouseout (в том числе при перерисовке DOM
 /// под курсором) и перебивает синтетический hover теста. `dispatchEvent`
 /// доставляет события слушателям независимо от `pointer-events`.
+/// Остаточные реальные события глушит `setRealPointerGuard`.
 export async function setInspectorActive(on) {
+  // Guard ставим ДО включения режима: отложенный mouseout от смены hit-testing
+  // иначе успевает дойти до слушателей и снять первую же подсветку.
+  await setRealPointerGuard(on);
+
   await browser.execute((active) => {
     const btn = document.getElementById("btn-inspect");
     if (!btn) return;

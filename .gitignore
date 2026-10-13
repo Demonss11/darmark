@@ -25,3 +25,4 @@ build/
 crates/app/e2e/fixtures/ac10-unicode-crlf.md
 
 opencode.json
+.superpowers/
