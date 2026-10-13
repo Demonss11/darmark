@@ -34,6 +34,14 @@ Then("счётчик таблицы показывает {string}", async (expec
   if (actual !== expected) throw new Error(`Счётчик «${actual}» ≠ «${expected}»`);
 });
 
+Then("видимые строки таблицы содержат {string}", async (fragment) => {
+  const rows = await visibleRows();
+  const found = rows.some((cells) => cells.some((cell) => cell.includes(fragment)));
+  if (!found) {
+    throw new Error(`В видимых строках таблицы нет фрагмента ${JSON.stringify(fragment)}`);
+  }
+});
+
 When("я открываю фильтр колонки {string}", async (name) => {
   await openFilter(name);
 });

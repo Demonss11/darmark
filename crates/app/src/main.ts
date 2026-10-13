@@ -13,7 +13,7 @@ import { listen } from "@tauri-apps/api/event";
 import { createDocStore, type Tab } from "./docStore";
 import { createRenderIndex } from "./renderIndex";
 import { createViewRegistry, type ViewContext } from "./viewRegistry";
-import { asPaneId, asViewId, newPaneId, newViewId, type DocumentId } from "./ids";
+import { asDocumentId, asPaneId, asViewId, newPaneId, newViewId, type DocumentId } from "./ids";
 import { createEditorView } from "./editorView";
 import { previewViewProvider, type PreviewView, type PreviewViewOptions } from "./previewView";
 import { createLinkController } from "./linkController";
@@ -316,8 +316,14 @@ function createTabElement(tab: Tab): HTMLElement {
   const el = document.createElement("div");
   el.className = "tab";
   el.dataset.id = tab.id;
+  // Стабильный id для aria-controls/aria-labelledby (паттерн tabs, ADR-0037).
+  el.id = `tab-${tab.id}`;
   el.setAttribute("role", "tab");
-  el.tabIndex = 0;
+  el.setAttribute("aria-controls", "panes");
+  // Доступное имя — имя документа (содержимое .name дублирует его для скринридера).
+  el.setAttribute("aria-label", tab.name);
+  // Roving tabindex: активная вкладка получает 0 в updateTabElement, остальные -1.
+  el.tabIndex = -1;
 
   // Иконка типа файла
   const ficon = document.createElement("span");
@@ -345,12 +351,8 @@ function createTabElement(tab: Tab): HTMLElement {
   el.addEventListener("click", (e) => {
     if (e.target === close) return; // клик по кнопке закрытия обрабатывается отдельно
     store.switchTab(tab.id);
-  });
-  el.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      store.switchTab(tab.id);
-    }
+    // Фокус на вкладке после активации — паттерн tabs требует фокус на активной.
+    el.focus();
   });
   close.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -362,7 +364,10 @@ function createTabElement(tab: Tab): HTMLElement {
 
 /** Обновляет содержимое существующего элемента вкладки (имя, dirty, активность). */
 function updateTabElement(el: HTMLElement, tab: Tab, activeId: DocumentId | null): void {
-  el.setAttribute("aria-selected", String(tab.id === activeId));
+  const isActive = tab.id === activeId;
+  el.setAttribute("aria-selected", String(isActive));
+  // Roving tabindex: в таб-порядке только активная вкладка.
+  el.tabIndex = isActive ? 0 : -1;
 
   const ficon = el.querySelector(".ficon");
   if (ficon) ficon.textContent = fileIcon(tab.name);
@@ -415,7 +420,75 @@ function renderTabStrip(tabs: Tab[], activeId: DocumentId | null): void {
   for (const [id, el] of existing) {
     if (!seen.has(id)) el.remove();
   }
+
+  syncTabPanel(activeId);
 }
+
+/**
+ * Связывает панель с активной вкладкой через aria-labelledby (паттерн tabs):
+ * скринридер объявляет панель именем активной вкладки при её появлении.
+ */
+function syncTabPanel(activeId: DocumentId | null): void {
+  if (activeId) {
+    panesEl.setAttribute("aria-labelledby", `tab-${activeId}`);
+  } else {
+    panesEl.removeAttribute("aria-labelledby");
+  }
+}
+
+/**
+ * Клавиатурная навигация по вкладкам (паттерн WAI-ARIA tabs, автоматическая
+ * активация при фокусе): стрелки/Home/End — перемещение фокуса с активацией;
+ * Delete/Ctrl+W — закрытие активной вкладки. Слушатель на контейнере: вкладки
+ * создаются/удаляются динамически, делегирование переживает их пересоздание.
+ */
+function onTabStripKeyDown(e: KeyboardEvent): void {
+  const tabs = Array.from(tabStrip.querySelectorAll<HTMLElement>(".tab"));
+  if (tabs.length === 0) return;
+  const current = document.activeElement as HTMLElement | null;
+  // Фокус может быть на кнопке закрытия внутри вкладки — поднимаемся до .tab.
+  const currentTab = (current?.closest(".tab") ?? null) as HTMLElement | null;
+  if (!currentTab) return;
+  const currentIndex = tabs.indexOf(currentTab);
+  if (currentIndex < 0) return;
+
+  // Закрытие: Delete или Ctrl+W. Глобального обработчика Ctrl+W в shell.ts нет,
+  // поэтому конфликта с другими хоткеями не возникает. e.code — физическая
+  // клавиша (независимо от раскладки).
+  const wantsClose =
+    e.key === "Delete" ||
+    ((e.ctrlKey || e.metaKey) && e.code === "KeyW");
+  if (wantsClose) {
+    e.preventDefault();
+    const id = currentTab.dataset.id;
+    if (!id) return;
+    void closeTabWithConfirm(asDocumentId(id)).then(() => {
+      // После закрытия возвращаем фокус на новую активную вкладку.
+      const activeId = store.activeId();
+      if (activeId) {
+        const next = tabStrip.querySelector<HTMLElement>(`.tab[data-id="${activeId}"]`);
+        next?.focus();
+      }
+    });
+    return;
+  }
+
+  // Навигация: стрелки по кругу, Home/End — крайние вкладки.
+  let targetIndex = currentIndex;
+  if (e.key === "ArrowLeft") targetIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+  else if (e.key === "ArrowRight") targetIndex = (currentIndex + 1) % tabs.length;
+  else if (e.key === "Home") targetIndex = 0;
+  else if (e.key === "End") targetIndex = tabs.length - 1;
+  else return; // прочие клавиши (Enter/Space) — активация уже произошла на фокусе
+
+  e.preventDefault();
+  const target = tabs[targetIndex];
+  const id = target.dataset.id;
+  if (id) store.switchTab(asDocumentId(id)); // активация при перемещении фокуса
+  target.focus();
+}
+
+tabStrip.addEventListener("keydown", onTabStripKeyDown);
 
 let prevText = "";
 store.subscribe((tabs, activeId) => {

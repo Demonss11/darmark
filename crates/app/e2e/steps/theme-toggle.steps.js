@@ -1,6 +1,7 @@
 // Шаги тумблера темы (ADR-0037).
 import { Given, Then, When } from "@wdio/cucumber-framework";
 import { browser } from "@wdio/globals";
+import { setInspectorActive } from "./helpers.js";
 
 When("я перезагружаю страницу", async () => {
   await browser.execute(() => location.reload());
@@ -83,4 +84,65 @@ Then("у элемента html свойство {string} равно {string}", a
       `У html ${prop}=${JSON.stringify(actual)}, ожидалось ${JSON.stringify(expected)}`
     );
   }
+});
+
+// Клавиатурные шаги: синтетический keydown на активном элементе (как в palette.steps.js).
+// Для кнопок Enter/Space генерируют click только через полный цикл событий;
+// dispatchEvent(keydown) не вызывает default action. Поэтому для button вызываем
+// click() вручную — это имитирует результат нажатия клавиши.
+When("я нажимаю Enter", async () => {
+  await browser.execute(() => {
+    const target = document.activeElement ?? document.body;
+    target.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "Enter",
+        code: "Enter",
+        bubbles: true,
+        cancelable: true,
+      })
+    );
+    if (target.tagName === "BUTTON") {
+      target.dispatchEvent(
+        new KeyboardEvent("keyup", {
+          key: "Enter",
+          code: "Enter",
+          bubbles: true,
+          cancelable: true,
+        })
+      );
+      target.click();
+    }
+  });
+  await browser.pause(50);
+});
+
+When("я нажимаю Space", async () => {
+  await browser.execute(() => {
+    const target = document.activeElement ?? document.body;
+    target.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: " ",
+        code: "Space",
+        bubbles: true,
+        cancelable: true,
+      })
+    );
+    if (target.tagName === "BUTTON") {
+      target.dispatchEvent(
+        new KeyboardEvent("keyup", {
+          key: " ",
+          code: "Space",
+          bubbles: true,
+          cancelable: true,
+        })
+      );
+      target.click();
+    }
+  });
+  await browser.pause(50);
+});
+
+// Включение режима инспектора кнопкой #btn-inspect (setInspectorActive из helpers).
+When("я включаю инспектор", async () => {
+  await setInspectorActive(true);
 });

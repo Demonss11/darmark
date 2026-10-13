@@ -183,11 +183,14 @@
           <!-- Видимого заголовка в UI нет — даём скринридерам точку входа в main. -->
           <h1 class="visually-hidden">ПЕНАЛ — редактор Markdown</h1>
           <div class="tabrow">
-            <!-- Вкладки создаются динамически из DocStore (renderTabStrip в main.ts). -->
-            <div class="tab-strip" id="tab-strip"></div>
+            <!-- Вкладки создаются динамически из DocStore (renderTabStrip в main.ts).
+                 ARIA-паттерн tabs (ADR-0037): role=tablist, панель — #panes. -->
+            <div class="tab-strip" id="tab-strip" role="tablist" aria-label="Открытые документы"></div>
           </div>
 
-          <div id="panes" class="panes">
+          <!-- tabpanel: контент активного документа (редактор + предпросмотр).
+               aria-labelledby выставляется JS по активной вкладке. -->
+          <div id="panes" class="panes" role="tabpanel">
             <section class="pane pane-editor" id="pane-a" data-pane="pane-editor" data-view="editor">
               <div class="pane-head">
                 <div class="view-switch" id="view-switch-a">
