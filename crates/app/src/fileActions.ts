@@ -33,7 +33,7 @@ export function createFileActions(opts: {
   async function confirmDiscard(): Promise<boolean> {
     if (!store.active()?.dirty) return true;
     return confirm("Несохранённые изменения будут потеряны. Продолжить?", {
-      title: "darmark",
+      title: "ПЕНАЛ",
       kind: "warning",
     });
   }

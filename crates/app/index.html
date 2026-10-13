@@ -3,19 +3,27 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="color-scheme" content="dark" />
+    <!-- theme-color синхронизируется с активной темой через JS (theme-init.js
+         и main.ts); color-scheme управляется из CSS по data-theme, поэтому
+         отдельный meta color-scheme не нужен (CSS имеет приоритет над meta). -->
     <meta name="theme-color" content="#0d0e12" />
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
-    <title>darmark</title>
+    <!-- Тема применяется до первого рендера (anti-FOUC): блокирующий скрипт,
+         поэтому data-theme ставится до краска. Внешний файл, а не inline:
+         CSP — script-src 'self' без 'unsafe-inline'. -->
+    <script src="/theme-init.js"></script>
+    <title>ПЕНАЛ</title>
   </head>
   <body>
     <a class="skip-link" href="#main-content">Перейти к содержимому</a>
     <div id="app">
       <!-- ============ ТУЛБАР ============ -->
       <header id="toolbar" class="toolbar">
+        <!-- Бренд: только знак, без wordmark. Два варианта под тему (data-theme на <html>):
+             тёмная — белый logo_w.svg, светлая — тёмный logo.svg. Показом управляет CSS. -->
         <div class="brand">
-          <span class="brand-mark">d</span>
-          <span>darmark</span>
+          <img class="brand-mark brand-mark--dark" src="/logo_w.svg" alt="ПЕНАЛ" width="25" height="20" />
+          <img class="brand-mark brand-mark--light" src="/logo.svg" alt="ПЕНАЛ" width="25" height="20" />
         </div>
 
         <!-- файловые команды (иконки, id заморожены) -->
@@ -173,7 +181,7 @@
         <!-- main -->
         <main class="main" id="main-content" tabindex="-1">
           <!-- Видимого заголовка в UI нет — даём скринридерам точку входа в main. -->
-          <h1 class="visually-hidden">darmark — редактор Markdown</h1>
+          <h1 class="visually-hidden">ПЕНАЛ — редактор Markdown</h1>
           <div class="tabrow">
             <!-- Вкладки создаются динамически из DocStore (renderTabStrip в main.ts). -->
             <div class="tab-strip" id="tab-strip"></div>
@@ -406,6 +414,19 @@
             <path d="M12 3l1.6 4.6L18 9l-4.4 1.4L12 15l-1.6-4.6L6 9l4.4-1.4z" />
           </svg>
           <span>AI-ассистент</span>
+        </button>
+        <!-- Тумблер темы (ADR-0037): ручной, без prefers-color-scheme. Состояние —
+             data-theme на <html>; выбор сохраняется в localStorage (darmark.theme).
+             Иконка отражает текущую тему: луна — тёмная, солнце — светлая. -->
+        <button class="stat clickable" id="sb-theme" type="button" title="Переключить тему" aria-label="Тема: тёмная" aria-pressed="false">
+          <svg id="sb-theme-icon-moon" aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="12" height="12">
+            <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
+          </svg>
+          <svg id="sb-theme-icon-sun" aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="12" height="12" hidden>
+            <circle cx="12" cy="12" r="4" />
+            <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+          </svg>
+          <span id="sb-theme-label">Тёмная</span>
         </button>
         <span class="plugin-status" id="plugin-status" role="group" aria-label="Плагины"></span>
         <span id="plugin-announcer" class="visually-hidden" role="status" aria-live="polite"></span>

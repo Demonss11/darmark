@@ -1045,7 +1045,7 @@ fn print_report_json(report: &TestReport) {
 }
 
 fn print_usage() {
-    println!("darmark-plugin — CLI разработчика плагинов darmark");
+    println!("darmark-plugin — CLI разработчика плагинов ПЕНАЛ");
     println!();
     println!("Использование:");
     println!("  darmark-plugin test <path> [--json] [--verbose]");

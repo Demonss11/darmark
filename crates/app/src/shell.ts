@@ -161,7 +161,7 @@ export function createShell(opts: ShellOptions): void {
       if (!commands.isDirty()) return;
       event.preventDefault();
       const ok = await confirm("Закрыть приложение с несохранёнными изменениями?", {
-        title: "darmark",
+        title: "ПЕНАЛ",
         kind: "warning",
       });
       if (ok) await appWindow.destroy();

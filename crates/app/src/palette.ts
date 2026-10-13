@@ -42,9 +42,9 @@ export interface PaletteController {
   isOpen(): boolean;
 }
 
-/** Подпись источника: `darmark` для ядра, id плагина — для плагина. */
+/** Подпись источника: `ПЕНАЛ` для ядра, id плагина — для плагина. */
 function originLabel(origin: PaletteCommand["origin"]): string {
-  return origin.startsWith("plugin:") ? origin.slice("plugin:".length) : "darmark";
+  return origin.startsWith("plugin:") ? origin.slice("plugin:".length) : "ПЕНАЛ";
 }
 
 export function createPalette(opts: PaletteOptions): PaletteController {

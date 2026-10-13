@@ -213,7 +213,7 @@ export function createResourceMonitor(opts: ResourceMonitorOptions): ResourceMon
    */
   function evaluateSnapshot(snap: ResourceSnapshot): void {
     const main = mainState(snap.main);
-    logTransition("proc:main", "darmark", "system", main.state, main.reason);
+    logTransition("proc:main", "ПЕНАЛ", "system", main.state, main.reason);
     for (const child of snap.children) {
       lastChild.set(child.plugin_id, child);
       // `orphan` снимается только по **новому** PID того же `plugin_id` (TZ §6.6).
@@ -281,7 +281,7 @@ export function createResourceMonitor(opts: ResourceMonitorOptions): ResourceMon
     return makeSpan(className);
   }
 
-  /** Главная строка: `darmark 156 МБ · CPU 3% · 2 сек назад` (TZ §6.3). */
+  /** Главная строка: `ПЕНАЛ 156 МБ · CPU 3% · 2 сек назад` (TZ §6.3). */
   function renderMainRow(main: MainMetrics): HTMLElement {
     const { state } = mainState(main);
 
@@ -290,7 +290,7 @@ export function createResourceMonitor(opts: ResourceMonitorOptions): ResourceMon
     const dot = makeSpan("mon-dot");
     dot.setAttribute("aria-hidden", "true");
     const name = makeSpan("mon-name");
-    name.textContent = "darmark";
+    name.textContent = "ПЕНАЛ";
     const val = makeSpan("mon-val");
     val.textContent = formatMb(main.mem_bytes);
     const age = makeSpan("mon-age");
@@ -370,7 +370,7 @@ export function createResourceMonitor(opts: ResourceMonitorOptions): ResourceMon
     const dot = makeSpan("mon-dot");
     dot.setAttribute("aria-hidden", "true");
     const name = makeSpan("mon-name");
-    name.textContent = "darmark";
+    name.textContent = "ПЕНАЛ";
     const val = makeSpan("mon-val");
     val.textContent = "нет данных";
     const cpu = makeSpan("mon-cpu empty");
@@ -420,7 +420,7 @@ export function createResourceMonitor(opts: ResourceMonitorOptions): ResourceMon
     return frag;
   }
 
-  /** Тихая сводка в шапке: `darmark 156 МБ · плагинов 2 · 2 сек назад` (TZ §6.4). */
+  /** Тихая сводка в шапке: `ПЕНАЛ 156 МБ · плагинов 2 · 2 сек назад` (TZ §6.4). */
   function renderSummary(): void {
     if (!summary) return;
     if (!snapshot) {
@@ -428,10 +428,10 @@ export function createResourceMonitor(opts: ResourceMonitorOptions): ResourceMon
       return;
     }
     if (Date.now() - snapshot.ts > STALE_MS) {
-      summary.textContent = "darmark — нет данных";
+      summary.textContent = "ПЕНАЛ — нет данных";
       return;
     }
-    summary.textContent = `darmark ${formatMb(snapshot.main.mem_bytes)} · плагинов ${snapshot.children.length} · ${ageText()}`;
+    summary.textContent = `ПЕНАЛ ${formatMb(snapshot.main.mem_bytes)} · плагинов ${snapshot.children.length} · ${ageText()}`;
   }
 
   /** Полная пересборка строк; при скрытом доке/вкладке — отметка об отложенном рендере. */

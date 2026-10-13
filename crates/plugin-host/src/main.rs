@@ -395,7 +395,7 @@ fn parse_mode() -> Result<Mode, String> {
 }
 
 fn print_usage() {
-    eprintln!("darmark-plugin-host — child-хост Lua-плагинов darmark");
+    eprintln!("darmark-plugin-host — child-хост Lua-плагинов ПЕНАЛ");
     eprintln!("  (без аргументов)       stdio-режим: конверт хост ↔ child");
     eprintln!("  --self-test <path>     загрузить и активировать плагин (лог в stderr)");
     eprintln!(

@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Логотип darmark. Чистый SVG без редакторских метаданных (Inkscape).
+     viewBox совпадает с исходником, чтобы геометрия не поехала. -->
+
+<svg
+   width="88.371429"
+   height="69.426414"
+   viewBox="0 0 88.371429 69.426414"
+   role="img"
+   aria-label="ПЕНАЛ"
+   version="1.1"
+   id="svg8"
+   sodipodi:docname="logo_w.svg"
+   inkscape:version="1.4.4 (dcaf3e7, 2026-05-05)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview8"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="true"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:zoom="4.6524079"
+     inkscape:cx="45.352859"
+     inkscape:cy="41.05401"
+     inkscape:window-width="1536"
+     inkscape:window-height="890"
+     inkscape:window-x="-6"
+     inkscape:window-y="-6"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="g8" />
+  <defs
+     id="defs6">
+    <linearGradient
+       id="darmark-g1"
+       x1="60.415462"
+       y1="173.89861"
+       x2="131.41187"
+       y2="173.89861"
+       gradientUnits="userSpaceOnUse"
+       gradientTransform="translate(0.1022956,0.41149605)">
+      <stop
+         offset="0"
+         stop-color="#fd7128"
+         id="stop1" />
+      <stop
+         offset="1"
+         stop-color="#651d75"
+         id="stop2" />
+    </linearGradient>
+    <linearGradient
+       id="darmark-g2"
+       x1="102.13355"
+       y1="210.38216"
+       x2="118.44324"
+       y2="214.97968"
+       gradientUnits="userSpaceOnUse"
+       gradientTransform="translate(0.1022956,0.41149605)">
+      <stop
+         offset="0"
+         stop-color="#fc712a"
+         id="stop3" />
+      <stop
+         offset="1"
+         stop-color="#681f73"
+         id="stop4" />
+    </linearGradient>
+    <linearGradient
+       id="darmark-g3"
+       x1="100.99572"
+       y1="206.15593"
+       x2="118.44324"
+       y2="214.97968"
+       gradientUnits="userSpaceOnUse"
+       gradientTransform="translate(0.1022956,0.41149605)">
+      <stop
+         offset="0"
+         stop-color="#fc712a"
+         id="stop5" />
+      <stop
+         offset="1"
+         stop-color="#681f73"
+         id="stop6" />
+    </linearGradient>
+  </defs>
+  <g
+     transform="translate(-60.415462,-148.16257)"
+     id="g8">
+    <path
+       fill="url(#darmark-g1)"
+       d="m 130.40094,192.80902 c 0.49582,-0.15354 2.0277,-4.41167 0.3435,-7.06563 -1.6842,-2.65394 -38.460533,-53.76151 -63.244983,-31.62316 -1.3449,1.38372 -11.98226,13.11043 -4.09829,30.31216 6.37909,15.20449 33.09132,18.81931 52.762173,12.94686 5.2044,-5.36143 -53.413353,-8.47427 -39.146143,-31.1551 12.54562,-19.94404 47.885083,28.28768 53.383743,26.58487 z"
+       id="path6"
+       style="fill:#ffffff;fill-opacity:1" />
+    <path
+       fill="url(#darmark-g3)"
+       d="m 103.48101,217.62931 c 14.38727,0.62773 37.15989,0.26928 43.28226,0.26928 2.93499,-1.99511 2.67341,-4.55617 0.18126,-6.46267 0,0 -37.95052,-2.81758 -43.01262,-0.422 -3.07716,1.45623 -1.16699,5.93597 -0.45111,6.61539 z"
+       id="path7"
+       style="fill:#ffffff;fill-opacity:1" />
+    <path
+       fill="url(#darmark-g2)"
+       d="m 116.78223,208.99706 c 20.89596,-0.20057 29.84999,2.14686 23.32132,-2.19975 -6.28937,-4.1873 -21.67032,-3.30264 -23.07798,-2.67433 -1.40766,0.62831 -0.586,4.3735 -0.2434,4.87408 z"
+       id="path8"
+       style="fill:#ffffff;fill-opacity:1" />
+  </g>
+</svg>

@@ -1,7 +1,9 @@
-<img src="crates/app/src-tauri/icons/icon.png" alt="darmark" width="88" align="right">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="crates/app/public/penal_text.svg">
+  <img src="crates/app/public/penal_text.svg" alt="ПЕНАЛ" width="360" align="right">
+</picture>
 
 Markdown-редактор для Windows (10/11), который расширяет себя сам.
-Слева исходник, справа HTML-предпросмотр.
 
 Нужна новая функция? Встроенный AI напишет, протестирует и подключит плагин к редактору. Без пересборки, без перезапуска, без ручной возни.
 
@@ -12,9 +14,9 @@ Markdown-редактор для Windows (10/11), который расширя�
 
 ## Что внутри
 
-- **Ядро на Rust** — рендеринг GFM, санитизация HTML, YAML-шапка; всё, что касается Markdown, живёт на бэкенде
-- **Изолированные плагины** — Lua в отдельном процессе: песочница без `os`, `io`, `require`, лимиты памяти и времени через Job Object, карантин после трёх падений подряд
-- **AI-ассистент** — чат с агентом, который п
+- **Ядро на Rust** — рендеринг GFM, санитизация HTML и всё, что касается Markdown
+- **Изолированные плагины** — Lua в отдельном процессе
+- **AI-ассистент** — чат с агентом, который понимает как работать с плагинами программы.
 
 ## Как работает AI
 
@@ -44,7 +46,7 @@ sequenceDiagram
 - **Windows 11** — быстро, WebView2 уже предустановлен
 - **Windows 10** — дольше: установщик подтянет WebView2
 
-**Из исходников** (Rust ≥ 1.80, Node ≥ 20):
+**Из исходников** (Rust 1.99, Node 24, Lua 5.5):
 
 ```bash
 git clone https://github.com/Demonss11/darmark.git
@@ -58,8 +60,6 @@ npx tauri build   # NSIS-установщик в target/release/bundle/nsis/
 
 - [API плагинов](docs/PLUGIN_API.md)
 - [Руководство по плагинам](docs/PLUGIN_GUIDE.md)
-- [Архитектурные решения (ADR)](docs/adr/)
-- [Дизайн-система](docs/DESIGN_DOC.md)
 
 ## Лицензия
 

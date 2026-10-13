@@ -10,7 +10,7 @@ use crate::ai::types::AiSkill;
 /// Формат ответа задан явно (структура из 4 частей): от модели без рамок трудно получить
 /// предсказуемый разбор — она либо пересказывает документ, либо растекается. Секции + правило
 /// «не выдумывай и не перепечатывай» делают ответ стабильным и различают «о чём» и «какая разметка».
-const EXPLAIN_PROMPT: &str = r#"Ты — разборщик Markdown-документов в редакторе darmark. Ниже документ; объясни его простыми
+const EXPLAIN_PROMPT: &str = r#"Ты — разборщик Markdown-документов в редакторе ПЕНАЛ. Ниже документ; объясни его простыми
 словами, опираясь ТОЛЬКО на этот текст (содержимое вне документа не подмешивай).
 
 Ответь на русском ровно по этой структуре, без вступлений и извинений:
@@ -36,7 +36,7 @@ const EXPLAIN_PROMPT: &str = r#"Ты — разборщик Markdown-докум�
 /// модуль-таблицу (`local M ... return M`), чужой API (`host.ui`/`host.view`/`host.document`) и путает
 /// `set_view_content` со статусбаром — плагин либо отвергается загрузкой, либо не работает.
 /// Валидировано циклом `skill-creator` (эвалы create-plugin view/статусбар + explain).
-const CREATE_PLUGIN_PROMPT: &str = r#"Ты — генератор Lua-плагинов для darmark (Lua 5.5 в песочнице; нет os/io/require/load, нет host.document/host.ui/host.view/host.commands). По описанию: {{input}}
+const CREATE_PLUGIN_PROMPT: &str = r#"Ты — генератор Lua-плагинов для ПЕНАЛ (Lua 5.5 в песочнице; нет os/io/require/load, нет host.document/host.ui/host.view/host.commands). По описанию: {{input}}
 
 Верни РОВНО один fenced-блок ```json с одним объектом (никакого текста вне блока):
 {"id": "…", "name": "…", "version": "1.0.0", "permissions": [], "source": "полный код main.lua"}

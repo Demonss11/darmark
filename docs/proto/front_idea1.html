@@ -33,6 +33,13 @@
     (а) добавить `font-src 'self' data:` в tauri.conf.json, либо
     (б) положить .woff2 рядом с бандлом фронта и грузить как same-origin
         файлы `@font-face { src: url('/fonts/...woff2') }` — предпочтительно.
+  Статус на момент этой редакции: продукт уже выбрал (б) для моно —
+  `crates/app/public/fonts/JetBrainsMono-{Regular,Bold}.woff2` (~92 КБ каждый,
+  полный охват) + OFL.txt, `@font-face` в `crates/app/src/style.css`.
+  Интер/засечки в продукте пока нет. Открытый вопрос бюджета: в файле лежат
+  субсеты latin+cyrillic (~26 КБ на начертание), то есть запас ~70 % по весу —
+  но субсет режет охват (греческий, CJK в коде уедут в системный fallback),
+  поэтому решение о покрытии нужно принимать осознанно.
   Лицензии: JetBrains Mono — OFL 1.1, Inter — OFL 1.1, Source Serif 4 — OFL 1.1.
   Текст лицензии обязан попасть в дистрибутив (OFL требует сопровождать копию).
 
@@ -61,14 +68,51 @@
                          (JetBrains Mono намеренно     (ui-monospace, SFMono-Regular,
                          убран, см. ниже)              Menlo, Monaco, …)
   Тело предпросмотра     системный sans (Segoe UI)    "Inter", системный sans
-  Заголовки              системный sans: h1/h2 700,   "Source Serif 4" (засечки),
-  предпросмотра          h3 600 (браузерные веса)     700 → Georgia, serif
+  Заголовки              системный sans h1/h2/h3      "Source Serif 4" (засечки),
+  предпросмотра          700 (браузерный bold)        700 → Georgia, serif
 
   Ролевые токены в файле: --font-ui, --font-mono, --font-body, --font-heading
   (имена mono/body/heading — как в 5.txt) + псевдонимы --font-editor/--font-preview
   под прежние имена прототипа, чтобы не переписывать все правила.
-  Кегль/интерлиньяж заголовков в «Стало»: h1 28/1.24, h2 20/1.30, h3 16/1.35
-  (в «Было» — продуктовые 26/19/15 без явного line-height, как сейчас).
+  Кегль/интерлиньяж заголовков в «Стало»: h1 30/1.22, h2 21/1.30, h3 17/1.32
+  (в «Было» — продуктовые 26/19/15 без явного line-height, как в style.css).
+
+  ПРАВКИ РЕДАКЦИИ 2 (критический разбор, рендер всех трёх состояний)
+  -----------------------------------------------------------------
+  Типографика:
+    · кегли засечных заголовков подняты сильнее (26→30 / 19→21 / 15→17):
+      при равном px Source Serif 4 «терял» вес против Segoe UI Bold;
+    · у h2 под засечками линейка ослаблена до --line-soft (h1 сохраняет --line):
+      две полновесные горизонтали на коротком отрезке давали полосатость;
+    · у .markdown-body h3 снят font-weight 600 — в продукте правило без веса,
+      работает браузерный bold (700); «Было» больше не врёт про вес;
+    · .markdown-body получил max-width: 860px, #preview — продуктовые отступы
+      (10px 34px 80px) и сам несёт .markdown-body, как в index.html.
+  Состояния и контракты (fidelity к продукту, §13.2 + e2e a11y.feature):
+    · тумблеры — <label class="tbtn"> со скрытым input#chk-sync/#chk-preview
+      (role=switch), а не <button aria-pressed>: возвращены замороженные id,
+      доступные имена и фокус-ринг на обёртке (BUG-008);
+    · #statusbar больше не роль status: live region — на #stat-msg (иначе
+      скринридер перечитывал бы весь бар на каждое движение каретки);
+    · доступные имена #editor и #tb-plugins приведены к контракту;
+    · вкладки: tabindex, кнопка .close из продуктового style.css, метрики
+      (min/max-width, padding) выровнены; vtab — <button aria-current>,
+      подпись «Редактор»; возвращён де-факто id .view-switch;
+    · «+» в таб-строке и плашки-шрифты в шапке панелей — аннотации прототипа
+      (пунктир), в продукте их нет.
+
+  РЕДАКЦИЯ 3 (закрыты все продуктовые вопросы направления A)
+  ------------------------------------------------------------
+  1. Палитра светлой темы: слои разведены (шаг 1.08–1.14), границы усилены,
+     gutter темнее рабочей области. Все текстовые пары ≥ 4.5:1.
+  2. --disabled: только точки/иконки, НЕ текст. Текст статуса «выключено» — на --fg-mute.
+  3. Метрики Inter: 13px/1.7 — осознанная плотность «инструмента». Не меняем.
+  4. --gutter: темнее --bg-0, как в тёмной теме. Рецессивная колонка.
+  5. Вкладки: целевой паттерн WAI-ARIA (role=tab/tabpanel, aria-controls,
+     roving tabindex). Разметка обновлена, логика — в продуктовой дельте.
+  6. Лигатуры: liga включены осознанно, calt выключены в редакторе/коде
+     (исходник читается буква в букву). В предпросмотре calt включён.
+  7. DESIGN.md: список норм, расходящихся с направлением, — в продуктовой дельте.
 
   CSP-safe: нет внешних ресурсов, нет eval/new Function, нет inline-обработчиков
   (всё через addEventListener). Состояние — в data-атрибутах на <html>.
@@ -299,37 +343,40 @@ html[data-scheme="new"][data-theme="dark"] {
    помечены комментарием «правка». */
 html[data-scheme="new"][data-theme="light"] {
   color-scheme: light;
-  --bg-0: #f8f9fb;
-  --bg-1: #f0f1f4;
-  --bg-2: #e8eaef;
-  --bg-3: #dfe2ea;
-  --line: #d4d7e0;
-  --line-soft: #e2e4ea;
-  --gutter: #eceef2;          /* примечание: темнее --bg-0 */
+  /* Редакция 3: слои разведены (шаг 1.08–1.14 против 1.07 в редакции 2),
+     границы усилены до видимых, gutter темнее рабочей области (как в тёмной).
+     Все текстовые пары ≥ 4.5:1 на всех слоях (см. таблицу контрастов). */
+  --bg-0: #fafbfc;
+  --bg-1: #f0f2f6;
+  --bg-2: #e3e7ee;
+  --bg-3: #d4d9e3;
+  --line: #b8bfcc;
+  --line-soft: #d0d5e0;
+  --gutter: #d8dde6;          /* темнее --bg-0: рецессивная колонка, как в тёмной */
 
   --popover: #ffffff;
   --fg: #1a1d24;
   --fg-dim: #4a5068;
-  --fg-mute: #5b6172;
+  --fg-mute: #545a6b;         /* правка ред. 3: было #5b6172 (4.37:1 на bg3 — FAIL) */
   --head: #0f1115;
   --body: #2d3140;
-  --accent: #6353dd;          /* правка: было #6a5ae0 (4.48:1 на --bg-1) */
-  --accent-2: #1d4ed8;        /* правка: было #2563eb (4.58:1 на --bg-1) */
-  --accent-soft: rgba(99, 83, 221, 0.12);
-  --accent-rgb: 99, 83, 221;
+  --accent: #5546d0;          /* правка ред. 3: было #6353dd (3.89:1 на bg3 — FAIL) */
+  --accent-2: #1d4ed8;
+  --accent-soft: rgba(85, 70, 208, 0.12);
+  --accent-rgb: 85, 70, 208;
   --on-accent: #ffffff;
-  --on-error: #ffffff;        /* правка: тёмный текст на тёмной заливке не читается */
-  --on-warning: #ffffff;      /* правка: то же для янтарного */
+  --on-error: #ffffff;
+  --on-warning: #ffffff;
   --code-fg: #6d28d9;
-  --green: #046c4e;           /* правка: было #0a8a5f (4.14:1 — FAIL) */
-  --amber: #92400e;           /* правка: было #b45309 (4.45:1 на --bg-1) */
-  --red: #b91c1c;             /* правка: было #dc2626 (4.28:1 на --bg-1) */
-  --disabled: #5f6575;        /* правка: было #6b7280 (4.28:1 на --bg-1) */
-  --sel-bg: rgba(99, 83, 221, 0.20);
+  --green: #046c4e;
+  --amber: #92400e;
+  --red: #b91c1c;
+  --disabled: #5f6575;        /* только точки/иконки, НЕ текст (см. решение 2) */
+  --sel-bg: rgba(85, 70, 208, 0.20);
   --sel-fg: #1a1d24;
   --link-dash: rgba(29, 78, 216, 0.40);
-  --sb-thumb: #c9ccd6;
-  --sb-thumb-hover: #adb2c0;
+  --sb-thumb: #b8bfcc;
+  --sb-thumb-hover: #a3aabf;
   --shadow-sm: 0 6px 18px rgba(0, 0, 0, 0.15);
   --shadow-lg: 0 20px 60px rgba(0, 0, 0, 0.20);
   --font-ui: -apple-system, "Segoe UI", system-ui, Roboto, Arial, sans-serif;
@@ -359,13 +406,30 @@ html {
   --md-code-fs: 12.5px;
 }
 
-/* Лигатуры/калиграфия JetBrains Mono включаем только в «Стало». */
+/* Лигатуры: РЕШЕНИЕ (вопрос 6 закрыт).
+   Редактор — Markdown-исходник, не IDE: в нём пишут прозу и разметку,
+   а не код с операторами =>, !=, >=. Стандартные лигатуры JetBrains
+   Mono (fi, fl, ffmpeg) в прозе не мешают и улучшают читаемость.
+   Контекстные альтернативы (calt) в коде могут СКРЫВАть реальные
+   символы исходника (a => b выглядит как a → b) — это недопустимо
+   для редактора исходного кода. Поэтому:
+     · liga (стандартные лигатуры) — ВКЛЮЧАЕМ осознанно;
+     · calt (контекстные альтернативы) — ВЫКЛЮЧАЕМ в редакторе и коде,
+       чтобы исходник читался буква в букву.
+   В предпросмотре (markdown-body) calt оставляем — там рендер
+   результата, и лигатуры уместны. */
 html[data-scheme="new"] .ed-code,
 html[data-scheme="new"] .line-numbers,
-html[data-scheme="new"] .markdown-body code,
-html[data-scheme="new"] .font-tag,
 html[data-scheme="new"] kbd {
-  font-feature-settings: "liga" 1, "calt" 1;
+  font-feature-settings: "liga" 1, "calt" 0;
+  font-variant-numeric: tabular-nums;
+}
+html[data-scheme="new"] .markdown-body code {
+  font-feature-settings: "liga" 1, "calt" 0;
+  font-variant-numeric: tabular-nums;
+}
+html[data-scheme="new"] .font-tag {
+  font-feature-settings: "liga" 1, "calt" 0;
   font-variant-numeric: tabular-nums;
 }
 
@@ -494,8 +558,18 @@ svg { display: block; }
   transition: background 0.12s, color 0.12s;
 }
 .tbtn:hover { background: var(--bg-3); color: var(--fg); }
+.tbtn.active,
 .tbtn[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
 .tbtn svg { width: 15px; height: 15px; }
+/* Тумблеры тулбара — как в продукте (index.html): <label class="tbtn"> со скрытым
+   checkbox внутри, а не <button aria-pressed>. Причина: контракты §13.2 требуют
+   id `chk-sync`/`chk-preview` (input, role=switch) и `#toggle-sync`/`#toggle-preview`
+   (label), а e2e a11y.feature проверяет роль switch и доступное имя. */
+.tbtn:has(> input:checked) { color: var(--accent); background: var(--accent-soft); }
+.toggle-input { position: absolute; width: 0; height: 0; opacity: 0; pointer-events: none; }
+/* Фокус на скрытом input невидим — показываем его на обёртке (BUG-008):
+   только :focus-visible, иначе после клика рамка висит до клика вне тумблера. */
+label.tbtn:has(> input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 1px; }
 .div-v { width: 1px; height: 16px; margin: 0 6px; background: var(--line); opacity: 0.75; flex-shrink: 0; }
 .spacer { flex: 1; }
 .palette-trigger {
@@ -536,7 +610,7 @@ svg { display: block; }
 .tab-strip::-webkit-scrollbar { height: 0; }
 .tab {
   position: relative; display: inline-flex; align-items: center; gap: 7px;
-  min-width: 92px; max-width: 200px; padding: 0 10px 0 12px;
+  min-width: 80px; max-width: 180px; padding: 0 12px;
   border-right: 1px solid var(--line-soft);
   background: var(--bg-1); color: var(--fg-mute); font-size: 12px;
   cursor: default; flex-shrink: 0;
@@ -551,7 +625,25 @@ svg { display: block; }
   color: var(--fg-dim); font-size: 10px; font-weight: 700; flex-shrink: 0;
   font-family: var(--font-editor); user-select: none;
 }
-.tab-new { display: inline-flex; align-items: center; padding: 0 12px; color: var(--fg-mute); font-size: 15px; line-height: 1; border: 0; background: transparent; cursor: pointer; }
+/* Кнопка закрытия вкладки — копия продуктового .tab .close (style.css):
+   скрыта (opacity 0), проявляется на hover/focus-within. tabindex="-1":
+   в порядке табуляции вкладки кнопка закрытия не участвует. */
+.tab .close {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; padding: 0; border: none; border-radius: 3px;
+  background: transparent; color: var(--fg-mute); font-size: 14px; line-height: 1;
+  cursor: pointer; flex-shrink: 0; opacity: 0;
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
+}
+.tab:hover .close,
+.tab:focus-within .close { opacity: 1; }
+.tab .close:hover { background: var(--bg-2); color: var(--fg); }
+.tab .close:focus-visible { opacity: 1; outline: 1px solid var(--accent); outline-offset: -1px; }
+.tab-new {
+  display: inline-flex; align-items: center; padding: 0 12px; color: var(--fg-mute);
+  font-size: 15px; line-height: 1; border: 0; background: transparent; cursor: pointer;
+}
+.tab-new:hover { background: var(--bg-2); color: var(--fg); }
 
 /* ---------- Рабочая область: редактор | предпросмотр ---------- */
 #panes { flex: 1; display: flex; min-height: 0; overflow: hidden; }
@@ -579,12 +671,14 @@ svg { display: block; }
 .font-tag {
   display: inline-flex; align-items: center; gap: 5px;
   padding: 2px 8px; border-radius: 999px;
-  border: 1px solid var(--line-soft); background: var(--bg-2);
+  /* Пунктир — язык аннотаций прототипа (как .probe): эти чипы описывают
+     применённые шрифты и НЕ являются элементами продукта — в продуктовой
+     панели на этом месте стоят кнопки «Копировать HTML» и «Вернуться». */
+  border: 1px dashed var(--line); background: var(--bg-2);
   font-family: var(--font-editor); font-size: 10.5px; color: var(--fg-mute); white-space: nowrap;
 }
 .font-tag.preview { font-family: var(--font-body); }
 .font-tag.heading { font-family: var(--font-heading); }
-.font-tag::before { content: ""; width: 4px; height: 4px; border-radius: 50%; background: var(--accent); }
 
 /* ---------- Панель редактора ---------- */
 .editor-wrap { flex: 1; display: flex; min-height: 0; overflow: hidden; }
@@ -617,9 +711,13 @@ svg { display: block; }
 }
 
 /* ---------- Панель предпросмотра ---------- */
+/* .markdown-body висит на самом #preview (как в продукте) и ограничивает
+   ширину набора: на широком окне строка не растягивается на всю панель. */
+.markdown-body { max-width: 860px; }
 .preview-body {
   flex: 1; min-width: 0; min-height: 0; overflow-y: auto;
-  padding: 10px 34px 40px;
+  /* нижний отступ — продуктовый (style.css #preview: 10px 34px 80px) */
+  padding: 10px 34px 80px;
   font-family: var(--font-preview);
   font-size: var(--md-fs);
   line-height: var(--md-lh);
@@ -638,17 +736,24 @@ svg { display: block; }
 }
 .markdown-body h1 { font-size: 26px; margin: 0 0 14px; }
 .markdown-body h2 { font-size: 19px; margin: 24px 0 10px; }
-.markdown-body h3 { color: var(--head); font-size: 15px; font-weight: 600; margin: 18px 0 8px; }
-/* Засечные заголовки в «Стало»: при том же px Source Serif 4 кажется мельче
-   sans, поэтому кегль поднят — h1 26→28, h2 19→20, h3 15→16. Интерлиньяж задан
-   явно (1.24/1.30/1.35 вместо унаследованного 1.7): в засечках рыхлая строка
-   разваливает заголовок. Отрицательный трекинг у h1/h2 снят — Source Serif 4
-   не любит зажатых пар. h3 поставлен в 700 (а не в 600): у засечного шрифта
-   разница 600/700 почти незаметна, а ступень «крупнее» задаётся кеглем.
-   Ось wght переменного файла идёт 200–900, так что 600 тоже доступен без синтеза. */
-html[data-scheme="new"] .markdown-body h1 { font-size: 28px; line-height: 1.24; letter-spacing: 0; }
-html[data-scheme="new"] .markdown-body h2 { font-size: 20px; line-height: 1.30; letter-spacing: 0; }
-html[data-scheme="new"] .markdown-body h3:not(.sem-title) { font-size: 16px; line-height: 1.35; font-weight: 700; }
+/* Вес h3 не задаём: в продукте правило тоже без font-weight, поэтому работает
+   браузерный bold (700). Раньше здесь стояло 600 — и «Было» показывало не то,
+   что реально рисует продукт, искажая сравнение по весу. */
+.markdown-body h3 { color: var(--head); font-size: 15px; margin: 18px 0 8px; }
+/* Засечные заголовки в «Стало». Два решения, принятых после рендер-разбора:
+   1) кегль поднят заметно (26→30 / 19→21 / 15→17): у Source Serif 4 меньше
+      относительная высота строчных и светлее штрих, чем у Segoe UI Bold, поэтому
+      при равном px засечки «теряли» вес и ступень к телу документа сжималась;
+   2) line-height задан явно (наследованный 1.7 разваливает крупную засечную
+      строку), отрицательный трекинг снят — Source Serif 4 не любит зажатых пар. */
+html[data-scheme="new"] .markdown-body h1 { font-size: 30px; line-height: 1.22; letter-spacing: 0; }
+html[data-scheme="new"] .markdown-body h2 { font-size: 21px; line-height: 1.30; letter-spacing: 0; }
+html[data-scheme="new"] .markdown-body h3:not(.sem-title) { font-size: 17px; line-height: 1.32; font-weight: 700; }
+/* Линейка под h2. У h1 она несёт структуру (один раз на документ), у h2 при
+   засечках превращается в «редакционную» линию во всю ширину панели: вместе с
+   рамкой блока кода, таблицей и полосой цитаты даёт полосатость. Поэтому под
+   засечками h2 остаётся, но ослабляется до --line-soft. */
+html[data-scheme="new"] .markdown-body h2 { border-bottom-color: var(--line-soft); }
 .markdown-body p { margin: 0 0 10px; }
 .markdown-body a { color: var(--accent-2); text-decoration: none; border-bottom: 1px dashed var(--link-dash); }
 .markdown-body a:hover { color: var(--accent); border-bottom-color: var(--accent); }
@@ -725,6 +830,9 @@ html[data-scheme="new"] .markdown-body h3:not(.sem-title) { font-size: 16px; lin
 }
 .stat { display: inline-flex; align-items: center; gap: 6px; height: 100%; padding: 0 9px; border-radius: 4px; color: var(--fg-mute); white-space: nowrap; }
 .stat.accent { color: var(--accent); font-weight: 600; }
+/* Продуктовое правило слота сообщения (style.css: #stat-msg) — он акцентный
+   и обрезается по 360px, чтобы длинное сообщение не выдавливало метрики. */
+#stat-msg { color: var(--accent); max-width: 360px; overflow: hidden; text-overflow: ellipsis; }
 .stat .stat-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
 .stat-sep { color: var(--line); padding: 0 2px; }
 
@@ -743,6 +851,7 @@ html[data-scheme="new"] .markdown-body h3:not(.sem-title) { font-size: 16px; lin
 .contrast td code { font-family: var(--font-editor); font-size: 11px; color: #e8eaf0; }
 .contrast .ok { color: #34d399; font-weight: 700; }
 .contrast .ok3 { color: #fbbf24; font-weight: 700; }
+.contrast .bad { color: #f87171; font-weight: 700; }
 .contrast .fix { color: #fbbf24; font-family: var(--font-editor); font-size: 11px; }
 .contrast .good { color: #34d399; font-family: var(--font-editor); font-size: 11px; }
 .contrast .warnbox { margin: 10px 0 0; padding: 8px 12px; border-radius: 6px; background: #1c1f28; border-left: 3px solid #fbbf24; color: #d0d3e0; }
@@ -805,27 +914,37 @@ html[data-scheme="new"] .markdown-body h3:not(.sem-title) { font-size: 16px; lin
     <button type="button" class="tbtn" id="btn-inspect" aria-label="Инспектор блоков">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M15.6 15.6 21 21"/></svg>
     </button>
-    <button type="button" class="tbtn active" id="toggle-sync" aria-pressed="true" aria-label="Синхронная прокрутка">
+    <!-- Тумблеры — как в продукте (index.html): <label class="tbtn"> со скрытым
+         checkbox внутри. id из §13.2: `chk-sync`/`chk-preview` — это input
+         (role=switch), `toggle-sync`/`toggle-preview` — обёртка-label; доступные
+         имена совпадают с проверками e2e (a11y.feature). -->
+    <label class="tbtn" id="toggle-sync" title="Синхронная прокрутка">
+      <input class="toggle-input" id="chk-sync" type="checkbox" role="switch" checked aria-label="Синхронная прокрутка">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12a8 8 0 0 1 13.2-6.1"/><path d="M20 12a8 8 0 0 1-13.2 6.1"/><path d="M17 2.5V6h-3.5"/><path d="M7 21.5V18h3.5"/></svg>
-    </button>
-    <button type="button" class="tbtn" id="toggle-preview" aria-pressed="true" aria-label="Показывать предпросмотр">
+    </label>
+    <label class="tbtn" id="toggle-preview" title="Предпросмотр">
+      <input class="toggle-input" id="chk-preview" type="checkbox" role="switch" checked aria-label="Предпросмотр">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
-    </button>
+    </label>
 
     <span class="spacer"></span>
 
+    <!-- Иконка лупы убрана: та же лупа стоит на «Инспекторе блоков» слева —
+         два одинаковых глифа на два разных действия. Смысл несёт подпись
+         «Команды» и подсказка клавиши. -->
     <button type="button" class="palette-trigger" id="btn-palette">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M15.6 15.6 21 21"/></svg>
       Команды
       <kbd>Ctrl+K</kbd>
     </button>
 
     <span class="div-v" aria-hidden="true"></span>
 
-    <button type="button" class="ipbtn" id="tb-plugins" aria-label="Плагины: 3 активны, один с проблемой">
+    <!-- Доступное имя — ровно «Плагины» (e2e a11y.feature), счётчик и точка
+         состояния скрыты от AT: в продукте их состояние сообщается иначе. -->
+    <button type="button" class="ipbtn" id="tb-plugins" aria-label="Плагины">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="1.2"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.2"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.2"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.2"/></svg>
-      <span class="cnt" id="tb-plugins-cnt">3</span>
-      <span class="warn-dot" aria-hidden="true"></span>
+      <span class="cnt" id="tb-plugins-cnt" aria-hidden="true">3</span>
+      <span class="warn-dot" id="tb-plugins-dot" aria-hidden="true"></span>
     </button>
     <button type="button" class="tbtn" id="tb-mon" aria-label="Мониторинг ресурсов">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 20h18"/><rect x="4" y="5" width="16" height="11" rx="1.4"/><path d="M8 16v4M16 16v4"/></svg>
@@ -835,33 +954,54 @@ html[data-scheme="new"] .markdown-body h3:not(.sem-title) { font-size: 16px; lin
     </button>
   </div>
 
-  <!-- Вкладки документов -->
+  <!-- Вкладки документов. РЕДАКЦИЯ 3 (вопрос 5 закрыт): целевой паттерн
+       вкладок по WAI-ARIA Authoring Practices:
+         · role="tablist" на контейнере, role="tab" на вкладках;
+         · aria-selected="true" только на активной, остальные "false";
+         · aria-controls связывает вкладку с панелью (id панели);
+         · role="tabpanel" + aria-labelledby на панели;
+         · roving tabindex: активная tabindex="0", остальные tabindex="-1"
+           (стрелки ←/→ перемещают фокус, Tab заходит на активную вкладку
+           и уходит на панель);
+         · кнопка закрытия: tabindex="-1" (не в порядке табуляции),
+           видна на hover/focus-within, есть aria-label с именем файла.
+       Клавиатура (спека, не реализация): ←/→ — переключение вкладок,
+       Home/End — первая/последняя, Ctrl+W / Ctrl+F4 — закрытие,
+       Delete — закрытие активной (с подтверждением при несохранённых).
+       «+» для новой вкладки — отдельная кнопка после списка. -->
   <div class="tabrow" role="tablist" aria-label="Открытые документы">
     <div class="tab-strip">
-      <div class="tab active" role="tab" aria-selected="true">
+      <div class="tab active" id="tab-readme" role="tab" aria-selected="true" aria-controls="panel-readme" tabindex="0">
         <span class="ficon" aria-hidden="true">MD</span>
         <span class="name">README.md</span>
-        <span class="dirty" title="Есть несохранённые изменения" aria-label="Есть несохранённые изменения"></span>
+        <span class="dirty" aria-hidden="true"></span>
+        <button class="close" type="button" title="Закрыть" tabindex="-1" aria-label="Закрыть README.md">×</button>
       </div>
-      <div class="tab" role="tab" aria-selected="false">
+      <div class="tab" id="tab-changelog" role="tab" aria-selected="false" aria-controls="panel-changelog" tabindex="-1">
         <span class="ficon" aria-hidden="true">MD</span>
         <span class="name">CHANGELOG.md</span>
+        <button class="close" type="button" title="Закрыть" tabindex="-1" aria-label="Закрыть CHANGELOG.md">×</button>
       </div>
-      <div class="tab" role="tab" aria-selected="false">
+      <div class="tab" id="tab-notes" role="tab" aria-selected="false" aria-controls="panel-notes" tabindex="-1">
         <span class="ficon" aria-hidden="true">MD</span>
         <span class="name">заметки-2026.md</span>
+        <button class="close" type="button" title="Закрыть" tabindex="-1" aria-label="Закрыть заметки-2026.md">×</button>
       </div>
     </div>
+    <!-- «+» в таб-строке: в продукте такого элемента нет (index.html .tabrow
+         содержит только #tab-strip) — это предложение направления, не факт. -->
     <button type="button" class="tab-new" id="btn-new-tab" aria-label="Новая вкладка">+</button>
   </div>
 
   <!-- Панели -->
   <div id="panes">
     <!-- Редактор -->
-    <section class="pane" aria-label="Редактор">
+    <section class="pane" id="panel-readme" role="tabpanel" aria-labelledby="tab-readme" aria-label="Редактор">
       <div class="pane-head">
-        <div class="view-switch">
-          <span class="vtab core active" role="tab" aria-selected="true"><span class="origin" aria-hidden="true"></span>Исходник</span>
+        <!-- Как в продукте: vtab — <button> с aria-current (это переключатель view,
+             не таб-лист), подпись «Редактор». -->
+        <div class="view-switch" id="view-switch-a">
+          <button class="vtab core active" type="button" aria-current="true"><span class="origin" aria-hidden="true"></span>Редактор</button>
         </div>
         <div class="pane-head-actions">
           <span class="font-tag" data-font-mono>Cascadia Code / системный моно</span>
@@ -895,8 +1035,9 @@ html[data-scheme="new"] .markdown-body h3:not(.sem-title) { font-size: 16px; lin
 25
 26
 27</pre>
-        <!-- В продукте #editor — <textarea>; здесь статичный <pre> как снимок. -->
-        <pre class="ed-code" id="editor" role="region" tabindex="0" aria-label="Редактор Markdown, статичный снимок"># Заметки о darmark
+        <!-- В продукте #editor — <textarea>; здесь статичный <pre> как снимок.
+             Доступное имя — ровно как в продукте (e2e a11y.feature: «Редактор Markdown»). -->
+        <pre class="ed-code" id="editor" role="region" tabindex="0" aria-label="Редактор Markdown"># Заметки о darmark
 
 Лёгкий редактор Markdown в духе Notepad++: слева исходник,
 справа — HTML-предпросмотр, один фиолетовый акцент и никакого
@@ -929,19 +1070,20 @@ fn main() {
     <div class="divider" aria-hidden="true"></div>
 
     <!-- Предпросмотр -->
-    <section class="pane" aria-label="Предпросмотр">
+    <section class="pane" id="panel-changelog" role="tabpanel" aria-labelledby="tab-changelog" aria-label="Предпросмотр">
       <div class="pane-head">
-        <div class="view-switch">
-          <span class="vtab core active" role="tab" aria-selected="true"><span class="origin" aria-hidden="true"></span>Предпросмотр</span>
+        <div class="view-switch" id="view-switch">
+          <button class="vtab core active" type="button" aria-current="true"><span class="origin" aria-hidden="true"></span>Предпросмотр</button>
         </div>
         <div class="pane-head-actions">
           <span class="font-tag preview" data-font-body>системный sans (Segoe UI)</span>
           <span class="font-tag heading" data-font-heading>системный sans (Segoe UI)</span>
         </div>
       </div>
-      <div class="preview-body" id="preview">
-        <div class="markdown-body">
-          <h1>Заметки о darmark</h1>
+      <!-- Как в продукте (index.html): #preview сам несёт .markdown-body и
+           является скролл-контейнером; отсюда max-width: 860px в .markdown-body. -->
+      <article class="markdown-body preview-body" id="preview">
+        <h1>Заметки о darmark</h1>
 
           <p>Лёгкий редактор Markdown в духе Notepad++: слева исходник, справа — HTML-предпросмотр, один фиолетовый акцент и никакого лишнего хрома. Абзац намеренно длинный: по нему оценивают читаемость кириллицы — межбуквенные расстояния, высоту строчных и ритм строки. Подробности — в <a href="https://darmark.local/docs">документации по типографике</a>.</p>
 
@@ -1000,15 +1142,17 @@ fn main() {
               </div>
             </div>
           </div>
-        </div>
-      </div>
+      </article>
     </section>
   </div>
 
   <!-- Статусбар -->
-  <div id="statusbar" role="status" aria-live="polite">
+  <!-- Live region — на слоте сообщения (#stat-msg), как в продукте и в
+       e2e a11y.feature. Весь статусбар ролью status и aria-live не является:
+       иначе скринридер перечитывал бы бар целиком на каждое движение каретки. -->
+  <div id="statusbar">
     <span class="stat"><span class="stat-dot" aria-hidden="true"></span>Готово</span>
-    <span class="stat" id="stat-msg">Документ отрендерен · 4 мс</span>
+    <span class="stat" id="stat-msg" role="status" aria-live="polite">Документ отрендерен · 4 мс</span>
     <span class="spacer"></span>
     <span class="stat" id="stat-pos">Стр 12, стлб 34</span>
     <span class="stat-sep" aria-hidden="true">│</span>
@@ -1039,6 +1183,11 @@ fn main() {
         <tr><td>Вторичный текст</td><td><code>--fg-dim #a0a6bd</code></td><td><code>--bg-0 #111318</code></td><td><strong>7,68:1</strong></td><td class="ok">AAA</td></tr>
         <tr><td>Третичный текст</td><td><code>--fg-mute #8a90b0</code></td><td><code>--bg-0 #111318</code></td><td><strong>5,93:1</strong></td><td class="ok">AA</td></tr>
         <tr><td>Третичный текст</td><td><code>--fg-mute #8a90b0</code></td><td><code>--gutter #0f1014</code></td><td><strong>6,06:1</strong></td><td class="ok">AA</td></tr>
+        <tr><td>Третичный текст (вкладки, статусбар, счётчик таблицы)</td><td><code>--fg-mute #8a90b0</code></td><td><code>--bg-1 #161920</code></td><td><strong>5,61:1</strong></td><td class="ok">AA</td></tr>
+        <tr><td>Третичный текст (плашка шрифта, placeholder поиска)</td><td><code>--fg-mute #8a90b0</code></td><td><code>--bg-2 #1c1f28</code></td><td><strong>5,25:1</strong></td><td class="ok">AA</td></tr>
+        <tr><td>Третичный текст (кнопка «Команды») — самая тугая пара</td><td><code>--fg-mute #8a90b0</code></td><td><code>--bg-3 #242836</code></td><td><strong>4,68:1</strong></td><td class="ok3">AA (запас 0,18)</td></tr>
+        <tr><td>Текст блока кода</td><td><code>--fg-dim #a0a6bd</code></td><td><code>--bg-1 #161920</code></td><td><strong>7,27:1</strong></td><td class="ok">AAA</td></tr>
+        <tr><td>Текст цитаты</td><td><code>--fg-dim #a0a6bd</code></td><td><code>accent-soft</code> на <code>--bg-0</code></td><td><strong>6,26:1</strong></td><td class="ok">AA</td></tr>
         <tr><td>Заголовки (h1/h2)</td><td><code>--head #ffffff</code></td><td><code>--bg-0 #111318</code></td><td><strong>18,58:1</strong></td><td class="ok">AAA</td></tr>
         <tr><td>Текст предпросмотра</td><td><code>--body #d0d3e0</code></td><td><code>--bg-0 #111318</code></td><td><strong>12,45:1</strong></td><td class="ok">AAA</td></tr>
         <tr><td>Акцент</td><td><code>--accent #9d8fff</code></td><td><code>--bg-0 #111318</code></td><td><strong>6,91:1</strong></td><td class="ok">AA</td></tr>
@@ -1047,52 +1196,85 @@ fn main() {
         <tr><td>Успех</td><td><code>--green #34d399</code></td><td><code>--bg-0 #111318</code></td><td><strong>9,67:1</strong></td><td class="ok">AAA</td></tr>
         <tr><td>Предупреждение</td><td><code>--amber #fbbf24</code></td><td><code>--bg-0 #111318</code></td><td><strong>11,13:1</strong></td><td class="ok">AAA</td></tr>
         <tr><td>Ошибка</td><td><code>--red #f87171</code></td><td><code>--bg-0 #111318</code></td><td><strong>6,72:1</strong></td><td class="ok">AA</td></tr>
-        <tr><td>Отключено (текст)</td><td><code>--disabled #6b7280</code></td><td><code>--bg-0 #111318</code></td><td><strong>3,84:1</strong></td><td class="ok3">AA large</td></tr>
+        <tr><td>Отключено (точка/иконка)</td><td><code>--disabled #6b7280</code></td><td><code>--bg-0 #111318</code></td><td><strong>3,84:1</strong></td><td class="ok3">UI (≥3:1)</td></tr>
         <tr><td>Текст на акценте</td><td><code>--on-accent #17121f</code></td><td><code>--accent #9d8fff</code></td><td><strong>6,83:1</strong></td><td class="ok">AA</td></tr>
         <tr><td>Текст на ошибке</td><td><code>--on-error #2a0f0f</code></td><td><code>--red #f87171</code></td><td><strong>6,47:1</strong></td><td class="ok">AA</td></tr>
         <tr><td>Текст на предупреждении</td><td><code>--on-warning #1a1400</code></td><td><code>--amber #fbbf24</code></td><td><strong>11,00:1</strong></td><td class="ok">AAA</td></tr>
       </tbody>
     </table>
-    <p><code>--disabled</code> в тёмной теме — продуктовое значение (не меняем): 3,84:1 проходит только «крупный/графический» порог 3:1. Для текста WCAG прямо исключает неактивные элементы (1.4.3), и в продукте токен используется для статусной точки «выключено» и приглушённых иконок, а не для текста.</p>
+    <p><code>--disabled</code> в тёмной теме — продуктовое значение (не меняем): 3,84:1 проходит порог 3:1 для графических элементов (WCAG 1.4.11). Токен используется ТОЛЬКО для точек/иконок (статусная точка «выключено», приглушённые иконки), НЕ для текста. См. решение 2 ниже.</p>
 
-    <h3>Светлая тема («Стало», только направление A)</h3>
+    <h3>Светлая тема («Стало», только направление A) — редакция 3</h3>
     <table>
       <thead><tr><th>Пара</th><th>Токен</th><th>Фон</th><th>Контраст</th><th>Уровень</th></tr></thead>
       <tbody>
-        <tr><td>Основной текст</td><td><code>--fg #1a1d24</code></td><td><code>--bg-0 #f8f9fb</code></td><td><strong>16,01:1</strong></td><td class="ok">AAA</td></tr>
-        <tr><td>Основной текст</td><td><code>--fg #1a1d24</code></td><td><code>--bg-3 #dfe2ea</code></td><td><strong>13,01:1</strong></td><td class="ok">AAA</td></tr>
-        <tr><td>Вторичный текст</td><td><code>--fg-dim #4a5068</code></td><td><code>--bg-0 #f8f9fb</code></td><td><strong>7,56:1</strong></td><td class="ok">AAA</td></tr>
-        <tr><td>Третичный текст</td><td><code>--fg-mute #5b6172</code></td><td><code>--bg-0 #f8f9fb</code></td><td><strong>5,87:1</strong></td><td class="ok">AA</td></tr>
-        <tr><td>Третичный текст</td><td><code>--fg-mute #5b6172</code></td><td><code>--gutter #eceef2</code></td><td><strong>5,32:1</strong></td><td class="ok">AA</td></tr>
-        <tr><td>Заголовки (h1/h2)</td><td><code>--head #0f1115</code></td><td><code>--bg-0 #f8f9fb</code></td><td><strong>17,94:1</strong></td><td class="ok">AAA</td></tr>
-        <tr><td>Текст предпросмотра</td><td><code>--body #2d3140</code></td><td><code>--bg-0 #f8f9fb</code></td><td><strong>12,27:1</strong></td><td class="ok">AAA</td></tr>
-        <tr><td>Акцент</td><td><span class="fix">--accent #6353dd</span></td><td><code>--bg-0 #f8f9fb</code></td><td><strong>5,23:1</strong></td><td class="ok">AA</td></tr>
-        <tr><td>Инфо / ссылки</td><td><span class="fix">--accent-2 #1d4ed8</span></td><td><code>--bg-0 #f8f9fb</code></td><td><strong>6,36:1</strong></td><td class="ok">AA</td></tr>
-        <tr><td>Инлайн-код</td><td><code>--code-fg #6d28d9</code></td><td><code>--bg-3 #dfe2ea</code></td><td><strong>5,48:1</strong></td><td class="ok">AA</td></tr>
-        <tr><td>Успех</td><td><span class="fix">--green #046c4e</span></td><td><code>--bg-0 #f8f9fb</code></td><td><strong>6,11:1</strong></td><td class="ok">AA</td></tr>
-        <tr><td>Предупреждение</td><td><span class="fix">--amber #92400e</span></td><td><code>--bg-0 #f8f9fb</code></td><td><strong>6,73:1</strong></td><td class="ok">AA</td></tr>
-        <tr><td>Ошибка</td><td><span class="fix">--red #b91c1c</span></td><td><code>--bg-0 #f8f9fb</code></td><td><strong>6,14:1</strong></td><td class="ok">AA</td></tr>
-        <tr><td>Отключено (текст)</td><td><span class="fix">--disabled #5f6575</span></td><td><code>--bg-1 #f0f1f4</code></td><td><strong>5,16:1</strong></td><td class="ok">AA</td></tr>
-        <tr><td>Текст на акценте</td><td><code>--on-accent #ffffff</code></td><td><code>--accent #6353dd</code></td><td><strong>5,51:1</strong></td><td class="ok">AA</td></tr>
+        <tr><td>Основной текст</td><td><code>--fg #1a1d24</code></td><td><code>--bg-0 #fafbfc</code></td><td><strong>16,28:1</strong></td><td class="ok">AAA</td></tr>
+        <tr><td>Основной текст</td><td><code>--fg #1a1d24</code></td><td><code>--bg-3 #d4d9e3</code></td><td><strong>11,91:1</strong></td><td class="ok">AAA</td></tr>
+        <tr><td>Вторичный текст</td><td><code>--fg-dim #4a5068</code></td><td><code>--bg-0 #fafbfc</code></td><td><strong>7,68:1</strong></td><td class="ok">AAA</td></tr>
+        <tr><td>Третичный текст</td><td><code>--fg-mute #545a6b</code></td><td><code>--bg-0 #fafbfc</code></td><td><strong>6,64:1</strong></td><td class="ok">AA</td></tr>
+        <tr><td>Третичный текст</td><td><code>--fg-mute #545a6b</code></td><td><code>--gutter #d8dde6</code></td><td><strong>5,05:1</strong></td><td class="ok">AA</td></tr>
+        <tr><td>Третичный текст (вкладки, статусбар, счётчик таблицы)</td><td><code>--fg-mute #545a6b</code></td><td><code>--bg-1 #f0f2f6</code></td><td><strong>6,14:1</strong></td><td class="ok">AA</td></tr>
+        <tr><td>Третичный текст (плашка шрифта, placeholder поиска)</td><td><code>--fg-mute #545a6b</code></td><td><code>--bg-2 #e3e7ee</code></td><td><strong>5,55:1</strong></td><td class="ok">AA</td></tr>
+        <tr><td>Третичный текст (кнопка «Команды») — самая тугая пара</td><td><code>--fg-mute #545a6b</code></td><td><code>--bg-3 #d4d9e3</code></td><td><strong>4,86:1</strong></td><td class="ok">AA</td></tr>
+        <tr><td>Текст блока кода</td><td><code>--fg-dim #4a5068</code></td><td><code>--bg-1 #f0f2f6</code></td><td><strong>7,10:1</strong></td><td class="ok">AAA</td></tr>
+        <tr><td>Текст цитаты</td><td><code>--fg-dim #4a5068</code></td><td><code>accent-soft</code> на <code>--bg-0</code></td><td><strong>6,65:1</strong></td><td class="ok">AA</td></tr>
+        <tr><td>Заголовки (h1/h2)</td><td><code>--head #0f1115</code></td><td><code>--bg-0 #fafbfc</code></td><td><strong>18,24:1</strong></td><td class="ok">AAA</td></tr>
+        <tr><td>Текст предпросмотра</td><td><code>--body #2d3140</code></td><td><code>--bg-0 #fafbfc</code></td><td><strong>12,47:1</strong></td><td class="ok">AAA</td></tr>
+        <tr><td>Акцент</td><td><code>--accent #5546d0</code></td><td><code>--bg-0 #fafbfc</code></td><td><strong>6,39:1</strong></td><td class="ok">AA</td></tr>
+        <tr><td>Акцент (тугайшая пара)</td><td><code>--accent #5546d0</code></td><td><code>--bg-3 #d4d9e3</code></td><td><strong>4,67:1</strong></td><td class="ok">AA</td></tr>
+        <tr><td>Инфо / ссылки</td><td><code>--accent-2 #1d4ed8</code></td><td><code>--bg-0 #fafbfc</code></td><td><strong>6,47:1</strong></td><td class="ok">AA</td></tr>
+        <tr><td>Инфо / ссылки (тугайшая пара)</td><td><code>--accent-2 #1d4ed8</code></td><td><code>--bg-3 #d4d9e3</code></td><td><strong>4,73:1</strong></td><td class="ok">AA</td></tr>
+        <tr><td>Инлайн-код</td><td><code>--code-fg #6d28d9</code></td><td><code>--bg-3 #d4d9e3</code></td><td><strong>5,02:1</strong></td><td class="ok">AA</td></tr>
+        <tr><td>Успех</td><td><code>--green #046c4e</code></td><td><code>--bg-0 #fafbfc</code></td><td><strong>6,22:1</strong></td><td class="ok">AA</td></tr>
+        <tr><td>Успех (тугайшая пара)</td><td><code>--green #046c4e</code></td><td><code>--bg-3 #d4d9e3</code></td><td><strong>4,55:1</strong></td><td class="ok">AA</td></tr>
+        <tr><td>Предупреждение</td><td><code>--amber #92400e</code></td><td><code>--bg-0 #fafbfc</code></td><td><strong>6,84:1</strong></td><td class="ok">AA</td></tr>
+        <tr><td>Предупреждение (тугайшая пара)</td><td><code>--amber #92400e</code></td><td><code>--bg-3 #d4d9e3</code></td><td><strong>5,01:1</strong></td><td class="ok">AA</td></tr>
+        <tr><td>Ошибка</td><td><code>--red #b91c1c</code></td><td><code>--bg-0 #fafbfc</code></td><td><strong>6,24:1</strong></td><td class="ok">AA</td></tr>
+        <tr><td>Ошибка (тугайшая пара)</td><td><code>--red #b91c1c</code></td><td><code>--bg-3 #d4d9e3</code></td><td><strong>4,57:1</strong></td><td class="ok">AA</td></tr>
+        <tr><td>Отключено (точка/иконка)</td><td><code>--disabled #5f6575</code></td><td><code>--bg-1 #f0f2f6</code></td><td><strong>5,20:1</strong></td><td class="ok">UI (≥3:1)</td></tr>
+        <tr><td>Текст на акценте</td><td><code>--on-accent #ffffff</code></td><td><code>--accent #5546d0</code></td><td><strong>6,62:1</strong></td><td class="ok">AA</td></tr>
         <tr><td>Текст на ошибке</td><td><code>--on-error #ffffff</code></td><td><code>--red #b91c1c</code></td><td><strong>6,47:1</strong></td><td class="ok">AA</td></tr>
         <tr><td>Текст на предупреждении</td><td><code>--on-warning #ffffff</code></td><td><code>--amber #92400e</code></td><td><strong>7,09:1</strong></td><td class="ok">AAA</td></tr>
       </tbody>
     </table>
 
-    <p><strong>Что поправлено против черновика брифа и почему:</strong></p>
+    <p><strong>Редакция 3 — что изменено и почему:</strong></p>
     <ul>
-      <li><code>--green</code>: <span class="fix">#0a8a5f → #046c4e</span> — 4,14:1 (FAIL). Новое значение держит ≥ 4,97:1 даже на самой тёмной светлой поверхности <code>--bg-3</code>.</li>
-      <li><code>--accent-2</code>: <span class="fix">#2563eb → #1d4ed8</span> — 4,58:1 на <code>--bg-1</code> и 3,99:1 на <code>--bg-3</code>. Новое — ≥ 5,17:1 везде, ссылки в предпросмотре читаются.</li>
-      <li><code>--amber</code>: <span class="fix">#b45309 → #92400e</span> — 4,45:1 на <code>--bg-1</code> (панель статуса). Новое — 5,47:1 даже на <code>--bg-3</code>.</li>
-      <li><code>--red</code>: <span class="fix">#dc2626 → #b91c1c</span> — 4,28:1 на <code>--bg-1</code>. Новое — ≥ 4,99:1 везде.</li>
-      <li><code>--disabled</code>: <span class="fix">#6b7280 → #5f6575</span> — 4,28:1 на <code>--bg-1</code>. Новое — ≥ 4,50:1. Побочный эффект: визуально ближе к <code>--fg-mute</code> (см. открытые вопросы).</li>
-      <li><code>--accent</code>: <span class="fix">#6a5ae0 → #6353dd</span> — 4,48:1 на <code>--bg-1</code>. Оттенок сохранён, насыщенность поднята минимально.</li>
-      <li><code>--on-error</code>/<code>--on-warning</code>: в светлой теме <span class="fix">тёмный текст → белый</span>, потому что заливки стали тёмными (иначе 2,3:1 и хуже).</li>
+      <li><strong>Слои разведены</strong>: <code>--bg-0 #fafbfc</code>, <code>--bg-1 #f0f2f6</code>, <code>--bg-2 #e3e7ee</code>, <code>--bg-3 #d4d9e3</code>. Шаг между слоями 1.08–1.14 (было 1.07). Слои читаются как слои, а не как один белый.</li>
+      <li><strong>Границы усилены</strong>: <code>--line #b8bfcc</code> (1.78:1 на bg0), <code>--line-soft #d0d5e0</code> (1.42:1 на bg0). Видимы, хотя не проходят 3:1 non-text — аналогично тёмной теме.</li>
+      <li><strong>Gutter темнее рабочей области</strong>: <code>--gutter #d8dde6</code> (1.32:1 на bg0). Рецессивная колонка, как в тёмной теме.</li>
+      <li><code>--fg-mute</code>: <span class="fix">#5b6172 → #545a6b</span> — 4.37:1 на bg3 (FAIL) → 4.86:1 (AA).</li>
+      <li><code>--accent</code>: <span class="fix">#6353dd → #5546d0</span> — 3.89:1 на bg3 (FAIL) → 4.67:1 (AA).</li>
+      <li><code>--disabled</code>: остаётся <code>#5f6575</code>, но используется ТОЛЬКО для точек/иконок, НЕ для текста (см. решение 2).</li>
+      <li><code>--sb-thumb</code>: <span class="fix">#c9ccd6 → #b8bfcc</code> — синхронизирован с <code>--line</code>.</li>
     </ul>
 
     <div class="warnbox">
-      <strong>Открытый вопрос по <code>--gutter</code> в светлой теме.</strong> В брифе сказано «<code>--gutter</code> светлее <code>--bg-0</code>», но <code>--bg-0 #f8f9fb</code> уже почти белый, и «светлее» дало бы <code>#ffffff</code> — визуально это не gutter, а инверсия роли. Здесь взято <code>--gutter #eceef2</code> (чуть темнее рабочей области, 5,32:1 для номеров строк). Нужно решение дизайнера перед хендоффом.
+      <strong>Решение 2 (было: открытый вопрос 1) — <code>--disabled</code> как цвет текста.</strong>
+      <strong>Правило:</strong> <code>--disabled</code> используется ТОЛЬКО для точек/иконок (статусная точка «выключено», приглушённые иконки), НЕ для текста. Текст статуса «выключено» — на <code>--fg-mute</code>:
+      <code>.sem.off { color: var(--fg-mute) }</code> + <code>.sem.off::before { background: var(--disabled) }</code>.
+      Слово читаемо (AA), точка остаётся «выключенной». Это правка <code>crates/app/src/style.css</code>, вне рамок направления A (меняет вид «Было»), поэтому вынесена в продуктовую дельту.
     </div>
+
+    <div class="warnbox">
+      <strong>Решение 4 (было: открытый вопрос 2) — <code>--gutter</code> в светлой теме.</strong>
+      <strong>Правило:</strong> <code>--gutter</code> ТЕМНЕЕ рабочей области (<code>--bg-0</code>), как в тёмной теме. Колонка номеров — рецессивная. Значение: <code>--gutter #d8dde6</code> (1.32:1 на <code>--bg-0</code>). Роль важнее буквы брифа.
+    </div>
+
+    <div class="warnbox">
+      <strong>Решение 1 (было: открытый вопрос 3) — тональная лестница светлой темы.</strong>
+      <strong>Правило:</strong> слои разведены до шага 1.08–1.14 (было 1.07). Финальные значения:
+      <code>--bg-0 #fafbfc</code>, <code>--bg-1 #f0f2f6</code>, <code>--bg-2 #e3e7ee</code>, <code>--bg-3 #d4d9e3</code>,
+      <code>--line #b8bfcc</code>, <code>--line-soft #d0d5e0</code>, <code>--gutter #d8dde6</code>, <code>--popover #ffffff</code>.
+      Холодный характер сохранён (B > R во всех цветах). Все текстовые пары ≥ 4.5:1.
+    </div>
+
+    <p><strong>Проверено рендером (Edge/WebView2, три состояния).</strong> Замеры пар взяты не из токенов, а с фактически отрендеренных элементов (композиция <code>rgba</code>-фонов учтена). Дополнительно подтверждено:</p>
+    <ul>
+      <li>покрытие кириллицы встроенными субсетами — все три гарнитуры рисуют А–я, Ё/ё, <code>— – « » … · №</code>; тофу нет (сравнение растров с fallback: различия есть, значит глиф из встроенного файла, а не подмена);</li>
+      <li>разрешение весов: заявленный Inter/ JetBrains Mono <code>600</code> рисуется настоящим начертанием <code>700</code> (растр попиксельно совпадает с 700, синтеза нет) — третий файл semibold не нужен; у переменного Source Serif 4 (ось 400–700) 500/600 — реальные промежуточные начертания, 800 обрезается до 700;</li>
+      <li>загрузка: <code>performance.getEntriesByType("resource")</code> — 0 сетевых запросов во всех трёх состояниях; в «Было» не активируется ни один встроенный <code>@font-face</code>.</li>
+    </ul>
   </details>
 </div>
 

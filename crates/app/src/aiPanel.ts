@@ -72,7 +72,7 @@ const FALLBACK_SKILLS: readonly AiSkill[] = [
     title: "Объяснить файл",
     description: "Разобрать и объяснить текущий документ",
     // Синхронизирован с Rust (`ai/skills.rs`, `EXPLAIN_PROMPT`): явная структура из 4 частей.
-    prompt_template: `Ты — разборщик Markdown-документов в редакторе darmark. Ниже документ; объясни его простыми
+    prompt_template: `Ты — разборщик Markdown-документов в редакторе ПЕНАЛ. Ниже документ; объясни его простыми
 словами, опираясь ТОЛЬКО на этот текст (содержимое вне документа не подмешивай).
 
 Ответь на русском ровно по этой структуре, без вступлений и извинений:
@@ -96,7 +96,7 @@ const FALLBACK_SKILLS: readonly AiSkill[] = [
     // Синхронизирован с Rust (`ai/skills.rs`, `CREATE_PLUGIN_PROMPT`): модель обязана вернуть
     // РОВНО один fenced ```json с { id, name, version, permissions, contributes?, source },
     // иначе карточка плагина не парсится (`extractPluginProposal`). Промт разводит view/статусбар/команду.
-    prompt_template: `Ты — генератор Lua-плагинов для darmark (Lua 5.5 в песочнице; нет os/io/require/load, нет host.document/host.ui/host.view/host.commands). По описанию: {{input}}
+    prompt_template: `Ты — генератор Lua-плагинов для ПЕНАЛ (Lua 5.5 в песочнице; нет os/io/require/load, нет host.document/host.ui/host.view/host.commands). По описанию: {{input}}
 
 Верни РОВНО один fenced-блок \`\`\`json с одним объектом (никакого текста вне блока):
 {"id": "…", "name": "…", "version": "1.0.0", "permissions": [], "source": "полный код main.lua"}

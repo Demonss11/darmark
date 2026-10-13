@@ -673,7 +673,7 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
       hint.append(code);
       // Каталог пересканируется при старте (на лету H2 не подхватывает) — честно
       // просим перезапуск, а не несуществующую кнопку «Перезагрузить все».
-      hint.append(" (plugin.json + main.lua) и перезапустите darmark.");
+      hint.append(" (plugin.json + main.lua) и перезапустите ПЕНАЛ.");
       empty.append(title, hint);
       root.replaceChildren(empty);
       return;

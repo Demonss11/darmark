@@ -38,7 +38,7 @@ import { errorMessage, listPlugins, runPluginCommand } from "./tauri";
 import type { PluginInfo, RenderResult } from "./tauri";
 import "./style.css";
 
-const APP_NAME = "darmark";
+const APP_NAME = "ПЕНАЛ";
 
 const editor = document.getElementById("editor") as HTMLTextAreaElement;
 const preview = document.getElementById("preview") as HTMLElement;
@@ -303,7 +303,7 @@ async function closeTabWithConfirm(id: DocumentId): Promise<void> {
   if (!tab) return;
   if (tab.dirty) {
     const ok = await confirm(`«${tab.name}» — несохранённые изменения будут потеряны. Закрыть?`, {
-      title: "darmark",
+      title: "ПЕНАЛ",
       kind: "warning",
     });
     if (!ok) return;
@@ -336,6 +336,9 @@ function createTabElement(tab: Tab): HTMLElement {
   close.type = "button";
   close.title = "Закрыть";
   close.tabIndex = -1; // кнопка закрытия не в порядке табуляции
+  // Крестик текстовым глифом × (U+00D7): CSS .tab .close уже стилизует содержимое
+  // как текст (font-size: 14px, центрирование inline-flex), поэтому SVG не нужен.
+  close.textContent = "×";
   el.appendChild(close);
 
   // Обработчики
@@ -523,6 +526,48 @@ createShell({
   previewPane: PREVIEW_PANE,
   editor,
   preview,
+});
+
+// 8.5. Тема оформления (ADR-0037): ручной тумблер в статусбаре (#sb-theme),
+//      data-theme на <html>, выбор сохраняется между сессиями. Атрибут
+//      выставляется до первого рендера внешним скриптом theme-init.js
+//     (CSP запрещает inline); здесь — синхронизация тумблера и клик.
+const THEME_STORAGE_KEY = "darmark.theme";
+type Theme = "dark" | "light";
+
+function currentTheme(): Theme {
+  return document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
+}
+
+function applyTheme(theme: Theme): void {
+  document.documentElement.setAttribute("data-theme", theme);
+  try {
+    localStorage.setItem(THEME_STORAGE_KEY, theme);
+  } catch {
+    // localStorage недоступен (приватный режим) — тема живёт до перезагрузки.
+  }
+
+  const btn = document.getElementById("sb-theme");
+  if (btn) {
+    const isLight = theme === "light";
+    const label = document.getElementById("sb-theme-label");
+    const sun = document.getElementById("sb-theme-icon-sun");
+    const moon = document.getElementById("sb-theme-icon-moon");
+    if (label) label.textContent = isLight ? "Светлая" : "Тёмная";
+    if (sun) sun.hidden = !isLight;
+    if (moon) moon.hidden = isLight;
+    btn.setAttribute("aria-label", isLight ? "Тема: светлая" : "Тема: тёмная");
+    btn.setAttribute("aria-pressed", String(isLight));
+  }
+  // theme-color: нативная панель WebView следует за активной темой.
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute("content", theme === "light" ? "#fafbfc" : "#0d0e12");
+}
+
+applyTheme(currentTheme());
+const themeBtn = document.getElementById("sb-theme");
+themeBtn?.addEventListener("click", () => {
+  applyTheme(currentTheme() === "light" ? "dark" : "light");
 });
 
 // 9. Стартовый документ (создаётся в Rust-сторе: id/путь/текст ведёт хост).
