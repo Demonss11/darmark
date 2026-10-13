@@ -1,3 +1,0 @@
-    --font-heading: "Source Serif 4", Georgia, serif;
-    --font-body: "Inter", system-ui, sans-serif;
-    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;

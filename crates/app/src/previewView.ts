@@ -101,7 +101,7 @@ export const previewViewProvider: HtmlViewProvider = {
     // не зависит от активной темы приложения, поэтому переключение темы не
     // меняет содержимое буфера. Один набор правил — и для Markdown-превью, и для
     // плагинных view. Frontmatter (YAML-шапка) копируется как есть — таблицей.
-    // Цвета — светлые токены прототипа (docs/proto/front_idea1.html).
+    // Цвета — светлые токены (ADR-0037).
     const COPY_CSS = `
       h1 { font-size: 30px; font-weight: 700; color: #0f1115; margin: 0 0 14px; border-bottom: 1px solid #b8bfcc; padding-bottom: 0.2em; }
       h2 { font-size: 21px; font-weight: 700; color: #0f1115; margin: 24px 0 10px; border-bottom: 1px solid #d0d5e0; padding-bottom: 0.2em; }
