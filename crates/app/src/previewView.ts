@@ -69,11 +69,12 @@ export const previewViewProvider: HtmlViewProvider = {
     // (§5.6): меню вешается в body, dispose() его убирает и снимает слушатель.
     const tables = createTablesController(previewEl);
 
-    // HTML, реально лежащий в `previewEl.innerHTML`. `res.changed` хоста
-    // считается per-document, а предпросмотр один на всё приложение: при
-    // возврате на ранее отрендеренную вкладку `changed` может быть `false`,
-    // хотя в DOM остался HTML другого документа. Поэтому применяем ещё и по
-    // фактическому различию HTML.
+    // HTML, последний раз переданный в `previewEl.innerHTML` (без последующих
+    // `tables.enhance()`/`resolveLocalImages`, которые мутируют DOM уже после
+    // присваивания). `res.changed` хоста считается per-document, а предпросмотр
+    // один на всё приложение: при возврате на ранее отрендеренную вкладку
+    // `changed` может быть `false`, хотя в DOM остался HTML другого документа.
+    // Поэтому применяем ещё и по фактическому различию HTML.
     let lastHtml = "";
 
     function applyRender(res: RenderResult, source: string): void {
