@@ -31,10 +31,8 @@ struct Line {
     content: String,
 }
 
-/// Рендерит тело YAML-шапки (то, что между `---`) в HTML-фрагмент.
-///
-/// Возвращает таблицу/список либо `<pre>` с исходником, если подмножество YAML
-/// распарсить не удалось.
+/// Рендерит тело YAML-шапки в HTML-фрагмент: таблицу/список либо `<pre>` с
+/// исходником, если подмножество YAML распарсить не удалось.
 pub(crate) fn render_frontmatter(yaml: &str) -> String {
     match parse_document(yaml) {
         Some(node) => render_node(&node, 0),
@@ -42,7 +40,7 @@ pub(crate) fn render_frontmatter(yaml: &str) -> String {
     }
 }
 
-/// Fallback: исходник шапки как экранированный текст в `<pre><code>`.
+/// Fallback: исходник шапки как экранированный текст.
 fn render_source(yaml: &str) -> String {
     let mut out = String::from("<pre class=\"md-frontmatter-source\"><code>");
     escape_html_text_into(&mut out, yaml);
@@ -52,7 +50,7 @@ fn render_source(yaml: &str) -> String {
 
 // ─── Парсер подмножества YAML ──────────────────────────────────────────
 
-/// Парсит документ целиком. `None` — ошибка/неподдерживаемая конструкция.
+/// Парсит документ целиком. `None` — неподдерживаемая конструкция.
 fn parse_document(yaml: &str) -> Option<Yaml> {
     let lines = normalize_lines(yaml)?;
     if lines.is_empty() {
@@ -91,7 +89,7 @@ fn normalize_lines(yaml: &str) -> Option<Vec<Line>> {
     Some(out)
 }
 
-/// Разбирает узел, начинающийся с строки `i` на отступе `indent`.
+/// Разбирает узел с позиции *i на отступе indent; i продвигается за пределы узла.
 fn parse_block(lines: &[Line], i: &mut usize, indent: usize) -> Option<Yaml> {
     let line = lines.get(*i)?;
     if line.indent != indent {
@@ -157,8 +155,7 @@ fn parse_seq(lines: &[Line], i: &mut usize, indent: usize) -> Option<Yaml> {
             }
         } else if split_map_entry(rest).is_some() {
             // «- key: value» — элемент-объект. Колонку `key` берём из позиции
-            // остатка в исходной строке, чтобы продолжения (`  role: …`) легли
-            // на тот же отступ.
+            // остатка в исходной строке, чтобы продолжения легли на тот же отступ.
             let item_indent = indent + line.content.find(rest).unwrap_or(2);
             let mut sub = vec![Line {
                 indent: item_indent,
@@ -185,7 +182,6 @@ fn parse_seq(lines: &[Line], i: &mut usize, indent: usize) -> Option<Yaml> {
     Some(Yaml::Seq(items))
 }
 
-/// Разбирает скаляр (или inline-коллекцию). `None` — ошибка.
 fn parse_scalar(raw: &str) -> Option<Yaml> {
     let s = raw.trim();
     if s.is_empty() {
@@ -284,7 +280,6 @@ fn split_map_entry(s: &str) -> Option<(&str, &str)> {
     None
 }
 
-/// Делит строку по `sep` вне кавычек и вложенных `[]`/`{}`.
 fn split_top_level(s: &str, sep: char) -> Vec<&str> {
     let mut out = Vec::new();
     let mut depth: i32 = 0;
@@ -313,7 +308,6 @@ fn split_top_level(s: &str, sep: char) -> Vec<&str> {
     out
 }
 
-/// Снимает обрамляющие кавычки с ключа. `None` — незакрытая кавычка.
 fn unquote(s: &str) -> Option<String> {
     if s.len() >= 2 && s.starts_with('\'') && s.ends_with('\'') {
         return Some(s[1..s.len() - 1].replace("''", "'"));
@@ -327,7 +321,6 @@ fn unquote(s: &str) -> Option<String> {
     Some(s.to_string())
 }
 
-/// Базовая разборка escape-последовательностей двойных кавычек.
 fn unescape_double(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut chars = s.chars();
@@ -395,7 +388,6 @@ fn render_node(node: &Yaml, depth: usize) -> String {
     out
 }
 
-/// Экранирует текст для вставки в HTML-содержимое.
 fn escape_html_text_into(out: &mut String, s: &str) {
     for c in s.chars() {
         match c {
