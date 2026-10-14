@@ -6,14 +6,14 @@
 > расхождения с ним — в §«Расхождения с черновиком плана v1».
 
 **Goal:** завершить AI-ассистент (Фаза 3) и tool-loop MCP: универсальная конфигурация провайдеров
-(ADR-0035), санитизированный Markdown-рендер ответа AI (ADR-0038), остальные встроенные и
-пользовательские скиллы, персистентность истории чата, tool-loop по MCP (ADR-0036).
+(ADR-0035), санитизированный Markdown-рендер ответа AI (ADR-0038), остальные встроенные скиллы,
+персистентность истории чата, tool-loop по MCP (ADR-0036).
 
 **Architecture:** провайдеры LLM — map в секции `ai` файла `config.json` с активной парой
 `active_provider`/`active_model` (ADR-0035); выборка и валидация — чистые функции в `ai/state.rs`,
 перезапись legacy-конфига при загрузке; транспорт расширяется полями `headers`/`extra_body`/
 `timeout`/`tools` **за швом** `AiTransport` (ADR-0033/0034); ответ AI рендерится **одним**
-санитизированным хелпером фронта (ADR-0038); история и пользовательские скиллы — файлы в
+санитизированным хелпером фронта (ADR-0038); история — файл в
 каталоге данных `%APPDATA%/darmark/` (через единую функцию `SettingsStore::data_dir()`); tool-loop —
 цикл вызовов MCP-инструментов через `app.state::<McpServer>()` с разметкой результата как данных.
 
@@ -127,13 +127,15 @@ WebdriverIO.
 | `crates/app/src/aiPanel.ts` | Восстановление при старте, сохранение, очистка по `#ai-clear` |
 | `crates/app/e2e/features/ai.feature`, `e2e/steps/ai.steps.js` | Сценарий «история переживает перезапуск» |
 
-### Epic 5 — Пользовательские скиллы (AC-P3-2)
+### Epic 5 — Пользовательские скиллы (AC-P3-2) — **выведен из плана**
 
-| Файл | Ответственность |
-|------|-----------------|
-| `crates/app/src-tauri/src/ai/skills.rs` | `load_user_skills`/`save_user_skills` (`ai-skills.json`), валидация id |
-| `crates/app/src-tauri/src/ai/commands.rs` | `ai_user_skills_list` / `_create` / `_update` / `_delete` |
-| `crates/app/src/aiPanel.ts`, `crates/app/index.html` | Редактор скиллов в `#ai-settings-pop` |
+Решение продукта (14.10.2026): пользовательские скиллы (CRUD `ai-skills.json` + редактор в UI)
+**не реализуются** — эпик исключён из пула задач. Соответственно:
+- `skills()` остаётся равен `builtin_skills()` (7 встроенных), слияния с пользовательскими нет;
+- `SettingsStore::data_dir()` используется только историей (Epic 4);
+- AC-P3-2 закрывается как **не реализуемый по продуктовому решению** (см. §«Карта „критерий → задача“»).
+
+Раздел с задачами 5.1–5.3 **удалён** (осталась только запись о решении, §Epic 5).
 
 ### Epic 6 — Tool-loop MCP (AC-MCP-5, AC-MCP-14)
 
@@ -949,7 +951,7 @@ WebdriverIO.
 **Interfaces:**
 - Consumes: `AiSkill { id, title, description, prompt_template, category }` (структура **не меняется**)
 - Produces: `pub fn builtin_skills() -> Vec<AiSkill>` (все 7) и `pub fn skills() -> Vec<AiSkill>`
-  (встроенные + пользовательские из Epic 5; до Epic 5 — только встроенные).
+  (только встроенные: пользовательские скиллы выведены из плана — см. Epic 5).
   Новые id: `restructure`, `summarize`, `explain-syntax` (категория `document`),
   `debug-plugin`, `add-view` (категория `plugins`).
 
@@ -973,8 +975,8 @@ WebdriverIO.
   - `add-view` — генерация view-плагина по контракту `ViewProvider`: ровно один fenced ```json
     с `contributes.views` и `view:create`/`view:modify`, `view_id = "<id>:<kind>"`.
 
-- [ ] **Step 4: Разделить `skills()` на `builtin_skills()` + слияние пользовательских** (заглушка
-  пользовательских появится в Epic 5; сейчас `skills()` == `builtin_skills()`).
+- [ ] **Step 4: `skills()` == `builtin_skills()`** (пользовательские скиллы выведены из плана —
+  эпик 5 отменён; `skills()` остаётся единственной точкой получения списка для `ai_list_skills`).
 
 - [ ] **Step 5: Заменить тест «ровно 2»:** `mvp_has_exactly_two_skills` удалить,
   `categories_and_placeholders_match_contract` расширить на 7 скиллов (проверка наличия
@@ -1162,113 +1164,13 @@ WebdriverIO.
 
 ---
 
-## Epic 5: Пользовательские скиллы (AC-P3-2)
+## Epic 5: Пользовательские скиллы (AC-P3-2) — ❌ ВЫВЕДЕН ИЗ ПЛАНА
 
-### Task 5.1: Хранилище пользовательских скиллов
-
-**Files:**
-- Modify: `crates/app/src-tauri/src/ai/skills.rs`
-- Modify: `crates/app/src-tauri/src/ai/mod.rs` (если нужен доступ к `data_dir`; скорее — нет)
-
-**Interfaces:**
-- Produces: **новое** `pub const MAX_USER_SKILLS: usize = 50`,
-  `pub fn user_skills_path(base: Option<&Path>) -> Option<PathBuf>` (`<data_dir>/ai-skills.json`),
-  `pub fn load_user_skills(base: Option<&Path>) -> (Vec<AiSkill>, Option<String>)`,
-  `pub fn save_user_skills(base: Option<&Path>, skills: &[AiSkill]) -> Result<(), CommandError>`
-  (атомарно, лимит размера файла 256 КБ по образцу `PluginSettingsStore`);
-  **новое** `pub fn validate_user_skill(skill: &AiSkill) -> Result<(), CommandError>`:
-  `id` — `[a-z0-9_-]{1,64}`, не пересекается с id встроенных, `title` непустой, `prompt_template`
-  непустая, `category ∈ {document, plugins}`; ошибка — `ai_bad_settings`.
-  `skills()` сливает: встроенные + пользовательские (пользовательский id уникален; при конфликте
-  встроенный выигрывает и пользовательский отбрасывается с предупреждением).
-
-- [ ] **Step 1: Падающие тесты**: `user_skills_roundtrip`, `user_skills_reject_invalid_id`
-  (`"../evil"`, `"A B"`, пусто), `user_skills_reject_builtin_id_collision`,
-  `user_skills_survive_corrupt_file`, `skills_merge_builtin_and_user`.
-
-- [ ] **Step 2: Запустить — красным.** `cargo test -p darmark user_skills_`
-
-- [ ] **Step 3: Реализовать**, подключить слияние в `skills()`.
-
-- [ ] **Step 4: Обновить `commands.rs::tests::list_skills_returns_seven`** → проверять, что
-  при пустом `ai-skills.json` приходят ровно 7 (тесты не должны зависеть от профиля пользователя:
-  команда читает `data_dir()`; в тестовой среде `DARMARK_CONFIG_PATH` указывает на temp — иначе
-  добавить фильтрацию/переменную окружения в саму команду).
-
-- [ ] **Step 5: Проверка — зелёным.** `cargo test -p darmark user_skills_`,
-  `cargo test -p darmark list_skills_returns_seven` → PASS.
-
-- [ ] **Step 6: Commit**
-
-  ```bash
-  git add crates/app/src-tauri/src/ai/skills.rs crates/app/src-tauri/src/ai/commands.rs
-  git commit -m "feat(ai): пользовательские скиллы в ai-skills.json"
-  ```
-
----
-
-### Task 5.2: CRUD-команды скиллов
-
-**Files:**
-- Modify: `crates/app/src-tauri/src/ai/commands.rs`
-- Modify: `crates/app/src-tauri/src/lib.rs` (регистрация)
-
-**Interfaces:**
-- Produces: `#[tauri::command] pub fn ai_user_skills_list() -> Vec<AiSkill>` (только пользовательские),
-  `ai_user_skill_create(skill: AiSkill) -> Result<(), CommandError>`,
-  `ai_user_skill_update(id: String, skill: AiSkill) -> Result<(), CommandError>`,
-  `ai_user_skill_delete(id: String) -> Result<(), CommandError>`;
-  ошибки валидации — `ai_bad_settings`, неизвестный id при update/delete — `ai_bad_settings`.
-
-- [ ] **Step 1: Падающий тест** `user_skill_crud_roundtrip`: create → list = 1 → update (новый
-  `title`) → list отдаёт новый `title` → delete → list пуст; create с невалидным id → `ai_bad_settings`.
-
-- [ ] **Step 2: Запустить — красным.** `cargo test -p darmark user_skill_crud_roundtrip`
-
-- [ ] **Step 3: Реализовать команды** (каждая: load → mutate → validate → save; запись атомарна).
-
-- [ ] **Step 4: Проверка — зелёным.** `cargo test -p darmark user_skill_crud_roundtrip` → PASS;
-  `cargo check -p darmark` → OK.
-
-- [ ] **Step 5: Commit**
-
-  ```bash
-  git add crates/app/src-tauri/src/ai/commands.rs crates/app/src-tauri/src/lib.rs
-  git commit -m "feat(ai): CRUD-команды пользовательских скиллов"
-  ```
-
----
-
-### Task 5.3: Редактор скиллов в UI
-
-**Files:**
-- Modify: `crates/app/index.html` (`#ai-settings-pop`)
-- Modify: `crates/app/src/aiPanel.ts`
-- Modify: `crates/app/src/tauri.ts`
-
-**Interfaces:**
-- Produces: кнопка «Свои скиллы» (`#ai-skills-edit`) в поповере; форма `#ai-skill-editor`
-  с полями `#ai-skill-id`, `#ai-skill-title`, `#ai-skill-description`, `#ai-skill-category`,
-  `#ai-skill-prompt`, кнопками `#ai-skill-save`/`#ai-skill-delete`; ошибки — в `#ai-skill-error`.
-  Пользовательские скиллы попадают в общий ряд `#ai-skills` (иконка ✎, `category` сохраняется).
-
-- [ ] **Step 1: Разметка** формы (DOM API, без `innerHTML`).
-
-- [ ] **Step 2: Логика**: загрузка списка пользовательских скиллов, create/update/delete,
-  валидация на клиенте (минимальная: непустые id/title/prompt) + понятная ошибка от Rust;
-  после сохранения `ensureSkills()` перезапрашивает список (кэш сбрасывается).
-
-- [ ] **Step 3: Проверка.** `cd crates/app; npm run build` → OK.
-
-- [ ] **Step 4: E2E-сценарий** «Пользовательский скилл создаётся и выбирается»: создать скилл с
-  уникальным id через UI, убедиться, что он появился в ряду; удалить. (<5 с.)
-
-- [ ] **Step 5: Commit**
-
-  ```bash
-  git add crates/app/index.html crates/app/src/aiPanel.ts crates/app/src/tauri.ts crates/app/e2e/features/ai.feature crates/app/e2e/steps/ai.steps.js
-  git commit -m "feat(ai): редактор пользовательских скиллов"
-  ```
+> **Решение продукта 14.10.2026: эпик исключён из пула задач — задачи 5.1–5.3 удалены из плана.**
+> Пользовательские скиллы (CRUD `ai-skills.json`, команды `ai_user_skills_*`, редактор в UI) не
+> реализуются. `skills()` остаётся равен `builtin_skills()` (7 встроенных); файл `ai-skills.json`
+> не создаётся; AC-P3-2 закрыт как нереализуемый по продуктовому решению (см. §«Карта „критерий →
+> задача“»). Отмена обратима: черновик задач убран, решение — в этом абзаце.
 
 ---
 
@@ -1497,14 +1399,16 @@ WebdriverIO.
 | 1 | 3 — Скиллы | 3.1 → 3.2 | ничего; независим от Epic 1 и 2 |
 | 2 | 2 — Провайдеры | 2.1 → 2.2 → 2.3 → 2.4 → 2.5 → 2.6 → 2.7 → 2.8 → 2.9 → 2.10 → 2.11 → 2.12 | 2.1 блокирует всё остальное в эпике |
 | 2 | 4 — История | 4.1 → 4.2 → 4.3 | требует 2.3 (`data_dir`) и 1.3 (рендер восстановленной истории) |
-| 3 | 5 — Пользовательские скиллы | 5.1 → 5.2 → 5.3 | требует 3.1 (`skills()`/слияние) и 2.3 (`data_dir`) |
 | 4 | 6 — Tool-loop | 6.1 → 6.2 → 6.3 → 6.4 → 6.5 | требует 2.8 (`ChatRequest.tools`) и 1.2 (`safeHtml` — карточки должны быть `textContent`) |
+
+> Эпик 5 (пользовательские скиллы) **выведен из плана** продуктовым решением 14.10.2026 — из
+> последовательности волн исключён.
 
 **Параллельно можно** (разные файлы, нет общих символов):
 - 1.1–1.4 и 3.1–3.2 — Epic 1 трогает `commands.rs`/`aiPanel.ts`, Epic 3 — `skills.rs`/`commands.rs`:
   конфликт только в `commands.rs`; при параллельной работе Epic 1 выполняется первым,
   Epic 3 начинается после `git add` задачи 1.1 (или merge тривиальный).
-- Epic 4 и Epic 5 — разные файлы (`history.rs` vs `skills.rs`), общий `mod.rs` → тривиальный merge.
+- Epic 4 (история) трогает `history.rs`/`commands.rs`/`aiPanel.ts`; эпик 5 выведен из плана.
 
 **Строго последовательно:** 2.1 → 2.2 (типы → миграция), 6.1 → 6.2 (парсер → бэкенд).
 
@@ -1515,7 +1419,7 @@ WebdriverIO.
 | Критерий | Источник | Задача(и) |
 |----------|----------|-----------|
 | AC-P3-1 (5 новых скиллов) | TZ-AI-PHASE3 §6.1 | 3.1, 3.2 |
-| AC-P3-2 (пользовательские скиллы CRUD) | TZ-AI-PHASE3 §6.1 | 5.1, 5.2, 5.3 |
+| AC-P3-2 (пользовательские скиллы CRUD) | TZ-AI-PHASE3 §6.1 | **❌ выведен из плана** (продуктовое решение 14.10.2026) — не реализуется |
 | AC-P3-3 (персистентность истории) | TZ-AI-PHASE3 §6.1 | 4.1, 4.2, 4.3 |
 | AC-P3-4 (Markdown через Rust-санитайзер; сырой LLM не в `innerHTML`) | TZ-AI-PHASE3 §6.1, ADR-0038 | 1.1, 1.2, 1.3, 1.4 |
 | AC-P3-5 (несколько провайдеров; активная пара по полям) | ADR-0035 §2.1–2.2 | 2.1, 2.2, 2.4, 2.6, 2.11 |
