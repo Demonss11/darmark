@@ -5,7 +5,7 @@
 ## Структура и границы
 
 - `crates/md-core/` — чистое ядро markdown→HTML (pulldown-cmark 0.13), **без Tauri/GUI**; XSS-санитайзер, YAML-шапка, mapping байты↔UTF-16.
-- `crates/app/src/` — фронтенд (vanilla TS): `main.ts` (композиция), `docStore.ts`, `editorView.ts`, `previewView.ts` (единственное `preview.innerHTML`), `viewRegistry.ts`/`paneHost.ts`/`layout.ts` (Pane/Split, `MAX_PANES=2`), нижний док (`logPanel.ts`/`aiPanel.ts`/`resourceMonitor.ts`), `tauri.ts`.
+- `crates/app/src/` — фронтенд (vanilla TS): `main.ts` (композиция), `docStore.ts`, `editorView.ts`, `previewView.ts` (единственное `preview.innerHTML`), `safeHtml.ts` (санитизированный рендер ответа AI), `viewRegistry.ts`/`paneHost.ts`/`layout.ts` (Pane/Split, `MAX_PANES=2`), нижний док (`logPanel.ts`/`aiPanel.ts`/`resourceMonitor.ts`), `tauri.ts`.
 - `crates/app/src-tauri/` — тонкий Tauri-шелл (`darmark`/`darmark_lib`): `state.rs` (DocumentStore, D5), `error.rs` (`CommandError { code, message }`), документные и плагинные команды; `src/plugins/` — подсистема плагинов (Windows).
 - `crates/plugin-core/` — ядро плагинной системы (кадры, конверт, Job Object, карантин, манифест); **без `mlua`/Tauri**.
 - `crates/plugin-host/` — child `darmark-plugin-host` (Lua 5.5, `mlua`); единственный крейт с `mlua`.
@@ -37,7 +37,7 @@
 
 - CSP — см. `tauri.conf.json` `app.security.csp`: без внешних скриптов и `eval`; inline-стили разрешены.
 - Строгий TS (`strict`, `noUnusedLocals`, `noUnusedParameters`): неиспользуемые сущности ломают сборку.
-- Рендер Markdown — на Rust-стороне; фронт только присваивает `preview.innerHTML`.
+- Рендер Markdown — на Rust-стороне. На фронте `innerHTML` допустим ровно в трёх перечисленных местах: `previewView.ts` (результат `render_markdown`), `safeHtml.ts` → `setSanitizedHtml()` (санитизированный ответ AI, ADR-0038), `pluginViews.ts` (HTML вкладки плагина, санитизирован хостом). Четвёртая точка запрещена.
 - Юнит-тестов фронта нет (`vitest` нет) — проверка = `npm run build`.
 - CI (windows-latest): `rustfmt`/`clippy`/`cargo test`/`npm run build` + size-gate.
 - E2E не покрывает нативные диалоги/ОС — помечай сценарий `@manual`.

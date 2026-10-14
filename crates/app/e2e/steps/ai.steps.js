@@ -959,6 +959,115 @@ When("я направляю AI на мок-провайдера", async () => {
   });
 });
 
+// ---------- Фаза 3: санитизированный рендер ответа AI (ADR-0038) ----------
+//
+// Ответ ассистента рендерится как Markdown через Rust-санитайзер (md-core).
+// Проверяем, что XSS-payload из ответа модели обезврежен: нет опасных тегов,
+// атрибутов-обработчиков и схем, при этом безопасная разметка отрендерилась.
+
+/// Эталонный XSS-payload ADR-0038 §2.5 (тот же текст, что в Rust-тесте
+/// `render_markdown_sanitizes_ai_answer` в commands.rs:291-299).
+const AI_XSS_PAYLOAD = [
+  "# Заголовок",
+  '<img src=x onerror="window.__pwned=1">',
+  "<script>window.__pwned=1</script>",
+  "",
+  "[клик](javascript:window.__pwned=1)",
+  '<a href="data:text/html,<script>1</script>">ссылка</a>',
+  "",
+  "**жирный** и `код`",
+  "- пункт списка",
+].join("\n");
+
+/// Второй независимый SSE-провайдер с XSS-payload (однократно за сеанс).
+let xssMockProvider = null;
+let xssMockProviderPort = 0;
+
+When("я поднимаю мок-провайдера AI с XSS-payload", async () => {
+  if (xssMockProvider) return;
+  xssMockProvider = http.createServer((req, res) => {
+    req.resume();
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    });
+    res.write(
+      `data: ${JSON.stringify({ choices: [{ delta: { content: AI_XSS_PAYLOAD } }] })}\n\n`
+    );
+    res.write(
+      `data: ${JSON.stringify({
+        choices: [{ delta: {} }],
+        usage: { prompt_tokens: 5, completion_tokens: 9 },
+      })}\n\n`
+    );
+    res.write("data: [DONE]\n\n");
+    res.end();
+  });
+  await new Promise((resolve, reject) => {
+    xssMockProvider.once("error", reject);
+    xssMockProvider.listen(0, "127.0.0.1", () => {
+      xssMockProviderPort = xssMockProvider.address().port;
+      resolve();
+    });
+  });
+});
+
+/// Проверяет, что в последнем пузыре ответа ассистента нет опасного HTML.
+Then("в ответе AI нет опасного HTML", async () => {
+  await browser.waitUntil(
+    async () =>
+      browser.execute(() => {
+        const bubbles = document.querySelectorAll("#ai-chat .msg.assistant .bubble");
+        if (bubbles.length === 0) return false;
+        const bubble = bubbles[bubbles.length - 1];
+
+        // Нет элементов с атрибутами-обработчиками (on*)
+        const allElements = bubble.querySelectorAll("*");
+        for (const el of allElements) {
+          for (const attr of el.attributes) {
+            if (/^on/i.test(attr.name)) return false;
+          }
+        }
+
+        // Нет опасных тегов
+        const dangerousTags = bubble.querySelectorAll("script, iframe, object, embed");
+        if (dangerousTags.length > 0) return false;
+
+        // Нет опасных схем в href/src
+        const links = bubble.querySelectorAll("a[href], img[src], iframe[src], embed[src]");
+        for (const el of links) {
+          const url = el.getAttribute("href") || el.getAttribute("src") || "";
+          if (/^(javascript|vbscript|data:text\/html):/i.test(url)) return false;
+        }
+
+        // При этом безопасная разметка отрендерена
+        const hasStrong = bubble.querySelector("strong") !== null;
+        const hasCode = bubble.querySelector("code") !== null;
+        const hasLi = bubble.querySelector("li") !== null;
+        return hasStrong && hasCode && hasLi;
+      }),
+    { timeout: 5000, timeoutMsg: "Ответ AI не отрендерился как Markdown" }
+  );
+});
+
+/// Направляет AI на XSS-мок-провайдер (base_url = loopback, проходит валидацию схемы).
+When("я направляю AI на XSS-мок-провайдера", async () => {
+  if (!xssMockProvider) throw new Error("XSS-мок-провайдер AI не поднят");
+  const view = await invoke("ai_get_settings");
+  await invoke("ai_set_settings", {
+    settings: {
+      enabled: view.enabled,
+      provider: view.provider,
+      base_url: `http://127.0.0.1:${xssMockProviderPort}/v1`,
+      model: view.model,
+      max_tokens: view.max_tokens,
+      temperature: view.temperature,
+      consent_document_send: view.consent_document_send,
+    },
+  });
+});
+
 /// Карточка плагина по имени ищется ВНУТРИ страницы (browser.execute), поэтому селекторы
 /// дублируются инлайном, а не выносятся в Node-хелпер.
 
