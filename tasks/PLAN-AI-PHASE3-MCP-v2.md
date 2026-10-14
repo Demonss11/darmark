@@ -48,10 +48,10 @@ WebdriverIO.
 
 - **CSP:** `default-src 'self'` — без внешних скриптов и `eval`; сеть — **только Rust-сторона**.
 - **Строгий TS:** `strict`, `noUnusedLocals`, `noUnusedParameters` — неиспользованные сущности ломают сборку.
-- **`innerHTML` во фронте — ровно две точки** (ADR-0038): `preview.innerHTML`
-  (`crates/app/src/previewView.ts`) и общий хелпер `setSanitizedHtml()`
-  (`crates/app/src/safeHtml.ts`, **новое**). Третья точка — ревью-блокер. Сырой вывод LLM,
-  дифф, код плагина, ошибки — только `textContent`.
+- **`innerHTML` во фронте — ровно три перечисленные точки** (ADR-0038 §2.1): `previewView.ts`
+  (результат `render_markdown`), `safeHtml.ts` → `setSanitizedHtml()` (**новое**; санитизированный
+  ответ AI) и `pluginViews.ts` (HTML вкладки плагина, санитизирован хостом в `plugins/views.rs:80`).
+  Четвёртая точка — ревью-блокер. Сырой вывод LLM, дифф, код плагина, ошибки — только `textContent`.
 - **Приватность:** ключ не попадает в TS/логи/события; наружу — только `has_key` (на каждого
   провайдера); в `{:?}` — `<redacted>`; `headers`/`body`/`env` не логируются; `baseURL` — можно.
 - **Имена JSON-полей нормативны** (ADR-0035 §2.1, ТЗ §3.3): верхний уровень секции `ai` —
@@ -228,7 +228,8 @@ WebdriverIO.
   иначе `noUnusedLocals` завалит сборку; это же проверяет, что экспорты используемы дальше).
 
 - [ ] **Step 4: Ручной сторожевой grep (в ревью).**
-  Run: `rg -n "innerHTML" crates/app/src` → допустимы только `previewView.ts` и `safeHtml.ts`.
+  Run: `rg -n "innerHTML" crates/app/src` → присваивания допустимы только в `previewView.ts`,
+  `safeHtml.ts` и `pluginViews.ts` (ADR-0038 §2.1; третья точка существовала до ADR).
 
 - [ ] **Step 5: Commit**
 
@@ -324,8 +325,8 @@ WebdriverIO.
 
 - [ ] **Step 5: Править инвариант в документации.**
   - `AGENTS.md`, «Жёсткие ограничения»: пункт «Рендер Markdown — на Rust-стороне; фронт только
-    присваивает `preview.innerHTML`» заменить на формулировку ADR-0038 (две точки: preview и
-    `setSanitizedHtml`; третья запрещена).
+    присваивает `preview.innerHTML`» заменить на формулировку ADR-0038 §2.1 (три перечисленные
+    точки: `previewView.ts`, `safeHtml.ts`, `pluginViews.ts`; четвёртая запрещена).
   - `AGENTS.md`, «Структура и границы»: в списке фронт-модулей добавить `safeHtml.ts`
     («санитизированный рендер ответа AI»).
   - `docs/DESIGN_DOC.md` §11.1: добавить абзац про санитизированный рендер ответа AI через
