@@ -196,6 +196,16 @@ fn error_code_str(code: ErrorCode) -> String {
         .unwrap_or_else(|| "ai_error".to_string())
 }
 
+/// Рендерит Markdown-ответ модели в санитизированный HTML (ADR-0038).
+///
+/// `md_core::to_html` **сам** прогоняет результат через allowlist-санитайзер
+/// (`crates/md-core/src/lib.rs:52`), поэтому второй вызов `sanitize_fragment` не нужен.
+/// `to_html_mapped` не используется: ответ AI не участвует в инспекторе и не несёт `data-md`.
+#[tauri::command]
+pub fn ai_render_markdown(text: String) -> String {
+    md_core::to_html(&text)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -267,5 +277,35 @@ mod tests {
         assert_eq!(payload["message_id"], "ai-123-1");
         assert_eq!(payload["finish_reason"], serde_json::Value::Null);
         assert_eq!(payload["usage"], serde_json::Value::Null);
+    }
+
+    /// Эталонный XSS-payload из ADR-0038 §2.5: команда обязана вырезать `onerror`,
+    /// `<script` и `javascript:`, сохранив безопасную разметку.
+    #[test]
+    fn render_markdown_sanitizes_ai_answer() {
+        // Отступы-пустые строки в payload — не украшение: строка с сырым HTML открывает
+        // общий CommonMark HTML-блок, который поглощает всё до первой пустой строки, и
+        // следующая за ним разметка Markdown непарсилась бы (ADR-0038 §2.5 приводит
+        // блоки слитно). С разделителями `[клик](javascript:…)` действительно становится
+        // ссылкой — её `href` срезает allowlist, а не остаётся текстом.
+        let payload = r##"# Заголовок
+<img src=x onerror="window.__pwned=1">
+<script>window.__pwned=1</script>
+
+[клик](javascript:window.__pwned=1)
+<a href="data:text/html,<script>1</script>">ссылка</a>
+
+**жирный** и `код`"##;
+
+        let html = ai_render_markdown(payload.to_string());
+
+        assert!(html.contains("<strong>"), "ожидался <strong>: {html}");
+        assert!(html.contains("<code>"), "ожидался <code>: {html}");
+        assert!(!html.contains("onerror"), "остался onerror: {html}");
+        assert!(!html.contains("<script"), "остался <script: {html}");
+        assert!(
+            !html.contains("javascript:"),
+            "осталась схема javascript:: {html}"
+        );
     }
 }

@@ -845,6 +845,7 @@ pub fn run() {
             ai::commands::ai_list_skills,
             ai::commands::ai_chat,
             ai::commands::ai_test_connection,
+            ai::commands::ai_render_markdown,
             ai::doc_harness::ai_diff,
             ai::doc_harness::ai_apply_edit,
             ai::plugin_harness::ai_validate_plugin,
