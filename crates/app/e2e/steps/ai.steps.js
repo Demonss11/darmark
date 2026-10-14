@@ -307,17 +307,6 @@ Then("в ряду скиллов AI ровно {int} боевых скилла",
   );
 });
 
-Then("в ряду скиллов AI есть чип {string}", async (label) => {
-  await browser.waitUntil(
-    async () =>
-      browser.execute((l) => {
-        const chip = document.querySelector("#ai-skills .skill-soon");
-        return !!chip && chip.disabled && (chip.textContent ?? "").includes(l);
-      }, label),
-    { timeout: 5000, timeoutMsg: `В ряду скиллов нет чипа «${label}»` }
-  );
-});
-
 // ---------- Чат: ввод, отправка, карточки ----------
 
 When("я ввожу в поле AI {string}", async (text) => {

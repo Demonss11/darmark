@@ -68,7 +68,12 @@ interface ErrorAction {
   run(): void;
 }
 
-/** Встроенные скиллы-фолбэк, если `ai_list_skills` недоступен (ADR-0032). */
+/**
+ * Встроенные скиллы-фолбэк, если `ai_list_skills` недоступен (ADR-0032).
+ * Оставлены 2 MVP-скилла (`explain`, `create-plugin`) как деградированный минимум.
+ * Полный список из 7 скиллов приходит из Rust (`ai/skills.rs`) — дублировать 5 больших
+ * промтов в TS не нужно: это источник дрейфа (рассинхрон id/title/prompt_template).
+ */
 const FALLBACK_SKILLS: readonly AiSkill[] = [
   {
     id: "explain",
@@ -579,6 +584,9 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
 
   // --- скиллы ---
 
+  /** Id плагинных скиллов (категория `plugins`) — для иконки 🧩; остальные — документные ▤. */
+  const PLUGIN_SKILL_IDS: readonly string[] = ["create-plugin", "debug-plugin", "add-view"];
+
   function ensureSkills(): void {
     if (skillsLoaded || skillsLoading) return;
     skillsLoading = true;
@@ -608,28 +616,13 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
       const icon = document.createElement("span");
       icon.className = "skill-icon";
       icon.setAttribute("aria-hidden", "true");
-      icon.textContent = skill.id === "create-plugin" ? "🧩" : "▤";
+      icon.textContent = PLUGIN_SKILL_IDS.includes(skill.id) ? "🧩" : "▤";
       const title = document.createElement("span");
       title.textContent = skill.title;
       btn.append(icon, title);
       btn.addEventListener("click", () => onSkillClick(skill));
       skillsRow.appendChild(btn);
     }
-    const soon = document.createElement("button");
-    soon.type = "button";
-    soon.className = "skill skill-soon";
-    soon.disabled = true;
-    soon.setAttribute("aria-disabled", "true");
-    soon.setAttribute("aria-label", "Другие скиллы — скоро");
-    soon.title = "Скоро: переструктурировать, конспект, отладить плагин, добавить view, объяснить синтаксис";
-    const soonIcon = document.createElement("span");
-    soonIcon.className = "skill-icon";
-    soonIcon.setAttribute("aria-hidden", "true");
-    soonIcon.textContent = "⏱";
-    const soonTitle = document.createElement("span");
-    soonTitle.textContent = "Ещё скиллы — скоро";
-    soon.append(soonIcon, soonTitle);
-    skillsRow.appendChild(soon);
   }
 
   // Подстановка шаблона скилла: {{doc}} — из документа, {{input}} — из поля ввода.
