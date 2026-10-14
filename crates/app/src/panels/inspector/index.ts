@@ -1,4 +1,4 @@
-// inspector.ts — двусторонняя подсветка «блок предпросмотра ↔ фрагмент
+// inspector/index.ts — двусторонняя подсветка «блок предпросмотра ↔ фрагмент
 // исходника в редакторе». Блоки размечаются на Rust-стороне
 // (md-core::to_html_mapped) атрибутом data-md="start,end", где start/end —
 // байтовые смещения в исходном markdown.
@@ -15,8 +15,9 @@ import {
   findBlock,
   parseRange,
   unitsToBytes,
-} from "../core/mapping";
-import type { RenderIndex } from "../doc/renderIndex";
+} from "../../core/mapping";
+import type { RenderIndex } from "../../doc/renderIndex";
+import { INTERACTIVE_SELECTOR, resolveTarget, type InspectTarget } from "./target";
 
 export interface Inspector {
   isActive(): boolean;
@@ -24,29 +25,6 @@ export interface Inspector {
   disable(): void;
   onIndexChanged(): void;
   onEditorActivity(): void;
-}
-
-const INTERACTIVE_SELECTOR = "button, input, select, a, .col-filter-menu, th";
-
-type InspectMode = "block" | "cell" | "row" | "col";
-
-interface InspectTarget {
-  el: HTMLElement;
-  mode: InspectMode;
-}
-
-function resolveTarget(target: Element | null, shiftKey: boolean): InspectTarget | null {
-  if (!target || typeof target.closest !== "function") return null;
-  const th = target.closest("th[data-md]") as HTMLElement | null;
-  if (th) return { el: th, mode: "col" };
-  const tr = target.closest("tr[data-md]") as HTMLElement | null;
-  const td = target.closest("td[data-md]") as HTMLElement | null;
-  if (td && !shiftKey) return { el: td, mode: "cell" };
-  if (tr) return { el: tr, mode: "row" };
-  if (td) return { el: td, mode: "cell" };
-  const block = target.closest(".md-block[data-md]") as HTMLElement | null;
-  if (block) return { el: block, mode: "block" };
-  return null;
 }
 
 export function createInspector(opts: {
