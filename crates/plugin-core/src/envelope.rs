@@ -1,6 +1,5 @@
 //! serde-конверт хост ↔ child (§4.1 плагинной системы, §7.1 DESIGN_DOC): JSON-in-frame.
 //!
-//! От ручной кодировки C-спайка отказываемся: единый формат данных `ToChild`/`ToHost`/`PluginError`.
 //! Разбор входящего от child потока — **fallible** (F36): нарушение протокола превращается в
 //! [`PluginError`] с кодом [`codes::PROTOCOL`], а не в панику.
 
@@ -134,7 +133,7 @@ pub fn decode_to_host(payload: &[u8]) -> Result<ToHost, PluginError> {
         .map_err(|e| PluginError::protocol(format!("конверт child→host: {e}")))
 }
 
-/// Пишет кадр host → child с JSON-конвертом (сторона хоста).
+/// Сторона хоста: запись кадра host → child.
 pub fn write_to_child<W: std::io::Write>(w: &mut W, msg: &ToChild) -> std::io::Result<()> {
     let bytes = encode_to_child(msg).map_err(|e| {
         std::io::Error::new(
@@ -152,7 +151,7 @@ pub fn read_to_child<R: std::io::Read>(r: &mut R) -> std::io::Result<Result<ToCh
     Ok(decode_to_child(&payload))
 }
 
-/// Пишет кадр child → host с JSON-конвертом (сторона child).
+/// Пишет кадр child → host (сторона child).
 pub fn write_to_host<W: std::io::Write>(w: &mut W, msg: &ToHost) -> std::io::Result<()> {
     let bytes = encode_to_host(msg).map_err(|e| {
         std::io::Error::new(
@@ -163,8 +162,8 @@ pub fn write_to_host<W: std::io::Write>(w: &mut W, msg: &ToHost) -> std::io::Res
     crate::frame::write_frame(w, &bytes)
 }
 
-/// Читает кадр child → host (сторона хоста). Ошибка кадра — `io::Error`; нарушение формата —
-/// `Ok(Err(PluginError protocol))`, чтобы вызывающий единообразно обработал отказ плагина.
+/// Читает кадр child → host (сторона хоста). Ошибка кадра — `io::Error`, нарушение формата —
+/// `Ok(Err(PluginError protocol))`: вызывающий единообразно трактует отказ плагина.
 pub fn read_to_host<R: std::io::Read>(r: &mut R) -> std::io::Result<Result<ToHost, PluginError>> {
     let payload = crate::frame::read_frame(r)?;
     Ok(decode_to_host(&payload))
@@ -276,7 +275,6 @@ mod tests {
             level: "warn".into(),
             message: "тест".into(),
         };
-        // Пишем кадром так же, как это делает child.
         write_to_host(&mut buf, &msg).unwrap();
         let got = read_to_host(&mut buf.as_slice()).unwrap().unwrap();
         assert_eq!(got, msg);

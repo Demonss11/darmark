@@ -6,8 +6,8 @@
 //! Job-учёт `PeakProcessMemoryUsed` ограничен сверху. `KILL_ON_JOB_CLOSE` гарантирует, что
 //! смерть GUI-хоста унесёт и child'ов.
 //!
-//! Перенесено из прототипа (удалён). Модуль подключается под `#[cfg(windows)]`
-//! из `lib.rs`, поэтому дублирующий атрибут внутри файла не нужен.
+//! Модуль подключается из `lib.rs` под `#[cfg(windows)]`, поэтому дублирующий атрибут
+//! внутри файла не нужен.
 
 use std::ffi::c_void;
 use std::io;
@@ -41,8 +41,8 @@ extern "system" {
 /// Вложенность важна: для неё действует правило «эффективный лимит — не менее строгий из цепочки».
 pub fn parent_is_in_job() -> bool {
     let mut r: Bool = 0;
-    // SAFETY: GetCurrentProcess возвращает псевдо-хэндл (не требует закрытия); IsProcessInJob
-    // с null-job проверяет лишь наличие любого Job и пишет в валидный указатель `r`.
+    // SAFETY: GetCurrentProcess — псевдо-хэндл (закрывать нельзя); при null-job
+    // IsProcessInJob проверяет лишь наличие Job и пишет в валидный `r`.
     unsafe { IsProcessInJob(GetCurrentProcess(), std::ptr::null_mut(), &mut r) };
     r != 0
 }
@@ -109,7 +109,7 @@ struct BasicAccountingInformation {
 }
 
 fn last_error() -> io::Error {
-    // SAFETY: GetLastError не принимает аргументов и не может привести к UB.
+    // SAFETY: GetLastError без аргументов — UB невозможен.
     io::Error::from_raw_os_error(unsafe { GetLastError() } as i32)
 }
 

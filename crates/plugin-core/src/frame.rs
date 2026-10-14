@@ -3,8 +3,6 @@
 //! Вывод child'а — недоверенный. `read_frame` ограничен [`MAX_EVENT_FRAME_BYTES`], а кадр
 //! сверх лимита отвергается **до** аллокации. Нарушение протокола вызывающий обязан трактовать
 //! как отказ плагина: GUI-хост собирается под `panic = "abort"`, где паника = обход изоляции.
-//!
-//! Перенесено из прототипа (удалён) как есть с тестами.
 
 use std::io::{self, Read, Write};
 
@@ -75,8 +73,8 @@ mod tests {
 
     #[test]
     fn read_frame_host_allows_large_document_frame() {
-        // Кадр host → child размером 2 МиБ проходит (документ ≤ MAX_FILE_SIZE), а как
-        // событие (child → host) он был бы отвергнут лимитом MAX_EVENT_FRAME_BYTES.
+        // 2 МиБ проходит как кадр host → child (документ ≤ MAX_FILE_SIZE) и не проходит как
+        // событие child → host.
         let mut buf = Vec::new();
         write_frame(&mut buf, &vec![7u8; 2 * 1024 * 1024]).unwrap();
         assert!(read_frame(&mut buf.as_slice()).is_err());

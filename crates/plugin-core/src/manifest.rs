@@ -100,9 +100,9 @@ pub enum ManifestError {
     InvalidEntry(String),
     /// Разрешение отсутствует в наборе §8.
     UnknownPermission(String),
-    /// Разрешение известно, но не реализовано в H2.
+    /// Разрешение известно (§8), но отложено за пределы H2.
     PermissionNotInH2(String),
-    /// Разрешение не реализуется вообще (ФС/сеть).
+    /// Разрешение известно (§8), но не реализуется вообще (ФС/сеть).
     UnsupportedPermission(String),
     /// `.lua`-исходник больше лимита.
     SourceTooLarge { len: u64, max: u64 },
