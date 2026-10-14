@@ -7,7 +7,7 @@
 
 import { openDialog, type Dialog } from "./dialog";
 import { pluginColor } from "./pluginColor";
-import { errorMessage } from "./tauri";
+import { errorMessage } from "./core/tauri";
 
 export interface PaletteCommand {
   id: string;

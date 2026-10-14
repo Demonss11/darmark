@@ -8,7 +8,7 @@
 
 import { createInspector, type Inspector } from "./inspector";
 import { createScrollSync, type ScrollSync } from "./scrollsync";
-import type { RenderIndex } from "./renderIndex";
+import type { RenderIndex } from "./doc/renderIndex";
 
 export interface LinkController {
   /** Инспектор: включение/выключение, активность, реакция на выделение. */

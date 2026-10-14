@@ -9,7 +9,7 @@
 // внутри слотов (e2e читает их `scrollTop`), paneHost их не оборачивает.
 
 import { panes, type LayoutNode } from "./layout";
-import type { PaneId } from "./ids";
+import type { PaneId } from "./core/ids";
 
 export interface PaneHost {
   mount(layout: LayoutNode): void;

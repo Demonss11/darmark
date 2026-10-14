@@ -5,12 +5,12 @@
 
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { confirm } from "@tauri-apps/plugin-dialog";
-import type { PaneId } from "./ids";
+import type { PaneId } from "./core/ids";
 import type { FormatActions } from "./formatActions";
 import type { Drawer } from "./drawer";
 import type { LogPanel } from "./logPanel";
 import { isModalOpen } from "./dialog";
-import { openDevtools } from "./tauri";
+import { openDevtools } from "./core/tauri";
 
 export interface ShellCommands {
   newFile(): void;

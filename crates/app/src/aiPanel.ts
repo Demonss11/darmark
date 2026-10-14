@@ -38,7 +38,7 @@ import {
   errorMessage,
   reloadPlugin,
   undoDocument,
-} from "./tauri";
+} from "./core/tauri";
 import type {
   AiDiff,
   AiMessage,
@@ -47,10 +47,10 @@ import type {
   AiSkill,
   AiUsage,
   PluginStatus,
-} from "./tauri";
-import { renderAiMarkdown, setSanitizedHtml } from "./safeHtml";
-import { buildUnitMaps, bytesToUnits } from "./mapping";
-import type { DocumentId } from "./ids";
+} from "./core/tauri";
+import { renderAiMarkdown, setSanitizedHtml } from "./core/safeHtml";
+import { buildUnitMaps, bytesToUnits } from "./core/mapping";
+import type { DocumentId } from "./core/ids";
 import type { Json } from "./viewRegistry";
 import type { DockMode, DockState, LogCategory, LogLevel } from "./logPanel";
 

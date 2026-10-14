@@ -14,9 +14,9 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { createTablesController } from "./tables";
 import { resolveLocalImages } from "./images";
-import type { RenderIndex } from "./renderIndex";
+import type { RenderIndex } from "./doc/renderIndex";
 import type { HtmlView, HtmlViewProvider, Json, ViewContext } from "./viewRegistry";
-import type { DocumentSnapshot, RenderResult } from "./tauri";
+import type { DocumentSnapshot, RenderResult } from "./core/tauri";
 
 /** Расширение HtmlView для композиции: sink из docStore + управление mapped. */
 export interface PreviewView extends HtmlView {

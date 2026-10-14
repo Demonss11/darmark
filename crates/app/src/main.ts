@@ -9,11 +9,11 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
-import { createDocStore, type Tab } from "./docStore";
-import { createRenderIndex } from "./renderIndex";
+import { createDocStore, type Tab } from "./doc/docStore";
+import { createRenderIndex } from "./doc/renderIndex";
 import { createViewRegistry, type ViewContext } from "./viewRegistry";
-import { asDocumentId, asPaneId, asViewId, newPaneId, newViewId, type DocumentId } from "./ids";
-import { createEditorView } from "./editorView";
+import { asDocumentId, asPaneId, asViewId, newPaneId, newViewId, type DocumentId } from "./core/ids";
+import { createEditorView } from "./doc/editorView";
 import { previewViewProvider, type PreviewView, type PreviewViewOptions } from "./previewView";
 import { createLinkController } from "./linkController";
 import { createPaneHost } from "./paneHost";
@@ -33,8 +33,8 @@ import { createAiPanel, type AiPanel } from "./aiPanel";
 import { START_TEXT } from "./sampleDocument";
 import { createPalette, type CommandProvider, type PaletteCommand } from "./palette";
 import { toast } from "./toast";
-import { errorMessage, listPlugins, runPluginCommand } from "./tauri";
-import type { PluginInfo, RenderResult } from "./tauri";
+import { errorMessage, listPlugins, runPluginCommand } from "./core/tauri";
+import type { PluginInfo, RenderResult } from "./core/tauri";
 import "./style.css";
 
 const APP_NAME = "ПЕНАЛ";

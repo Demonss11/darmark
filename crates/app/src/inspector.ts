@@ -15,8 +15,8 @@ import {
   findBlock,
   parseRange,
   unitsToBytes,
-} from "./mapping";
-import type { RenderIndex } from "./renderIndex";
+} from "./core/mapping";
+import type { RenderIndex } from "./doc/renderIndex";
 
 export interface Inspector {
   isActive(): boolean;

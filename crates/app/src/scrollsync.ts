@@ -27,8 +27,8 @@ import {
   findLineAt,
   nextBlockAfter,
   unitsToBytes,
-} from "./mapping";
-import type { RenderIndex } from "./renderIndex";
+} from "./core/mapping";
+import type { RenderIndex } from "./doc/renderIndex";
 
 export interface ScrollSync {
   isEnabled(): boolean;

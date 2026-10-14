@@ -4,7 +4,7 @@
 // v1: глубина дерева 1 — либо один Pane, либо Split из двух Pane. Операции
 // возвращают НОВОЕ дерево либо LayoutError (вход не мутируется).
 
-import type { PaneId, ViewId } from "./ids";
+import type { PaneId, ViewId } from "./core/ids";
 
 export interface Pane {
   kind: "pane";

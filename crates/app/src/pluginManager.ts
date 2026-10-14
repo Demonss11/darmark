@@ -23,7 +23,7 @@ import {
   type PluginInfo,
   type PluginSettingProperty,
   type PluginStatus,
-} from "./tauri";
+} from "./core/tauri";
 import { openDialog, type Dialog } from "./dialog";
 import { ownerPluginId } from "./pluginTarget";
 import { pluginColor } from "./pluginColor";

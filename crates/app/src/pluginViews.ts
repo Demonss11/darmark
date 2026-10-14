@@ -11,7 +11,7 @@
 
 import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { errorMessage, pluginViewAction, pluginViews, type PluginViewInfo } from "./tauri";
+import { errorMessage, pluginViewAction, pluginViews, type PluginViewInfo } from "./core/tauri";
 import type { HtmlView, HtmlViewProvider, Json, ViewContext, ViewRegistry } from "./viewRegistry";
 import { pluginColor } from "./pluginColor";
 

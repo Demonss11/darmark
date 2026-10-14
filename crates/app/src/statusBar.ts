@@ -2,7 +2,7 @@
 // из проекции docStore (§4.2), позиция курсора — из редактора.
 
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import type { DocStore } from "./docStore";
+import type { DocStore } from "./doc/docStore";
 
 export interface StatusBar {
   /** Заголовок окна + имя файла + маркер несохранённых правок. */

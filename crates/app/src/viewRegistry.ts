@@ -10,8 +10,8 @@
 // `ViewContext` — единственная «песочница» view: никакого доступа к
 // `document`/`window`/`fetch`/файловой системе, только фасад.
 
-import type { PaneId, ViewId } from "./ids";
-import type { DocumentSnapshot, RenderResult } from "./tauri";
+import type { PaneId, ViewId } from "./core/ids";
+import type { DocumentSnapshot, RenderResult } from "./core/tauri";
 
 export type ViewKind = string;
 

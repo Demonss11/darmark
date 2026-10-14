@@ -3,8 +3,8 @@
 // docStore (проекция Rust-стора, D5).
 
 import { confirm, open, save } from "@tauri-apps/plugin-dialog";
-import type { DocStore } from "./docStore";
-import { errorMessage } from "./tauri";
+import type { DocStore } from "./doc/docStore";
+import { errorMessage } from "./core/tauri";
 
 /** Фильтр нативных диалогов. */
 const MD_FILTER = {

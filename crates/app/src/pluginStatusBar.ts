@@ -7,7 +7,7 @@
 // проходят через `innerHTML`.
 
 import { pluginColor } from "./pluginColor";
-import type { PluginInfo, PluginStatus } from "./tauri";
+import type { PluginInfo, PluginStatus } from "./core/tauri";
 
 const MAX_VISIBLE_PS = 3;
 const MESSAGE_MS = 4000;
