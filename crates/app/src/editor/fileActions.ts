@@ -3,8 +3,8 @@
 // docStore (проекция Rust-стора, D5).
 
 import { confirm, open, save } from "@tauri-apps/plugin-dialog";
-import type { DocStore } from "./doc/docStore";
-import { errorMessage } from "./core/tauri";
+import type { DocStore } from "../doc/docStore";
+import { errorMessage } from "../core/tauri";
 
 const MD_FILTER = {
   name: "Markdown",

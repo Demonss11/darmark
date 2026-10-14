@@ -1,7 +1,7 @@
 // IPC-команды плагинов.
 
 import { invoke } from "@tauri-apps/api/core";
-import type { Json } from "../../viewRegistry";
+import type { Json } from "../../views/viewRegistry";
 
 export interface PluginViewInfo {
   view_id: string;

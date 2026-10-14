@@ -26,7 +26,7 @@ import {
 import { openDialog, type Dialog } from "../../ui/dialog";
 import { ownerPluginId } from "../pluginTarget";
 import { pluginColor } from "../pluginColor";
-import type { Json } from "../../viewRegistry";
+import type { Json } from "../../views/viewRegistry";
 import {
   STATUS_LABELS,
   permissionLabel,

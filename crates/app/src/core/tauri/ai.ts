@@ -2,7 +2,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import type { DocumentId } from "../ids";
-import type { Json } from "../../viewRegistry";
+import type { Json } from "../../views/viewRegistry";
 import type { PluginInfo } from "./plugins";
 import type { UndoResult } from "./documents";
 

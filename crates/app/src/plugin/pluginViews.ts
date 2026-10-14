@@ -13,8 +13,8 @@ import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { errorMessage, pluginViewAction, pluginViews, type PluginViewInfo } from "../core/tauri";
 import type { DocumentSnapshot } from "../core/tauri";
-import type { HtmlView, HtmlViewProvider, Json, ViewContext, ViewRegistry } from "../viewRegistry";
-import { pluginColor } from "../plugin/pluginColor";
+import type { HtmlView, HtmlViewProvider, Json, ViewContext, ViewRegistry } from "../views/viewRegistry";
+import { pluginColor } from "./pluginColor";
 
 interface PluginViews {
   refresh(): Promise<void>;

@@ -6,9 +6,9 @@
 // скрывается (§paneHost), а scrollsync безопасно пропускает синхронизацию при
 // нулевой высоте панели (AC-9).
 
-import { createInspector, type Inspector } from "./panels/inspector";
-import { createScrollSync, type ScrollSync } from "./layout/scrollsync";
-import type { RenderIndex } from "./doc/renderIndex";
+import { createInspector, type Inspector } from "../panels/inspector";
+import { createScrollSync, type ScrollSync } from "../layout/scrollsync";
+import type { RenderIndex } from "../doc/renderIndex";
 
 interface LinkController {
   readonly inspector: Inspector;

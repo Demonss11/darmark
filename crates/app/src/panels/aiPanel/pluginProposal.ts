@@ -1,7 +1,7 @@
 // Разбор предложенного плагина из ответа ассистента и подтверждение удаления.
 
 import type { PluginStatus } from "../../core/tauri";
-import type { Json } from "../../viewRegistry";
+import type { Json } from "../../views/viewRegistry";
 import { openDialog, type Dialog } from "../../ui/dialog";
 import { actionButton, el } from "./dom";
 

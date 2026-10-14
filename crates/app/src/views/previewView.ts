@@ -12,11 +12,11 @@
 // строится индекс, иначе `data-md` разъедется с HTML.
 
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { createTablesController } from "./panels/tables";
-import { resolveLocalImages } from "./images";
-import type { RenderIndex } from "./doc/renderIndex";
+import { createTablesController } from "../panels/tables";
+import { resolveLocalImages } from "../core/images";
+import type { RenderIndex } from "../doc/renderIndex";
 import type { HtmlView, HtmlViewProvider, Json, ViewContext } from "./viewRegistry";
-import type { DocumentSnapshot, RenderResult } from "./core/tauri";
+import type { DocumentSnapshot, RenderResult } from "../core/tauri";
 
 export interface PreviewView extends HtmlView {
   applyRender(res: RenderResult, source: string): void;

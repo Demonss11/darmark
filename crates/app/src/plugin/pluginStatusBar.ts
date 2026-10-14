@@ -6,7 +6,7 @@
 // сворачиваются в «+N». Только DOM/`textContent` — сообщения плагинов не
 // проходят через `innerHTML`.
 
-import { pluginColor } from "../plugin/pluginColor";
+import { pluginColor } from "./pluginColor";
 import type { PluginInfo, PluginStatus } from "../core/tauri";
 
 const MAX_VISIBLE_PS = 3;
