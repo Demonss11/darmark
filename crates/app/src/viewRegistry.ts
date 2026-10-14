@@ -13,7 +13,7 @@
 import type { PaneId, ViewId } from "./core/ids";
 import type { DocumentSnapshot, RenderResult } from "./core/tauri";
 
-export type ViewKind = string;
+type ViewKind = string;
 
 export type Json = string | number | boolean | null | Json[] | { [k: string]: Json };
 

@@ -23,7 +23,7 @@ const EVENT_HANDLER_ATTR = /\son[a-z]+\s*=/i;
 
 const DANGEROUS_SCHEMES = /javascript:|vbscript:|data:text\/html/i;
 
-export function isSanitizedAiHtml(html: string): boolean {
+function isSanitizedAiHtml(html: string): boolean {
   return (
     !FORBIDDEN_TAGS.test(html) &&
     !EVENT_HANDLER_ATTR.test(html) &&
