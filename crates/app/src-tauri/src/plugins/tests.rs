@@ -6,7 +6,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 
 use serde_json::json;
 
@@ -69,59 +69,23 @@ fn workspace_root() -> PathBuf {
         .to_path_buf()
 }
 
-/// Путь к child-бинарнику. Пересобирает его, если он отсутствует или **старше** исходников
-/// `plugin-host`/`plugin-core`/`md-core` — иначе тесты молча гоняли бы устаревший exe (§4.3).
+/// Путь к child-бинарнику. Всегда пересобирает его debug-профилем: `host.crash`
+/// существует только в debug (`#[cfg(debug_assertions)]`), а mtime-проверка
+/// пропускала release-бинарник — тесты молча гоняли его и получали `lua_error`
+/// вместо `crashed`. Инкрементальная debug-сборка дешёвая (~0.1 s), корректность
+/// важнее скорости.
 fn child_exe() -> PathBuf {
     if let Ok(path) = std::env::var("DARMARK_PLUGIN_HOST_EXE") {
         return PathBuf::from(path);
     }
     let root = workspace_root();
-    let stale = match Supervisor::resolve_child_exe() {
-        Some(path) => !is_fresh(&path, &root),
-        None => true,
-    };
-    if stale {
-        let status = std::process::Command::new(env!("CARGO"))
-            .args(["build", "-p", "plugin-host"])
-            .current_dir(&root)
-            .status()
-            .expect("запуск cargo build -p plugin-host");
-        assert!(status.success(), "не удалось собрать plugin-host");
-    }
+    let status = std::process::Command::new(env!("CARGO"))
+        .args(["build", "-p", "plugin-host"])
+        .current_dir(&root)
+        .status()
+        .expect("запуск cargo build -p plugin-host");
+    assert!(status.success(), "не удалось собрать plugin-host");
     Supervisor::resolve_child_exe().expect("child exe после сборки")
-}
-
-/// mtime child'а не старее самого нового исходника его зависимости.
-fn is_fresh(exe: &Path, root: &Path) -> bool {
-    let Ok(exe_time) = fs::metadata(exe).and_then(|m| m.modified()) else {
-        return false;
-    };
-    let sources = [
-        root.join("crates/plugin-host"),
-        root.join("crates/plugin-core"),
-        root.join("crates/md-core"),
-    ];
-    match sources.iter().filter_map(|dir| newest_mtime(dir)).max() {
-        Some(newest) => exe_time >= newest,
-        None => false,
-    }
-}
-
-fn newest_mtime(dir: &Path) -> Option<SystemTime> {
-    let mut newest = None;
-    for entry in fs::read_dir(dir).ok()?.flatten() {
-        let path = entry.path();
-        let Ok(meta) = entry.metadata() else { continue };
-        let time = if meta.is_dir() {
-            newest_mtime(&path)
-        } else {
-            meta.modified().ok()
-        };
-        if let Some(time) = time {
-            newest = Some(newest.map_or(time, |current: SystemTime| current.max(time)));
-        }
-    }
-    newest
 }
 
 /// Стор с одним документом `doc-1` (id плагины адресуют строкой).
