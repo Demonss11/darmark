@@ -251,8 +251,8 @@ mod tests {
     }
 
     #[test]
-    fn list_skills_returns_two() {
-        assert_eq!(ai_list_skills().len(), 2);
+    fn list_skills_returns_seven() {
+        assert_eq!(ai_list_skills().len(), 7);
     }
 
     #[test]
