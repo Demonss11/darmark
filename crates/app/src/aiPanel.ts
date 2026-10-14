@@ -26,6 +26,9 @@ import {
   aiDeletePlugin,
   aiDiff,
   aiGetSettings,
+  aiHistoryClear,
+  aiHistoryLoad,
+  aiHistorySave,
   aiListSkills,
   aiSetApiKey,
   aiSetSettings,
@@ -443,6 +446,8 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
   const statusDot = document.getElementById("ai-status-dot");
   const statusText = byId<HTMLElement>("ai-status-text");
   const settingsBtn = byId<HTMLButtonElement>("ai-settings");
+  // Шапка сессии: «сессия от <дата>» (id контракт с index.html).
+  const sessionHeader = document.getElementById("ai-session");
   const popover = byId<HTMLElement>("ai-settings-pop");
   const settingsClose = byId<HTMLButtonElement>("ai-settings-close");
   const enabledInput = byId<HTMLInputElement>("ai-enabled");
@@ -545,6 +550,9 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     skillsRow.hidden = !enabled;
     chat.hidden = !enabled;
     inputRow.hidden = !enabled;
+    // Шапка сессии видна только при включённом AI (непустая история — ответственность
+    // restoreHistory/saveHistory/hideSessionHeader).
+    if (!enabled && sessionHeader) sessionHeader.hidden = true;
     input.disabled = !enabled;
     sendBtn.disabled = !enabled || busy;
 
@@ -1091,6 +1099,78 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     if (proposal) renderPluginCard(col, proposal);
   }
 
+  // --- история чата (персистентность, Task 4.3) ---
+
+  /** «сессия от 14.10, 16:23» — формат dd.mm, HH:MM из unix-секунд. */
+  function formatSessionDate(unixSecs: number): string {
+    const d = new Date(unixSecs * 1000);
+    const p = (n: number): string => String(n).padStart(2, "0");
+    return `${p(d.getDate())}.${p(d.getMonth() + 1)}, ${p(d.getHours())}:${p(d.getMinutes())}`;
+  }
+
+  function showSessionHeader(updatedAt: number): void {
+    if (!sessionHeader) return;
+    sessionHeader.textContent = `сессия от ${formatSessionDate(updatedAt)}`;
+    sessionHeader.hidden = false;
+  }
+
+  function hideSessionHeader(): void {
+    if (!sessionHeader) return;
+    sessionHeader.hidden = true;
+    sessionHeader.textContent = "";
+  }
+
+  /**
+   * Восстанавливает историю чата при инициализации панели. Ответ ассистента
+   * рендерится тем же путём, что живой (renderBubble → setSanitizedHtml).
+   */
+  async function restoreHistory(): Promise<void> {
+    try {
+      const view = await aiHistoryLoad();
+      if (disposed) return;
+      if (view.messages.length === 0) {
+        hideSessionHeader();
+        return;
+      }
+      for (const msg of view.messages) {
+        if (msg.role === "user") {
+          appendUser(msg.content);
+          history = history.concat({ role: "user", content: msg.content });
+        } else if (msg.role === "assistant") {
+          const { bubble, col } = appendAssistant();
+          history = history.concat({ role: "assistant", content: msg.content });
+          if (msg.content) void renderBubble(bubble, msg.content);
+          appendAssistantActions(col, msg.content);
+        }
+      }
+      showSessionHeader(view.updated_at);
+      if (view.warning) {
+        log("warn", "system", `AI: ${view.warning}`);
+      }
+      if (stick) scrollToBottom();
+    } catch (e) {
+      if (disposed) return;
+      log("warn", "system", `AI: история недоступна (${errorMessage(e)})`);
+    }
+  }
+
+  /** Fire-and-forget сохранение истории; ошибка — только в лог. */
+  function saveHistory(): void {
+    void aiHistorySave(history)
+      .then(() => {
+        if (disposed) return;
+        if (history.length > 0) {
+          showSessionHeader(Math.floor(Date.now() / 1000));
+        } else {
+          hideSessionHeader();
+        }
+      })
+      .catch((e) => {
+        if (disposed) return;
+        log("warn", "system", `AI: история не сохранена (${errorMessage(e)})`);
+      });
+  }
+
   // --- отправка ---
 
   function errorActions(kind: ErrorKind, code: string): ErrorAction[] {
@@ -1190,6 +1270,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
       `AI: ответ получен${usage ? ` (prompt ${usage.prompt_tokens}, completion ${usage.completion_tokens})` : ""}`
     );
     applyState();
+    saveHistory();
     if (stick) scrollToBottom();
   }
 
@@ -1215,6 +1296,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     appendErrorCard(errorTitle(kind, c), message, errorActions(kind, c));
     log("error", "system", `AI: ${errorTitle(kind, c)} — ${message}`);
     applyState();
+    saveHistory();
   }
 
   // Повтор последнего неудачного запроса (история уже содержит user-сообщение).
@@ -1249,6 +1331,11 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     lastRequest = null;
     chat.appendChild(emptyHint);
     updateEmpty();
+    hideSessionHeader();
+    void aiHistoryClear().catch((e) => {
+      if (disposed) return;
+      log("warn", "system", `AI: история не очищена (${errorMessage(e)})`);
+    });
   }
 
   // --- согласие ---
@@ -1617,6 +1704,10 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
       log("error", "system", `AI: настройки недоступны (${errorMessage(e)})`);
       applyState();
     });
+  void restoreHistory().then(() => {
+    if (disposed) return;
+    applyState();
+  });
 
   renderSkills(); // чип «скоро» виден сразу; боевые скиллы добавятся после загрузки
   applyState();

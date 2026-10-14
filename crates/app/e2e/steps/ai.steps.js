@@ -1057,6 +1057,51 @@ When("я направляю AI на XSS-мок-провайдера", async () =
   });
 });
 
+// ---------- Персистентность истории на диске (Task 4.3, AC-P3-5) ----------
+//
+// Файл `ai-history.json` лежит в каталоге данных — родителе DARMARK_CONFIG_PATH
+// (тот же override, что читает Rust: ai::commands::history_base). Читаем файл
+// через Node, как шаг проверки config.json: запись идёт асинхронно
+// (saveHistory — fire-and-forget после ответа ассистента), поэтому проверка
+// ждёт файл с таймаутом. `ai_history_clear` перезаписывает файл пустой сессией,
+// поэтому после #ai-clear файл существует с `messages: []`.
+
+/// Путь файла истории в изолированном каталоге данных E2E.
+function aiHistoryPath() {
+  return path.join(path.dirname(aiConfigPath()), "ai-history.json");
+}
+
+/// Разобранный файл истории — `null`, если файла ещё нет.
+function readAiHistory() {
+  const p = aiHistoryPath();
+  if (!fs.existsSync(p)) return null;
+  return JSON.parse(fs.readFileSync(p, "utf8"));
+}
+
+/// Персист записи: файл истории содержит непустой `messages` (ответ ассистента
+/// получен и сохранён). Ждём — запись на диск асинхронна.
+Then("файл истории AI содержит сообщения", async () => {
+  await browser.waitUntil(
+    async () => {
+      const file = readAiHistory();
+      return !!file && Array.isArray(file.messages) && file.messages.length > 0;
+    },
+    { timeout: 5000, timeoutMsg: "ai-history.json отсутствует или messages пуст (запись не выполнена)" }
+  );
+});
+
+/// Персист очистки: файл истории содержит `messages: []` (#ai-clear → ai_history_clear
+/// перезаписывает файл пустой сессией).
+Then("файл истории AI содержит пустой список сообщений", async () => {
+  await browser.waitUntil(
+    async () => {
+      const file = readAiHistory();
+      return !!file && Array.isArray(file.messages) && file.messages.length === 0;
+    },
+    { timeout: 5000, timeoutMsg: "ai-history.json не очищен (messages не пустой)" }
+  );
+});
+
 /// Карточка плагина по имени ищется ВНУТРИ страницы (browser.execute), поэтому селекторы
 /// дублируются инлайном, а не выносятся в Node-хелпер.
 

@@ -257,7 +257,9 @@ export interface AiSettingsInput {
 
 /** Сообщение диалога (формат OpenAI-совместимого API). */
 export interface AiMessage {
-  role: "system" | "user" | "assistant";
+  // `tool` — результат MCP-инструмента (Epic 6); Rust сохраняет эту роль в историю,
+  // поэтому она входит в контракт, даже если сейчас фронт такие сообщения не создаёт.
+  role: "system" | "user" | "assistant" | "tool";
   content: string;
 }
 
@@ -321,6 +323,35 @@ export function aiTestConnection(): Promise<AiTestResult> {
 /** Рендер текста ответа AI как Markdown через `md-core` (ADR-0038 §2.2). */
 export function aiRenderMarkdown(text: string): Promise<string> {
   return invoke<string>("ai_render_markdown", { text });
+}
+
+// --- История чата (IPC-команды ai_history_load/save/clear) ---
+
+/** Проекция истории чата из Rust (IPC-команда `ai_history_load`). */
+export interface HistoryView {
+  /** Идентификатор сессии (генерируется Rust). */
+  session_id: string;
+  /** Unix-секунды последнего обновления файла истории. */
+  updated_at: number;
+  /** Сообщения диалога (role/content). */
+  messages: AiMessage[];
+  /** Предупреждение (битый файл, превышение лимита) или null. */
+  warning: string | null;
+}
+
+/** Загружает историю чата с диска (IPC-команда `ai_history_load`). */
+export function aiHistoryLoad(): Promise<HistoryView> {
+  return invoke<HistoryView>("ai_history_load");
+}
+
+/** Сохраняет историю чата на диск (полная замена файла). */
+export function aiHistorySave(messages: AiMessage[]): Promise<void> {
+  return invoke<void>("ai_history_save", { messages });
+}
+
+/** Очищает историю чата на диске (перезапись пустой сессией). */
+export function aiHistoryClear(): Promise<void> {
+  return invoke<void>("ai_history_clear");
 }
 
 // --- AI-ассистент: harness Фазы 2 (ADR-0034) ---
