@@ -1,4 +1,4 @@
-// resourceMonitor.ts — вкладка «Мониторинг» дока (IDEA-012; ADR-0031): строки
+// resourceMonitor/index.ts — вкладка «Мониторинг» дока (IDEA-012; ADR-0031): строки
 // процессов `#mon-rows` внутри `#logs-resources` показывают ОЗУ
 // главного процесса и каждого активного child'а плагина.
 //
@@ -12,70 +12,35 @@
 // когда тот же `plugin_id` вернулся в свежий снимок с **новым** PID (рестарт).
 
 import { listen, type Event, type UnlistenFn } from "@tauri-apps/api/event";
-import { pluginColor } from "../plugin/pluginColor";
-import type { LogCategory, LogLevel } from "./logPanel";
+import { pluginColor } from "../../plugin/pluginColor";
+import type { LogCategory } from "../logPanel";
+import {
+  CHILD_CPU_CRIT,
+  CHILD_CPU_WARN,
+  CHILD_CRIT_RATIO,
+  CHILD_WARN_RATIO,
+  MAIN_CPU_CRIT,
+  MAIN_CPU_WARN,
+  MAIN_CRIT_BYTES,
+  MAIN_WARN_BYTES,
+  ORPHAN_TTL_MS,
+  RANK,
+  STALE_MS,
+  TICK_MS,
+} from "./constants";
+import { mbValue, formatMb } from "./format";
+import type {
+  MainMetrics,
+  ChildMetrics,
+  ResourceSnapshot,
+  MonState,
+  OrphanEntry,
+  ResourceMonitorOptions,
+  ResourceMonitor,
+} from "./types";
 
+export type { ResourceMonitor } from "./types";
 
-interface ProcessMetrics {
-  mem_bytes: number;
-  cpu_percent?: number;
-  handles?: number;
-}
-
-type MainMetrics = ProcessMetrics;
-
-interface ChildMetrics extends ProcessMetrics {
-  plugin_id: string;
-  pid: number;
-  mem_limit_bytes: number;
-}
-
-interface ResourceSnapshot {
-  ts: number;
-  main: MainMetrics;
-  children: ChildMetrics[];
-}
-
-type MonState = "ok" | "warn" | "crit" | "orphan";
-
-
-const MB = 1024 * 1024;
-const CHILD_WARN_RATIO = 0.75;
-const CHILD_CRIT_RATIO = 0.9;
-const MAIN_WARN_BYTES = 800 * MB;
-const MAIN_CRIT_BYTES = 1.5 * 1024 * MB;
-const CHILD_CPU_WARN = 50;
-const CHILD_CPU_CRIT = 80;
-const MAIN_CPU_WARN = 70;
-const MAIN_CPU_CRIT = 90;
-const ORPHAN_TTL_MS = 5000;
-const STALE_MS = 6000;
-const TICK_MS = 1000;
-
-const RANK: Record<MonState, number> = { ok: 0, warn: 1, crit: 2, orphan: 0 };
-
-interface OrphanEntry {
-  pid: number;
-  until: number;
-}
-
-interface ResourceMonitorOptions {
-  root: HTMLElement;
-  log(level: LogLevel, category: LogCategory, message: string, detail?: string): void;
-}
-
-export interface ResourceMonitor {
-  refresh(): void;
-  dispose(): void;
-}
-
-function mbValue(bytes: number): number {
-  return Number.isFinite(bytes) && bytes > 0 ? Math.round(bytes / MB) : 0;
-}
-
-function formatMb(bytes: number): string {
-  return `${mbValue(bytes)} МБ`;
-}
 
 export function createResourceMonitor(opts: ResourceMonitorOptions): ResourceMonitor {
   const { root, log } = opts;
