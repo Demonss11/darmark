@@ -3,9 +3,12 @@
 // logPanel/resourceMonitor), НЕ view и НЕ pane: монтируется logPanel'ом в
 // контейнер #logs-panel (режим ai).
 //
-// Инварианты: сетевые вызовы — только на Rust-стороне (CSP `default-src 'self'`);
-// вывод модели рендерится ИСКЛЮЧИТЕЛЬНО через textContent (сырой HTML/ответ LLM в
-// innerHTML запрещён). История чата — в памяти на сессию (без персист.).
+// Инварианты: сетевые вызовы — только на Rust-стороне (CSP `default-src 'self'`).
+// Рендер ответа ассистента — только через `safeHtml.setSanitizedHtml` (ADR-0038
+// §2.1/§2.2): HTML ответа модели проходит Rust-санитайзер `md-core`, прямых
+// присваиваний `innerHTML` в этом модуле нет. Всё, что не проходит этот хелпер —
+// стриминг, код плагина, дифф, ошибки — только `textContent`.
+// История чата — в памяти на сессию (без персист.) и хранит ТЕКСТ ответа, не HTML.
 // Стриминг: события ai:chunk/ai:done/ai:error дописывают/финализируют текущий
 // пузырь ассистента; отписки сохраняются и снимаются.
 //
@@ -14,6 +17,7 @@
 // (через ai_*_plugin).
 
 import { listen, type Event, type UnlistenFn } from "@tauri-apps/api/event";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { openDialog, isModalOpen, type Dialog } from "./dialog";
 import {
   aiApplyEdit,
@@ -41,6 +45,7 @@ import type {
   AiUsage,
   PluginStatus,
 } from "./tauri";
+import { renderAiMarkdown, setSanitizedHtml } from "./safeHtml";
 import { buildUnitMaps, bytesToUnits } from "./mapping";
 import type { DocumentId } from "./ids";
 import type { Json } from "./viewRegistry";
@@ -1141,6 +1146,25 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     }
   }
 
+  // Финализация пузыря ассистента: Markdown-рендер — только через safeHtml
+  // (ADR-0038 §2.2), ответ модели → `ai_render_markdown` → санитизированный HTML.
+  // Fail-safe: команда недоступна/упала — в пузыре остаётся текст, чат не падает;
+  // негодный HTML `setSanitizedHtml` сам уводит в `textContent`.
+  async function renderBubble(bubble: HTMLElement, content: string): Promise<void> {
+    try {
+      const html = await renderAiMarkdown(content);
+      // Гонка: пока шёл рендер, чат могли очистить (`#ai-clear` отсоединяет строку)
+      // или снять панель — в отсоединённый пузырь результат не пишем.
+      if (disposed || !bubble.isConnected) return;
+      setSanitizedHtml(bubble, html, content);
+      if (stick) scrollToBottom();
+    } catch (e) {
+      if (disposed || !bubble.isConnected) return;
+      bubble.textContent = content;
+      log("warn", "system", `AI: Markdown-рендер ответа недоступен — показан текст (${errorMessage(e)})`);
+    }
+  }
+
   // Успешное завершение: финализировать пузырь, показать usage, обновить историю.
   function complete(p: Pending, usage: AiUsage | null): void {
     p.finalized = true;
@@ -1151,8 +1175,11 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     // При обрыве по лимиту токенов пустой контент не добавляем в историю и не
     // показываем действия — только заметку об обрыве.
     const content = isEmpty ? (truncated ? "" : "Пустой ответ") : p.content;
+    // Пузырь читаем сразу: текст дописан стримингом, HTML появится после рендера.
     p.bubble.textContent = content;
+    if (content) void renderBubble(p.bubble, content);
     if (usage) appendUsage(p.col, usage);
+    // История хранит ТЕКСТ ответа (ADR-0038): на её основе уходит следующий запрос.
     if (!isEmpty || !truncated) {
       history = history.concat({ role: "assistant", content });
     }
@@ -1403,6 +1430,24 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     stick = chat.scrollHeight - chat.scrollTop - chat.clientHeight <= STICK_THRESHOLD;
   };
   const onClearClick = (): void => clearChat();
+  // Делегирование ссылок ответа ассистента: `http(s)` открываем системным
+  // браузером (window.open в WebView не гарантирует внешнее открытие и обходит
+  // CSP — образец `previewView.ts`), любые другие схемы/якоря гасим: навигация
+  // внутри WebView не нужна и опасна.
+  const onChatClick = (e: MouseEvent): void => {
+    const anchor = e.target instanceof Element ? e.target.closest("a") : null;
+    if (!anchor) return;
+    const href = anchor.getAttribute("href") ?? "";
+    if (!/^https?:/i.test(href)) {
+      e.preventDefault();
+      return;
+    }
+    e.preventDefault();
+    void openUrl(href).catch((err) => {
+      log("warn", "system", `AI: ссылка не открыта — ${errorMessage(err)}`);
+    });
+  };
+
   const onSettingsClick = (): void => toggleSettings();
   const onSettingsClose = (): void => closeSettings();
   const onKeySave = (): void => void saveKey();
@@ -1443,6 +1488,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
   input.addEventListener("input", onInput);
   sendBtn.addEventListener("click", onSendClick);
   chat.addEventListener("scroll", onChatScroll);
+  chat.addEventListener("click", onChatClick);
   clearBtn.addEventListener("click", onClearClick);
   settingsBtn.addEventListener("click", onSettingsClick);
   settingsClose.addEventListener("click", onSettingsClose);
@@ -1549,6 +1595,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     input.removeEventListener("input", onInput);
     sendBtn.removeEventListener("click", onSendClick);
     chat.removeEventListener("scroll", onChatScroll);
+    chat.removeEventListener("click", onChatClick);
     clearBtn.removeEventListener("click", onClearClick);
     settingsBtn.removeEventListener("click", onSettingsClick);
     settingsClose.removeEventListener("click", onSettingsClose);
