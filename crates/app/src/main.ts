@@ -16,14 +16,14 @@ import { asDocumentId, asPaneId, asViewId, newPaneId, newViewId, type DocumentId
 import { createEditorView } from "./doc/editorView";
 import { previewViewProvider, type PreviewView, type PreviewViewOptions } from "./previewView";
 import { createLinkController } from "./linkController";
-import { createPaneHost } from "./paneHost";
-import { applyLayout, LayoutError, type LayoutNode, type Pane } from "./layout";
+import { createPaneHost } from "./layout/paneHost";
+import { applyLayout, LayoutError, type LayoutNode, type Pane } from "./layout/layout";
 import { createStatusBar } from "./statusBar";
 import { createPluginViews } from "./pluginViews";
 import { createPluginManager } from "./pluginManager";
 import { createPluginStatusBar } from "./pluginStatusBar";
 import { createFileActions } from "./fileActions";
-import { createShell } from "./shell";
+import { createShell } from "./layout/shell";
 import { createDrawer } from "./drawer";
 import { createGutter } from "./gutter";
 import { createFormatActions } from "./formatActions";

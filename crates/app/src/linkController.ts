@@ -7,7 +7,7 @@
 // нулевой высоте панели (AC-9).
 
 import { createInspector, type Inspector } from "./inspector";
-import { createScrollSync, type ScrollSync } from "./scrollsync";
+import { createScrollSync, type ScrollSync } from "./layout/scrollsync";
 import type { RenderIndex } from "./doc/renderIndex";
 
 export interface LinkController {
