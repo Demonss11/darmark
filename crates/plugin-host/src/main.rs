@@ -32,7 +32,7 @@ use serde_json::{json, Value};
 
 // ─── stdio-транспорт ────────────────────────────────────────────────────
 
-/// Разделяемый stdio-endpoint. За ним сериализуются host-call'ы плагина и служебные кадры.
+/// Разделяемый stdio-endpoint: за блокировкой сериализуются host-call'ы и служебные кадры.
 struct ChildIo {
     reader: Box<dyn Read + Send>,
     writer: Box<dyn Write + Send>,
@@ -94,18 +94,15 @@ impl HostApi for RpcHost {
     }
 }
 
-/// Загруженный плагин: `plugin_id` и единый `ctx` на весь жизненный цикл.
-///
-/// `ctx` создаётся один раз при `load` и переиспользуется в `on_deactivate`: состояние,
-/// накопленное в `on_activate`, должно доживать до деактивации (§6.2 DESIGN_DOC).
+/// Загруженный плагин: `ctx` создаётся один раз при `load` и переиспользуется в
+/// `on_deactivate` — состояние из `on_activate` должно дожить до деактивации (§6.2 DESIGN_DOC).
 struct Loaded {
     plugin_id: String,
     ctx: Table,
 }
 
-/// Публикует результат `Invoke` как `ToHost::Event`: `done` при успехе, `error` при отказе.
-/// Ответ child'а на `Invoke` — именно событие (у `ToChild::Reply` обратное направление:
-/// это хост отвечает на `HostCall`).
+/// Ответ child'а на `Invoke` — событие: `Reply` принадлежит обратному направлению
+/// (хост отвечает на `HostCall`).
 fn announce_result(host: &Arc<dyn HostApi>, id: u32, result: Result<Value, PluginError>) {
     match result {
         Ok(value) => host.emit("done", json!({ "id": id, "result": value })),
@@ -182,15 +179,14 @@ fn handle_invoke(
                 .unwrap_or_default()
                 .to_string();
             let payload = args.get("payload").cloned().unwrap_or(Value::Null);
-            // Подписчики ctx._subs[name] + глобальный on_event (если объявлен).
             bindings::dispatch_event(lua, loaded.as_ref().map(|l| &l.ctx), &name, &payload)
                 .map_err(|e| PluginError::lua(format!("event {name}: {e}")))?;
             Ok(Value::Null)
         }
         "action" => {
-            // Обратная маршрутизация из тир-1 view (§9.4): клик по `data-p-*` на
-            // контейнере → хост → сюда. Возвращаемый плагином HTML уходит обратно
-            // через host.set_view_content и санитизируется на GUI-хосте (D7/§11.1).
+            // Обратная маршрутизация из тир-1 view (§9.4): клик по `data-p-*` на контейнере →
+            // хост → сюда; возвращённый плагином HTML уходит через host.set_view_content и
+            // санитизируется на GUI-хосте (D7/§11.1).
             let view_id = args
                 .get("view_id")
                 .and_then(Value::as_str)
@@ -242,7 +238,7 @@ fn run_loop(
         let invoke = match frame {
             Ok(Ok(msg)) => msg,
             Ok(Err(protocol)) => {
-                // Host прислал неразбираемый конверт: сообщаем и завершаемся (не паникуем).
+                // Неразбираемый конверт от хоста: сообщаем и завершаемся, не паникуем.
                 host.emit("error", json!({ "message": protocol.message }));
                 return ExitCode::FAILURE;
             }
@@ -255,7 +251,7 @@ fn run_loop(
                 let reply = handle_invoke(&lua, &host, &mut loaded, &method, &args);
                 announce_result(&host, id, reply);
             }
-            // Reply на верхнем уровне не ожидается: ответы разбирает `RpcHost::call`.
+            // Reply на верхнем уровне не ожидается: его разбирает `RpcHost::call`.
             ToChild::Reply { id, .. } => {
                 host.emit(
                     "error",
@@ -332,8 +328,8 @@ fn serve_plugin(path: &Path) -> ExitCode {
         }
     };
 
-    // Единый диспатч с обычным циклом: `load` регистрирует `host.*` и исполняет исходник,
-    // `activate` вызывает `on_activate`. Их host-call'ы уже идут в назначенный stdio.
+    // Идём через тот же `handle_invoke`, что и обычный цикл: host-call'ы уже уходят
+    // в назначенный stdio.
     let mut loaded: Option<Loaded> = None;
     let load = handle_invoke(
         &lua,
@@ -410,7 +406,7 @@ fn main() -> ExitCode {
         Ok(Mode::Stdio) => run_stdio(),
         Ok(Mode::SelfTest(path)) => match selftest::self_test(&path) {
             Ok(report) => {
-                // Логи песочницы печатаем в stderr (прежнее поведение `--self-test`).
+                // Логи песочницы — в stderr (прежнее поведение `--self-test`): протокола в этом режиме нет.
                 for line in &report.logs {
                     eprintln!("[child] {}: {line}", report.plugin_id);
                 }
@@ -495,7 +491,7 @@ mod tests {
         );
     }
 
-    /// Готовит child-состояние с загруженным плагином из `source`.
+    /// Готовит child-состояние с плагином из `source`.
     fn loaded_lua(source: &str) -> (mlua::Lua, Arc<dyn HostApi>, Option<Loaded>) {
         let lua = sandbox::create().unwrap();
         let host: Arc<dyn HostApi> = Arc::new(StderrHost);

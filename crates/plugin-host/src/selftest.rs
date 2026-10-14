@@ -18,17 +18,13 @@ use crate::{bindings, sandbox};
 /// Лимит размера `plugin.json` при самопроверке (совпадает с GUI-сканированием, §6.6).
 pub const MAX_MANIFEST_BYTES: u64 = 256 * 1024;
 
-/// Имя файла манифеста в каталоге плагина.
 const MANIFEST_FILE: &str = "plugin.json";
 
 /// Отчёт о самопроверке плагина.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SelfTestReport {
-    /// id плагина (из манифеста или из имени `.lua`-файла).
     pub plugin_id: String,
-    /// Размер исходника в байтах.
     pub source_bytes: usize,
-    /// `on_activate` вызван без ошибок.
     pub activated: bool,
     /// Логи и события песочницы (host.log/print/emit).
     pub logs: Vec<String>,
@@ -66,7 +62,7 @@ impl bindings::HostApi for LogHost {
 }
 
 /// Проверяет плагин в песочнице: чтение (манифест/entry), `load`, `on_activate`,
-/// `on_deactivate` (если объявлена). host-call'ы отклоняются с понятным сообщением.
+/// `on_deactivate` (если объявлена).
 pub fn self_test(path: &Path) -> Result<SelfTestReport, String> {
     let (plugin_id, source_bytes, source) = resolve_source(path)?;
 
@@ -101,7 +97,7 @@ pub fn self_test(path: &Path) -> Result<SelfTestReport, String> {
             .map_err(|e| format!("{plugin_id}: on_deactivate упал: {e}"))?;
     }
 
-    // Забираем логи: Arc может быть подержан замыканиями в Lua, поэтому клонируем содержимое.
+    // Arc остаётся захвачен замыканиями Lua, поэтому Vec из-под лока не вынести — копируем.
     let logs = logs.lock().unwrap_or_else(|e| e.into_inner()).clone();
 
     Ok(SelfTestReport {

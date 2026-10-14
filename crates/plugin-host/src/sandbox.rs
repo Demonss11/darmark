@@ -9,7 +9,7 @@
 
 use mlua::{Lua, LuaOptions, Result, StdLib, Value};
 
-/// Создаёт изолированное Lua-состояние с урезанным набором библиотек.
+/// Создаёт изолированное Lua-состояние с allowlist библиотек (D17).
 pub fn create() -> Result<Lua> {
     let lua = Lua::new_with(
         StdLib::STRING | StdLib::TABLE | StdLib::MATH | StdLib::UTF8,

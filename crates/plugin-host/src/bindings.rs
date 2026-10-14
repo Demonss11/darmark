@@ -26,7 +26,6 @@ pub trait HostApi: Send + Sync + 'static {
     fn emit(&self, kind: &str, payload: serde_json::Value);
 }
 
-/// Логирует через [`HostApi`] с префиксом plugin_id.
 struct Logged {
     plugin_id: String,
     api: Arc<dyn HostApi>,
@@ -51,11 +50,11 @@ fn host_err(e: PluginError) -> mlua::Error {
     mlua::Error::RuntimeError(e.to_string())
 }
 
-/// Превращает результат host-call в Lua-контракт `(value, err)`:
-/// успех → `(value, nil)`, отказ → `(nil, {code, message, permission?})`.
+/// Превращает результат host-call в Lua-контракт `(value, err)`.
 ///
-/// Permission-отказ приходит плагину **значением**, а не Lua-исключением (§4.4 плагинной системы / §8
-/// DESIGN_DOC): `on_activate` не прерывается, плагин сам решает, что делать.
+/// Permission-отказ приходит плагину **значением**, а не исключением (§4.4 плагинной
+/// системы / §8 DESIGN_DOC):
+/// `on_activate` не прерывается, плагин сам решает, что делать.
 fn defuse(
     lua: &Lua,
     result: std::result::Result<serde_json::Value, PluginError>,
@@ -114,9 +113,8 @@ fn register_host(lua: &Lua, plugin_id: &str, api: Arc<dyn HostApi>) -> Result<()
         })?,
     )?;
 
-    // Экспорт HTML через нативный диалог хоста (Фаза 5): согласие даёт сам диалог
+    // Экспорт HTML идёт через нативный диалог хоста (Фаза 5): согласие даёт сам диалог
     // сохранения, поэтому permission `filesystem:write` не требуется (§6.3/§8).
-    // Контракт `(ok, err)`: успех → true, отмена диалога → false, IO-ошибка → err.
     let api_export = Arc::clone(&api);
     host.set(
         "export_html",
@@ -189,8 +187,7 @@ fn register_host(lua: &Lua, plugin_id: &str, api: Arc<dyn HostApi>) -> Result<()
     )?;
 
     // Тир-1 view: HTML уходит на GUI-хост и там санитизируется (md-core) перед вставкой
-    // в DOM — плагин не может протолкнуть сырой HTML (D7/§11.1). Требуется permission
-    // `view:modify` (проверяет Supervisor).
+    // в DOM — плагин не может протолкнуть сырой HTML (D7/§11.1); доступ гейтит `view:modify`.
     let api_view = Arc::clone(&api);
     host.set(
         "set_view_content",
@@ -231,8 +228,7 @@ fn register_host(lua: &Lua, plugin_id: &str, api: Arc<dyn HostApi>) -> Result<()
         })?,
     )?;
 
-    // Тест/dev-утилита изоляции отказов: аварийно завершает child-процесс.
-    // Только в dev-сборке (не входит в §6.3 DESIGN_DOC и не должна уезжать в релизный child).
+    // Dev-утилита проверки изоляции отказов; в релизный child не попадает (§6.3).
     #[cfg(debug_assertions)]
     host.set(
         "crash",
@@ -241,7 +237,7 @@ fn register_host(lua: &Lua, plugin_id: &str, api: Arc<dyn HostApi>) -> Result<()
 
     lua.globals().set("host", host)?;
 
-    // print перенаправляем в лог: иначе вывод плагина уходит в stdout хоста (§6.1).
+    // print уводим в лог: stdout child'а — канал конверта (§6.1).
     let tostring: mlua::Function = lua.globals().get("tostring")?;
     let log_for_print = Arc::clone(&log);
     lua.globals().set(
@@ -300,10 +296,9 @@ fn register_json(lua: &Lua) -> Result<()> {
 
 /// Строит `ctx` для `on_activate`/`on_deactivate` (§6.2/§9.3 DESIGN_DOC).
 ///
-/// Подписки хранятся в `ctx._subs` (таблица `name → список функций`), чтобы
-/// [`dispatch_event`] мог доставить событие подписчикам. `subscribe` возвращает
-/// `unsubscribe`-функцию; `unsubscribe(name, handler)` снимает подписку вручную.
-/// Реализация на Lua: сравнение функций по ссылке (`==`) — родная семантика Lua.
+/// Подписки лежат в `ctx._subs` (`name → список функций`), `subscribe` возвращает
+/// `unsubscribe`-функцию. Снятие подписки — сравнением функций через `==` (родная
+/// семантика Lua), поэтому отдельные замыкания не совпадут.
 pub fn make_context(lua: &Lua, plugin_id: &str) -> Result<Table> {
     let ctx = lua.create_table()?;
     ctx.set("plugin_id", plugin_id)?;
@@ -339,11 +334,9 @@ pub fn make_context(lua: &Lua, plugin_id: &str) -> Result<Table> {
     Ok(ctx)
 }
 
-/// Доставляет событие `name` с `payload` подписчикам `ctx._subs[name]`, затем
-/// глобальному `on_event(name, payload)`, если он объявлен.
-///
-/// Подписчики получают `(name, payload)`. `ctx` — `None`, если плагин ещё не
-/// загружен: тогда вызывается только глобальный `on_event` (если есть).
+/// Доставляет событие подписчикам `ctx._subs[name]`, затем глобальному `on_event`.
+/// Подписчики и глобальный `on_event` получают `(name, payload)`.
+/// `ctx = None` (плагин не загружен) — вызывается только глобальный `on_event`.
 pub fn dispatch_event(
     lua: &Lua,
     ctx: Option<&Table>,
@@ -368,7 +361,7 @@ pub fn dispatch_event(
     Ok(())
 }
 
-/// Конвертация JSON → Lua (обёртка над внутренним конвертером для вызывающих извне модуля).
+/// Обёртка над конвертером: наружу отдаём ошибку как `mlua::Error`.
 pub fn json_to_lua(lua: &Lua, value: &serde_json::Value) -> Result<Value> {
     json_conv::json_to_lua(lua, value).map_err(host_err)
 }
@@ -603,7 +596,6 @@ mod tests {
         let lua = crate::sandbox::create().unwrap();
         register(&lua, "p", Arc::new(DenyingHost)).unwrap();
 
-        // Callback продолжается: ошибка приходит вторым значением, а не исключением Lua.
         let (ok, code, permission): (Value, String, String) = lua
             .load(
                 r#"
@@ -759,7 +751,6 @@ mod tests {
         let hits: i64 = lua.globals().get("hits").unwrap();
         assert_eq!(hits, 0, "после unsubscribe handler не вызывается");
 
-        // ctx.unsubscribe(name, handler) снимает подписку по ссылке.
         lua.load(
             r#"
             local function h() hits = hits + 1 end
