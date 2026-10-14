@@ -74,6 +74,11 @@ fn workspace_root() -> PathBuf {
 /// пропускала release-бинарник — тесты молча гоняли его и получали `lua_error`
 /// вместо `crashed`. Инкрементальная debug-сборка дешёвая (~0.1 s), корректность
 /// важнее скорости.
+///
+/// Env-override `DARMARK_PLUGIN_HOST_EXE` пропускает сборку (осознанное
+/// исключение): путь используется как есть — отвечаете за его профиль сами.
+#[cfg(not(debug_assertions))]
+compile_error!("тесты плагинов гонят debug-бинарник child; cargo test только без --release");
 fn child_exe() -> PathBuf {
     if let Ok(path) = std::env::var("DARMARK_PLUGIN_HOST_EXE") {
         return PathBuf::from(path);
