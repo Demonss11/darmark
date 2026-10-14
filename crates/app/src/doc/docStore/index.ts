@@ -1,4 +1,4 @@
-// docStore — TS-проекция Rust-стора (D5): текст, ревизия, путь и dirty.
+// docStore/index — TS-проекция Rust-стора (D5): текст, ревизия, путь и dirty.
 //
 // Модуль без DOM: ввод приходит из editorView (`setText`), HTML уходит в
 // `onRender`. Рендер и его кэш принадлежат Rust; здесь — дебаунс IPC,
@@ -15,76 +15,14 @@ import {
   closeDocument as ipcClose,
   documentSnapshot,
   errorMessage,
-} from "../core/tauri";
-import type { DocumentId } from "../core/ids";
-import type { DocumentSnapshot, RenderResult } from "../core/tauri";
+} from "../../core/tauri";
+import type { DocumentId } from "../../core/ids";
+import type { DocumentSnapshot, RenderResult } from "../../core/tauri";
+import { DEBOUNCE_MS, errorCode, baseName, makeTab } from "./helpers";
+import type { Tab, DocStoreOptions, DocStore } from "./types";
 
-export interface Tab {
-  id: DocumentId;
-  path: string | null;
-  rev: number;
-  text: string;
-  savedText: string;
-  dirty: boolean;
-  name: string;
-}
+export type { Tab, DocStore } from "./types";
 
-interface DocStoreOptions {
-  renderMapped(): boolean;
-  onRender(res: RenderResult, source: string): void;
-  onStatus(msg: string): void;
-}
-
-export interface DocStore {
-  tabs(): Tab[];
-  activeId(): DocumentId | null;
-  active(): Tab | null;
-  subscribe(cb: (tabs: Tab[], activeId: DocumentId | null) => void): () => void;
-
-  snapshot(): DocumentSnapshot | null;
-  onDocument(cb: (d: DocumentSnapshot) => void): () => void;
-  renderText(text: string, mapped: boolean): Promise<RenderResult>;
-
-  setText(text: string): void;
-  flush(): Promise<void>;
-  undo(): Promise<{ start: number; end: number } | null>;
-  redo(): Promise<{ start: number; end: number } | null>;
-  reload(): void;
-  applyHostUpdate(hostDocId: string, rev: number): void;
-
-  newDocument(text?: string): Promise<void>;
-  open(path: string): Promise<void>;
-  save(path?: string): Promise<void>;
-  switchTab(id: DocumentId): void;
-  closeTab(id: DocumentId): Promise<void>;
-}
-
-const DEBOUNCE_MS = 120;
-
-function errorCode(e: unknown): string | undefined {
-  if (e && typeof e === "object" && "code" in e) {
-    const code = (e as { code?: unknown }).code;
-    if (typeof code === "string") return code;
-  }
-  return undefined;
-}
-
-function baseName(p: string): string {
-  const i = Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\"));
-  return i >= 0 ? p.slice(i + 1) : p;
-}
-
-function makeTab(snap: DocumentSnapshot): Tab {
-  return {
-    id: snap.id,
-    path: snap.path,
-    rev: snap.rev,
-    text: snap.text,
-    savedText: snap.text,
-    dirty: false,
-    name: snap.path ? baseName(snap.path) : "безымянный",
-  };
-}
 
 export function createDocStore(opts: DocStoreOptions): DocStore {
   let tabs: Tab[] = [];
