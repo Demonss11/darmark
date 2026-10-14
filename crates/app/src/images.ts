@@ -7,23 +7,19 @@
 // сохранении файла заранее расширяет scope asset-протокола его каталогом.
 import { convertFileSrc } from "@tauri-apps/api/core";
 
-/** Цель со схемой (`http:`, `data:`, `asset:`…), якорь или protocol-relative `//host`. */
 function hasScheme(src: string): boolean {
   if (src.startsWith("//") || src.startsWith("#")) return true;
   return /^[a-z][a-z0-9+.-]*:/i.test(src);
 }
 
-/** Абсолютный путь Windows (`C:\…` или `C:/…`). */
 function isWindowsAbsolute(src: string): boolean {
   return /^[a-zA-Z]:[\\/]/.test(src);
 }
 
-/** Разделитель пути — по самому документу, а не по платформе: важен для asset-URL. */
 function separatorOf(p: string): string {
   return p.includes("\\") ? "\\" : "/";
 }
 
-/** Присоединяет относительный путь к каталогу, схлопывая `.`/`..` и смешанные слеши. */
 function joinPath(baseDir: string, rel: string): string {
   const sep = separatorOf(baseDir);
   const combined = baseDir + sep + rel;
@@ -39,15 +35,11 @@ function joinPath(baseDir: string, rel: string): string {
     stack.push(seg);
   }
   const joined = stack.join(sep);
-  if (windows) return joined; // «C:» уже первый сегмент
+  if (windows) return joined;
   if (unix) return sep + joined;
   return joined;
 }
 
-/**
- * Заменяет относительные (и абсолютные локальные) `src` картинок на asset-URL.
- * Идемпотентна. Без пути к документу (безымянный) ничего не делает.
- */
 export function resolveLocalImages(root: HTMLElement, docPath: string | null): void {
   if (!docPath) return;
   const sep = separatorOf(docPath);
@@ -56,7 +48,6 @@ export function resolveLocalImages(root: HTMLElement, docPath: string | null): v
   for (const img of root.querySelectorAll<HTMLImageElement>("img[src]")) {
     const src = img.getAttribute("src");
     if (!src) continue;
-    // Абсолютный локальный путь → сразу в asset-URL.
     if (isWindowsAbsolute(src) || (!windowsDoc && src.startsWith("/") && !src.startsWith("//"))) {
       img.setAttribute("src", convertFileSrc(src));
     } else if (!hasScheme(src)) {

@@ -1,12 +1,12 @@
-﻿// inspector.ts вЂ” РґРІСѓСЃС‚РѕСЂРѕРЅРЅСЏСЏ РїРѕРґСЃРІРµС‚РєР° В«Р±Р»РѕРє РїСЂРµРґРїСЂРѕСЃРјРѕС‚СЂР° в†” С„СЂР°РіРјРµРЅС‚
-// РёСЃС…РѕРґРЅРёРєР° РІ СЂРµРґР°РєС‚РѕСЂРµВ». Р‘Р»РѕРєРё СЂР°Р·РјРµС‡Р°СЋС‚СЃСЏ РЅР° Rust-СЃС‚РѕСЂРѕРЅРµ
-// (md-core::to_html_mapped) Р°С‚СЂРёР±СѓС‚РѕРј data-md="start,end", РіРґРµ start/end вЂ”
-// Р±Р°Р№С‚РѕРІС‹Рµ СЃРјРµС‰РµРЅРёСЏ РІ РёСЃС…РѕРґРЅРѕРј markdown.
+// inspector.ts — двусторонняя подсветка «блок предпросмотра ↔ фрагмент
+// исходника в редакторе». Блоки размечаются на Rust-стороне
+// (md-core::to_html_mapped) атрибутом data-md="start,end", где start/end —
+// байтовые смещения в исходном markdown.
 //
-// Р“Р»Р°РІРЅР°СЏ СЃР»РѕР¶РЅРѕСЃС‚СЊ вЂ” РµРґРёРЅРёС†С‹ РёР·РјРµСЂРµРЅРёСЏ: textarea РѕРїРµСЂРёСЂСѓРµС‚ UTF-16 code units
-// (selectionStart/End), Р° pulldown-cmark вЂ” Р±Р°Р№С‚Р°РјРё UTF-8. РљР°СЂС‚С‹ byteв†”UTF-16 Рё
-// СЃРїРёСЃРѕРє Р±Р»РѕРєРѕРІ Р±РµСЂСѓС‚СЃСЏ РёР· РѕР±С‰РµРіРѕ RenderIndex: РёРЅРґРµРєСЃ СЃС‚СЂРѕРёС‚ previewView РїРѕ
-// С‚РµРєСЃС‚Сѓ СЂРµРЅРґРµСЂР°, Р·РґРµСЃСЊ РѕРЅ С‚РѕР»СЊРєРѕ С‡РёС‚Р°РµС‚СЃСЏ.
+// Главная сложность — единицы измерения: textarea оперирует UTF-16 code units
+// (selectionStart/End), а pulldown-cmark — байтами UTF-8. Карты byte↔UTF-16 и
+// список блоков берутся из общего RenderIndex: индекс строит previewView по
+// тексту рендера, здесь он только читается.
 
 import {
   type Block,
@@ -22,10 +22,7 @@ export interface Inspector {
   isActive(): boolean;
   enable(): void;
   disable(): void;
-
-
   onIndexChanged(): void;
-  /** РЎРёРЅС…СЂРѕРЅРёР·Р°С†РёСЏ editorв†’preview; РІС‹Р·С‹РІР°РµС‚СЃСЏ РёР· РѕР±С‰РµРіРѕ С…СѓРєР° main.ts (T-11). */
   onEditorActivity(): void;
 }
 
@@ -37,8 +34,6 @@ interface InspectTarget {
   el: HTMLElement;
   mode: InspectMode;
 }
-
-
 
 function resolveTarget(target: Element | null, shiftKey: boolean): InspectTarget | null {
   if (!target || typeof target.closest !== "function") return null;
@@ -58,45 +53,28 @@ export function createInspector(opts: {
   editor: HTMLTextAreaElement;
   preview: HTMLElement;
   statusEl: HTMLElement;
-  /** РћР±С‰РёР№ РёРЅРґРµРєСЃ СЂРµРЅРґРµСЂР°: РєР°СЂС‚С‹ byteв†”UTF-16 Рё Р±Р»РѕРєРё. */
   index: RenderIndex;
-  /** Р’С‹Р·С‹РІР°РµС‚СЃСЏ РїРµСЂРµРґ РїСЂРѕРіСЂР°РјРјРЅС‹Рј scrollIntoView (С‡С‚РѕР±С‹ СЃРёРЅС…СЂРѕРЅРёР·Р°С†РёСЏ СЃРєСЂРѕР»Р»Р° РЅРµ С‚СЏРЅСѓР»Р° РІС‚РѕСЂСѓСЋ РїР°РЅРµР»СЊ). */
   beforeScrollIntoView?: () => void;
 }): Inspector {
   const { editor, preview, statusEl, index, beforeScrollIntoView } = opts;
 
   let active = false;
-
-
   let blocks: Block[] | null = null;
   let maps: UnitMaps | null = null;
   let activeBlockEl: HTMLElement | null = null;
-
   let bandEls: HTMLElement[] = [];
-
   let lastHover: Element | null = null;
   let lastHoverShift = false;
-
-
-
-
   let programmaticSel = { start: -1, end: -1 };
 
-
-
-
-
   let pinned = false;
-
   let transient = false;
-
 
   let savedSelection = { start: 0, end: 0 };
   let savedScrollTop = 0;
   let savedFocus: HTMLElement | null = null;
 
   let lastScrollAt = 0;
-
 
 
   function clearBands() {
@@ -109,25 +87,22 @@ export function createInspector(opts: {
       activeBlockEl.classList.remove("inspect-active");
       activeBlockEl = null;
     }
-
-
     clearBands();
   }
 
   function scrollIntoViewIfNeeded(el: HTMLElement) {
     const pr = preview.getBoundingClientRect();
     const er = el.getBoundingClientRect();
-    if (er.top >= pr.top && er.bottom <= pr.bottom) return; // СѓР¶Рµ РІРёРґРµРЅ
+    if (er.top >= pr.top && er.bottom <= pr.bottom) return;
     const now = performance.now();
-    if (now - lastScrollAt < 100) return; // throttle, С‡С‚РѕР±С‹ РЅРµ РґС‘СЂРіР°С‚СЊ СЃРєСЂРѕР»Р»
+    if (now - lastScrollAt < 100) return;
     lastScrollAt = now;
-
     beforeScrollIntoView?.();
     el.scrollIntoView({ block: "nearest" });
   }
 
   function applyBlock(el: HTMLElement, focus: boolean, force = false) {
-    if (!force && activeBlockEl === el) return; // РіРёСЃС‚РµСЂРµР·РёСЃ вЂ” РЅРµ РґС‘СЂРіР°С‚СЊ РЅР° С‚РѕРј Р¶Рµ Р±Р»РѕРєРµ
+    if (!force && activeBlockEl === el) return;
     clearBlockHighlight();
     const range = parseRange(el);
     if (!range || !maps) return;
@@ -135,15 +110,11 @@ export function createInspector(opts: {
     const end = bytesToUnits(maps, range.end);
     el.classList.add("inspect-active");
     activeBlockEl = el;
-
-
     if (focus) editor.focus({ preventScroll: true });
     editor.setSelectionRange(start, end);
     programmaticSel = { start, end };
     scrollIntoViewIfNeeded(el);
   }
-
-
 
   function bandColumn(th: HTMLTableCellElement) {
     const table = th.closest("table") as HTMLTableElement | null;
@@ -158,8 +129,6 @@ export function createInspector(opts: {
       }
     }
   }
-
-
 
   function applyTarget(target: InspectTarget, focus: boolean, force = false) {
     clearBands();
@@ -179,8 +148,6 @@ export function createInspector(opts: {
   }
 
 
-
-  /** РЎРЅРёРјРѕРє РёРЅРґРµРєСЃР° РґР»СЏ click-to-inspect РІРЅРµ Р°РєС‚РёРІРЅРѕРіРѕ СЂРµР¶РёРјР°. */
   function getIndex(): { blocks: Block[]; maps: UnitMaps } | null {
     const snap = index.current();
     if (!snap) return null;
@@ -188,7 +155,7 @@ export function createInspector(opts: {
   }
 
   function onMouseOver(e: MouseEvent) {
-    if (!active || pinned) return; // Р·Р°РєСЂРµРїР»С‘РЅРЅСѓСЋ РїРѕРґСЃРІРµС‚РєСѓ РЅР°РІРµРґРµРЅРёРµ РЅРµ РјРµРЅСЏРµС‚
+    if (!active || pinned) return;
     const el = e.target as Element | null;
     lastHover = el;
     lastHoverShift = e.shiftKey;
@@ -199,15 +166,13 @@ export function createInspector(opts: {
 
   function onMouseOut(e: MouseEvent) {
     if (!active) return;
-    if (pinned) return; // Р·Р°РєСЂРµРїР»РµРЅРёРµ РїРµСЂРµР¶РёРІР°РµС‚ СѓС…РѕРґ РєСѓСЂСЃРѕСЂР° (BUG-003)
+    if (pinned) return;
     const rel = e.relatedTarget as Node | null;
-    if (rel && preview.contains(rel)) return; // РІСЃС‘ РµС‰С‘ РІРЅСѓС‚СЂРё preview
+    if (rel && preview.contains(rel)) return;
     lastHover = null;
-    clearBlockHighlight(); // СЃРЅРёРјР°РµС‚ Рё РїРѕРґСЃРІРµС‚РєСѓ РёСЃС‚РѕС‡РЅРёРєР°, Рё Р±СЌРЅРґС‹ (AC-6)
+    clearBlockHighlight();
     restoreSavedFocus();
   }
-
-
 
   function onDocumentClick(e: MouseEvent) {
     if (!active && !transient) return;
@@ -217,10 +182,8 @@ export function createInspector(opts: {
     if (active) restoreSavedFocus();
   }
 
-
-
   function onClickPreview(e: MouseEvent) {
-    if (active) return; // РІ СЂРµР¶РёРјРµ РёРЅСЃРїРµРєС‚РѕСЂР° СЂР°Р±РѕС‚Р°РµС‚ onClickCapture
+    if (active) return;
     const targetEl = e.target as Element | null;
     const interactive = !!targetEl?.closest?.(INTERACTIVE_SELECTOR);
     if (interactive) return;
@@ -245,13 +208,11 @@ export function createInspector(opts: {
     programmaticSel = { start, end };
   }
 
-
-
   function onShiftKey(e: KeyboardEvent) {
     if (!active || pinned || e.key !== "Shift") return;
     if (!lastHover || !lastHover.isConnected) return;
     const shift = e.type !== "keyup";
-    if (shift === lastHoverShift) return; // СЂРµР°Р»СЊРЅРѕРіРѕ РїРµСЂРµРєР»СЋС‡РµРЅРёСЏ РЅРµ Р±С‹Р»Рѕ
+    if (shift === lastHoverShift) return;
     lastHoverShift = shift;
     const target = resolveTarget(lastHover, shift);
     if (!target) return;
@@ -261,17 +222,12 @@ export function createInspector(opts: {
   function onEditorSelection() {
     if (!active || pinned || !blocks || !maps) return;
     if (document.activeElement !== editor) return;
-
-
     if (
       (editor.selectionStart ?? 0) === programmaticSel.start &&
       (editor.selectionEnd ?? 0) === programmaticSel.end
     ) {
       return;
     }
-
-
-
     const backward = editor.selectionDirection === "backward";
     const caretPos = backward
       ? editor.selectionStart ?? 0
@@ -282,7 +238,6 @@ export function createInspector(opts: {
       return;
     }
     if (activeBlockEl === block.el) return;
-
     clearBlockHighlight();
     block.el.classList.add("inspect-active");
     activeBlockEl = block.el;
@@ -302,15 +257,11 @@ export function createInspector(opts: {
     const targetEl = e.target as Element | null;
     const interactive = !!targetEl?.closest?.(INTERACTIVE_SELECTOR);
     if (interactive) {
-
-
       if (pinned) releasePin();
       return;
     }
     const target = resolveTarget(targetEl, e.shiftKey);
     if (pinned) {
-
-
       e.preventDefault();
       e.stopPropagation();
       if (!target || target.el === activeBlockEl) {
@@ -324,19 +275,14 @@ export function createInspector(opts: {
       return;
     }
     if (!target) return;
-    if (!blocks || !maps) return; // РёРЅРґРµРєСЃ СѓСЃС‚Р°СЂРµР» (РїСЂР°РІРєР° РґРѕ СЂРµРЅРґРµСЂР°) вЂ” Р·Р°РєСЂРµРїР»СЏС‚СЊ РЅРµС‡РµРіРѕ
+    if (!blocks || !maps) return;
     e.preventDefault();
     e.stopPropagation();
-
-
     applyTarget(target, true, true);
     pinned = true;
-
-
     lastHover = null;
     lastHoverShift = false;
   }
-
 
 
   function isActive(): boolean {
@@ -350,9 +296,7 @@ export function createInspector(opts: {
     savedScrollTop = editor.scrollTop;
     savedFocus = document.activeElement as HTMLElement | null;
     statusEl.hidden = false;
-
-
-    statusEl.textContent = "Р РµР¶РёРј РёРЅСЃРїРµРєС‚РѕСЂР°";
+    statusEl.textContent = "Режим инспектора";
     preview.addEventListener("mouseover", onMouseOver);
     preview.addEventListener("mouseout", onMouseOut);
     preview.addEventListener("click", onClickCapture, true);
@@ -361,7 +305,6 @@ export function createInspector(opts: {
     document.addEventListener("selectionchange", onEditorSelection);
     document.addEventListener("keydown", onShiftKey);
     document.addEventListener("keyup", onShiftKey);
-
     onIndexChanged();
   }
 
@@ -377,7 +320,7 @@ export function createInspector(opts: {
     lastHoverShift = false;
     programmaticSel = { start: -1, end: -1 };
     statusEl.hidden = true;
-    statusEl.textContent = ""; // СЃР±СЂРѕСЃ, С‡С‚РѕР±С‹ СЃР»РµРґСѓСЋС‰РµРµ РІРєР»СЋС‡РµРЅРёРµ СЃРЅРѕРІР° РѕР±СЉСЏРІРёР»РѕСЃСЊ (M6)
+    statusEl.textContent = "";
     preview.removeEventListener("mouseover", onMouseOver);
     preview.removeEventListener("mouseout", onMouseOut);
     preview.removeEventListener("click", onClickCapture, true);
@@ -386,14 +329,12 @@ export function createInspector(opts: {
     document.removeEventListener("selectionchange", onEditorSelection);
     document.removeEventListener("keydown", onShiftKey);
     document.removeEventListener("keyup", onShiftKey);
-
     editor.setSelectionRange(savedSelection.start, savedSelection.end);
     editor.scrollTop = savedScrollTop;
     restoreSavedFocus();
   }
 
   function onIndexChanged(): void {
-
     pinned = false;
     transient = false;
     clearBlockHighlight();

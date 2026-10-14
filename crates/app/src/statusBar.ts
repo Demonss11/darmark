@@ -4,8 +4,7 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { DocStore } from "./doc/docStore";
 
-export interface StatusBar {
-  /** Заголовок окна + имя файла + маркер несохранённых правок. */
+interface StatusBar {
   updateTitle(): void;
   updateStatus(): void;
   flash(msg: string): void;
@@ -41,8 +40,6 @@ export function createStatusBar(opts: {
   function updateTitle(): void {
     const s = store.active();
     const name = s?.path ? baseName(s.path) : "безымянный";
-    // Заголовок окна — не критично: если команда недоступна/упала, не плодим
-    // unhandled rejection (core:window:allow-set-title — в capabilities).
     getCurrentWindow()
       .setTitle(`${s?.dirty ? "● " : ""}${name} — ${appName}`)
       .catch((e) => console.warn("set_title:", e));

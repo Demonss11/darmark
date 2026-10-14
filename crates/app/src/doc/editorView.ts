@@ -1,13 +1,13 @@
-﻿// editorView вЂ” С‚РёСЂ-2 РїСЂРµРґСЃС‚Р°РІР»РµРЅРёРµ СЂРµРґР°РєС‚РѕСЂР° (textarea). `editor.value` вЂ” Р»РёС€СЊ
-// РѕС‚РѕР±СЂР°Р¶РµРЅРёРµ РїСЂРѕРµРєС†РёРё СЃС‚РѕСЂР°, РЅРµ РёСЃС‚РѕС‡РЅРёРє РёСЃС‚РёРЅС‹ (D5).
+// editorView — тир-2 представление редактора (textarea). `editor.value` — лишь
+// отображение проекции стора, не источник истины (D5).
 //
-// РќР°С‚РёРІРЅС‹Р№ undo/redo Р±СЂР°СѓР·РµСЂР° РѕС‚РєР»СЋС‡С‘РЅ: РІР»Р°РґРµР»РµС† undo-СЃС‚РµРєР° вЂ” Rust
-// (D5/ADR-0028), РёРЅР°С‡Рµ РґРІР° СЃС‚РµРєР° СЂР°Р·СЉРµРґСѓС‚СЃСЏ.
+// Нативный undo/redo браузера отключён: владелец undo-стека — Rust
+// (D5/ADR-0028), иначе два стека разъедутся.
 
 import type { DocStore } from "./docStore";
 import { byteToUtf16 } from "../core/mapping";
 
-export interface EditorView {
+interface EditorView {
   focus(): void;
   dispose(): void;
 }
@@ -20,9 +20,6 @@ export function createEditorView(
   const onInput = (): void => store.setText(host.value);
   const onSelect = (): void => onSelection();
 
-
-
-
   async function applyHistory(
     run: () => Promise<{ start: number; end: number } | null>
   ): Promise<void> {
@@ -34,8 +31,6 @@ export function createEditorView(
     onSelection();
   }
 
-
-
   const onKeyDown = (e: KeyboardEvent): void => {
     if (!e.ctrlKey || e.altKey || e.metaKey) return;
     if (e.code === "KeyZ" && !e.shiftKey) {
@@ -46,8 +41,6 @@ export function createEditorView(
       void applyHistory(() => store.redo());
     }
   };
-
-
 
   const onBeforeInput = (e: InputEvent): void => {
     if (e.inputType === "historyUndo") {
@@ -65,8 +58,6 @@ export function createEditorView(
   host.addEventListener("keyup", onSelect);
   host.addEventListener("click", onSelect);
   host.addEventListener("select", onSelect);
-
-
 
   const unsubscribe = store.subscribe((tabs, activeId) => {
     const active = tabs.find((t) => t.id === activeId) ?? null;

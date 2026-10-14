@@ -10,10 +10,8 @@ import { createInspector, type Inspector } from "./panels/inspector";
 import { createScrollSync, type ScrollSync } from "./layout/scrollsync";
 import type { RenderIndex } from "./doc/renderIndex";
 
-export interface LinkController {
-  /** Инспектор: включение/выключение, активность, реакция на выделение. */
+interface LinkController {
   readonly inspector: Inspector;
-  /** Индекс рендера изменился (перестроен previewView или сброшен при правке). */
   onIndexChanged(): void;
   setSyncEnabled(on: boolean): void;
 }
@@ -30,7 +28,6 @@ export function createLinkController(opts: {
     preview: opts.preview,
     statusEl: opts.statusEl,
     index: opts.index,
-    // Программный scrollIntoView инспектора не должен тянуть вторую панель.
     beforeScrollIntoView: () => scrollSync.suspend(),
   });
   scrollSync = createScrollSync({

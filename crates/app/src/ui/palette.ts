@@ -1,9 +1,9 @@
-﻿// palette.ts вЂ” РїР°Р»РёС‚СЂР° РєРѕРјР°РЅРґ (Ctrl+K), РїРѕСЃС‚СЂРѕРµРЅР° РЅР° dialog.ts (variant "top").
+// palette.ts — палитра команд (Ctrl+K), построена на dialog.ts (variant "top").
 //
-// РџСЂРѕРІР°Р№РґРµСЂС‹ РєРѕРјР°РЅРґ: core (СЃРёРЅС…СЂРѕРЅРЅС‹Р№ СЃРїРёСЃРѕРє РёР· main.ts) Рё РїР»Р°РіРёРЅРЅС‹Рµ
-// (Р°СЃРёРЅС…СЂРѕРЅРЅРѕ, list_plugins/run_plugin_command). РџР°Р»РёС‚СЂР° РЅРµ РїР°СЂСЃРёС‚ Markdown Рё РЅРµ
-// С…СЂР°РЅРёС‚ РґРѕРјРµРЅРЅРѕРµ СЃРѕСЃС‚РѕСЏРЅРёРµ; РѕС€РёР±РєР° РїСЂРѕРІР°Р№РґРµСЂР° СѓС…РѕРґРёС‚ РІ onError. РћС‚РІРµС‚С‹
-// СѓСЃС‚Р°СЂРµРІС€РёС… Р·Р°РїСЂРѕСЃРѕРІ РѕС‚Р±СЂР°СЃС‹РІР°СЋС‚СЃСЏ РїРѕ СЃС‡С‘С‚С‡РёРєСѓ СЃРµСЃСЃРёР№ (seq-РіРµР№С‚).
+// Провайдеры команд: core (синхронный список из main.ts) и плагинные
+// (асинхронно, list_plugins/run_plugin_command). Палитра не парсит Markdown и не
+// хранит доменное состояние; ошибка провайдера уходит в onError. Ответы
+// устаревших запросов отбрасываются по счётчику сессий (seq-гейт).
 
 import { openDialog, type Dialog } from "./dialog";
 import { pluginColor } from "../plugin/pluginColor";
@@ -11,38 +11,31 @@ import { errorMessage } from "../core/tauri";
 
 export interface PaletteCommand {
   id: string;
-  /** Р—Р°РіРѕР»РѕРІРѕРє РїСѓРЅРєС‚Р° (РїРѕ РЅРµРјСѓ РёРґС‘С‚ С„РёР»СЊС‚СЂ). */
   title: string;
-  /** РЎРµРєС†РёСЏ РіСЂСѓРїРїРёСЂРѕРІРєРё (sentence case). */
   group: string;
-  /** РСЃС‚РѕС‡РЅРёРє: СЏРґСЂРѕ РёР»Рё РїР»Р°РіРёРЅ (`plugin:<id>`). */
   origin: "core" | `plugin:${string}`;
-  /** РҐРѕС‚РєРµР№ РґР»СЏ Р±РµР№РґР¶Р° (С‚РѕР»СЊРєРѕ Ctrl-СЃРёРјРІРѕР»С‹). */
   hotkey?: string;
   run(): void | Promise<void>;
 }
 
 export interface CommandProvider {
-  /** РљРѕРјР°РЅРґС‹ РїСЂРѕРІР°Р№РґРµСЂР°: РјР°СЃСЃРёРІ (СЃРёРЅС…СЂРѕРЅРЅРѕ) РёР»Рё РїСЂРѕРјРёСЃ (РїР»Р°РіРёРЅС‹). */
   list(): PaletteCommand[] | Promise<PaletteCommand[]>;
 }
 
-export interface PaletteOptions {
+interface PaletteOptions {
   providers: CommandProvider[];
-  /** РћС€РёР±РєР° РїСЂРѕРІР°Р№РґРµСЂР°/РїСѓСЃС‚РѕР№ СЂРµР·СѓР»СЊС‚Р°С‚ вЂ” СЃРѕРѕР±С‰РµРЅРёРµ РґР»СЏ С‚РѕСЃС‚Р°. */
   onError?(message: string): void;
 }
 
-export interface PaletteController {
+interface PaletteController {
   open(): void;
   close(): void;
   toggle(): void;
   isOpen(): boolean;
 }
 
-/** РџРѕРґРїРёСЃСЊ РёСЃС‚РѕС‡РЅРёРєР°: `РџР•РќРђР›` РґР»СЏ СЏРґСЂР°, id РїР»Р°РіРёРЅР° вЂ” РґР»СЏ РїР»Р°РіРёРЅР°. */
 function originLabel(origin: PaletteCommand["origin"]): string {
-  return origin.startsWith("plugin:") ? origin.slice("plugin:".length) : "РџР•РќРђР›";
+  return origin.startsWith("plugin:") ? origin.slice("plugin:".length) : "ПЕНАЛ";
 }
 
 export function createPalette(opts: PaletteOptions): PaletteController {
@@ -60,13 +53,11 @@ export function createPalette(opts: PaletteOptions): PaletteController {
     return dialog !== null;
   }
 
-  /** РЎРґРµР»Р°С‚СЊ РїСѓРЅРєС‚ Р°РєС‚РёРІРЅС‹Рј РїРѕ РёРЅРґРµРєСЃСѓ (СЃ Р·Р°РєРѕР»СЊС†РѕРІС‹РІР°РЅРёРµРј). */
   function setActive(index: number): void {
     activeIndex = filtered.length === 0 ? -1 : (index + filtered.length) % filtered.length;
     renderSelection();
   }
 
-  /** РћР±РЅРѕРІРёС‚СЊ aria-selected/aria-activedescendant Рё РґРѕС‚-СЃРєСЂРѕР»Р»РёС‚СЊ Р°РєС‚РёРІРЅС‹Р№ РїСѓРЅРєС‚. */
   function renderSelection(): void {
     const items = Array.from(list.querySelectorAll<HTMLElement>(".palette-item"));
     items.forEach((item, i) => {
@@ -110,7 +101,6 @@ export function createPalette(opts: PaletteOptions): PaletteController {
     return item;
   }
 
-  /** РџРµСЂРµСЃС‚СЂРѕРёС‚СЊ СЃРїРёСЃРѕРє РїРѕ С‚РµРєСѓС‰РµРјСѓ С„РёР»СЊС‚СЂСѓ (РіСЂСѓРїРїС‹ + СЃС‡С‘С‚С‡РёРєРё). */
   function render(): void {
     const query = input.value.trim().toLowerCase();
     filtered = query
@@ -119,10 +109,6 @@ export function createPalette(opts: PaletteOptions): PaletteController {
 
     if (filtered.length === 0) activeIndex = -1;
     else if (activeIndex < 0 || activeIndex >= filtered.length) activeIndex = 0;
-
-
-
-
 
     const counts = new Map<string, number>();
     for (const command of filtered) {
@@ -156,9 +142,9 @@ export function createPalette(opts: PaletteOptions): PaletteController {
       const empty = document.createElement("div");
       empty.className = "palette-empty";
       const line1 = document.createElement("div");
-      line1.textContent = "РќРёС‡РµРіРѕ РЅРµ РЅР°Р№РґРµРЅРѕ";
+      line1.textContent = "Ничего не найдено";
       const line2 = document.createElement("div");
-      line2.textContent = "РџРѕРїСЂРѕР±СѓР№С‚Рµ РґСЂСѓРіРѕР№ Р·Р°РїСЂРѕСЃ.";
+      line2.textContent = "Попробуйте другой запрос.";
       empty.append(line1, line2);
       frag.append(empty);
     }
@@ -177,12 +163,8 @@ export function createPalette(opts: PaletteOptions): PaletteController {
   }
 
   function onKeydown(e: KeyboardEvent): void {
-
-
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k" && !e.shiftKey && !e.altKey) {
       e.preventDefault();
-
-
       e.stopPropagation();
       close();
       return;
@@ -208,7 +190,7 @@ export function createPalette(opts: PaletteOptions): PaletteController {
         e.preventDefault();
         const command = activeIndex >= 0 ? filtered[activeIndex] : undefined;
         if (!command) {
-          opts.onError?.("РќРёС‡РµРіРѕ РЅРµ РЅР°Р№РґРµРЅРѕ");
+          opts.onError?.("Ничего не найдено");
           return;
         }
         void runCommand(command);
@@ -247,13 +229,13 @@ export function createPalette(opts: PaletteOptions): PaletteController {
     input = document.createElement("input");
     input.type = "text";
     input.className = "palette-input";
-    input.placeholder = "Р’РІРµРґРёС‚Рµ РєРѕРјР°РЅРґСѓвЂ¦";
+    input.placeholder = "Введите команду…";
     input.setAttribute("role", "combobox");
     input.setAttribute("aria-expanded", "true");
     input.setAttribute("aria-controls", "palette-list");
     input.setAttribute("aria-autocomplete", "list");
     input.setAttribute("autocomplete", "off");
-    input.setAttribute("aria-label", "РџР°Р»РёС‚СЂР° РєРѕРјР°РЅРґ");
+    input.setAttribute("aria-label", "Палитра команд");
     input.setAttribute("spellcheck", "false");
 
     list = document.createElement("div");
@@ -271,11 +253,7 @@ export function createPalette(opts: PaletteOptions): PaletteController {
       },
       { signal }
     );
-
-
     content.addEventListener("keydown", onKeydown, { signal });
-
-
     list.addEventListener(
       "mouseover",
       (e) => {
@@ -289,7 +267,7 @@ export function createPalette(opts: PaletteOptions): PaletteController {
     list.addEventListener("click", onListClick, { signal });
 
     dialog = openDialog({
-      title: "РџР°Р»РёС‚СЂР° РєРѕРјР°РЅРґ",
+      title: "Палитра команд",
       content,
       initialFocus: input,
       variant: "top",
@@ -303,7 +281,6 @@ export function createPalette(opts: PaletteOptions): PaletteController {
         activeIndex = -1;
       },
     });
-
 
     for (const provider of opts.providers) {
       let result: PaletteCommand[] | Promise<PaletteCommand[]>;

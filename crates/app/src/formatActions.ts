@@ -14,11 +14,7 @@ export interface FormatActions {
 }
 
 export function createFormatActions(host: HTMLTextAreaElement): FormatActions {
-  /** Применить новое значение и выделение, уведомив стор событием `input`. */
   function commit(value: string, selStart: number, selEnd: number): void {
-    // Присвоение `value`/`focus()` может прокрутить редактор к каретке (особенно
-    // на пути клика по кнопке тулбара) — формат-команда не должна менять
-    // прокрутку, поэтому сохраняем и возвращаем позицию.
     const top = host.scrollTop;
     const left = host.scrollLeft;
     host.value = value;
@@ -29,23 +25,17 @@ export function createFormatActions(host: HTMLTextAreaElement): FormatActions {
     host.dispatchEvent(new Event("input"));
   }
 
-  /** Обернуть выделение маркером с обеих сторон (`**`, `_`, `` ` ``). */
   function wrap(marker: string): void {
     const { selectionStart: s, selectionEnd: e, value } = host;
     const selected = value.slice(s, e);
     if (!selected) {
-      // Пустое выделение — курсор между маркерами.
       commit(value.slice(0, s) + marker + marker + value.slice(e), s + marker.length, s + marker.length);
       return;
     }
-    // Краевые whitespace-символы (пробелы, табы, `\n`/`\r`, NBSP) оставляем
-    // СНАРУЖИ маркеров: мышью в выделение часто попадает замыкающий пробел,
-    // а `**слово **` ломает форматирование.
     const lead = selected.length - selected.trimStart().length;
     const trail = selected.length - selected.trimEnd().length;
     const core = selected.slice(lead, selected.length - trail);
     if (!core) {
-      // Выделение из одних whitespace — оборачиваем как есть (нет ядра).
       commit(
         value.slice(0, s) + marker + selected + marker + value.slice(e),
         s + marker.length,
@@ -69,7 +59,6 @@ export function createFormatActions(host: HTMLTextAreaElement): FormatActions {
     wrap("`");
   }
 
-  /** Сделать выделенные строки заголовком (`# ` перед каждой). */
   function heading(): void {
     const { selectionStart: s, selectionEnd: e, value } = host;
     const lineStart = value.lastIndexOf("\n", s - 1) + 1;
@@ -84,17 +73,13 @@ export function createFormatActions(host: HTMLTextAreaElement): FormatActions {
     commit(next, lineStart, lineStart + prefixed.length);
   }
 
-  /** Обернуть выделение ссылкой `[текст](url)`, выделив `url` для замены. */
   function link(): void {
     const { selectionStart: s, selectionEnd: e, value } = host;
     const selected = value.slice(s, e);
-    // Те же правила, что в `wrap`: краевые whitespace остаются СНАРУЖИ ссылки,
-    // в текст ссылки идёт только непробельное ядро (или плейсхолдер).
     const lead = selected.length - selected.trimStart().length;
     const trail = selected.length - selected.trimEnd().length;
     const core = selected.slice(lead, selected.length - trail);
     const text = core || "текст";
-    // Для пустого/whitespace-выделения пробелы не сохраняем — вставляем плейсхолдер.
     const prefix = core ? selected.slice(0, lead) : "";
     const suffix = core ? selected.slice(selected.length - trail) : "";
     const inserted = `${prefix}[${text}](url)${suffix}`;

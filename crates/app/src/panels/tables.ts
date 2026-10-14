@@ -1,27 +1,26 @@
-﻿// tables.ts вЂ” Excel-РїРѕРґРѕР±РЅРѕРµ РїРѕРІРµРґРµРЅРёРµ С‚Р°Р±Р»РёС† РІ РїСЂРµРґРїСЂРѕСЃРјРѕС‚СЂРµ:
-// СЃРѕСЂС‚РёСЂРѕРІРєР° РїРѕ РєР»РёРєСѓ РЅР° Р·Р°РіРѕР»РѕРІРѕРє, РіР»РѕР±Р°Р»СЊРЅС‹Р№ РїРѕРёСЃРє Рё С„РёР»СЊС‚СЂС‹ Р·РЅР°С‡РµРЅРёР№ РїРѕ РєРѕР»РѕРЅРєР°Рј.
-// Р’СЃС‘ Р¶РёРІС‘С‚ РЅР° С„СЂРѕРЅС‚РµРЅРґРµ (TS), СЏРґСЂРѕ md-core РЅРµ С‚СЂРѕРіР°РµС‚СЃСЏ.
+// tables.ts — Excel-подобное поведение таблиц в предпросмотре:
+// сортировка по клику на заголовок, глобальный поиск и фильтры значений по колонкам.
+// Всё живёт на фронтенде (TS), ядро md-core не трогается.
 
 interface TableState {
-  sortCol: number | null;   // РёРЅРґРµРєСЃ СЃРѕСЂС‚РёСЂСѓРµРјРѕР№ РєРѕР»РѕРЅРєРё
-  sortDir: 1 | -1;          // 1 = РІРѕР·СЂР°СЃС‚Р°РЅРёРµ, -1 = СѓР±С‹РІР°РЅРёРµ
-  global: string;           // СЃС‚СЂРѕРєР° РіР»РѕР±Р°Р»СЊРЅРѕРіРѕ РїРѕРёСЃРєР°
-  colFilters: Map<number, Set<string>>; // С„РёР»СЊС‚СЂ В«СЂР°Р·СЂРµС€С‘РЅРЅС‹Рµ Р·РЅР°С‡РµРЅРёСЏВ» РїРѕ РєРѕР»РѕРЅРєРµ
+  sortCol: number | null;
+  sortDir: 1 | -1;
+  global: string;
+  colFilters: Map<number, Set<string>>;
 }
 
 interface TableEntry {
-  wrap: HTMLElement;              // .table-enhanced (РїР°РЅРµР»СЊ РёРЅСЃС‚СЂСѓРјРµРЅС‚РѕРІ + РѕР±С‘СЂС‚РєР° СЃРѕ СЃРєСЂРѕР»Р»РѕРј)
+  wrap: HTMLElement;
   table: HTMLTableElement;
   state: TableState;
-  baseOrder: HTMLTableRowElement[]; // РёСЃС…РѕРґРЅС‹Р№ РїРѕСЂСЏРґРѕРє СЃС‚СЂРѕРє РёР· markdown вЂ” РґР»СЏ РІРѕР·РІСЂР°С‚Р° Р±РµР· СЃРѕСЂС‚РёСЂРѕРІРєРё
-  kinds: ("num" | "date" | "str")[]; // С‚РёРїС‹ РєРѕР»РѕРЅРѕРє: СЃС‡РёС‚Р°РµРј РѕРґРёРЅ СЂР°Р· РїСЂРё enhance (P2.1)
+  baseOrder: HTMLTableRowElement[];
+  kinds: ("num" | "date" | "str")[];
 }
 
 const registry = new WeakMap<HTMLTableElement, TableEntry>();
 
 
-
-const NUM_RE = /^[-+]?\d{1,3}([ \u00A0\u202F]\d{3})*([.,]\d+)?\s*[%в‚¬$в‚Ѕ]?$|^[-+]?\d+([.,]\d+)?\s*[%в‚¬$в‚Ѕ]?$/;
+const NUM_RE = /^[-+]?\d{1,3}([ \u00A0\u202F]\d{3})*([.,]\d+)?\s*[%€$₽]?$|^[-+]?\d+([.,]\d+)?\s*[%€$₽]?$/;
 const DATE_RE = /^\d{1,2}[./-]\d{1,2}[./-]\d{2,4}$|^\d{4}-\d{1,2}-\d{1,2}([ T]\d{1,2}[:.]\d{2}([:.]\d{2})?)?$/;
 
 function parseNumber(s: string): number | null {
@@ -30,7 +29,7 @@ function parseNumber(s: string): number | null {
   const cleaned = t
     .replace(/[\s\u00A0\u202F]/g, "")
     .replace(/[%,]/g, ".")
-    .replace(/(\d)\.(\d)(?=.*\.)/g, "$1$2"); // В«1.234,56В»: СЂР°Р·РґРµР»РёС‚РµР»Рё С‚С‹СЃСЏС‡ СЃС…Р»РѕРїС‹РІР°РµРј
+    .replace(/(\d)\.(\d)(?=.*\.)/g, "$1$2");
   const n = parseFloat(cleaned.replace(",", "."));
   return Number.isFinite(n) ? n : null;
 }
@@ -39,7 +38,6 @@ function parseDate(s: string): number | null {
   const t = s.trim();
   if (!DATE_RE.test(t)) return null;
   let iso = t.replace(" ", "T");
-
   const m = /^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/.exec(iso);
   if (m) iso = `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
   else {
@@ -61,12 +59,11 @@ function toCellValue(raw: string): CellValue {
   return { kind: "str", num: 0, str: s.toLowerCase() };
 }
 
-
 function detectColumnKind(values: string[]): "num" | "date" | "str" {
   let num = 0, date = 0, nonEmpty = 0;
   for (const v of values) {
     const c = toCellValue(v);
-    if (!c.str) continue; // РїСѓСЃС‚Р°СЏ СЏС‡РµР№РєР° РЅРµ СѓС‡РёС‚С‹РІР°РµС‚СЃСЏ
+    if (!c.str) continue;
     nonEmpty++;
     if (c.kind === "num") num++;
     else if (c.kind === "date") date++;
@@ -76,7 +73,6 @@ function detectColumnKind(values: string[]): "num" | "date" | "str" {
   if (date / nonEmpty >= 0.7) return "date";
   return "str";
 }
-
 
 
 function cellText(td: HTMLElement | undefined): string {
@@ -94,7 +90,6 @@ function bodyRows(table: HTMLTableElement): HTMLTableRowElement[] {
 }
 
 
-
 function rowMatches(row: HTMLTableRowElement, st: TableState): boolean {
   const gq = st.global.trim().toLowerCase();
   if (gq) {
@@ -110,7 +105,6 @@ function rowMatches(row: HTMLTableRowElement, st: TableState): boolean {
 }
 
 
-
 function compareCells(a: string, b: string, kind: "num" | "date" | "str"): number {
   if (kind === "str") {
     return a.trim().localeCompare(b.trim(), undefined, { numeric: true, sensitivity: "base" });
@@ -118,13 +112,12 @@ function compareCells(a: string, b: string, kind: "num" | "date" | "str"): numbe
   const ca = toCellValue(a), cb = toCellValue(b);
   const aOk = ca.kind === kind, bOk = cb.kind === kind;
   if (aOk && bOk) return ca.num - cb.num;
-  if (aOk !== bOk) return aOk ? -1 : 1; // СЂР°СЃРїРѕР·РЅР°РЅРЅС‹Рµ Р·РЅР°С‡РµРЅРёСЏ РёРґСѓС‚ РїРµСЂРІС‹РјРё
+  if (aOk !== bOk) return aOk ? -1 : 1;
   if (!ca.str && !cb.str) return 0;
-  if (!ca.str) return 1; // РїСѓСЃС‚С‹Рµ вЂ” РІ РєРѕРЅС†Рµ
+  if (!ca.str) return 1;
   if (!cb.str) return -1;
   return ca.str.localeCompare(cb.str, undefined, { numeric: true, sensitivity: "base" });
 }
-
 
 
 function apply(entry: TableEntry) {
@@ -133,9 +126,7 @@ function apply(entry: TableEntry) {
   const rows = bodyRows(table);
   const colCount = headers.length || (rows[0]?.cells.length ?? 0);
 
-
   const kinds = entry.kinds;
-
 
   let visible = 0;
   for (const r of rows) {
@@ -143,7 +134,6 @@ function apply(entry: TableEntry) {
     r.hidden = !show;
     if (show) visible++;
   }
-
 
   const tbody = table.tBodies[0] ?? (table as unknown as HTMLElement);
   if (st.sortCol !== null && st.sortCol < colCount) {
@@ -156,10 +146,8 @@ function apply(entry: TableEntry) {
     });
     for (const { r } of idx) tbody.appendChild(r);
   } else {
-
     for (const r of entry.baseOrder) tbody.appendChild(r);
   }
-
 
   headers.forEach((th, i) => {
     const dir = st.sortCol === i ? st.sortDir : 0;
@@ -172,21 +160,18 @@ function apply(entry: TableEntry) {
     );
   });
 
-
   const counter = entry.wrap.querySelector<HTMLElement>(".table-count");
   if (counter) {
     counter.textContent =
-      visible === rows.length ? `${rows.length} СЃС‚СЂРѕРє` : `${visible} РёР· ${rows.length}`;
+      visible === rows.length ? `${rows.length} строк` : `${visible} из ${rows.length}`;
     counter.classList.toggle("active", visible !== rows.length);
   }
-
 
   const reset = entry.wrap.querySelector<HTMLButtonElement>(".table-reset");
   if (reset) {
     reset.disabled = st.sortCol === null && !st.global && st.colFilters.size === 0;
   }
 }
-
 
 
 function makeTools(entryRef: { current: TableEntry | null }): HTMLElement {
@@ -196,10 +181,8 @@ function makeTools(entryRef: { current: TableEntry | null }): HTMLElement {
   const search = document.createElement("input");
   search.type = "search";
   search.className = "table-search";
-  search.placeholder = "РџРѕРёСЃРє РїРѕ С‚Р°Р±Р»РёС†РµвЂ¦";
-
-
-  search.setAttribute("aria-label", "РџРѕРёСЃРє РїРѕ С‚Р°Р±Р»РёС†Рµ");
+  search.placeholder = "Поиск по таблице…";
+  search.setAttribute("aria-label", "Поиск по таблице");
   search.autocomplete = "off";
   search.addEventListener("input", () => {
     const e = entryRef.current!;
@@ -213,8 +196,8 @@ function makeTools(entryRef: { current: TableEntry | null }): HTMLElement {
   const reset = document.createElement("button");
   reset.type = "button";
   reset.className = "table-reset";
-  reset.textContent = "РЎР±СЂРѕСЃРёС‚СЊ";
-  reset.title = "РЎРЅСЏС‚СЊ СЃРѕСЂС‚РёСЂРѕРІРєСѓ, РїРѕРёСЃРє Рё РІСЃРµ С„РёР»СЊС‚СЂС‹";
+  reset.textContent = "Сбросить";
+  reset.title = "Снять сортировку, поиск и все фильтры";
   reset.addEventListener("click", () => {
     const e = entryRef.current!;
     e.state.sortCol = null;
@@ -230,12 +213,6 @@ function makeTools(entryRef: { current: TableEntry | null }): HTMLElement {
 }
 
 
-
-
-
-
-
-
 interface MenuController {
   close(): void;
   open(anchor: HTMLElement, table: HTMLTableElement, col: number, entry: TableEntry): void;
@@ -248,8 +225,6 @@ function createMenuController(): MenuController {
   let outsideHandler: ((e: MouseEvent) => void) | null = null;
   let escapeHandler: ((e: KeyboardEvent) => void) | null = null;
   let anchorSeq = 0;
-
-
 
   function closeMenu(restoreFocus = false) {
     const anchor = openAnchor;
@@ -272,7 +247,7 @@ function createMenuController(): MenuController {
     const items = Array.from(menu.querySelectorAll<HTMLElement>(".col-filter-item"));
     const checked = items.filter((el) => (el.querySelector("input") as HTMLInputElement).checked);
     if (items.length === 0 || checked.length === items.length) {
-      entry.state.colFilters.delete(col); // РІСЃРµ Р·РЅР°С‡РµРЅРёСЏ РІС‹Р±СЂР°РЅС‹ = С„РёР»СЊС‚СЂ СЃРЅСЏС‚
+      entry.state.colFilters.delete(col);
     } else {
       entry.state.colFilters.set(col, new Set(checked.map((el) => el.dataset.value ?? "")));
     }
@@ -283,15 +258,12 @@ function createMenuController(): MenuController {
     const wasOpenForSame =
       openMenu?.dataset.anchor === anchor.getAttribute("data-anchor-id");
     closeMenu();
-    if (wasOpenForSame) return; // РїРѕРІС‚РѕСЂРЅС‹Р№ РєР»РёРє РїРѕ С‚РѕР№ Р¶Рµ РІРѕСЂРѕРЅРєРµ вЂ” Р·Р°РєСЂС‹С‚СЊ
+    if (wasOpenForSame) return;
 
     const menu = document.createElement("div");
     menu.className = "col-filter-menu";
-
-
-
     menu.setAttribute("role", "dialog");
-    menu.setAttribute("aria-label", anchor.getAttribute("aria-label") ?? "Р¤РёР»СЊС‚СЂ РїРѕ СЃС‚РѕР»Р±С†Сѓ");
+    menu.setAttribute("aria-label", anchor.getAttribute("aria-label") ?? "Фильтр по столбцу");
     menu.setAttribute("data-anchor", anchor.getAttribute("data-anchor-id") ?? "");
 
     const uniq = new Map<string, number>();
@@ -307,8 +279,8 @@ function createMenuController(): MenuController {
 
     const mini = document.createElement("input");
     mini.type = "search";
-    mini.setAttribute("aria-label", "РџРѕРёСЃРє Р·РЅР°С‡РµРЅРёСЏ");
-    mini.placeholder = "РќР°Р№С‚Рё Р·РЅР°С‡РµРЅРёРµвЂ¦";
+    mini.setAttribute("aria-label", "Поиск значения");
+    mini.placeholder = "Найти значение…";
     mini.autocomplete = "off";
     mini.addEventListener("input", () => {
       const q = mini.value.toLowerCase();
@@ -337,7 +309,7 @@ function createMenuController(): MenuController {
     if (allValues.length === 0) {
       const empty = document.createElement("div");
       empty.className = "col-filter-empty";
-      empty.textContent = "РќРµС‚ РґР°РЅРЅС‹С…";
+      empty.textContent = "Нет данных";
       list.appendChild(empty);
     }
 
@@ -353,13 +325,13 @@ function createMenuController(): MenuController {
     const setAll = (on: boolean) => {
       for (const cb of menu.querySelectorAll<HTMLInputElement>(".col-filter-item input")) {
         const item = cb.closest(".col-filter-item") as HTMLElement;
-        if (!item.hidden) cb.checked = on; // РєР°Рє РІ Excel: РІР»РёСЏРµС‚ С‚РѕР»СЊРєРѕ РЅР° РІРёРґРёРјС‹Рµ
+        if (!item.hidden) cb.checked = on;
       }
       syncFromCheckboxes(menu, entry, col);
     };
     footer.append(
-      mkBtn("Р’СЃРµ", () => setAll(true)),
-      mkBtn("РќРёС‡РµРіРѕ", () => setAll(false)),
+      mkBtn("Все", () => setAll(true)),
+      mkBtn("Ничего", () => setAll(false)),
     );
 
     menu.append(mini, list, footer);
@@ -369,7 +341,6 @@ function createMenuController(): MenuController {
     const w = 260;
     menu.style.position = "fixed";
     menu.style.left = Math.max(4, Math.min(rect.left, window.innerWidth - w - 8)) + "px";
-
     const below = rect.bottom + 2;
     menu.style.top =
       (below + menu.offsetHeight > window.innerHeight - 8
@@ -385,8 +356,6 @@ function createMenuController(): MenuController {
     };
     document.addEventListener("mousedown", outsideHandler, true);
 
-
-
     escapeHandler = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       e.preventDefault();
@@ -400,12 +369,10 @@ function createMenuController(): MenuController {
 }
 
 
-
 function enhance(table: HTMLTableElement, menu: MenuController) {
   if (registry.has(table)) return;
 
   const headers = headerCells(table);
-
   if (headers.length === 0) return;
 
   const entryRef: { current: TableEntry | null } = { current: null };
@@ -437,33 +404,26 @@ function enhance(table: HTMLTableElement, menu: MenuController) {
   entryRef.current = entry;
   registry.set(table, entry);
 
-
   headers.forEach((th, i) => {
-
-
-
     const thLabel = th.textContent?.trim() ?? "";
     const sortBtn = document.createElement("button");
     sortBtn.type = "button";
     sortBtn.className = "col-sort-btn";
     if (th.querySelector("a, button, input, select, textarea, label")) {
-
-
-
-      sortBtn.textContent = "в†•";
+      sortBtn.textContent = "↕";
       th.appendChild(sortBtn);
     } else {
-      while (th.firstChild) sortBtn.appendChild(th.firstChild); // СЃРѕС…СЂР°РЅСЏРµРј inline-СЂР°Р·РјРµС‚РєСѓ
+      while (th.firstChild) sortBtn.appendChild(th.firstChild);
       th.appendChild(sortBtn);
     }
-    sortBtn.setAttribute("aria-label", `РЎРѕСЂС‚РёСЂРѕРІР°С‚СЊ РїРѕ СЃС‚РѕР»Р±С†Сѓ В«${thLabel}В»`);
+    sortBtn.setAttribute("aria-label", `Сортировать по столбцу «${thLabel}»`);
 
     const funnel = document.createElement("button");
     funnel.type = "button";
     funnel.className = "col-filter-btn";
-    funnel.textContent = "в–ѕ";
-    funnel.title = "Р¤РёР»СЊС‚СЂ РїРѕ СЃС‚РѕР»Р±С†Сѓ";
-    funnel.setAttribute("aria-label", `Р¤РёР»СЊС‚СЂ РїРѕ СЃС‚РѕР»Р±С†Сѓ В«${thLabel}В»`);
+    funnel.textContent = "▾";
+    funnel.title = "Фильтр по столбцу";
+    funnel.setAttribute("aria-label", `Фильтр по столбцу «${thLabel}»`);
     funnel.setAttribute("aria-expanded", "false");
     funnel.setAttribute("data-anchor-id", String(menu.nextAnchorId()));
     funnel.addEventListener("click", (ev) => {
@@ -485,28 +445,18 @@ function enhance(table: HTMLTableElement, menu: MenuController) {
 }
 
 
-
-export interface TablesController {
-  /** РЈРєСЂР°СЃРёС‚СЊ РІСЃРµ С‚Р°Р±Р»РёС†С‹ РїРѕРґ РєРѕСЂРЅРµРј (РёРґРµРјРїРѕС‚РµРЅС‚РЅРѕ: registry РїРѕ СЌР»РµРјРµРЅС‚Сѓ). */
+interface TablesController {
   enhance(): void;
-  /** Р—Р°РєСЂС‹С‚СЊ РјРµРЅСЋ С„РёР»СЊС‚СЂР° Рё СЃРЅСЏС‚СЊ СЃР»СѓС€Р°С‚РµР»СЊ СЃРєСЂРѕР»Р»Р° вЂ” Р±РµР· РІРёСЃСЏС‡РёС… СѓР·Р»РѕРІ РІ body. */
   dispose(): void;
 }
 
 export function createTablesController(root: HTMLElement): TablesController {
   const menu = createMenuController();
-
-
   const onScroll = () => menu.close();
   root.addEventListener("scroll", onScroll, { passive: true });
   return {
     enhance() {
-
-
       menu.close();
-
-
-
       for (const table of root.querySelectorAll<HTMLTableElement>(
         "table:not(.md-frontmatter)",
       )) {

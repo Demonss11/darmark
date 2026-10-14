@@ -47,8 +47,6 @@ const btnInspect = document.getElementById("btn-inspect") as HTMLButtonElement;
 const gutterEl = document.getElementById("gutter") as HTMLElement;
 const tabStrip = document.getElementById("tab-strip") as HTMLElement;
 
-// Дровер плагинов (вариант C): постоянный DOM, модальность — в drawer.ts.
-// Создаётся до менеджера/статусбара: они монтируются в drawer.content.
 const drawer = createDrawer({
   root: document.getElementById("drawer") as HTMLElement,
   trigger: document.getElementById("tb-plugins") as HTMLElement,
@@ -59,10 +57,6 @@ const drawer = createDrawer({
 const gutter = createGutter(editor, gutterEl);
 const format = createFormatActions(editor);
 
-// Нижний док (S11, ADR-0029/0030): режимы «Журнал | Мониторинг | AI-ассистент».
-// Создаётся до оболочки: shell.ts читает state() и вызывает collapse()/hide() (Esc).
-// `monitor` объявлен заранее: onLayoutChange дёргает его догон при открытии
-// вкладки «Мониторинг» (сам монитор создаётся ниже, после логгера).
 let monitor: ResourceMonitor | null = null;
 let ai: AiPanel | null = null;
 const logPanel = createLogPanel({
@@ -75,21 +69,15 @@ const logPanel = createLogPanel({
   onModeChange: (mode, state) => ai?.onDockState(mode, state),
 });
 
-// Вкладка «Мониторинг» (ADR-0031): подписка на
-// `resource-metrics`/`plugin-process-exited`, рендер строк `#mon-rows` и тихой
-// сводки `#mon-summary`. Живёт весь сеанс; запись в журнал — через шов ленты.
 monitor = createResourceMonitor({
   root: document.getElementById("mon-rows") as HTMLElement,
   log: (level, category, message, detail) => logPanel.log(level, category, message, detail),
 });
 
-// 1. Общий индекс рендера + связка inspector/scrollsync.
 const renderIndex = createRenderIndex();
 const link = createLinkController({ editor, preview, index: renderIndex, statusEl: statInspect });
 const inspector = link.inspector;
 
-// 2. Стор документов. Колбэки ссылаются на status/previewView, объявленные ниже:
-//    они вызываются позже, поэтому такой порядок безопасен.
 const store = createDocStore({
   renderMapped: () => inspector.isActive(),
   onRender: (res: RenderResult, source: string) => previewView.applyRender(res, source),
@@ -98,9 +86,6 @@ const store = createDocStore({
 
 const status = createStatusBar({ store, editor, appName: APP_NAME });
 
-// AI-ассистент (ADR-0030/0032/0033/0034): тело режима AI дока. Сеть — только
-// на Rust-стороне; ответ модели рендерится исключительно textContent. Создаётся
-// после стора: текст документа берётся из активной вкладки (шов getDocumentText).
 ai = createAiPanel({
   root: document.getElementById("ai-mode") as HTMLElement,
   log: (level, category, message, detail) => logPanel.log(level, category, message, detail),
@@ -111,7 +96,6 @@ ai = createAiPanel({
   },
 });
 
-// 3. Реестр представлений: тир-1 preview встроен на хосте (D2).
 const registry = createViewRegistry();
 registry.registerHtml(previewViewProvider);
 
@@ -138,9 +122,6 @@ const previewView = registry.createHtmlView<PreviewView, PreviewViewOptions>(
   }
 );
 
-// 4. Плагинные тир-1 view (Фаза 4, IDEA-003): каждый плагин-вью —
-//    `HtmlViewProvider` в общем реестре; нативный preview остаётся дефолтным.
-//    #plugin-view показывается при выборе плагинной вкладки в `.view-switch`.
 let lastPlugins: PluginInfo[] = [];
 const pluginViews = createPluginViews({
   registry,
@@ -150,19 +131,13 @@ const pluginViews = createPluginViews({
   previewEl: preview,
   backButtonEl: document.getElementById("btn-back-preview"),
   status: (msg: string) => status.flash(msg),
-  // Появление/пропадание view меняет интерактивность статусбара, а события
-  // `plugins-changed`/`plugin-views-changed` приходят независимо.
   onViewsChanged: () => pluginStatus.render(lastPlugins),
 });
 
-// Per-plugin элементы статусбара (§11.1 п.5): включённые плагины с правом
-// `ui:statusbar`. Клик — открыть представление, «+N» — панель.
 const pluginStatus = createPluginStatusBar({
   root: document.getElementById("plugin-status") as HTMLElement,
   hasView: (id: string) => pluginViews.hasView(id),
   onActivate: (id: string) => {
-    // Панель предпросмотра могла быть скрыта (Ctrl+P): показываем её через чекбокс,
-    // чтобы состояние было согласовано, и уже затем открываем представление.
     const chk = document.getElementById("chk-preview") as HTMLInputElement | null;
     if (chk && !chk.checked) chk.click();
     pluginViews.openPlugin(id);
@@ -170,8 +145,6 @@ const pluginStatus = createPluginStatusBar({
   onShowPanel: () => drawer.open(),
 });
 
-// Склонение «с проблемой/с проблемами» в счётчике панели: 1-4 (кроме 11-14) —
-// «с проблемой», иначе «с проблемами». UI-строка — русский.
 function problemSuffix(n: number): string {
   const mod100 = n % 100;
   const unit = n % 10;
@@ -180,7 +153,6 @@ function problemSuffix(n: number): string {
     : "с проблемами";
 }
 
-/** Счётчик плагинов в шапке дровера (`#side-count`). Узел может отсутствовать. */
 function updatePluginCount(list: PluginInfo[]): void {
   const problems = list.filter(
     (info) => info.status.state === "failed" || info.status.state === "quarantined"
@@ -197,8 +169,6 @@ function updatePluginCount(list: PluginInfo[]): void {
     }
   }
 
-  // Триггер дровера в тулбаре: число активных + флаг проблем (ADR-0024).
-  // Точка `.pdot` краснеет через `.has-problem`.
   const triggerEl = document.getElementById("tb-plugins");
   const triggerCnt = document.getElementById("tb-plugins-cnt");
   if (triggerEl) triggerEl.classList.toggle("has-problem", problems > 0);
@@ -209,35 +179,25 @@ function updatePluginCount(list: PluginInfo[]): void {
   }
 }
 
-// Менеджер плагинов (Фаза 5): список/статусы/вкл-выкл/перезагрузка в дровере.
-//    Данные — из Rust-хоста (`list_plugins`), изменения приходят событием
-//    `plugins-changed`; ошибки IPC глушит контроллер.
 const pluginManager = createPluginManager({
   root: drawer.content,
   status: (msg: string) => status.flash(msg),
   onPlugins: (list: PluginInfo[]) => {
     lastPlugins = list;
     pluginStatus.render(list);
-    // Счётчик в шапке дровера владеет композиционный корень, не контроллер.
     updatePluginCount(list);
   },
 });
 
-// Сообщения плагинов (`host.show_message`) — в per-plugin элемент статусбара
-// (§11.1 п.5). Если элемент скрыт (плагин свёрнут в «+N»), показываем текст в
-// #stat-msg, чтобы сообщение не потерялось визуально.
 void listen<{ plugin_id: string; text: string }>("plugin-message", (event) => {
   const { plugin_id, text } = event.payload;
   if (!pluginStatus.setMessage(plugin_id, text)) status.flash(`${plugin_id}: ${text}`);
 }).catch(() => null);
 
-// Внешняя правка документа плагином: событие несёт лишь id/rev, текст тянем
-// снапшотом (pull), чтобы не гонять большой документ через событие.
 void listen<{ doc_id: string; rev: number }>("document-updated", (event) => {
   store.applyHostUpdate(event.payload.doc_id, event.payload.rev);
 }).catch(() => null);
 
-// 4. Панели: фиксированные две (редактор + предпросмотр), MAX_PANES = 2.
 const EDITOR_PANE = asPaneId("pane-editor");
 const PREVIEW_PANE = asPaneId("pane-preview");
 const EDITOR_VIEW = asViewId("editor");
@@ -254,8 +214,6 @@ let layout: LayoutNode = {
 const paneHost = createPaneHost(panesEl);
 paneHost.mount(layout);
 
-// chk-preview переключает ВИДИМОСТЬ вторичной панели (idea5): #preview остаётся
-// в DOM, поэтому скрытие/показ не требует пересоздания вида (AC-9).
 function setPreviewVisible(on: boolean): void {
   const next = on
     ? applyLayout(layout, { t: "splitPane", target: EDITOR_PANE, dir: "row", pane: previewPane })
@@ -264,13 +222,11 @@ function setPreviewVisible(on: boolean): void {
   paneHost.mount(layout);
 }
 
-// 5. Редактор (тир-2 view) + реакция на проекцию стора.
 const editorView = createEditorView(editor, store, () => {
   status.updateStatus();
   inspector.onEditorActivity();
 });
 
-/** Иконка типа файла по имени (расширение). */
 function fileIcon(name: string): string {
   const dot = name.lastIndexOf(".");
   const ext = dot >= 0 ? name.slice(dot + 1).toLowerCase() : "";
@@ -287,7 +243,6 @@ function fileIcon(name: string): string {
   }
 }
 
-/** Закрытие вкладки с подтверждением при несохранённых изменениях. */
 async function closeTabWithConfirm(id: DocumentId): Promise<void> {
   const tab = store.tabs().find((t) => t.id === id);
   if (!tab) return;
@@ -301,18 +256,14 @@ async function closeTabWithConfirm(id: DocumentId): Promise<void> {
   await store.closeTab(id);
 }
 
-/** Создаёт DOM-элемент вкладки с обработчиками. */
 function createTabElement(tab: Tab): HTMLElement {
   const el = document.createElement("div");
   el.className = "tab";
   el.dataset.id = tab.id;
-  // Стабильный id для aria-controls/aria-labelledby (паттерн tabs, ADR-0037).
   el.id = `tab-${tab.id}`;
   el.setAttribute("role", "tab");
   el.setAttribute("aria-controls", "panes");
-  // Доступное имя — имя документа (содержимое .name дублирует его для скринридера).
   el.setAttribute("aria-label", tab.name);
-  // Roving tabindex: активная вкладка получает 0 в updateTabElement, остальные -1.
   el.tabIndex = -1;
 
   const ficon = document.createElement("span");
@@ -328,16 +279,14 @@ function createTabElement(tab: Tab): HTMLElement {
   close.className = "close";
   close.type = "button";
   close.title = "Закрыть";
-  close.tabIndex = -1; // кнопка закрытия вне порядка табуляции (pattern tabs)
-  // Крестик текстовым глифом × (U+00D7): CSS .tab .close стилизует содержимое
-  // как текст (font-size: 14px, центрирование inline-flex), поэтому SVG не нужен.
+  close.tabIndex = -1;
   close.textContent = "×";
   el.appendChild(close);
 
   el.addEventListener("click", (e) => {
-    if (e.target === close) return; // клик по кнопке закрытия обрабатывается отдельно
+    if (e.target === close) return;
     store.switchTab(tab.id);
-    el.focus(); // паттерн tabs требует фокус на активной вкладке
+    el.focus();
   });
   close.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -347,11 +296,10 @@ function createTabElement(tab: Tab): HTMLElement {
   return el;
 }
 
-/** Обновляет содержимое существующего элемента вкладки (имя, dirty, активность). */
 function updateTabElement(el: HTMLElement, tab: Tab, activeId: DocumentId | null): void {
   const isActive = tab.id === activeId;
   el.setAttribute("aria-selected", String(isActive));
-  el.tabIndex = isActive ? 0 : -1; // roving tabindex: в таб-порядке только активная
+  el.tabIndex = isActive ? 0 : -1;
 
   const ficon = el.querySelector(".ficon");
   if (ficon) ficon.textContent = fileIcon(tab.name);
@@ -375,10 +323,6 @@ function updateTabElement(el: HTMLElement, tab: Tab, activeId: DocumentId | null
   if (close) close.setAttribute("aria-label", `Закрыть ${tab.name}`);
 }
 
-/**
- * Рендерит полосу вкладок с диффингом: не пересоздаёт DOM целиком при каждом
- * изменении текста или dirty-флага.
- */
 function renderTabStrip(tabs: Tab[], activeId: DocumentId | null): void {
   const existing = new Map<string, HTMLElement>();
   for (const el of Array.from(tabStrip.children) as HTMLElement[]) {
@@ -397,7 +341,6 @@ function renderTabStrip(tabs: Tab[], activeId: DocumentId | null): void {
     updateTabElement(el, tab, activeId);
   }
 
-  // Удаляем элементы закрытых вкладок
   for (const [id, el] of existing) {
     if (!seen.has(id)) el.remove();
   }
@@ -405,10 +348,6 @@ function renderTabStrip(tabs: Tab[], activeId: DocumentId | null): void {
   syncTabPanel(activeId);
 }
 
-/**
- * Связывает панель с активной вкладкой через aria-labelledby (паттерн tabs):
- * скринридер объявляет панель именем активной вкладки при её появлении.
- */
 function syncTabPanel(activeId: DocumentId | null): void {
   if (activeId) {
     panesEl.setAttribute("aria-labelledby", `tab-${activeId}`);
@@ -417,24 +356,15 @@ function syncTabPanel(activeId: DocumentId | null): void {
   }
 }
 
-/**
- * Клавиатурная навигация по вкладкам (WAI-ARIA tabs, автоматическая активация
- * при фокусе): стрелки/Home/End — перемещение фокуса с активацией;
- * Delete/Ctrl+W — закрытие активной вкладки. Слушатель на контейнере: вкладки
- * создаются/удаляются динамически, делегирование переживает их пересоздание.
- */
 function onTabStripKeyDown(e: KeyboardEvent): void {
   const tabs = Array.from(tabStrip.querySelectorAll<HTMLElement>(".tab"));
   if (tabs.length === 0) return;
   const current = document.activeElement as HTMLElement | null;
-  // Фокус может быть на кнопке закрытия внутри вкладки — поднимаемся до .tab.
   const currentTab = (current?.closest(".tab") ?? null) as HTMLElement | null;
   if (!currentTab) return;
   const currentIndex = tabs.indexOf(currentTab);
   if (currentIndex < 0) return;
 
-  // Закрытие: Delete или Ctrl+W. Глобального обработчика Ctrl+W в shell.ts нет,
-  // поэтому конфликта с другими хоткеями нет. e.code — физическая клавиша.
   const wantsClose =
     e.key === "Delete" ||
     ((e.ctrlKey || e.metaKey) && e.code === "KeyW");
@@ -443,7 +373,6 @@ function onTabStripKeyDown(e: KeyboardEvent): void {
     const id = currentTab.dataset.id;
     if (!id) return;
     void closeTabWithConfirm(asDocumentId(id)).then(() => {
-      // После закрытия возвращаем фокус на новую активную вкладку.
       const activeId = store.activeId();
       if (activeId) {
         const next = tabStrip.querySelector<HTMLElement>(`.tab[data-id="${activeId}"]`);
@@ -453,18 +382,17 @@ function onTabStripKeyDown(e: KeyboardEvent): void {
     return;
   }
 
-  // Навигация: стрелки по кругу, Home/End — крайние вкладки.
   let targetIndex = currentIndex;
   if (e.key === "ArrowLeft") targetIndex = (currentIndex - 1 + tabs.length) % tabs.length;
   else if (e.key === "ArrowRight") targetIndex = (currentIndex + 1) % tabs.length;
   else if (e.key === "Home") targetIndex = 0;
   else if (e.key === "End") targetIndex = tabs.length - 1;
-  else return; // прочие клавиши (Enter/Space) — активация уже произошла на фокусе
+  else return;
 
   e.preventDefault();
   const target = tabs[targetIndex];
   const id = target.dataset.id;
-  if (id) store.switchTab(asDocumentId(id)); // активация при перемещении фокуса
+  if (id) store.switchTab(asDocumentId(id));
   target.focus();
 }
 
@@ -475,7 +403,7 @@ store.subscribe((tabs, activeId) => {
   const active = tabs.find((t) => t.id === activeId) ?? null;
   if (active && active.text !== prevText) {
     prevText = active.text;
-    previewView.invalidate(); // индекс устарел до нового рендера
+    previewView.invalidate();
   }
   gutter.update();
   renderTabStrip(tabs, activeId);
@@ -483,12 +411,11 @@ store.subscribe((tabs, activeId) => {
   status.updateStatus();
 });
 
-// 6. Инспектор и файловые команды.
 function toggleInspector(): void {
   if (inspector.isActive()) inspector.disable();
   else inspector.enable();
   btnInspect.classList.toggle("active", inspector.isActive());
-  previewView.setMapped(inspector.isActive()); // смена mapped меняет HTML
+  previewView.setMapped(inspector.isActive());
   store.reload();
 }
 
@@ -499,8 +426,6 @@ const files = createFileActions({
   focusEditor: () => editorView.focus(),
 });
 
-// 7. Палитра команд (Ctrl+K): core-команды + провайдер плагинных команд.
-//    Ошибка провайдера уходит в тост.
 const coreCommands: PaletteCommand[] = [
   { id: "file.new", title: "Новый файл", group: "Файл", origin: "core", hotkey: "Ctrl+N", run: () => void files.newFile() },
   { id: "file.open", title: "Открыть файл", group: "Файл", origin: "core", hotkey: "Ctrl+O", run: () => void files.openFile() },
@@ -516,7 +441,6 @@ const coreCommands: PaletteCommand[] = [
   { id: "format.link", title: "Ссылка", group: "Формат", origin: "core", hotkey: "Ctrl+Shift+K", run: () => format.link() },
 ];
 
-// Плагинные команды: только у включённых плагинов; origin = `plugin:<id>`.
 const pluginCommandProvider: CommandProvider = {
   async list(): Promise<PaletteCommand[]> {
     const plugins = await listPlugins();
@@ -543,7 +467,6 @@ const palette = createPalette({
   onError: (message) => toast(message, { kind: "error" }),
 });
 
-// 8. Оболочка: тулбар, хоткеи, тумблеры, фокус панелей, закрытие окна.
 createShell({
   commands: {
     newFile: () => void files.newFile(),
@@ -556,8 +479,6 @@ createShell({
     setActivePane: (p) => paneHost.setActive(p),
     isDirty: () => store.active()?.dirty ?? false,
     palette: () => {
-      // Взаимоисключение модальных слоёв: открытие палитры закрывает дровер
-      // (обратное не требуется — триггер палитры инертен, пока дровер открыт).
       drawer.close();
       palette.toggle();
       document
@@ -580,9 +501,6 @@ createShell({
   preview,
 });
 
-// 8.5. Тема (ADR-0037): тумблер в статусбаре (#sb-theme), data-theme на <html>,
-//      выбор сохраняется между сессиями. Атрибут выставляется до первого
-//      рендера внешним скриптом theme-init.js (CSP запрещает inline).
 const THEME_STORAGE_KEY = "darmark.theme";
 type Theme = "dark" | "light";
 
@@ -595,7 +513,6 @@ function applyTheme(theme: Theme): void {
   try {
     localStorage.setItem(THEME_STORAGE_KEY, theme);
   } catch {
-    // localStorage недоступен (приватный режим) — тема живёт до перезагрузки.
   }
 
   const btn = document.getElementById("sb-theme");
@@ -610,7 +527,6 @@ function applyTheme(theme: Theme): void {
     btn.setAttribute("aria-label", isLight ? "Тема: светлая" : "Тема: тёмная");
     btn.setAttribute("aria-pressed", String(isLight));
   }
-  // theme-color: нативная панель WebView следует за активной темой.
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.setAttribute("content", theme === "light" ? "#fafbfc" : "#0d0e12");
 }
@@ -621,7 +537,6 @@ themeBtn?.addEventListener("click", () => {
   applyTheme(currentTheme() === "light" ? "dark" : "light");
 });
 
-// 9. Стартовый документ (создаётся в Rust-сторе: id/путь/текст ведёт хост).
 async function bootstrap(): Promise<void> {
   try {
     await store.newDocument(START_TEXT);
@@ -632,10 +547,7 @@ async function bootstrap(): Promise<void> {
   setPreviewVisible(chkPreview.checked);
   status.updateStatus();
   status.updateTitle();
-  // Плагинные view — после документа и тумблеров, чтобы их вкладки не влияли
-  // на стартовое состояние предпросмотра.
   await pluginViews.refresh();
-  // Менеджер плагинов — после view: панель может быть скрыта, DOM всё равно готов.
   await pluginManager.refresh();
   editorView.focus();
 }

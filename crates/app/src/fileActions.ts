@@ -6,13 +6,12 @@ import { confirm, open, save } from "@tauri-apps/plugin-dialog";
 import type { DocStore } from "./doc/docStore";
 import { errorMessage } from "./core/tauri";
 
-/** Фильтр нативных диалогов. */
 const MD_FILTER = {
   name: "Markdown",
   extensions: ["md", "markdown", "mdown", "mkd", "txt"],
 };
 
-export interface FileActions {
+interface FileActions {
   newFile(): Promise<void>;
   openFile(): Promise<void>;
   saveFile(): Promise<void>;
@@ -21,9 +20,7 @@ export interface FileActions {
 
 export function createFileActions(opts: {
   store: DocStore;
-  /** Сообщение в статусбар (успех/ошибка). */
   status(msg: string): void;
-  /** Путь документа изменился (Save As) — перерезолвить локальные картинки. */
   onPathChanged(): void;
   focusEditor(): void;
 }): FileActions {
@@ -54,7 +51,7 @@ export function createFileActions(opts: {
       filters: [MD_FILTER],
       defaultPath: store.active()?.path ?? undefined,
     });
-    if (typeof selected !== "string") return; // отмена
+    if (typeof selected !== "string") return;
     try {
       await store.open(selected);
     } catch (e) {

@@ -18,30 +18,16 @@ import type { RenderIndex } from "./doc/renderIndex";
 import type { HtmlView, HtmlViewProvider, Json, ViewContext } from "./viewRegistry";
 import type { DocumentSnapshot, RenderResult } from "./core/tauri";
 
-/** Расширение HtmlView для композиции: sink из docStore + управление mapped. */
 export interface PreviewView extends HtmlView {
-  /**
-   * Единственная точка применения HTML: docStore (`onRender`) вызывает её на
-   * каждый непротухший `RenderResult`. `source` — текст, отправленный в рендер.
-   */
   applyRender(res: RenderResult, source: string): void;
-  /** Текст изменился до рендера: индекс невалиден, потребители сбрасывают привязки. */
   invalidate(): void;
-  /** Режим инспектора меняет HTML (`mapped`) — preview владеет этим флагом. */
   setMapped(mapped: boolean): void;
-  /** Путь документа сменился (после «Сохранить как»): перерезолвить картинки. */
   refreshImages(): void;
 }
 
-/**
- * Живые ссылки на DOM-зависимости. Формально `opts` контракта — `Json` (§5.3),
- * но встроенный на хосте провайдер (D2) вправе передавать больше; плагин
- * получит строгий `Json`.
- */
 export interface PreviewViewOptions {
   previewEl: HTMLElement;
   index: RenderIndex;
-  /** После перестроения/сброса индекса: уведомить inspector/scrollsync (main.ts). */
   onIndexed(): void;
 }
 
@@ -54,8 +40,6 @@ export const previewViewProvider: HtmlViewProvider = {
 
     let mapped = false;
 
-    // Внешние ссылки открываем системным браузером через плагин opener (P0.2):
-    // window.open в WebView не гарантирует внешнее открытие и обходит CSP.
     const handleClick = (e: MouseEvent): void => {
       const anchor = (e.target as HTMLElement).closest("a");
       if (!anchor) return;
@@ -66,14 +50,8 @@ export const previewViewProvider: HtmlViewProvider = {
       }
     };
     previewEl.addEventListener("click", handleClick);
-    // Таблицы: состояние меню — ЭКЗЕМПЛЯРА preview-вида (§5.6): dispose() убирает
-    // меню из body и снимает слушатель.
     const tables = createTablesController(previewEl);
 
-    // HTML, последний раз присвоенный `previewEl.innerHTML`. `res.changed` хоста
-    // считается per-document, а предпросмотр один на всё приложение: при
-    // возврате на ранее отрендеренную вкладку `changed` может быть `false`,
-    // хотя в DOM остался HTML другого документа — поэтому сверяем и HTML.
     let lastHtml = "";
 
     function applyRender(res: RenderResult, source: string): void {
@@ -83,21 +61,14 @@ export const previewViewProvider: HtmlViewProvider = {
         try {
           tables.enhance();
         } catch (e) {
-          // Украшение таблиц упало — оставляем читаемый HTML без улучшений (P1.2).
           ctx.status(`Таблицы: ${String(e)}`);
         }
       }
-      // Локальные картинки: относительные src → asset-URL (идемпотентно).
       resolveLocalImages(previewEl, ctx.document()?.path ?? null);
-      // Индекс привязан к тексту рендера (`source`) — переиндексация нужна всегда.
       index.set(source, res.rev, previewEl);
       o.onIndexed();
     }
 
-    // Copy HTML: вместо копирования innerHTML (классы приложения) собираем
-    // автономный фрагмент со встроенными стилями. Копирование — ВСЕГДА светлая
-    // тема, независимо от темы приложения (ADR-0037). Один набор правил — и для
-    // Markdown-превью, и для плагинных view; frontmatter копируется как есть.
     const COPY_CSS = `
       h1 { font-size: 30px; font-weight: 700; color: #0f1115; margin: 0 0 14px; border-bottom: 1px solid #b8bfcc; padding-bottom: 0.2em; }
       h2 { font-size: 21px; font-weight: 700; color: #0f1115; margin: 24px 0 10px; border-bottom: 1px solid #d0d5e0; padding-bottom: 0.2em; }
@@ -121,20 +92,16 @@ export const previewViewProvider: HtmlViewProvider = {
       input[type="checkbox"] { margin-right: 6px; }
     `.trim();
     const buildCopyHtml = (source: HTMLElement): string => {
-      // Чистим клон, не трогая живой DOM: markdown-структура (теги) сохраняется.
       const clone = source.cloneNode(true) as HTMLElement;
       clone.removeAttribute("class");
       clone.removeAttribute("style");
       clone.removeAttribute("id");
       clone.removeAttribute("data-md");
-      // У потомков тоже сбрасываем классы/инлайн-стили/интерактивные атрибуты:
-      // копируем документ, а не рабочий view.
       for (const el of clone.querySelectorAll<HTMLElement>("*[class], *[style], *[data-md]")) {
         el.removeAttribute("class");
         el.removeAttribute("style");
         el.removeAttribute("data-md");
       }
-      // UI таблиц — элементы приложения, а не содержимое документа.
       for (const sel of [".table-tools", ".table-count", ".col-filter-menu", ".col-filter-btn", ".col-filter-list", ".col-filter-item", ".col-filter-empty", ".col-filter-footer", ".table-scroll"]) {
         for (const el of clone.querySelectorAll<HTMLElement>(sel)) el.remove();
       }
@@ -150,8 +117,6 @@ export const previewViewProvider: HtmlViewProvider = {
       const activeEl = previewEl.hidden ? (document.getElementById("plugin-view") as HTMLElement | null) : previewEl;
       if (!activeEl) return;
       const html = buildCopyHtml(activeEl);
-      // text/plain = HTML-исходник (как writeText в idea4): вставка в текстовое
-      // поле даёт разметку. text/html = rich-фрагмент со встроенными стилями.
       try {
         await navigator.clipboard.write([
           new ClipboardItem({
@@ -162,10 +127,7 @@ export const previewViewProvider: HtmlViewProvider = {
         ctx.status("HTML скопирован в буфер обмена");
         return;
       } catch {
-        // WebView2 может не поддерживать ClipboardItem с text/html — fallback ниже.
       }
-      // Fallback для WebView2: временный div + execCommand копирует выделение
-      // как rich text (text/html).
       const tempDiv = document.createElement("div");
       tempDiv.innerHTML = html;
       tempDiv.style.position = "fixed";
@@ -204,7 +166,6 @@ export const previewViewProvider: HtmlViewProvider = {
         resolveLocalImages(previewEl, ctx.document()?.path ?? null);
       },
 
-      // Тир-1 путь: документ → HTML (через ctx.render) → применение.
       async render(doc: DocumentSnapshot): Promise<void> {
         const res = await ctx.render(doc.text, mapped);
         applyRender(res, doc.text);

@@ -1,14 +1,14 @@
-﻿// pluginManager.ts вЂ” РјРµРЅРµРґР¶РµСЂ РїР»Р°РіРёРЅРѕРІ РІ РґСЂРѕРІРµСЂРµ `#drawer-body` (H2, Р¤Р°Р·Р° 5).
+// pluginManager.ts — менеджер плагинов в дровере `#drawer-body` (H2, Фаза 5).
 //
-// РџРѕРєР°Р·С‹РІР°РµС‚ СЃРЅРёРјРѕРє РїР»Р°РіРёРЅРѕРІ РёР· Rust-С…РѕСЃС‚Р° (`list_plugins`): СЃС‚Р°С‚СѓСЃ, С‚СѓРјР±Р»РµСЂ
-// РІРєР»/РІС‹РєР», В«РџРµСЂРµР·Р°РіСЂСѓР·РёС‚СЊВ», РёРЅР»Р°Р№РЅ-СЃРѕРіР»Р°СЃРёРµ РЅР° permissions (В§11.1 Рї.4),
-// РєРЅРѕРїРєРё РєРѕРјР°РЅРґ Рё С„РѕСЂРјСѓ РЅР°СЃС‚СЂРѕРµРє РїРѕ `contributes.settings` (S5b). РўРµР»Рѕ РїР°РЅРµР»Рё
-// СЃРѕР±РёСЂР°РµС‚СЃСЏ DOM-СѓР·Р»Р°РјРё Рё `textContent` вЂ” СЃС‚СЂРѕРєРё РёР· РјР°РЅРёС„РµСЃС‚Р°/С…РѕСЃС‚Р° РЅРµ РїСЂРѕС…РѕРґСЏС‚
-// С‡РµСЂРµР· `innerHTML`.
+// Показывает снимок плагинов из Rust-хоста (`list_plugins`): статус, тумблер
+// вкл/выкл, «Перезагрузить», инлайн-согласие на permissions (§11.1 п.4),
+// кнопки команд и форму настроек по `contributes.settings` (S5b). Тело панели
+// собирается DOM-узлами и `textContent` — строки из манифеста/хоста не проходят
+// через `innerHTML`.
 //
-// РЎРѕСЃС‚Р°РІ Рё СЃС‚Р°С‚СѓСЃС‹ РјРµРЅСЏСЋС‚СЃСЏ РїРѕ РёРЅРёС†РёР°С‚РёРІРµ С…РѕСЃС‚Р°: СЃРѕР±С‹С‚РёРµ `plugins-changed` (Р±РµР·
-// payload) Р·Р°СЃС‚Р°РІР»СЏРµС‚ РїРµСЂРµС‡РёС‚Р°С‚СЊ СЃРЅРёРјРѕРє. РћР±СЂР°Р±РѕС‚С‡РёРєРё РґРµР»РµРіРёСЂРѕРІР°РЅС‹ РєРѕСЂРЅСЋ, РїРѕСЌС‚РѕРјСѓ
-// РїРµСЂРµСЂРёСЃРѕРІРєР° СЃРїРёСЃРєР° РЅРµ РѕСЃС‚Р°РІР»СЏРµС‚ РІРёСЃСЏС‡РёС… СЃР»СѓС€Р°С‚РµР»РµР№.
+// Состав и статусы меняются по инициативе хоста: событие `plugins-changed` (без
+// payload) заставляет перечитать снимок. Обработчики делегированы корню, поэтому
+// перерисовка списка не оставляет висячих слушателей.
 
 import { listen } from "@tauri-apps/api/event";
 import {
@@ -29,48 +29,35 @@ import { ownerPluginId } from "../plugin/pluginTarget";
 import { pluginColor } from "../plugin/pluginColor";
 import type { Json } from "../viewRegistry";
 
-/** РџСѓР±Р»РёС‡РЅС‹Р№ С„Р°СЃР°Рґ РєРѕРЅС‚СЂРѕР»Р»РµСЂР° РјРµРЅРµРґР¶РµСЂР° РїР»Р°РіРёРЅРѕРІ. */
-export interface PluginManager {
-  /** РџРµСЂРµС‡РёС‚Р°С‚СЊ СЃРїРёСЃРѕРє РїР»Р°РіРёРЅРѕРІ Рё РїРµСЂРµСЂРёСЃРѕРІР°С‚СЊ РїР°РЅРµР»СЊ. */
+interface PluginManager {
   refresh(): Promise<void>;
-
-
   reloadForDocument(path: string | null): Promise<void>;
-  /** РЎРЅСЏС‚СЊ СЃР»СѓС€Р°С‚РµР»СЊ СЃРѕР±С‹С‚РёСЏ `plugins-changed`. */
   dispose(): void;
 }
 
-export interface PluginManagerOptions {
-  /** РљРѕРЅС‚РµР№РЅРµСЂ РјРµРЅРµРґР¶РµСЂР° (`#plugin-manager` РІРЅСѓС‚СЂРё `#drawer-body`). */
+interface PluginManagerOptions {
   root: HTMLElement;
-  /** РЎРѕРѕР±С‰РµРЅРёРµ РІ СЃС‚Р°С‚СѓСЃР±Р°СЂ (РѕС€РёР±РєРё IPC/РґРµР№СЃС‚РІРёР№). */
   status(msg: string): void;
-  /** РЎРІРµР¶РёР№ СЃРЅРёРјРѕРє РїР»Р°РіРёРЅРѕРІ РїРѕСЃР»Рµ СѓСЃРїРµС€РЅРѕРіРѕ `list_plugins` (РґР»СЏ СЃС‚Р°С‚СѓСЃР±Р°СЂР°). */
   onPlugins?(list: PluginInfo[]): void;
 }
 
 const STATUS_LABELS: Record<PluginStatus["state"], string> = {
-  active: "Р°РєС‚РёРІРµРЅ",
-  failed: "РѕС€РёР±РєР°",
-  quarantined: "РєР°СЂР°РЅС‚РёРЅ",
-  stopped: "РѕСЃС‚Р°РЅРѕРІР»РµРЅ",
+  active: "активен",
+  failed: "ошибка",
+  quarantined: "карантин",
+  stopped: "остановлен",
 };
-
-
 
 const QUARANTINE_THRESHOLD = 3;
 
-
-
 const PERMISSION_LABELS: Record<string, string> = {
-  "document:read": "Р§С‚РµРЅРёРµ РґРѕРєСѓРјРµРЅС‚Р°",
-  "document:write": "РџСЂР°РІРєР° РґРѕРєСѓРјРµРЅС‚Р°",
-  "view:create": "РЎРІРѕСЏ РІРєР»Р°РґРєР° РІ РїСЂРµРґРїСЂРѕСЃРјРѕС‚СЂРµ",
-  "view:modify": "Р—Р°РїРёСЃСЊ РІ СЃРІРѕСЋ РІРєР»Р°РґРєСѓ",
-  "ui:statusbar": "РЎРѕРѕР±С‰РµРЅРёСЏ РІ СЃС‚Р°С‚СѓСЃР±Р°СЂ",
+  "document:read": "Чтение документа",
+  "document:write": "Правка документа",
+  "view:create": "Своя вкладка в предпросмотре",
+  "view:modify": "Запись в свою вкладку",
+  "ui:statusbar": "Сообщения в статусбар",
 };
 
-/** Р§РµР»РѕРІРµРєРѕС‡РёС‚Р°РµРјРѕРµ РѕРїРёСЃР°РЅРёРµ РїСЂР°РІР°; С„РѕР»Р±СЌРє вЂ” СЃС‹СЂРѕР№ С‚РѕРєРµРЅ. */
 function permissionLabel(permission: string): string {
   return PERMISSION_LABELS[permission] ?? permission;
 }
@@ -79,30 +66,22 @@ function statusMessage(status: PluginStatus): string | null {
   return status.state === "failed" ? status.message : null;
 }
 
-
-
 function stateHint(status: PluginStatus): string | null {
-  if (status.state === "failed") return "РСЃРїСЂР°РІСЊС‚Рµ РєРѕРґ РїР»Р°РіРёРЅР° Рё РЅР°Р¶РјРёС‚Рµ В«РџРµСЂРµР·Р°РіСЂСѓР·РёС‚СЊВ».";
+  if (status.state === "failed") return "Исправьте код плагина и нажмите «Перезагрузить».";
   if (status.state === "quarantined") {
-    return `РђРІС‚РѕРѕС‚РєР»СЋС‡С‘РЅ РїРѕСЃР»Рµ ${QUARANTINE_THRESHOLD} РїР°РґРµРЅРёР№ РїРѕРґСЂСЏРґ. РСЃРїСЂР°РІСЊС‚Рµ Рё РІРєР»СЋС‡РёС‚Рµ С‚СѓРјР±Р»РµСЂРѕРј вЂ” РєР°СЂР°РЅС‚РёРЅ СЃР±СЂРѕСЃРёС‚СЃСЏ.`;
+    return `Автоотключён после ${QUARANTINE_THRESHOLD} падений подряд. Исправьте и включите тумблером — карантин сбросится.`;
   }
   return null;
 }
 
-
-
 function documentBoundaryNotice(info: PluginInfo): string | null {
-  return info.notices.find((notice) => notice.toLowerCase().includes("РґРѕРєСѓРјРµРЅС‚")) ?? null;
+  return info.notices.find((notice) => notice.toLowerCase().includes("документ")) ?? null;
 }
-
-
 
 function settingValue(info: PluginInfo, key: string, prop: PluginSettingProperty): unknown {
   const stored = info.settings_values[key];
   return stored !== undefined ? stored : prop.default;
 }
-
-
 
 function renderSettingRow(
   key: string,
@@ -130,17 +109,13 @@ function el(tag: string, className?: string): HTMLElement {
   return node;
 }
 
-/** РЈРЅРёРєР°Р»СЊРЅС‹Р№ id РїРѕРїРѕРІРµСЂР° РёРЅС„РѕСЂРјР°С†РёРё вЂ” СЃРІСЏР·С‹РІР°РµС‚ РєРЅРѕРїРєСѓ (`aria-controls`) СЃ СЃРѕРґРµСЂР¶РёРјС‹Рј. */
 function infoPopoverId(pluginId: string): string {
   return `pl-info-pop-${pluginId}`;
 }
 
-/** РЈРЅРёРєР°Р»СЊРЅС‹Р№ id С‚РµР»Р° РєР°СЂС‚РѕС‡РєРё вЂ” СЃРІСЏР·С‹РІР°РµС‚ С€РµРІСЂРѕРЅ (`aria-controls`) СЃ Р°РєРєРѕСЂРґРµРѕРЅРѕРј. */
 function bodyId(pluginId: string): string {
   return `pl-body-${pluginId}`;
 }
-
-
 
 function infoIcon(): SVGSVGElement {
   const NS = "http://www.w3.org/2000/svg";
@@ -171,8 +146,6 @@ function infoIcon(): SVGSVGElement {
   return svg;
 }
 
-
-
 function chevronIcon(): SVGSVGElement {
   const NS = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(NS, "svg");
@@ -188,8 +161,6 @@ function chevronIcon(): SVGSVGElement {
   svg.append(polyline);
   return svg;
 }
-
-
 
 function shieldIcon(): SVGSVGElement {
   const NS = "http://www.w3.org/2000/svg";
@@ -211,8 +182,6 @@ function shieldIcon(): SVGSVGElement {
   return svg;
 }
 
-
-
 function renderIdentity(info: PluginInfo): HTMLElement {
   const ident = el("div", "pl-ident");
   ident.title = info.id;
@@ -223,7 +192,7 @@ function renderIdentity(info: PluginInfo): HTMLElement {
 
   if (info.version) {
     const version = el("span", "pl-version");
-    version.textContent = `В· ${info.version}`;
+    version.textContent = `· ${info.version}`;
     ident.append(version);
   }
 
@@ -235,19 +204,16 @@ function renderIdentity(info: PluginInfo): HTMLElement {
   return ident;
 }
 
-
 function renderInfoButton(info: PluginInfo): HTMLButtonElement {
   const btn = document.createElement("button");
   btn.type = "button";
   btn.className = "pl-info";
   btn.setAttribute("aria-expanded", "false");
   btn.setAttribute("aria-controls", infoPopoverId(info.id));
-  btn.setAttribute("aria-label", `РРЅС„РѕСЂРјР°С†РёСЏ Рѕ РіСЂР°РЅРёС†Р°С… РёР·РѕР»СЏС†РёРё РїР»Р°РіРёРЅР° ${info.id}`);
+  btn.setAttribute("aria-label", `Информация о границах изоляции плагина ${info.id}`);
   btn.append(infoIcon());
   return btn;
 }
-
-
 
 function renderInfoPopover(info: PluginInfo): HTMLElement {
   const pop = el("div", "pl-info-pop");
@@ -263,7 +229,6 @@ function renderInfoPopover(info: PluginInfo): HTMLElement {
   return pop;
 }
 
-
 function renderExpandButton(info: PluginInfo, open: boolean): HTMLButtonElement {
   const btn = document.createElement("button");
   btn.type = "button";
@@ -271,7 +236,7 @@ function renderExpandButton(info: PluginInfo, open: boolean): HTMLButtonElement 
   btn.dataset.expand = info.id;
   btn.setAttribute("aria-expanded", String(open));
   btn.setAttribute("aria-controls", bodyId(info.id));
-  btn.setAttribute("aria-label", `${open ? "РЎРІРµСЂРЅСѓС‚СЊ" : "Р Р°Р·РІРµСЂРЅСѓС‚СЊ"} РєР°СЂС‚РѕС‡РєСѓ ${info.id}`);
+  btn.setAttribute("aria-label", `${open ? "Свернуть" : "Развернуть"} карточку ${info.id}`);
   btn.append(chevronIcon());
   return btn;
 }
@@ -279,32 +244,20 @@ function renderExpandButton(info: PluginInfo, open: boolean): HTMLButtonElement 
 export function createPluginManager(opts: PluginManagerOptions): PluginManager {
   const { root, status, onPlugins } = opts;
   let disposed = false;
-
   let refreshSeq = 0;
-
   let lastList: PluginInfo[] = [];
-
   let reloading: Promise<void> | null = null;
-
   let openInfoButton: HTMLButtonElement | null = null;
-
   const infoPopovers = new WeakMap<HTMLButtonElement, HTMLElement>();
-
-
   const settingEnums = new WeakMap<HTMLSelectElement, Json[]>();
-
-
   const expanded = new Set<string>();
 
   function renderBadge(info: PluginInfo): HTMLElement {
     const badge = el("span", `pl-badge ${info.status.state}`);
     badge.textContent = STATUS_LABELS[info.status.state];
-
     badge.title = statusMessage(info.status) ?? STATUS_LABELS[info.status.state];
     return badge;
   }
-
-
 
   function renderConsent(info: PluginInfo): HTMLElement | null {
     const requested = info.permissions;
@@ -316,20 +269,20 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
 
     const head = el("div", "pl-perms-head");
     const title = el("span", "pl-perms-title");
-    title.textContent = `Р”РѕСЃС‚СѓРї: ${grantedCount} РёР· ${requested.length}`;
+    title.textContent = `Доступ: ${grantedCount} из ${requested.length}`;
 
     const bulk = el("div", "pl-perms-bulk");
     const grantAll = document.createElement("button");
     grantAll.type = "button";
     grantAll.className = "pl-grant-all";
     grantAll.dataset.grant = "all";
-    grantAll.textContent = "Р’С‹РґР°С‚СЊ РІСЃРµ";
+    grantAll.textContent = "Выдать все";
     grantAll.disabled = grantedCount === requested.length;
     const grantNone = document.createElement("button");
     grantNone.type = "button";
     grantNone.className = "pl-grant-none";
     grantNone.dataset.grant = "none";
-    grantNone.textContent = "РЎРЅСЏС‚СЊ РІСЃРµ";
+    grantNone.textContent = "Снять все";
     grantNone.disabled = grantedCount === 0;
     bulk.append(grantAll, grantNone);
     head.append(title, bulk);
@@ -342,10 +295,9 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
       checkbox.className = "pl-grant";
       checkbox.dataset.permission = permission;
       checkbox.checked = granted.has(permission);
-
       checkbox.setAttribute(
         "aria-label",
-        `${checkbox.checked ? "РЎРЅСЏС‚СЊ" : "Р’С‹РґР°С‚СЊ"} СЂР°Р·СЂРµС€РµРЅРёРµ ${permissionLabel(permission)}`
+        `${checkbox.checked ? "Снять" : "Выдать"} разрешение ${permissionLabel(permission)}`
       );
       const name = el("span", "pl-perm-name");
       name.textContent = permissionLabel(permission);
@@ -353,19 +305,17 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
       token.textContent = permission;
       token.title = permission;
       const state = el("span", "pl-perm-state");
-      state.textContent = checkbox.checked ? "РІС‹РґР°РЅРѕ" : "РѕС‚РєР»РѕРЅРµРЅРѕ";
+      state.textContent = checkbox.checked ? "выдано" : "отклонено";
       row.append(checkbox, name, token, state);
       section.append(row);
     }
 
-
     const missing = requested.filter((permission) => !granted.has(permission));
     if (missing.length > 0) {
       const hint = el("div", "pl-consent-hint");
-      hint.textContent = `РќРµ РІС‹РґР°РЅРѕ: ${missing.join(", ")}. РџР»Р°РіРёРЅ РЅРµ СЃРјРѕР¶РµС‚ РёС… РёСЃРїРѕР»СЊР·РѕРІР°С‚СЊ.`;
+      hint.textContent = `Не выдано: ${missing.join(", ")}. Плагин не сможет их использовать.`;
       section.append(hint);
     }
-
 
     const boundaryNotice = documentBoundaryNotice(info);
     if (boundaryNotice) {
@@ -380,8 +330,6 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
 
     return section;
   }
-
-
 
   function settingControl(
     prop: PluginSettingProperty,
@@ -420,8 +368,6 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     return input;
   }
 
-
-
   function renderSettings(info: PluginInfo): HTMLElement | null {
     const properties = info.settings_schema?.properties;
     if (!properties) return null;
@@ -435,11 +381,10 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
 
     const section = el("div", "pl-settings");
     const title = el("div", "pl-settings-title");
-    title.textContent = "РќР°СЃС‚СЂРѕР№РєРё";
+    title.textContent = "Настройки";
     section.append(title, ...rows);
     return section;
   }
-
 
   function setSettingsBusy(item: HTMLElement, busy: boolean): void {
     for (const control of item.querySelectorAll<HTMLInputElement | HTMLSelectElement>(
@@ -448,7 +393,6 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
       control.disabled = busy;
     }
   }
-
 
   function readSettingValue(
     control: HTMLInputElement | HTMLSelectElement
@@ -469,7 +413,6 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     return control.value;
   }
 
-
   function renderItem(info: PluginInfo): HTMLElement {
     const item = el("div", "pl-item");
     item.dataset.plugin = info.id;
@@ -478,19 +421,17 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     const head = el("div", "pl-item-head");
 
     const toggleLabel = el("label", "pl-toggle");
-    toggleLabel.title = info.enabled ? "Р’С‹РєР»СЋС‡РёС‚СЊ РїР»Р°РіРёРЅ" : "Р’РєР»СЋС‡РёС‚СЊ РїР»Р°РіРёРЅ";
+    toggleLabel.title = info.enabled ? "Выключить плагин" : "Включить плагин";
     const toggle = document.createElement("input");
     toggle.type = "checkbox";
     toggle.className = "pl-enabled";
     toggle.checked = info.enabled;
-    toggle.setAttribute("aria-label", `${info.enabled ? "Р’С‹РєР»СЋС‡РёС‚СЊ" : "Р’РєР»СЋС‡РёС‚СЊ"} РїР»Р°РіРёРЅ ${info.id}`);
+    toggle.setAttribute("aria-label", `${info.enabled ? "Выключить" : "Включить"} плагин ${info.id}`);
     toggleLabel.append(toggle);
 
     const open = expanded.has(info.id);
 
-
     head.append(toggleLabel, renderIdentity(info));
-
     const infoPopover = info.notices.length > 0 ? renderInfoPopover(info) : null;
     if (infoPopover) {
       const infoButton = renderInfoButton(info);
@@ -498,13 +439,10 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
       head.append(infoButton);
     }
     head.append(renderBadge(info), renderExpandButton(info, open));
-
     if (infoPopover) head.append(infoPopover);
 
     const body = el("div", "pl-item-body");
     body.id = bodyId(info.id);
-
-
 
     const failMessage = statusMessage(info.status);
     if (failMessage) {
@@ -512,7 +450,6 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
       node.textContent = failMessage;
       body.append(node);
     }
-
 
     const hintText = stateHint(info.status);
     if (hintText) {
@@ -525,14 +462,14 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     const reload = document.createElement("button");
     reload.type = "button";
     reload.className = "pl-reload";
-    reload.textContent = "РџРµСЂРµР·Р°РіСЂСѓР·РёС‚СЊ";
+    reload.textContent = "Перезагрузить";
     reload.disabled = !info.enabled;
     actions.append(reload);
 
     const remove = document.createElement("button");
     remove.type = "button";
     remove.className = "pl-remove";
-    remove.textContent = "РЈРґР°Р»РёС‚СЊ";
+    remove.textContent = "Удалить";
     actions.append(remove);
 
     for (const command of info.commands) {
@@ -544,7 +481,7 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
       btn.title = command.keybinding
         ? `${command.title} (${command.keybinding})`
         : command.title;
-      btn.setAttribute("aria-label", `Р’С‹РїРѕР»РЅРёС‚СЊ: ${command.title}`);
+      btn.setAttribute("aria-label", `Выполнить: ${command.title}`);
       actions.append(btn);
     }
     body.append(actions);
@@ -555,14 +492,10 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     const settings = renderSettings(info);
     if (settings) body.append(settings);
 
-
-
     item.classList.toggle("open", open);
     item.append(head, body);
     return item;
   }
-
-
 
   function toggleInfoPopover(button: HTMLButtonElement): void {
     const popover = infoPopovers.get(button);
@@ -575,7 +508,6 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     button.setAttribute("aria-expanded", "true");
     openInfoButton = button;
   }
-
 
   function closeAllInfoPopovers(): HTMLButtonElement | null {
     const button = openInfoButton;
@@ -590,8 +522,6 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     return button;
   }
 
-
-
   function toggleExpand(btn: HTMLButtonElement): void {
     const id = btn.dataset.expand;
     const item = btn.closest<HTMLElement>(".pl-item");
@@ -601,13 +531,11 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     else expanded.delete(id);
     item.classList.toggle("open", open);
     btn.setAttribute("aria-expanded", String(open));
-    btn.setAttribute("aria-label", `${open ? "РЎРІРµСЂРЅСѓС‚СЊ" : "Р Р°Р·РІРµСЂРЅСѓС‚СЊ"} РєР°СЂС‚РѕС‡РєСѓ ${id}`);
+    btn.setAttribute("aria-label", `${open ? "Свернуть" : "Развернуть"} карточку ${id}`);
   }
 
   function render(list: PluginInfo[]): void {
-
     closeAllInfoPopovers();
-
     const ids = new Set(list.map((info) => info.id));
     for (const id of expanded) {
       if (!ids.has(id)) expanded.delete(id);
@@ -615,15 +543,13 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     if (list.length === 0) {
       const empty = el("div", "side-empty pl-empty");
       const title = el("div", "pl-empty-title");
-      title.textContent = "РџР»Р°РіРёРЅС‹ РЅРµ РЅР°Р№РґРµРЅС‹";
+      title.textContent = "Плагины не найдены";
       const hint = el("div", "pl-empty-hint");
-      hint.append("РџРѕР»РѕР¶РёС‚Рµ РїР»Р°РіРёРЅ РІ ");
+      hint.append("Положите плагин в ");
       const code = document.createElement("code");
       code.textContent = "%APPDATA%/darmark/plugins/<id>/";
       hint.append(code);
-
-
-      hint.append(" (plugin.json + main.lua) Рё РїРµСЂРµР·Р°РїСѓСЃС‚РёС‚Рµ РџР•РќРђР›.");
+      hint.append(" (plugin.json + main.lua) и перезапустите ПЕНАЛ.");
       empty.append(title, hint);
       root.replaceChildren(empty);
       return;
@@ -637,21 +563,16 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     try {
       list = await listPlugins();
     } catch (e) {
-      if (!disposed && seq === refreshSeq) status(`РџР»Р°РіРёРЅС‹: ${errorMessage(e)}`);
+      if (!disposed && seq === refreshSeq) status(`Плагины: ${errorMessage(e)}`);
       return;
     }
-
     if (disposed || seq !== refreshSeq) return;
     lastList = list;
     render(list);
     onPlugins?.(list);
   }
 
-
-
   async function reloadForDocument(path: string | null): Promise<void> {
-
-
     if (reloading) return reloading;
     reloading = doReload(path).finally(() => {
       reloading = null;
@@ -660,22 +581,20 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
   }
 
   async function doReload(path: string | null): Promise<void> {
-
     const source = lastList.length > 0 ? lastList : await listPlugins();
     const enabled = source.filter((info) => info.enabled);
     if (enabled.length === 0) {
-      status("РџР»Р°РіРёРЅС‹: РЅРµС‚ РІРєР»СЋС‡С‘РЅРЅС‹С…");
+      status("Плагины: нет включённых");
       return;
     }
     const ids = enabled.map((info) => info.id);
     const owner = ownerPluginId(path, ids);
     if (owner) {
       await reloadPlugin(owner);
-      status(`РџР»Р°РіРёРЅ ${owner}: РїРµСЂРµР·Р°РіСЂСѓР¶РµРЅ`);
+      status(`Плагин ${owner}: перезагружен`);
     } else {
-
       for (const id of ids) await reloadPlugin(id);
-      status(`РџР»Р°РіРёРЅС‹: РїРµСЂРµР·Р°РіСЂСѓР¶РµРЅРѕ (${ids.length})`);
+      status(`Плагины: перезагружено (${ids.length})`);
     }
     await refresh();
   }
@@ -683,15 +602,14 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
   async function handleToggle(input: HTMLInputElement): Promise<void> {
     const id = input.closest<HTMLElement>(".pl-item")?.dataset.plugin;
     if (!id) return;
-    input.disabled = true; // Р·Р°С‰РёС‚Р° РѕС‚ РїРѕРІС‚РѕСЂРЅРѕРіРѕ РєР»РёРєР° РґРѕ РїРµСЂРµСЂРёСЃРѕРІРєРё
+    input.disabled = true;
     try {
       await setPluginEnabled(id, input.checked);
     } catch (e) {
-      status(`РџР»Р°РіРёРЅ ${id}: ${errorMessage(e)}`);
+      status(`Плагин ${id}: ${errorMessage(e)}`);
     }
     await refresh();
   }
-
 
   function setConsentBusy(item: HTMLElement, busy: boolean): void {
     for (const cb of item.querySelectorAll<HTMLInputElement>("input.pl-grant")) {
@@ -701,7 +619,6 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
       btn.disabled = busy;
     }
   }
-
 
   async function handleGrant(input: HTMLInputElement): Promise<void> {
     const item = input.closest<HTMLElement>(".pl-item");
@@ -715,11 +632,10 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     try {
       await setPluginPermissions(id, granted);
     } catch (e) {
-      status(`РџР»Р°РіРёРЅ ${id}: ${errorMessage(e)}`);
+      status(`Плагин ${id}: ${errorMessage(e)}`);
     }
     await refresh();
   }
-
 
   async function handleGrantBulk(btn: HTMLButtonElement): Promise<void> {
     const item = btn.closest<HTMLElement>(".pl-item");
@@ -736,11 +652,10 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     try {
       await setPluginPermissions(id, granted);
     } catch (e) {
-      status(`РџР»Р°РіРёРЅ ${id}: ${errorMessage(e)}`);
+      status(`Плагин ${id}: ${errorMessage(e)}`);
     }
     await refresh();
   }
-
 
   async function handleSettingChange(
     control: HTMLInputElement | HTMLSelectElement
@@ -750,12 +665,12 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     const key = control.dataset.settingKey;
     if (!item || !id || !key) return;
     const value = readSettingValue(control);
-    if (value === undefined) return; // РЅРµРІР°Р»РёРґРЅС‹Р№ РІРІРѕРґ вЂ” СЃС‚РѕСЂ РЅРµ С‚СЂРѕРіР°РµРј
+    if (value === undefined) return;
     setSettingsBusy(item, true);
     try {
       await setPluginSetting(id, key, value);
     } catch (e) {
-      status(`РџР»Р°РіРёРЅ ${id}: ${errorMessage(e)}`);
+      status(`Плагин ${id}: ${errorMessage(e)}`);
     }
     await refresh();
   }
@@ -766,31 +681,29 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     btn.disabled = true;
     try {
       await reloadPlugin(id);
-      status(`РџР»Р°РіРёРЅ ${id}: РїРµСЂРµР·Р°РіСЂСѓР¶РµРЅ`);
+      status(`Плагин ${id}: перезагружен`);
     } catch (e) {
-      status(`РџР»Р°РіРёРЅ ${id}: ${errorMessage(e)}`);
+      status(`Плагин ${id}: ${errorMessage(e)}`);
     }
     await refresh();
   }
-
-
 
   function confirmRemovePlugin(id: string): Promise<boolean> {
     return new Promise((resolve) => {
       const content = el("div", "pl-confirm-remove");
       const text = el("p", "pl-confirm-text");
-      text.textContent = `РџР»Р°РіРёРЅ В«${id}В» Р±СѓРґРµС‚ СѓРґР°Р»С‘РЅ Р±РµР·РІРѕР·РІСЂР°С‚РЅРѕ. Р•РіРѕ С„Р°Р№Р»С‹ Рё РЅР°СЃС‚СЂРѕР№РєРё Р±СѓРґСѓС‚ СЃС‚С‘СЂС‚С‹.`;
+      text.textContent = `Плагин «${id}» будет удалён безвозвратно. Его файлы и настройки будут стёрты.`;
       content.append(text);
 
       const buttons = el("div", "pl-confirm-buttons");
       const cancelBtn = document.createElement("button");
       cancelBtn.type = "button";
       cancelBtn.className = "pl-confirm-cancel";
-      cancelBtn.textContent = "РћС‚РјРµРЅР°";
+      cancelBtn.textContent = "Отмена";
       const confirmBtn = document.createElement("button");
       confirmBtn.type = "button";
       confirmBtn.className = "pl-confirm-ok";
-      confirmBtn.textContent = "РЈРґР°Р»РёС‚СЊ";
+      confirmBtn.textContent = "Удалить";
       buttons.append(cancelBtn, confirmBtn);
       content.append(buttons);
 
@@ -804,7 +717,7 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
       confirmBtn.addEventListener("click", () => cleanup(true));
 
       dialog = openDialog({
-        title: "РЈРґР°Р»РµРЅРёРµ РїР»Р°РіРёРЅР°",
+        title: "Удаление плагина",
         content,
         variant: "center",
         initialFocus: cancelBtn,
@@ -821,9 +734,9 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     btn.disabled = true;
     try {
       await removePlugin(id);
-      status(`РџР»Р°РіРёРЅ ${id}: СѓРґР°Р»С‘РЅ`);
+      status(`Плагин ${id}: удалён`);
     } catch (e) {
-      status(`РџР»Р°РіРёРЅ ${id}: ${errorMessage(e)}`);
+      status(`Плагин ${id}: ${errorMessage(e)}`);
     }
     await refresh();
   }
@@ -835,7 +748,7 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     try {
       await runPluginCommand(commandId);
     } catch (e) {
-      status(`РљРѕРјР°РЅРґР° ${commandId}: ${errorMessage(e)}`);
+      status(`Команда ${commandId}: ${errorMessage(e)}`);
     }
     await refresh();
   }
@@ -887,7 +800,6 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     if (bulk) void handleGrantBulk(bulk);
   }
 
-
   function onDocumentClick(e: MouseEvent): void {
     const button = openInfoButton;
     if (!button) return;
@@ -897,11 +809,8 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     closeAllInfoPopovers();
   }
 
-
   function onDocumentKeydown(e: KeyboardEvent): void {
     if (e.key !== "Escape" || !openInfoButton) return;
-
-
     e.preventDefault();
     e.stopPropagation();
     closeAllInfoPopovers()?.focus();
@@ -911,7 +820,6 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
   root.addEventListener("click", onClick);
   document.addEventListener("click", onDocumentClick);
   document.addEventListener("keydown", onDocumentKeydown);
-
 
   const unlistenPromise = listen("plugins-changed", () => {
     void refresh();
