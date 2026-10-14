@@ -12,6 +12,7 @@ pub mod commands;
 pub mod doc_harness;
 pub mod errors;
 pub mod gate;
+pub mod history;
 pub mod plugin_harness;
 pub mod settings;
 pub mod skills;

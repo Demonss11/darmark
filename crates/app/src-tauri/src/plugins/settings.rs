@@ -75,6 +75,16 @@ impl SettingsStore {
         Some(PathBuf::from(base).join("darmark").join("config.json"))
     }
 
+    /// Каталог данных приложения: `DARMARK_CONFIG_PATH`-override (родитель файла) либо
+    /// `%APPDATA%/darmark`. `None`, если ни override, ни `APPDATA` не заданы.
+    pub fn data_dir() -> Option<PathBuf> {
+        if let Ok(path) = std::env::var("DARMARK_CONFIG_PATH") {
+            return PathBuf::from(path).parent().map(PathBuf::from);
+        }
+        let base = std::env::var_os("APPDATA")?;
+        Some(PathBuf::from(base).join("darmark"))
+    }
+
     /// Читает конфиг. Отсутствие файла — пустые настройки; реальная IO-ошибка/битый JSON
     /// логируются (конфиг не должен ронять приложение). Список недавних нормализуется.
     pub fn load(path: &Path) -> Self {
