@@ -1,13 +1,10 @@
 //! Локальный каталог плагинов: чтение `index.json` и установка плагинов в каталог приложения.
 //!
-//! Каталог — версионируемый (`schema_version: 1`) список доступных плагинов. Метаданные
-//! (`name`/`version`/`permissions`) в нём не дублируются: они берутся из `plugin.json` каждого
-//! каталога плагина при загрузке каталога. Запись каталога несёт только `id`, относительный
-//! `path` (от каталога репозитория) и `description`.
+//! Запись каталога несёт только `id`, относительный `path` и `description`; метаданные
+//! (`name`/`version`/`permissions`) не дублируются и берутся из `plugin.json` при загрузке.
 //!
-//! Здесь только файловые операции над явными `repo`/`dest` — без CWD, env и запуска процессов,
-//! чтобы функции оставались тестируемыми. Разрешение путей по умолчанию (`--repo`/`--dest` и env
-//! `DARMARK_PLUGIN_REPO`/`DARMARK_PLUGINS_DIR`) живёт в `main.rs`.
+//! Файловые операции идут по явным `repo`/`dest` — без CWD и env, чтобы функции оставались
+//! тестируемыми; разрешение путей по умолчанию живёт в `main.rs` плагинного CLI.
 
 use std::io::Read;
 use std::path::{Component, Path, PathBuf};
@@ -34,23 +31,20 @@ struct RawEntry {
 }
 
 /// Разрешённая запись каталога: манифест прочитан и провалидирован.
+/// `name`/`version`/`api_version`/`permissions` — из манифеста.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CatalogEntry {
-    /// id плагина (совпадает с `manifest.id`).
+    /// id плагина; обязан совпадать с `manifest.id`.
     pub id: String,
     /// Относительный путь каталога плагина от `repo` (из `index.json`).
     pub path: String,
-    /// Описание из каталога (может быть пустым).
+    /// Описание из `index.json` (может быть пустым).
     pub description: String,
-    /// Имя из манифеста.
     pub name: String,
-    /// Версия из манифеста.
     pub version: String,
-    /// Версия API из манифеста.
     pub api_version: u32,
-    /// Разрешения из манифеста.
     pub permissions: Vec<String>,
-    /// Путь к каталогу плагина (`<repo>/<path>`; абсолютный, если `repo` абсолютный).
+    /// Каталог плагина (`<repo>/<path>`; абсолютный, если `repo` абсолютный).
     pub dir: PathBuf,
 }
 
@@ -64,8 +58,7 @@ pub struct Catalog {
 impl Catalog {
     /// Читает и валидирует `<repo>/index.json` вместе с манифестами всех записей.
     ///
-    /// Ошибка на любой записи (небезопасный `path`, отсутствующий/невалидный `plugin.json`,
-    /// несовпадение `id`) — ошибка всего каталога: молча пропускать битые записи нельзя.
+    /// Ошибка на любой записи — ошибка всего каталога: молча пропускать битые записи нельзя.
     pub fn load(repo: &Path) -> Result<Self, String> {
         let index_path = repo.join(CATALOG_FILE);
         let bytes = read_capped(&index_path, MAX_CATALOG_BYTES)?;
@@ -94,7 +87,7 @@ impl Catalog {
         &self.entries
     }
 
-    /// Находит запись по id.
+    /// Запись по id без проверки: id берётся из уже провалидированного каталога.
     pub fn get(&self, id: &str) -> Option<&CatalogEntry> {
         self.entries.iter().find(|e| e.id == id)
     }
@@ -103,7 +96,7 @@ impl Catalog {
     ///
     /// Существующая цель без `force` — ошибка; с `force` удаляется (для ссылки/junction —
     /// только точка монтирования) и копируется заново. Манифест источника перечитывается и
-    /// валидируется перед копированием (источник мог измениться после `load`).
+    /// валидируется перед копированием: он мог измениться после `load`.
     pub fn install(&self, id: &str, dest: &Path, force: bool) -> Result<PathBuf, String> {
         let entry = self.entry(id)?;
         read_manifest(&entry.dir)?;
@@ -115,8 +108,8 @@ impl Catalog {
 
     /// Привязывает каталог плагина к каталогу приложения ссылкой.
     ///
-    /// Windows — junction (`mklink /J`, без прав администратора), Unix — symlink. Источник общий:
-    /// правки в репозитории сразу видны в приложении (удобно для разработки через `link`).
+    /// Windows — junction, Unix — symlink. Источник общий: правки в репозитории сразу видны
+    /// в приложении (удобно для разработки через `link`).
     pub fn link(&self, id: &str, dest: &Path, force: bool) -> Result<PathBuf, String> {
         let entry = self.entry(id)?;
         read_manifest(&entry.dir)?;
@@ -134,8 +127,8 @@ impl Catalog {
 
     /// Обновляет установленные копии до версии из репозитория.
     ///
-    /// `id = None` — все установленные плагины каталога; `Some(id)` — только указанный.
-    /// Ссылки (junction/symlink) пропускаются: источник общий. Возвращает id переустановленных.
+    /// `None` — все установленные плагины каталога, `Some(id)` — только указанный. Ссылки
+    /// (junction/symlink) пропускаются: источник общий. Возвращает id переустановленных.
     pub fn update(&self, id: Option<&str>, dest: &Path) -> Result<Vec<String>, String> {
         let ids: Vec<String> = match id {
             Some(id) => {
@@ -159,7 +152,8 @@ impl Catalog {
         Ok(changed)
     }
 
-    /// Запись по id или понятная ошибка.
+    /// Запись по id с проверкой `is_safe_id` или понятная ошибка — точка валидации для
+    /// install/link.
     fn entry(&self, id: &str) -> Result<&CatalogEntry, String> {
         if !is_safe_id(id) {
             return Err(format!(
@@ -174,11 +168,11 @@ impl Catalog {
 /// Удаляет установленный плагин `<dest>/<id>`.
 ///
 /// Ссылка/junction удаляется как ссылка (`fs::remove_dir`) — цель не затрагивается; обычный
-/// каталог удаляется целиком (`fs::remove_dir_all`).
+/// каталог — целиком (`fs::remove_dir_all`).
 ///
-/// Идемпотентна: отсутствие `<dest>/<id>` — не ошибка, а `Ok(false)` (нечего удалять); `Ok(true)`
-/// — если что-то удалено. `Err` — только для небезопасного `id` или сбоя удаления. Так повторный
-/// `remove` в скрипте/скрипт-обёртке не валит пайплайн.
+/// Идемпотентна: отсутствие `<dest>/<id>` — не ошибка, а `Ok(false)`, чтобы повторный `remove`
+/// в скрипте не валил пайплайн; `Ok(true)` — что-то удалено. `Err` — только для небезопасного `id`
+/// или сбоя удаления.
 pub fn remove(id: &str, dest: &Path) -> Result<bool, String> {
     if !is_safe_id(id) {
         return Err(format!(
@@ -193,9 +187,9 @@ pub fn remove(id: &str, dest: &Path) -> Result<bool, String> {
     Ok(true)
 }
 
-/// Ищет ближайший к `start` (включая сам `start`) предок с каталогом плагинов — generic
-/// `plugins/index.json` или репозиторный `examples/plugins/index.json` (эталонный каталог darmark);
-/// возвращает путь к каталогу-источнику (`<предок>/plugins` или `<предок>/examples/plugins`).
+/// Ближайший к `start` (включая сам `start`) предок с каталогом плагинов: generic
+/// `plugins/index.json` или репозиторный `examples/plugins/index.json` (эталонный каталог darmark).
+/// Возвращает сам каталог плагинов (`<предок>/plugins`), а не корень репозитория.
 pub fn discover_repo(start: &Path) -> Option<PathBuf> {
     let mut current: Option<&Path> = Some(start);
     while let Some(dir) = current {
@@ -211,8 +205,8 @@ pub fn discover_repo(start: &Path) -> Option<PathBuf> {
 
 /// Разбирает и валидирует `index.json` в список сырых записей.
 ///
-/// Разбор через `serde_json::Value` (без прямой зависимости от `serde`): структура индекса
-/// мала и фиксирована, а ошибки нужны с точным указанием файла.
+/// Разбор через `serde_json::Value` (без прямой зависимости от `serde`): структура индекса мала и
+/// фиксирована, а ошибки нужны с точным указанием файла.
 fn parse_index(bytes: &[u8], index_path: &Path) -> Result<Vec<RawEntry>, String> {
     let value: serde_json::Value = serde_json::from_slice(bytes)
         .map_err(|e| format!("{}: не разобран JSON: {e}", index_path.display()))?;
@@ -270,7 +264,7 @@ fn parse_index(bytes: &[u8], index_path: &Path) -> Result<Vec<RawEntry>, String>
     Ok(entries)
 }
 
-/// Разворачивает сырую запись в разрешённую: безопасность пути + чтение и валидация манифеста.
+/// Сырая запись → разрешённая: безопасность пути + чтение и валидация манифеста.
 fn resolve_entry(repo: &Path, raw: RawEntry) -> Result<CatalogEntry, String> {
     if !is_safe_id(&raw.id) {
         return Err(format!(
@@ -313,7 +307,7 @@ fn resolve_entry(repo: &Path, raw: RawEntry) -> Result<CatalogEntry, String> {
     })
 }
 
-/// Обновляет один установленный плагин. Возвращает true, если копия переустановлена.
+/// Обновляет один установленный плагин. `true` — копия переустановлена.
 fn update_one(entry: &CatalogEntry, dest: &Path) -> Result<bool, String> {
     let target = dest.join(&entry.id);
     let meta =
@@ -329,13 +323,13 @@ fn update_one(entry: &CatalogEntry, dest: &Path) -> Result<bool, String> {
         return Ok(false);
     }
 
-    // Либо версия отличается, либо установка повреждена — переустанавливаем копией.
+    // Версия отличается либо манифест копии не читается (установка повреждена) — переустанавливаем.
     prepare_target(&target, true)?;
     copy_dir_all(&entry.dir, &target)?;
     Ok(true)
 }
 
-/// id каталогов в `dest` (без ссылок — их отсеивает `update_one`).
+/// id каталогов в `dest`; ссылки отсеивает `update_one`.
 fn installed_ids(dest: &Path) -> Vec<String> {
     let Ok(entries) = std::fs::read_dir(dest) else {
         return Vec::new();
@@ -349,8 +343,7 @@ fn installed_ids(dest: &Path) -> Vec<String> {
     ids
 }
 
-/// Готовит путь назначения: отсутствующий — ок; существующий без `force` — ошибка; с `force` —
-/// удаляется.
+/// Путь назначения: отсутствует — ок; существует без `force` — ошибка; с `force` — удаляется.
 fn prepare_target(target: &Path, force: bool) -> Result<(), String> {
     if std::fs::symlink_metadata(target).is_err() {
         return Ok(());
@@ -377,7 +370,6 @@ fn remove_path(target: &Path) -> Result<(), String> {
     }
 }
 
-/// Рекурсивно копирует каталог плагина.
 fn copy_dir_all(src: &Path, dst: &Path) -> Result<(), String> {
     std::fs::create_dir_all(dst).map_err(|e| format!("{}: не создать: {e}", dst.display()))?;
     let entries = std::fs::read_dir(src).map_err(|e| format!("{}: {e}", src.display()))?;
@@ -398,9 +390,7 @@ fn copy_dir_all(src: &Path, dst: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// Создаёт ссылку `target` → `source`.
-///
-/// Windows: junction через `mklink /J` — не требует прав администратора, в отличие от symlink.
+/// Junction через `mklink /J` — в отличие от symlink не требует прав администратора.
 #[cfg(windows)]
 fn create_link(source: &Path, target: &Path) -> Result<(), String> {
     let output = std::process::Command::new("cmd")
@@ -424,21 +414,19 @@ fn create_link(source: &Path, target: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// Создаёт ссылку `target` → `source` (симлинк на каталог).
 #[cfg(not(windows))]
 fn create_link(source: &Path, target: &Path) -> Result<(), String> {
     std::os::unix::fs::symlink(source, target)
         .map_err(|e| format!("{}: не создать symlink: {e}", target.display()))
 }
 
-/// Читает и валидирует `plugin.json` каталога плагина.
 fn read_manifest(dir: &Path) -> Result<Manifest, String> {
     let path = dir.join(MANIFEST_FILE);
     let bytes = read_capped(&path, MAX_MANIFEST_BYTES)?;
     Manifest::from_json(&bytes).map_err(|e| format!("{}: {e}", path.display()))
 }
 
-/// Проверяет, что `path` — безопасный относительный путь внутри базы.
+/// `path` — безопасный относительный путь внутри базы.
 fn is_safe_relative(path: &str) -> bool {
     if path.is_empty() || path.contains(':') || Path::new(path).is_absolute() {
         return false;
@@ -447,14 +435,15 @@ fn is_safe_relative(path: &str) -> bool {
     for component in Path::new(path).components() {
         match component {
             Component::Normal(_) => has_normal = true,
-            // `..`, `.`, корень или префикс диска — небезопасно.
+            // `..`, `.`, корень или префикс диска.
             _ => return false,
         }
     }
     has_normal
 }
 
-/// Безопасный id плагина: строчные латинские, цифры, `-`, `_`; непустой.
+/// Безопасный id плагина; правило общее с `plugin_core::manifest` — расхождение копий ломает
+/// каталог.
 fn is_safe_id(id: &str) -> bool {
     !id.is_empty()
         && id
@@ -462,7 +451,8 @@ fn is_safe_id(id: &str) -> bool {
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_')
 }
 
-/// Читает файл с жёстким потолком размера (защита от TOCTOU и OOM).
+/// Чтение с жёстким потолком размера: проверка метаданных и повторная проверка после
+/// `take(max + 1)` закрывают TOCTOU и OOM.
 fn read_capped(path: &Path, max: u64) -> Result<Vec<u8>, String> {
     let metadata = std::fs::metadata(path).map_err(|e| format!("{}: {e}", path.display()))?;
     if metadata.len() > max {
@@ -669,7 +659,6 @@ mod tests {
     #[test]
     fn remove_missing_is_noop() {
         let root = tempfile::tempdir().unwrap();
-        // Идемпотентность: плагина нет — не ошибка, а «нечего удалять».
         assert!(!remove("alpha", root.path()).unwrap());
     }
 
@@ -811,7 +800,6 @@ mod tests {
         let nested = root.path().join("a").join("b");
         fs::create_dir_all(&nested).unwrap();
         assert_eq!(discover_repo(&nested).unwrap(), repo);
-        // Каталог без `plugins/index.json` выше — не найден.
         let empty = tempfile::tempdir().unwrap();
         assert!(discover_repo(empty.path()).is_none());
     }
