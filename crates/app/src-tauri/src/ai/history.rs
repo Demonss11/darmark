@@ -92,10 +92,12 @@ pub fn load(base: Option<&Path>) -> (HistoryFile, Option<String>) {
 fn parse_history(bytes: &[u8]) -> (HistoryFile, Option<String>) {
     let file: HistoryFile = match serde_json::from_slice(bytes) {
         Ok(f) => f,
-        Err(e) => {
+        Err(_) => {
+            // Текст serde-ошибки может содержать фрагмент содержимого файла — не пробрасываем
+            // его наружу: сообщения чата не должны попадать в логи/предупреждения (приватность).
             return (
                 HistoryFile::empty(),
-                Some(format!("ai-history.json не разобран: {e}")),
+                Some("ai-history.json не разобран (битый JSON)".to_string()),
             );
         }
     };
@@ -142,11 +144,18 @@ pub fn save(base: Option<&Path>, history: &HistoryFile) -> Result<(), CommandErr
             .map_err(|e| CommandError::io(format!("не создать каталог: {e}")))?;
     }
 
-    // Обрезаем до лимита: последнее сообщение всегда сохраняется.
-    let messages = if history.messages.len() > MAX_HISTORY_MESSAGES {
-        history.messages[history.messages.len() - MAX_HISTORY_MESSAGES..].to_vec()
+    // Обрезаем до лимита: последнее сообщение всегда сохраняется. Роли вне белого списка
+    // отбрасываем симметрично `load`, чтобы файл не содержал недопустимых ролей.
+    let allowed: Vec<AiMessage> = history
+        .messages
+        .iter()
+        .filter(|m| ALLOWED_ROLES.contains(&m.role.as_str()))
+        .cloned()
+        .collect();
+    let messages = if allowed.len() > MAX_HISTORY_MESSAGES {
+        allowed[allowed.len() - MAX_HISTORY_MESSAGES..].to_vec()
     } else {
-        history.messages.clone()
+        allowed
     };
 
     let trimmed = HistoryFile {
@@ -158,9 +167,14 @@ pub fn save(base: Option<&Path>, history: &HistoryFile) -> Result<(), CommandErr
 
     let bytes = serde_json::to_vec_pretty(&trimmed)
         .map_err(|e| CommandError::io(format!("не сериализовать историю: {e}")))?;
+    // Инвариант «сохранённый файл всегда загружаем»: при превышении лимита байт отбрасываем
+    // старые сообщения с начала, пока файл не уложится (последнее сообщение всегда остаётся).
+    let bytes = fit_within_byte_limit(&trimmed, bytes)?;
     let tmp = path.with_extension("json.tmp");
-    std::fs::write(&tmp, bytes)
-        .map_err(|e| CommandError::io(format!("не записать временный файл: {e}")))?;
+    if let Err(e) = std::fs::write(&tmp, bytes) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(CommandError::io(format!("не записать временный файл: {e}")));
+    }
     match std::fs::rename(&tmp, &path) {
         Ok(()) => Ok(()),
         Err(e) => {
@@ -168,6 +182,38 @@ pub fn save(base: Option<&Path>, history: &HistoryFile) -> Result<(), CommandErr
             Err(CommandError::io(format!("не сохранить историю: {e}")))
         }
     }
+}
+
+/// Укладывает сериализованную историю в [`MAX_HISTORY_BYTES`], отбрасывая старые сообщения
+/// с начала, пока файл не уместится; последнее сообщение сохраняется всегда.
+///
+/// Инвариант: сохранённый файл обязан загружаться `load` без срабатывания лимита размера —
+/// иначе сессия «переживала» бы запись и терялась при следующем запуске.
+fn fit_within_byte_limit(
+    history: &HistoryFile,
+    mut bytes: Vec<u8>,
+) -> Result<Vec<u8>, CommandError> {
+    if bytes.len() as u64 <= MAX_HISTORY_BYTES {
+        return Ok(bytes);
+    }
+    let mut messages = history.messages.clone();
+    while messages.len() > 1 {
+        messages.remove(0);
+        let candidate = HistoryFile {
+            schema_version: history.schema_version,
+            session_id: history.session_id.clone(),
+            updated_at: history.updated_at,
+            messages: messages.clone(),
+        };
+        bytes = serde_json::to_vec_pretty(&candidate)
+            .map_err(|e| CommandError::io(format!("не сериализовать историю: {e}")))?;
+        if bytes.len() as u64 <= MAX_HISTORY_BYTES {
+            return Ok(bytes);
+        }
+    }
+    // Одно сообщение всё ещё больше лимита (недостижимо при лимите текста запроса 100 КиБ):
+    // пишем как есть — `load` отклонит файл с понятным предупреждением, тихой потери нет.
+    Ok(bytes)
 }
 
 /// Мьютекс для тестов, меняющих переменные окружения (параллельные тесты не должны конфликтовать).
@@ -358,6 +404,97 @@ mod tests {
         let (loaded, warn) = load(Some(&dir));
         assert!(warn.is_some(), "должно быть предупреждение");
         assert!(loaded.messages.is_empty());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn save_fits_within_byte_limit() {
+        let dir = temp_dir("bytes");
+
+        // Три сообщения примерно по 0.8 МБ: вместе не влезают в лимит 2 МиБ, значит `save`
+        // обязан отбросить старые и сохранить хвост, уложившись в лимит.
+        let chunk = "я".repeat(400_000);
+        let history = HistoryFile {
+            schema_version: SCHEMA_VERSION,
+            session_id: "bytes".to_string(),
+            updated_at: 0,
+            messages: vec![
+                AiMessage {
+                    role: "user".to_string(),
+                    content: chunk.clone(),
+                },
+                AiMessage {
+                    role: "assistant".to_string(),
+                    content: chunk.clone(),
+                },
+                AiMessage {
+                    role: "user".to_string(),
+                    content: format!("{chunk}последнее"),
+                },
+            ],
+        };
+        save(Some(&dir), &history).expect("сохранение");
+
+        let path = history_path(Some(&dir)).unwrap();
+        let size = std::fs::metadata(&path).expect("метаданные").len();
+        assert!(
+            size <= MAX_HISTORY_BYTES,
+            "файл уложен в лимит байт: {size} > {MAX_HISTORY_BYTES}"
+        );
+
+        // Инвариант «сохранённый файл всегда загружаем»: без предупреждения об oversized.
+        let (loaded, warn) = load(Some(&dir));
+        assert!(
+            warn.is_none(),
+            "файл в лимите грузится без предупреждения: {warn:?}"
+        );
+        assert!(!loaded.messages.is_empty(), "хвост сохранён");
+        assert!(
+            loaded
+                .messages
+                .last()
+                .unwrap()
+                .content
+                .ends_with("последнее"),
+            "последнее сообщение сохраняется всегда"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn save_filters_disallowed_roles() {
+        let dir = temp_dir("save-roles");
+
+        let history = HistoryFile {
+            schema_version: SCHEMA_VERSION,
+            session_id: "save-roles".to_string(),
+            updated_at: 0,
+            messages: vec![
+                AiMessage {
+                    role: "system".to_string(),
+                    content: "ok".to_string(),
+                },
+                AiMessage {
+                    role: "root".to_string(),
+                    content: "не должно попасть на диск".to_string(),
+                },
+            ],
+        };
+        save(Some(&dir), &history).expect("сохранение");
+
+        // Проверяем сам файл: недопустимой роли нет даже на диске.
+        let path = history_path(Some(&dir)).unwrap();
+        let raw = std::fs::read_to_string(&path).expect("файл истории");
+        assert!(
+            !raw.contains("не должно попасть"),
+            "роль отброшена при сохранении"
+        );
+
+        let (loaded, _) = load(Some(&dir));
+        assert_eq!(loaded.messages.len(), 1);
+        assert_eq!(loaded.messages[0].role, "system");
 
         let _ = std::fs::remove_dir_all(&dir);
     }
