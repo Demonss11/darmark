@@ -13,7 +13,7 @@ export const asDocumentId = (s: string): DocumentId => s as DocumentId;
 export const asPaneId = (s: string): PaneId => s as PaneId;
 export const asViewId = (s: string): ViewId => s as ViewId;
 
-// Счётчик — источник уникальных id для панелей/видов, которые создаёт фронтенд.
+// Уникальные id для панелей/видов, которые создаёт фронтенд.
 let seq = 0;
 const next = (): number => ++seq;
 

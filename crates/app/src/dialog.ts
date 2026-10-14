@@ -1,10 +1,10 @@
 // dialog.ts — переиспользуемая модальная инфраструктура.
 //
 // Один стек диалогов: оверлей + панель с `role="dialog"`, focus-trap, Escape
-// (capture + stopPropagation — чтобы Escape не дошёл до обработчиков `shell.ts`
-// и не выключил режим инспектора), `inert` на прямых детях body (кроме
-// `#modal-root`/`#toast-host`) и возврат фокуса инициатору. Все слушатели
-// снимаются AbortController'ом при закрытии — висячих хэндлеров не остаётся.
+// (capture + stopPropagation — иначе Escape долетит до shell.ts и выключит
+// режим инспектора), `inert` на прямых детях body (кроме #modal-root/#toast-host)
+// и возврат фокуса инициатору. Слушатели снимаются AbortController'ом при
+// закрытии — висячих хэндлеров не остаётся.
 
 export type DialogVariant = "center" | "top";
 
@@ -13,7 +13,6 @@ export interface DialogOptions {
   title: string;
   /** Содержимое: узел, вставляемый в тело диалога. */
   content: HTMLElement;
-  /** Элемент, получающий фокус при открытии (иначе — первый фокусируемый). */
   initialFocus?: HTMLElement;
   /** Закрывать ли по клику на подложку (по умолчанию — да). */
   closeOnBackdrop?: boolean;
@@ -125,7 +124,6 @@ export function openDialog(opts: DialogOptions): Dialog {
     ac.abort();
     overlay.remove();
     if (stack.length === 0) clearInert();
-    // Возврат фокуса — только если инициатор ещё в DOM.
     if (previousActive instanceof HTMLElement && previousActive.isConnected) {
       previousActive.focus({ preventScroll: true });
     }
@@ -171,7 +169,7 @@ export function openDialog(opts: DialogOptions): Dialog {
   );
 
   // Escape — только для верхнего диалога; capture + stopPropagation, чтобы
-  // событие не достигло `shell.ts` (там Escape выключает режим инспектора).
+  // событие не достигло shell.ts (там Escape выключает режим инспектора).
   window.addEventListener(
     "keydown",
     (e) => {

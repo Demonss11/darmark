@@ -1,10 +1,9 @@
 // mapping.ts — чистая логика сопоставления исходника и блоков предпросмотра.
 //
-// Модуль намеренно не знает про DOM-события и UI: здесь только конвертация
-// единиц (байты UTF-8 ↔ UTF-16 code units), начала логических строк и поиск
-// блоков по байтовому смещению. Одну и ту же логику используют инспектор
-// (`inspector.ts`) и синхронизация скролла (`scrollsync.ts`), поэтому она
-// вынесена сюда, чтобы не дублироваться.
+// Только конвертация единиц (байты UTF-8 ↔ UTF-16 code units), начала
+// логических строк и поиск блоков по байтовому смещению. Одну и ту же логику
+// используют инспектор (`inspector.ts`) и синхронизация скролла (`scrollsync.ts`),
+// поэтому она вынесена сюда, а не продублирована.
 //
 // Единственная DOM-зависимость — `collectBlocks`/`parseRange`: они читают
 // `data-md` из готового предпросмотра. Всё остальное тестируемо без DOM.
@@ -57,29 +56,28 @@ export function buildUnitMaps(text: string): UnitMaps {
 
 export function bytesToUnits(maps: UnitMaps, b: number): number {
   // Зажимаем индекс: выход за границы Int32Array даёт undefined (→ 0, начало
-  // документа) и подсветил бы не тот блок. Лучше крайняя корректная позиция.
+  // документа) и подсветил бы не тот блок.
   const i = Math.min(Math.max(b, 0), maps.b2u.length - 1);
   return maps.b2u[i]!;
 }
 
 /**
  * UTF-16-индекс, соответствующий байтовому (UTF-8) смещению `byte` в `text`.
- * Однопроходный скан без аллокации префиксных карт: для редких разовых
- * переводов (выделение после undo/redo) строить полные `UnitMaps` дороже
- * самого перевода. Семантика совпадает с `bytesToUnits`: смещение за концом
- * текста → его длина в UTF-16, смещение не на границе символа округляется
- * вниз до начала символа (многобайтные code points и суррогатные пары учтены).
+ * Однопроходный скан без префиксных карт: для разовых переводов (выделение
+ * после undo/redo) строить `UnitMaps` дороже самого перевода. Семантика
+ * совпадает с `bytesToUnits`: смещение не на границе символа округляется вниз
+ * до его начала.
  */
 export function byteToUtf16(text: string, byte: number): number {
-  let consumed = 0; // сколько байт UTF-8 уже пройдено
-  let unit = 0; // сколько UTF-16 code units уже пройдено
+  let consumed = 0;
+  let unit = 0;
   for (const ch of text) {
     const bl = utf8ByteLength(ch.codePointAt(0)!);
-    if (byte < consumed + bl) return unit; // byte внутри текущего символа → его начало
+    if (byte < consumed + bl) return unit;
     consumed += bl;
-    unit += ch.length; // суррогатная пара — 2 code units
+    unit += ch.length;
   }
-  return unit; // byte за концом текста → полная длина в UTF-16
+  return unit;
 }
 
 export function unitsToBytes(maps: UnitMaps, u: number): number {
@@ -87,10 +85,7 @@ export function unitsToBytes(maps: UnitMaps, u: number): number {
   return maps.u2b[i]!;
 }
 
-/**
- * Префиксный массив UTF-16-индексов начал логических строк (по `\n`).
- * `lineStarts[i]` — индекс первого символа строки `i`; всегда начинается с 0.
- */
+/** Префиксный массив UTF-16-индексов начал логических строк (по \n); lineStarts[0] === 0. */
 export function buildLineStarts(text: string): Int32Array {
   const starts: number[] = [0];
   for (let i = 0; i < text.length; i++) {
@@ -99,7 +94,6 @@ export function buildLineStarts(text: string): Int32Array {
   return Int32Array.from(starts);
 }
 
-/** Номер строки, содержащей UTF-16-позицию `unit` (бинарный поиск). */
 export function findLineAt(lineStarts: Int32Array, unit: number): number {
   let lo = 0;
   let hi = lineStarts.length - 1;
@@ -121,10 +115,10 @@ export function parseRange(el: HTMLElement): { start: number; end: number } | nu
   return { start, end };
 }
 
-/** Собирает размеченные блоки из корня (обычно — предпросмотр), сортирует по start. */
+/** Размеченные блоки из корня (обычно — предпросмотра), по возрастанию start. */
 export function collectBlocks(root: ParentNode): Block[] {
   const list: Block[] = [];
-  // Селектор сужен намеренно: `data-md` теперь несут и вложенные элементы таблиц
+  // Селектор сужен намеренно: `data-md` несут и вложенные элементы таблиц
   // (tr/th/td) ради гранулярности инспектора, но блочные потребители (каретка,
   // синхронизация скролла) обязаны видеть только топ-блоки `.md-block`.
   for (const el of root.querySelectorAll<HTMLElement>(".md-block[data-md]")) {
@@ -148,7 +142,6 @@ export function findBlock(blocks: Block[] | null, bytePos: number): Block | null
   return bytePos === last.end ? last : null;
 }
 
-/** Блок, содержащий позицию, либо null (если позиция «в воздухе»). */
 export function findBlockContaining(blocks: Block[], bytePos: number): Block | null {
   for (const block of blocks) {
     if (bytePos >= block.start && bytePos < block.end) return block;

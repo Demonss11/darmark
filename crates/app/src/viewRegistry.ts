@@ -4,10 +4,8 @@
 // Тир 1 (`HtmlViewProvider`) — plugin-safe контракт: JSON на входе, HTML на
 // выходе, никакого прямого DOM-доступа извне. Preview реализуется по нему, но
 // встраивается на хосте (D2): завтра `createView` станет вызовом плагина без
-// смены интерфейса.
-//
-// Тир 2 (`DomViewProvider`) — built-in only: редактор и будущие контроллеры,
-// которым нужен полный DOM.
+// смены интерфейса. Тир 2 (`DomViewProvider`) — built-in only: редактор и
+// будущие контроллеры, которым нужен полный DOM.
 //
 // `ViewContext` — единственная «песочница» view: никакого доступа к
 // `document`/`window`/`fetch`/файловой системе, только фасад.
@@ -24,15 +22,12 @@ export type Json = string | number | boolean | null | Json[] | { [k: string]: Js
 export interface ViewContext {
   readonly paneId: PaneId;
   readonly viewId: ViewId;
-  /** Текущий документ или `null` (не создан). */
   document(): DocumentSnapshot | null;
   /** Правка текста документа (путь редактора: setText → debounce → Rust). */
   edit(text: string): void;
   /** Рендер текста (`render_document`), результат — `RenderResult`. */
   render(text: string, mapped: boolean): Promise<RenderResult>;
-  /** Сообщение в статус-бар. */
   status(msg: string): void;
-  /** Открыть внешнюю ссылку системным средством. */
   openExternal(url: string): void;
   /** Подписка на смену/правку документа; возвращает unsubscribe (§5.6). */
   onDocument(cb: (d: DocumentSnapshot) => void): () => void;
@@ -68,22 +63,18 @@ export interface ViewRegistry {
   registerDom(provider: DomViewProvider): void;
   /** Снять провайдер тира 1 (динамические плагинные view). `false` — не был зарегистрирован. */
   unregisterHtml(kind: ViewKind): boolean;
-  /** Провайдер тира 1 по kind или `null`. */
   htmlProvider(kind: ViewKind): HtmlViewProvider | null;
-  /** Провайдер тира 2 по kind или `null`. */
   domProvider(kind: ViewKind): DomViewProvider | null;
   /**
-   * Создать экземпляр тира 1. `T` — расширение контракта конкретным view
-   * (например, `PreviewView`); `O` — тип `opts`. Для плагинов это `Json`, для
+   * Создать экземпляр тира 1. `O` — тип `opts`: для плагинов это `Json`, для
    * встроенного на хосте провайдера (D2) — живые зависимости (`HTMLElement`,
-   * `RenderIndex`, колбэк).
+   * `RenderIndex`, колбэк); `T` — расширение контракта конкретным view.
    */
   createHtmlView<T extends HtmlView = HtmlView, O = Json>(
     kind: ViewKind,
     ctx: ViewContext,
     opts?: O
   ): T;
-  /** Создать экземпляр тира 2. */
   createDomView<T extends DomView = DomView, O = Json>(
     kind: ViewKind,
     ctx: ViewContext,

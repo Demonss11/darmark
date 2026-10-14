@@ -33,8 +33,8 @@ export function toast(message: string, opts: ToastOptions = {}): void {
   const kind: ToastKind = opts.kind ?? "info";
   const node = document.createElement("div");
   node.className = `toast toast-${kind}`;
-  // Ошибки — assertive; остальные озвучивает сам `#toast-host` (aria-live="polite"),
-  // поэтому свою live-роль не дублируем.
+  // Ошибки — assertive; остальные озвучивает сам `#toast-host`, поэтому свою
+  // live-роль не дублируем.
   if (kind === "error") node.setAttribute("role", "alert");
 
   host.append(node);
@@ -44,7 +44,6 @@ export function toast(message: string, opts: ToastOptions = {}): void {
   void node.offsetWidth;
   node.classList.add("toast-show");
 
-  // Максимум три: лишние старые убираем сразу.
   const all = Array.from(host.querySelectorAll<HTMLElement>(".toast"));
   for (let i = 0; i < all.length - MAX_TOASTS; i++) all[i]?.remove();
 

@@ -1,19 +1,18 @@
 // drawer.ts — правый модальный дровер (ADR-0024, вариант C).
 //
-// Глубокий модуль: маленький интерфейс (open/close/toggle/isOpen/content/
-// dispose), много скрытого поведения — фокус-трап, Esc (capture +
-// stopPropagation, как в dialog.ts), клик по backdrop, синхронизация
-// `aria-expanded`/`.active` на триггере, возврат фокуса на триггер.
+// Маленький интерфейс (open/close/toggle/isOpen/content/dispose) и много
+// скрытого поведения: фокус-трап, Esc (capture + stopPropagation, как в
+// dialog.ts), клик по backdrop, синхронизация `aria-expanded`/`.active` на
+// триггере, возврат фокуса на триггер.
 //
 // Дровер — ПОСТОЯННЫЙ DOM (#drawer + #backdrop — прямые дети body), а не
 // транзитный оверлей openDialog: #plugin-manager и #side-count обязаны
-// существовать постоянно (состояние раскрытия карточек, счётчик), а
-// openDialog создаёт/удаляет DOM на каждый показ.
+// существовать постоянно (состояние раскрытия карточек, счётчик).
 //
-// Из dialog.ts переиспользуем ПРИМИТИВЫ (feature-detect `inert`, логика
-// focus-trap), но не openDialog: там `inert` ставится на ВСЕ прямые дети
-// body кроме #modal-root/#toast-host — для дровера это неверно (сам #drawer
-// стал бы инертным), поэтому глушим только #app.
+// Примитивы из dialog.ts (`inert`, focus-trap) переиспользуются, но не
+// openDialog: там `inert` ставится на ВСЕ прямые дети body кроме
+// #modal-root/#toast-host — для дровера это неверно (сам #drawer стал бы
+// инертным), поэтому глушим только #app.
 
 export interface Drawer {
   open(): void;
@@ -179,7 +178,7 @@ export function createDrawer(opts: DrawerOptions): Drawer {
         backdrop.classList.remove("open");
         trigger.classList.remove("active");
         trigger.setAttribute("aria-expanded", "false");
-        // Возврат фокуса: иначе он останется внутри скрытого дровера.
+        // Иначе фокус останется внутри скрытого дровера.
         trigger.focus({ preventScroll: true });
       }
       root.hidden = true;

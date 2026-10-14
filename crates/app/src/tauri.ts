@@ -1,10 +1,10 @@
-// Тонкие типизированные обёртки над Tauri IPC.
-// Вся тяжёлая логика (парсинг md, владение документами) — на Rust-стороне.
+// Типизированные обёртки над Tauri IPC. Логика (парсинг md, владение
+// документами) — на Rust-стороне; здесь только сигнатуры и контракт ошибок.
 import { invoke } from "@tauri-apps/api/core";
 import type { DocumentId } from "./ids";
 import type { Json } from "./viewRegistry";
 
-/** Проекция документа из Rust-стора: текст + ревизия + путь. Надмножество `DocMeta`. */
+/** Проекция документа из Rust-стора; надмножество `DocMeta`. */
 export interface DocumentSnapshot {
   id: DocumentId;
   path: string | null;
@@ -28,12 +28,12 @@ export interface RenderResult {
   changed: boolean;
 }
 
-/** Создаёт безымянный документ; `text` — стартовый текст. */
+/** Безымянный документ; `text` — стартовое содержимое. */
 export function newDocument(text?: string): Promise<DocumentSnapshot> {
   return invoke<DocumentSnapshot>("new_document", { text: text ?? null });
 }
 
-/** Открывает файл с диска и регистрирует его в Rust-сторе. */
+/** Открывает файл и регистрирует его в Rust-сторе. */
 export function openDocument(path: string): Promise<DocumentSnapshot> {
   return invoke<DocumentSnapshot>("open_document", { path });
 }
@@ -47,7 +47,7 @@ export function updateDocument(
   return invoke<RenderResult>("update_document", { id, text, mapped });
 }
 
-/** Рендерит документ без правки текста (смена `mapped`, первый рендер). */
+/** Рендер без правки текста: смена `mapped` или первый рендер. */
 export function renderDocument(id: DocumentId, mapped = false): Promise<RenderResult> {
   return invoke<RenderResult>("render_document", { id, mapped });
 }
@@ -78,17 +78,16 @@ export function redoDocument(id: DocumentId): Promise<UndoResult> {
   return invoke<UndoResult>("redo_document", { id });
 }
 
-/** Сохраняет документ; текст берётся из стора, `path` задаётся для «Сохранить как». */
+/** Текст берётся из стора; `path` задаётся для «Сохранить как». */
 export function saveDocument(id: DocumentId, path?: string): Promise<DocMeta> {
   return invoke<DocMeta>("save_document", { id, path: path ?? null });
 }
 
-/** Закрывает документ в сторе (используется вместе с панелями). */
 export function closeDocument(id: DocumentId): Promise<void> {
   return invoke<void>("close_document", { id });
 }
 
-/** Снапшот документа (pull после события `document-updated`); null, если документ неизвестен. */
+/** Pull после события `document-updated`; null, если документ неизвестен. */
 export function documentSnapshot(id: DocumentId): Promise<DocumentSnapshot | null> {
   return invoke<DocumentSnapshot | null>("document_snapshot", { id });
 }
@@ -124,7 +123,6 @@ export type PluginStatus =
   | { state: "quarantined" }
   | { state: "failed"; message: string };
 
-/** Команда, объявленная плагином (`contributes.commands`). */
 export interface PluginCommandInfo {
   id: string;
   title: string;
@@ -133,20 +131,20 @@ export interface PluginCommandInfo {
 
 /**
  * Свойство UI-схемы настроек плагина — подмножество JSON Schema из
- * `contributes.settings.properties` (см. `docs/PLUGIN_API.md` §1). Значения
- * приходят из манифеста (недоверенные данные), поэтому `type` — свободная
- * строка, а не union: неизвестный тип контрола просто не рендерится.
+ * `contributes.settings.properties` (`docs/PLUGIN_API.md` §1). Данные из
+ * манифеста недоверенные, поэтому `type` — свободная строка, а не union:
+ * неизвестный тип контрола просто не рендерится.
  */
 export interface PluginSettingProperty {
-  /** Примитивный тип значения: `"boolean" | "integer" | "number" | "string"`. */
+  /** `"boolean" | "integer" | "number" | "string"`; иначе контрол не рендерится. */
   type?: string;
-  /** Подпись контрола; фолбэк — ключ свойства. */
+  /** Фолбэк подписи — ключ свойства. */
   title?: string;
   /** Мелкая подсказка под контролом. */
   description?: string;
-  /** Значение по умолчанию, если в сторе для ключа ничего нет. */
+  /** Значение, если в сторе для ключа ничего нет. */
   default?: unknown;
-  /** Допустимые значения — контрол становится `<select>` (JSON-скаляры схемы). */
+  /** Допустимые значения — контрол становится `<select>`. */
   enum?: Json[];
 }
 
@@ -159,19 +157,18 @@ export interface PluginSettingsSchema {
 /** Проекция плагина для менеджера (IPC-команда `list_plugins`, Фаза 5). */
 export interface PluginInfo {
   id: string;
-  /** Человекочитаемое имя из манифеста (для головы карточки, S12a). */
+  /** Имя и версия из манифеста (голова карточки, S12a). */
   name: string;
-  /** Версия из манифеста (для головы карточки, S12a). */
   version: string;
   status: PluginStatus;
-  /** Запрашиваемые плагином права из манифеста (декларация). */
+  /** Права из манифеста (декларация). */
   permissions: string[];
   /** Согласованные пользователем права (подмножество `permissions`, deny-by-default). */
   granted_permissions: string[];
   enabled: boolean;
   commands: PluginCommandInfo[];
   notices: string[];
-  /** UI-схема настроек из манифеста (`contributes.settings`); null — секцию не рендерим. */
+  /** UI-схема из манифеста (`contributes.settings`); null — секцию не рендерим. */
   settings_schema: PluginSettingsSchema | null;
   /** Сохранённые значения настроек (per-plugin JSON-объект; может быть пустым). */
   settings_values: Record<string, unknown>;
@@ -193,9 +190,9 @@ export function setPluginPermissions(id: string, granted: string[]): Promise<voi
 }
 
 /**
- * Записывает одно значение настройки плагина (`host.set_setting` в сторе Rust).
- * `value` — примитив из UI-контрола (boolean/number/string); тип приводится на
- * фронте по схеме, а валидация и хранение — на Rust-стороне.
+ * Записывает значение настройки плагина (`host.set_setting` в сторе Rust).
+ * `value` — примитив из UI-контрола; тип приводится на фронте по схеме,
+ * валидация и хранение — на Rust-стороне.
  */
 export function setPluginSetting(id: string, key: string, value: Json): Promise<void> {
   return invoke<void>("set_plugin_setting", { id, key, value });
@@ -232,10 +229,10 @@ export function errorMessage(e: unknown): string {
 }
 
 // --- AI-ассистент (ADR-0030/0032/0033/0034) ---
-// Все сетевые вызовы — на Rust-стороне (CSP `default-src 'self'`); здесь только
-// типизированные обёртки IPC. Ключ наружу не отдаётся (только `has_key`).
+// Сеть — только на Rust-стороне (CSP `default-src 'self'`). API-ключ наружу
+// не отдаётся: фронт видит лишь флаг `has_key`.
 
-/** Проекция настроек AI из Rust; API-ключ не отдаётся — только флаг `has_key`. */
+/** Настройки AI без секрета. */
 export interface AiSettingsView {
   enabled: boolean;
   provider: string;
@@ -247,7 +244,7 @@ export interface AiSettingsView {
   has_key: boolean;
 }
 
-/** Вход `ai_set_settings`: полная секция настроек AI без секрета. */
+/** Полная секция настроек AI без секрета — вход `ai_set_settings`. */
 export interface AiSettingsInput {
   enabled: boolean;
   provider: string;
@@ -270,7 +267,6 @@ export interface AiUsage {
   completion_tokens: number;
 }
 
-/** Ответ `ai_chat`: сообщение ассистента и (опционально) расход токенов. */
 export interface AiResponse {
   message: AiMessage;
   usage: AiUsage | null;
@@ -287,46 +283,44 @@ export interface AiSkill {
   category: string;
 }
 
-/** Результат проверки соединения с провайдером. */
 export interface AiTestResult {
   ok: boolean;
   model: string | null;
   error: string | null;
 }
 
-/** Читает настройки AI (секрет — только маской через `has_key`). */
+/** Секрет читается только маской через `has_key`. */
 export function aiGetSettings(): Promise<AiSettingsView> {
   return invoke<AiSettingsView>("ai_get_settings");
 }
 
-/** Сохраняет настройки AI (без ключа) в config.json. */
+/** Настройки пишутся в config.json; секретный ключ наружу не возвращается (без ключа). */
 export function aiSetSettings(settings: AiSettingsInput): Promise<void> {
   return invoke<void>("ai_set_settings", { settings });
 }
 
-/** Записывает API-ключ в config.json; значение наружу не возвращается. */
+/** Ключ пишется в config.json и наружу не возвращается. */
 export function aiSetApiKey(key: string): Promise<void> {
   return invoke<void>("ai_set_api_key", { key });
 }
 
-/** Список встроенных скиллов (промтов). */
 export function aiListSkills(): Promise<AiSkill[]> {
   return invoke<AiSkill[]>("ai_list_skills");
 }
 
-/** Отправляет историю диалога в LLM; стриминг приходит событиями `ai:*`. */
+/** Стриминг приходит событиями `ai:*`. */
 export function aiChat(messages: AiMessage[]): Promise<AiResponse> {
   return invoke<AiResponse>("ai_chat", { messages });
 }
 
-/** Проверяет соединение с провайдером (без отправки документа). */
+/** Проверка соединения с провайдером — без отправки документа. */
 export function aiTestConnection(): Promise<AiTestResult> {
   return invoke<AiTestResult>("ai_test_connection");
 }
 
 // --- AI-ассистент: harness Фазы 2 (ADR-0034) ---
 // Правка документа идёт через `DocumentStore::apply_edit` (D5); плагины — через
-// тот же цикл валидации, что и пользовательские (песочница, D16). Сеть — на Rust.
+// тот же цикл валидации, что и пользовательские (песочница, D16).
 
 /** Операция правки документа: байтовые (UTF-8) смещения + новый текст (ADR-0034). */
 export interface AiEditOp {

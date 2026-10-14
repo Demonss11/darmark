@@ -1,8 +1,8 @@
 // layout.ts — модель панелей (DESIGN_DOC §5.2): дерево Pane/Split и чистые
 // операции над ним. Без DOM: результат применяет paneHost/main.
 //
-// v1: глубина дерева 1 — либо один Pane, либо Split из двух Pane; MAX_PANES = 2.
-// Операции возвращают НОВОЕ дерево либо LayoutError (никогда не мутируют вход).
+// v1: глубина дерева 1 — либо один Pane, либо Split из двух Pane. Операции
+// возвращают НОВОЕ дерево либо LayoutError (вход не мутируется).
 
 import type { PaneId, ViewId } from "./ids";
 
@@ -23,7 +23,7 @@ export interface Split {
 
 export type LayoutNode = Pane | Split;
 
-/** Ограничение v1: не больше двух панелей. */
+/** Ограничение v1. */
 export const MAX_PANES = 2;
 
 export class LayoutError extends Error {}
@@ -32,7 +32,6 @@ export type LayoutOp =
   | { t: "splitPane"; target: PaneId; dir: "row" | "column"; pane: Pane }
   | { t: "closePane"; pane: PaneId };
 
-/** Все панели дерева в порядке обхода. */
 export function panes(node: LayoutNode): Pane[] {
   return node.kind === "pane"
     ? [node]
@@ -65,7 +64,6 @@ export function applyLayout(node: LayoutNode, op: LayoutOp): LayoutNode | Layout
       if (remaining.length === list.length) {
         return new LayoutError(`Панель не найдена: ${op.pane}`);
       }
-      // v1: две панели → остаётся одна.
       return remaining[0]!;
     }
   }

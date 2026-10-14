@@ -2,15 +2,14 @@
 //
 // Провайдеры команд: core (синхронный список из main.ts) и плагинные
 // (асинхронно, list_plugins/run_plugin_command). Палитра не парсит Markdown и не
-// хранит доменное состояние; ошибка провайдера уходит в onError, палитра живёт.
-// Ответы устаревших запросов отбрасываются по счётчику сессий (seq-гейт).
+// хранит доменное состояние; ошибка провайдера уходит в onError. Ответы
+// устаревших запросов отбрасываются по счётчику сессий (seq-гейт).
 
 import { openDialog, type Dialog } from "./dialog";
 import { pluginColor } from "./pluginColor";
 import { errorMessage } from "./tauri";
 
 export interface PaletteCommand {
-  /** Уникальный id команды. */
   id: string;
   /** Заголовок пункта (по нему идёт фильтр). */
   title: string;
@@ -20,7 +19,6 @@ export interface PaletteCommand {
   origin: "core" | `plugin:${string}`;
   /** Хоткей для бейджа (только Ctrl-символы). */
   hotkey?: string;
-  /** Действие команды. */
   run(): void | Promise<void>;
 }
 
@@ -123,8 +121,9 @@ export function createPalette(opts: PaletteOptions): PaletteController {
     else if (activeIndex < 0 || activeIndex >= filtered.length) activeIndex = 0;
 
     // Счётчики по группам считаем заранее, а список рендерим в порядке `filtered`,
-    // вставляя заголовок при смене группы. Так DOM-порядок совпадает с `filtered`
-    // (иначе индекс для Enter/клика разошёлся бы при неконтигуозных группах).
+    // вставляя заголовок при смене группы — иначе DOM-порядок разошёлся бы с
+    // `filtered` и индекс для Enter/клика стал бы неверным при неконтигуозных
+    // группах.
     const counts = new Map<string, number>();
     for (const command of filtered) {
       counts.set(command.group, (counts.get(command.group) ?? 0) + 1);
@@ -178,8 +177,8 @@ export function createPalette(opts: PaletteOptions): PaletteController {
   }
 
   function onKeydown(e: KeyboardEvent): void {
-    // Ctrl+K — toggle палитры; Ctrl+Shift+K оставляем команде «Ссылка», поэтому
-    // проверяем отсутствие Shift/Alt. shell.ts при открытом модале хоткеи глушит.
+    // Ctrl+K — toggle палитры; Ctrl+Shift+K оставляем команде «Ссылка».
+    // shell.ts при открытом модале хоткеи глушит.
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k" && !e.shiftKey && !e.altKey) {
       e.preventDefault();
       // Гасим всплытие: иначе после close() событие дойдёт до window-слушателя
@@ -272,11 +271,11 @@ export function createPalette(opts: PaletteOptions): PaletteController {
       },
       { signal }
     );
-    // Слушаем клавиатуру на панели, а не только на input: если фокус окажется
+    // Клавиатуру слушаем на панели, а не только на input: если фокус окажется
     // на другом элементе палитры, Ctrl+K/стрелки всё равно отработают.
     content.addEventListener("keydown", onKeydown, { signal });
-    // Наведение мыши переносит активный пункт: подсветка (`aria-selected`) следует
-    // за курсором, и Enter выполняет наведённую команду, а не первую.
+    // Наведение мыши переносит активный пункт: подсветка (`aria-selected`)
+    // следует за курсором, и Enter выполняет наведённую команду, а не первую.
     list.addEventListener(
       "mouseover",
       (e) => {

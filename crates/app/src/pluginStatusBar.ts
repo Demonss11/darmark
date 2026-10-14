@@ -2,23 +2,18 @@
 //
 // Показываем включённые плагины, получившие согласие `ui:statusbar`: точка
 // цвета плагина (`--pc`) + последнее сообщение (`host.show_message`) либо
-// локализованный статус. Клик по элементу открывает первое представление
-// плагина; при лимите (MAX_VISIBLE_PS) лишние сворачиваются в «+N», клик по
-// которому раскрывает панель «Плагины».
-//
-// Только `textContent`/DOM: сообщения плагинов не проходят через `innerHTML`.
+// локализованный статус. Клик открывает первое представление плагина; лишние
+// сворачиваются в «+N». Только DOM/`textContent` — сообщения плагинов не
+// проходят через `innerHTML`.
 
 import { pluginColor } from "./pluginColor";
 import type { PluginInfo, PluginStatus } from "./tauri";
 
-/** Сколько элементов показываем до сворачивания в «+N». */
 const MAX_VISIBLE_PS = 3;
-/** Сколько держится сообщение плагина до возврата к статусу. */
 const MESSAGE_MS = 4000;
 /** Право, без которого плагин не может писать в статусбар (deny-by-default). */
 const STATUSBAR_PERMISSION = "ui:statusbar";
 
-/** Человекочитаемая подпись статуса для элемента без свежего сообщения. */
 const STATUS_LABELS: Record<PluginStatus["state"], string> = {
   active: "активен",
   failed: "ошибка",
@@ -54,18 +49,17 @@ export function createPluginStatusBar(opts: PluginStatusBarOptions): PluginStatu
 
   // Последний снимок плагинов — источник базовых статусов при возврате текста.
   let lastList: PluginInfo[] = [];
-  // Транзиентные сообщения плагинов и таймеры их авто-сброса.
   const messages = new Map<string, string>();
   const timers = new Map<string, number>();
   let disposed = false;
 
   /**
-   * Наличие представления берётся из `pluginViews` (предикат `hasView`), а не из
-   * DOM `#view-switch`: у `plugins-changed` и `plugin-views-changed` независимый
-   * порядок доставки, и чтение DOM дало бы гонку (MAJOR ревью).
+   * Плагины, которым место в статусбаре: включённые и с правом `ui:statusbar`.
+   * Наличие представления берётся из предиката `hasView` (состояние
+   * `pluginViews`), а не из DOM `#view-switch`: у `plugins-changed` и
+   * `plugin-views-changed` независимый порядок доставки, и чтение DOM дало бы
+   * гонку (MAJOR ревью).
    */
-
-  /** Плагины, которым место в статусбаре: включённые и с правом `ui:statusbar`. */
   function statusbarPlugins(): PluginInfo[] {
     return lastList.filter(
       (info) => info.enabled && info.granted_permissions.includes(STATUSBAR_PERMISSION)
@@ -76,7 +70,6 @@ export function createPluginStatusBar(opts: PluginStatusBarOptions): PluginStatu
     return messages.get(info.id) ?? STATUS_LABELS[info.status.state];
   }
 
-  /** Обновляет подпись элемента при смене текста (базовый или сообщение). */
   function setItemText(item: HTMLElement, id: string, text: string): void {
     const label = item.querySelector(".ps-text");
     if (label) label.textContent = text;

@@ -1,9 +1,8 @@
-// editorView — тир-2 представление редактора (textarea). Держит DOM-буфер:
-// ввод уходит в стор (`setText`), внешняя смена документа приходит из стора.
-// `editor.value` — лишь отображение проекции, не источник истины (D5).
+// editorView — тир-2 представление редактора (textarea). `editor.value` — лишь
+// отображение проекции стора, не источник истины (D5).
 //
-// Нативный undo/redo браузера отключён (Ctrl+Z/Y и `beforeinput history*`):
-// владелец undo-стека — Rust (D5/ADR-0028), иначе два стека разъедутся.
+// Нативный undo/redo браузера отключён: владелец undo-стека — Rust
+// (D5/ADR-0028), иначе два стека разъедутся.
 
 import type { DocStore } from "./docStore";
 import { byteToUtf16 } from "./mapping";
@@ -21,16 +20,14 @@ export function createEditorView(
   const onInput = (): void => store.setText(host.value);
   const onSelect = (): void => onSelection();
 
-  // Применяет результат undo/redo: Rust отдаёт выделение в байтах UTF-8, а
-  // textarea оперирует UTF-16 code units — конвертируем по тексту результата
-  // (тот же текст, что уже подтянут в `host.value` из проекции стора).
-  // Однопроходного перевода достаточно: undo/redo редки, а полные карты на
-  // весь документ ради одного выделения были бы лишней аллокацией O(n).
+  // Rust отдаёт выделение в байтах UTF-8, textarea оперирует UTF-16 code units —
+  // конвертируем по тексту результата. Однопроходного перевода достаточно:
+  // полные карты на весь документ ради одного выделения — лишняя аллокация O(n).
   async function applyHistory(
     run: () => Promise<{ start: number; end: number } | null>
   ): Promise<void> {
     const range = await run();
-    if (!range) return; // нечего отменять/повторять — стор тихо вернул null
+    if (!range) return;
     const start = byteToUtf16(host.value, range.start);
     const end = byteToUtf16(host.value, range.end);
     host.setSelectionRange(start, end);
@@ -38,7 +35,7 @@ export function createEditorView(
   }
 
   // Ctrl+Z — undo; Ctrl+Y и Ctrl+Shift+Z — redo. `e.code` вместо `e.key`:
-  // независимо от раскладки (на русской клавиша «я» не должна ломать хоткей).
+  // независимо от раскладки.
   const onKeyDown = (e: KeyboardEvent): void => {
     if (!e.ctrlKey || e.altKey || e.metaKey) return;
     if (e.code === "KeyZ" && !e.shiftKey) {
@@ -50,9 +47,8 @@ export function createEditorView(
     }
   };
 
-  // Контекстное меню/меню браузера шлют `beforeinput` вместо keydown — глушим
-  // нативную историю и уводим в Rust. Для Ctrl+Z сюда не попадаем: keydown уже
-  // отменил событие.
+  // Меню браузера/контекстное шлют `beforeinput` вместо keydown. Ctrl+Z сюда не
+  // попадает: keydown уже отменил событие.
   const onBeforeInput = (e: InputEvent): void => {
     if (e.inputType === "historyUndo") {
       e.preventDefault();
@@ -70,8 +66,8 @@ export function createEditorView(
   host.addEventListener("click", onSelect);
   host.addEventListener("select", onSelect);
 
-  // Внешняя смена документа (open/new/switchTab): подтягиваем буфер без генерации `input`.
-  // Сравнение значений исключает цикл store → view → store.
+  // Внешняя смена документа (open/new/switchTab): подтягиваем буфер без
+  // генерации `input`. Сравнение значений исключает цикл store → view → store.
   const unsubscribe = store.subscribe((tabs, activeId) => {
     const active = tabs.find((t) => t.id === activeId) ?? null;
     if (active && active.text !== host.value) {

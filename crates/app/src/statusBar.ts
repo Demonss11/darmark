@@ -1,6 +1,5 @@
-// statusBar.ts — статусная строка и заголовок окна. Читают проекцию docStore
-// (§4.2: заголовок/dirty/размер — из стора, позиция курсора — из редактора).
-// Вынесено из main.ts, чтобы тот остался композиционным корнем.
+// statusBar.ts — статусная строка и заголовок окна. Заголовок/dirty/размер берутся
+// из проекции docStore (§4.2), позиция курсора — из редактора.
 
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { DocStore } from "./docStore";
@@ -8,9 +7,7 @@ import type { DocStore } from "./docStore";
 export interface StatusBar {
   /** Заголовок окна + имя файла + маркер несохранённых правок. */
   updateTitle(): void;
-  /** Позиция курсора (Стр/Кол) и размер документа. */
   updateStatus(): void;
-  /** Кратковременное сообщение в статусбаре. */
   flash(msg: string): void;
 }
 
@@ -45,7 +42,7 @@ export function createStatusBar(opts: {
     const s = store.active();
     const name = s?.path ? baseName(s.path) : "безымянный";
     // Заголовок окна — не критично: если команда недоступна/упала, не плодим
-    // unhandled rejection (разрешение core:window:allow-set-title — в capabilities).
+    // unhandled rejection (core:window:allow-set-title — в capabilities).
     getCurrentWindow()
       .setTitle(`${s?.dirty ? "● " : ""}${name} — ${appName}`)
       .catch((e) => console.warn("set_title:", e));

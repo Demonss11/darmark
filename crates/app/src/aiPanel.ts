@@ -1,18 +1,17 @@
 // aiPanel.ts — тело режима «AI-ассистент» нижнего дока (ADR-0030; сеть и
 // провайдер — ADR-0032/0033; рантайм — ADR-0034). Модуль-оболочка (как
-// logPanel/resourceMonitor), НЕ view
-// и НЕ pane: монтируется logPanel'ом в контейнер #logs-panel (режим ai).
+// logPanel/resourceMonitor), НЕ view и НЕ pane: монтируется logPanel'ом в
+// контейнер #logs-panel (режим ai).
 //
 // Инварианты: сетевые вызовы — только на Rust-стороне (CSP `default-src 'self'`);
-// ответ модели рендерится ИСКЛЮЧИТЕЛЬНО через textContent (MVP; сырой HTML/ответ
-// LLM в innerHTML запрещён). История чата — в памяти на сессию (без персист.).
+// вывод модели рендерится ИСКЛЮЧИТЕЛЬНО через textContent (сырой HTML/ответ LLM в
+// innerHTML запрещён). История чата — в памяти на сессию (без персист.).
 // Стриминг: события ai:chunk/ai:done/ai:error дописывают/финализируют текущий
-// пузырь ассистента; отписки сохраняются и снимаются (без утечек).
+// пузырь ассистента; отписки сохраняются и снимаются.
 //
-// Фаза 2 (harness, ADR-0034): под ответом ассистента — «Применить как правку» (дифф)
-// и карточка плагина из ```json-блока. Правки документа идут через ai_apply_edit
-// (+ undo_document); плагины — через ai_*_plugin. Карточки собираются DOM API и
-// textContent; сырой вывод модели в innerHTML не попадает.
+// Фаза 2 (harness, ADR-0034): под ответом ассистента — «Применить как правку»
+// (дифф через ai_apply_edit + undo_document) и карточка плагина из ```json-блока
+// (через ai_*_plugin).
 
 import { listen, type Event, type UnlistenFn } from "@tauri-apps/api/event";
 import { openDialog, isModalOpen, type Dialog } from "./dialog";
@@ -59,7 +58,6 @@ type AiDotState = "off" | "warn" | "ready" | "error";
 /** Классификация ошибки для карточки и действий. */
 type ErrorKind = "auth" | "offline" | "rate" | "context" | "generic";
 
-/** Действие в карточке ошибки. */
 interface ErrorAction {
   label: string;
   run(): void;
@@ -95,7 +93,7 @@ const FALLBACK_SKILLS: readonly AiSkill[] = [
     description: "Сгенерировать новый Lua-плагин по описанию",
     // Синхронизирован с Rust (`ai/skills.rs`, `CREATE_PLUGIN_PROMPT`): модель обязана вернуть
     // РОВНО один fenced ```json с { id, name, version, permissions, contributes?, source },
-    // иначе карточка плагина не парсится (`extractPluginProposal`). Промт разводит view/статусбар/команду.
+    // иначе карточка плагина не парсится (`extractPluginProposal`).
     prompt_template: `Ты — генератор Lua-плагинов для ПЕНАЛ (Lua 5.5 в песочнице; нет os/io/require/load, нет host.document/host.ui/host.view/host.commands). По описанию: {{input}}
 
 Верни РОВНО один fenced-блок \`\`\`json с одним объектом (никакого текста вне блока):
@@ -159,7 +157,7 @@ const ERROR_TITLES: Record<ErrorKind, string> = {
   generic: "Ошибка AI",
 };
 
-/** Заголовок карточки: уточняем по коду Rust (`ai_no_key`/`ai_no_consent`/…). */
+// Заголовок карточки: уточняем по коду Rust (`ai_no_key`/`ai_no_consent`/…).
 function errorTitle(kind: ErrorKind, code: string): string {
   if (code === "ai_no_key") return "Ключ routerai.ru не задан";
   if (code === "ai_no_consent") return "Нужно согласие на отправку";
@@ -184,7 +182,7 @@ export interface AiPanel {
   dispose(): void;
 }
 
-/** Показ ошибки в чате (карточка с действиями). */
+// Классификация ошибки по коду/тексту Rust — определяет заголовок и действия.
 function errorKind(code: string, message: string): ErrorKind {
   const c = code.toLowerCase();
   const m = message.toLowerCase();
@@ -209,7 +207,7 @@ function errorKind(code: string, message: string): ErrorKind {
   return "generic";
 }
 
-/** Элемент по id с проверкой: разметка AI-панели — контракт, падение — сразу. */
+// Разметка AI-панели — контракт: отсутствие элемента валит сразу.
 function byId<T extends HTMLElement>(id: string): T {
   const el = document.getElementById(id);
   if (!el) throw new Error(`aiPanel: не найден элемент #${id}`);
@@ -238,7 +236,6 @@ function shortModel(model: string): string {
 /** Лимит строк диффа в карточке: защита от огромных правок (ADR-0032, 10 000 строк). */
 const MAX_DIFF_LINES = 500;
 
-/** Человекочитаемая подпись статуса плагина для бейджа карточки. */
 const PLUGIN_STATUS_LABELS: Record<PluginStatus["state"], string> = {
   active: "активен",
   failed: "ошибка",
@@ -249,7 +246,6 @@ const PLUGIN_STATUS_LABELS: Record<PluginStatus["state"], string> = {
 /** Кодовый блок ```json в ответе модели — предложение плагина (скилл create-plugin, ADR-0034/ADR-0026). */
 const PLUGIN_FENCE = /```json[^\n]*\n([\s\S]*?)```/gi;
 
-/** Предложение плагина, извлечённое из ответа ассистента. */
 interface AiPluginProposal {
   id: string;
   name: string;
@@ -348,7 +344,7 @@ function renderDiffBody(pre: HTMLElement, diff: AiDiff): void {
   }
 }
 
-/** Ищет первый валидный ```json-блок плагина в ответе ассистента (ADR-0034/ADR-0026). */
+// Ищет первый валидный ```json-блок плагина в ответе ассистента (ADR-0034/ADR-0026).
 function extractPluginProposal(content: string): AiPluginProposal | null {
   PLUGIN_FENCE.lastIndex = 0; // глобальный regexp: сбрасываем позицию между вызовами
   let match: RegExpExecArray | null;
@@ -379,9 +375,9 @@ function parsePluginBlock(raw: string): AiPluginProposal | null {
   const permissions = rawPermissions.filter((p): p is string => typeof p === "string");
   // api_version/entry — значения по умолчанию шаблона `darmark-plugin init` (ADR-0034 §2.4).
   const manifest: Json = { id, name, version, api_version: 1, entry: "main.lua", permissions };
-  // `contributes` (views/commands/statusbar/toolbar/settings) из ответа модели пробрасываем как есть:
+  // `contributes` (views/commands/statusbar/toolbar/settings) пробрасываем как есть:
   // без него AI-плагин не может зарегистрировать view (ADR-0026). Схему валидирует хост
-  // (`Manifest::from_json`) на шаге ai_validate_plugin/ai_create_plugin — здесь только форма объекта.
+  // (`Manifest::from_json`) на шаге ai_validate_plugin/ai_create_plugin.
   const contributes = obj.contributes;
   if (contributes && typeof contributes === "object" && !Array.isArray(contributes)) {
     manifest.contributes = contributes as Json;
@@ -389,7 +385,7 @@ function parsePluginBlock(raw: string): AiPluginProposal | null {
   return { id, name, version, source, manifest };
 }
 
-/** Confirm-диалог удаления плагина через `dialog.ts` (по образцу pluginManager). */
+// Confirm-диалог удаления плагина через `dialog.ts` (по образцу pluginManager).
 function confirmDeletePlugin(pluginId: string): Promise<boolean> {
   return new Promise((resolve) => {
     const content = el("div", "ai-confirm");
@@ -525,7 +521,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     return "нет согласия на отправку";
   }
 
-  /** Единая точка приведения UI к состоянию: индикатор, заглушка, поля. */
+  // Единая точка приведения UI к состоянию: индикатор, заглушка, поля.
   function applyState(): void {
     const st = currentDotState();
     const label = stateLabel(st);
@@ -549,12 +545,11 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     modelInput.disabled = !enabled;
     keyInput.disabled = !enabled;
     keySave.disabled = !enabled;
-    // «Удалить ключ» доступна только когда ключ реально задан.
     keyClear.disabled = !enabled || !(settings?.has_key ?? false);
     testBtn.disabled = !enabled;
 
     if (settings) {
-      // Не перезатираем поле, которое пользователь редактирует прямо сейчас.
+      // Не перезатираем поля, которые пользователь редактирует прямо сейчас.
       if (document.activeElement !== providerInput) providerInput.value = settings.provider;
       baseUrlInput.value = settings.base_url;
       if (document.activeElement !== modelInput) modelInput.value = settings.model;
@@ -632,7 +627,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     skillsRow.appendChild(soon);
   }
 
-  /** Подстановка шаблона скилла: {{doc}} — из документа, {{input}} — из поля ввода. */
+  // Подстановка шаблона скилла: {{doc}} — из документа, {{input}} — из поля ввода.
   function onSkillClick(skill: AiSkill): void {
     if (!settings?.enabled) return;
     const tpl = skill.prompt_template;
@@ -754,7 +749,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
 
   // --- Фаза 2: harness — карточка диффа и карточка плагина (ADR-0034) ---
 
-  /** Короткая заметка под сообщением (info/error) — только textContent. */
+  // Короткая заметка под сообщением (info/error) — только textContent.
   function appendNotice(col: HTMLElement, text: string, kind: "info" | "error"): void {
     const note = el("div", kind === "error" ? "ai-note ai-note-error" : "ai-note");
     note.setAttribute("role", kind === "error" ? "alert" : "status");
@@ -763,10 +758,8 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     if (stick) scrollToBottom();
   }
 
-  /**
-   * Считает дифф по ответу ассистента и рисует карточку. `false` — правок нет,
-   * нет активного документа или ошибка IPC (заметка уже показана).
-   */
+  // Считает дифф по ответу ассистента и рисует карточку. `false` — правок нет,
+  // нет активного документа или ошибка IPC (заметка уже показана).
   async function buildDiff(col: HTMLElement, content: string): Promise<boolean> {
     const doc = getActiveDocument();
     if (!doc) {
@@ -789,7 +782,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     }
   }
 
-  /** Клик «Применить как правку»: кнопку гасим только при успехе (карточка построена). */
+  // Клик «Применить как правку»: кнопку гасим только при успехе (карточка построена).
   async function requestDiff(
     col: HTMLElement,
     content: string,
@@ -800,7 +793,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     if (!disposed && !ok) button.disabled = false;
   }
 
-  /** Карточка диффа: предпросмотр по `ops` + «Применить»/«Отклонить»/«Отменить» (ADR-0034). */
+  // Карточка диффа: предпросмотр по `ops` + «Применить»/«Отклонить»/«Отменить».
   function renderDiffCard(
     col: HTMLElement,
     diff: AiDiff,
@@ -836,7 +829,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
 
     let applied = false;
 
-    /** Правка применена (синхронный ответ `ai_apply_edit`): показываем «Отменить». */
+    // Правка применена (синхронный ответ `ai_apply_edit`): показываем «Отменить».
     function markApplied(rev: number): void {
       if (applied) return;
       applied = true;
@@ -901,7 +894,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     reject.addEventListener("click", rejectEdit);
   }
 
-  /** Карточка плагина из ```json-блока: предпросмотр, валидация, создание/удаление (ADR-0034/ADR-0026). */
+  // Карточка плагина из ```json-блока: предпросмотр, валидация, создание/удаление.
   function renderPluginCard(col: HTMLElement, proposal: AiPluginProposal): void {
     const id = ++cardSeq;
     const card = el("div", "ai-plugin-card");
@@ -960,7 +953,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     };
     pluginCards.add(state);
 
-    /** Плагин установлен (создан/обновлён/уже существует): открываем reload/delete. */
+    // Плагин установлен (создан/обновлён/уже существует): открываем reload/delete.
     function markInstalled(label: string, stateClass: string): void {
       exists = true;
       badge.className = `ai-plugin-badge ${stateClass}`;
@@ -985,7 +978,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
       pluginCards.delete(state);
     }
 
-    /** Валидация при появлении карточки (манифест + entry + песочница, ADR-0034/ADR-0026). */
+    // Валидация при появлении карточки (манифест + entry + песочница, ADR-0034/0026).
     async function validate(): Promise<void> {
       status.textContent = "Проверка…";
       try {
@@ -1004,7 +997,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
       }
     }
 
-    /** «Создать»/«Сохранить»: первый клик — create; при существующем плагине — update. */
+    // «Создать»/«Сохранить»: первый клик — create; при существующем плагине — update.
     async function savePlugin(): Promise<void> {
       save.disabled = true;
       reload.disabled = true;
@@ -1032,7 +1025,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
       status.classList.remove("is-ok");
       status.classList.add("is-error");
       if (code === "ai_plugin_exists") {
-        // Плагин уже стоит: переключаем на обновление (update) и открываем reload/delete.
+        // Плагин уже стоит: переключаем на обновление и открываем reload/delete.
         exists = true;
         save.textContent = "Сохранить";
         save.setAttribute("aria-label", `Сохранить плагин ${proposal.id}`);
@@ -1084,7 +1077,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     void validate();
   }
 
-  /** Действия под ответом ассистента: «Применить как правку» + карточка плагина (ADR-0034). */
+  // Действия под ответом ассистента: «Применить как правку» + карточка плагина.
   function appendAssistantActions(col: HTMLElement, content: string): void {
     const actions = el("div", "ai-msg-actions");
     const apply = actionButton(
@@ -1148,27 +1141,24 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     }
   }
 
-  /** Успешное завершение: финализировать пузырь, показать usage, обновить историю. */
+  // Успешное завершение: финализировать пузырь, показать usage, обновить историю.
   function complete(p: Pending, usage: AiUsage | null): void {
     p.finalized = true;
     pending = null;
     setBusy(false);
     const isEmpty = p.content === "";
     const truncated = p.finishReason === "length";
-    // При обрыве по лимиту токенов пустой контент не добавляем в историю
-    // и не вызываем appendAssistantActions — показываем заметку об обрыве.
+    // При обрыве по лимиту токенов пустой контент не добавляем в историю и не
+    // показываем действия — только заметку об обрыве.
     const content = isEmpty ? (truncated ? "" : "Пустой ответ") : p.content;
     p.bubble.textContent = content;
     if (usage) appendUsage(p.col, usage);
     if (!isEmpty || !truncated) {
       history = history.concat({ role: "assistant", content });
     }
-    // Фаза 2: действия над готовым ответом (дифф-правка + карточка плагина).
-    // Для пустого ответа при обрыве не вызываем — карточки не нужны.
     if (!isEmpty || !truncated) {
       appendAssistantActions(p.col, content);
     }
-    // Обрыв по лимиту токенов — понятная заметка вместо «Пустой ответ».
     if (truncated) {
       appendNotice(p.col, "Ответ оборван лимитом токенов — увеличьте max_tokens или повторите запрос.", "error");
     }
@@ -1183,7 +1173,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     if (stick) scrollToBottom();
   }
 
-  /** Ошибка запроса: убрать пустой пузырь, показать карточку ошибки с действиями. */
+  // Ошибка запроса: убрать пустой пузырь, показать карточку ошибки с действиями.
   function fail(p: Pending, code: string, message: string): void {
     p.finalized = true;
     pending = null;
@@ -1192,7 +1182,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     const c = code.toLowerCase();
     const kind = errorKind(code, message);
     if (c === "ai_no_consent") {
-      // Согласие не дано — жёлтое состояние, без «повторить» (запрос не уйдёт).
+      // Жёлтое состояние, без «повторить» (запрос не уйдёт).
       consentDenied = true;
       authError = false;
       lastError = false;
@@ -1207,7 +1197,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     applyState();
   }
 
-  /** Повтор последнего неудачного запроса (история уже содержит user-сообщение). */
+  // Повтор последнего неудачного запроса (история уже содержит user-сообщение).
   function retry(): void {
     if (busy || !settings?.enabled || !lastRequest) return;
     const { row, bubble, col } = appendAssistant();
@@ -1227,7 +1217,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
 
   function clearChat(): void {
     // Инвалидируем текущий запрос: осиротевший ответ не должен дописаться в
-    // удалённый пузырь и не попадёт в очищенную history.
+    // удалённый пузырь и попасть в очищенную history.
     requestToken++;
     if (pending) {
       pending.finalized = true;
@@ -1355,8 +1345,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
         testResult.textContent = res.model ? `Соединение установлено · ${res.model}` : "Соединение установлено";
         log("info", "system", "AI: соединение установлено");
       } else {
-        // «Нет ключа» остаётся жёлтым; реальный сбой соединения — красный.
-        if (settings?.has_key) lastError = true;
+        if (settings?.has_key) lastError = true; // «нет ключа» остаётся жёлтым
         testResult.textContent = res.error ? `Ошибка: ${res.error}` : "Не удалось соединиться";
         log("warn", "system", `AI: проверка соединения не удалась${res.error ? ` (${res.error})` : ""}`);
       }
@@ -1485,7 +1474,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     if (p.messageId !== null && p.messageId !== message_id) return; // чанк чужого/устаревшего ответа
     p.messageId = message_id;
     p.content += delta;
-    p.bubble.textContent = p.content; // только textContent (MVP)
+    p.bubble.textContent = p.content;
     updateEmpty();
     if (stick) scrollToBottom();
   });
@@ -1514,9 +1503,8 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
   // помечает синхронный ответ `ai_apply_edit` (иначе событие пометило бы все
   // карточки того же документа). Обновление редактора/предпросмотра идёт отдельным
   // путём `document-updated` → `store.applyHostUpdate` (main.ts).
-
-  // Жизненный цикл плагина: обновляем бейдж/доступность кнопок в карточке.
-  // Карточку, уже обновлённую ответом IPC, событие не перетирает (гейт isInstalled).
+  // Жизненный цикл плагина: карточку, уже обновлённую ответом IPC, событие не
+  // перетирает (гейт isInstalled).
   subscribe<{ plugin_id: string }>("ai:plugin_created", (event) => {
     for (const card of pluginCards) {
       if (card.id === event.payload.plugin_id && !card.isInstalled()) {

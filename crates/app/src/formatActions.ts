@@ -1,9 +1,9 @@
 // formatActions.ts — Markdown-обёртки над выделением textarea (icon-toolbar idea5).
 //
 // Модуль меняет только `host.value` вокруг выделения, восстанавливает выделение и
-// диспатчит `input` — это единственный путь обновления стора (через editorView).
+// диспатчит `input` — единственный путь обновления стора (через editorView).
 // Нативная история undo textarea при программных правках сбрасывается — известное
-// ограничение (лечится Rust-undo, отдельная задача).
+// ограничение (лечится Rust-undo).
 
 export interface FormatActions {
   bold(): void;
@@ -16,9 +16,9 @@ export interface FormatActions {
 export function createFormatActions(host: HTMLTextAreaElement): FormatActions {
   /** Применить новое значение и выделение, уведомив стор событием `input`. */
   function commit(value: string, selStart: number, selEnd: number): void {
-    // Присвоение `value`/`focus()` могут прокрутить редактор к каретке (особенно
-    // если он был не в фокусе — путь клика по кнопке тулбара). Формат-команда не
-    // должна менять прокрутку: сохраняем и возвращаем позицию.
+    // Присвоение `value`/`focus()` может прокрутить редактор к каретке (особенно
+    // на пути клика по кнопке тулбара) — формат-команда не должна менять
+    // прокрутку, поэтому сохраняем и возвращаем позицию.
     const top = host.scrollTop;
     const left = host.scrollLeft;
     host.value = value;
@@ -53,7 +53,6 @@ export function createFormatActions(host: HTMLTextAreaElement): FormatActions {
       );
       return;
     }
-    // Пробелы по краям сохраняются вне маркеров; ядро выделяется для продолжения.
     const insert =
       selected.slice(0, lead) + marker + core + marker + selected.slice(selected.length - trail);
     const coreStart = s + lead + marker.length;
@@ -82,7 +81,6 @@ export function createFormatActions(host: HTMLTextAreaElement): FormatActions {
       .map((ln) => (ln.startsWith("#") ? ln : "# " + ln))
       .join("\n");
     const next = value.slice(0, lineStart) + prefixed + value.slice(lineEnd);
-    // Выделяем изменённый блок целиком.
     commit(next, lineStart, lineStart + prefixed.length);
   }
 

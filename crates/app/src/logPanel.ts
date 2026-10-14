@@ -1,7 +1,7 @@
 // logPanel.ts — нижний док (S11, ADR-0029/0030): контроллер режимов
 // «Журнал | Мониторинг | AI-ассистент» плюс тело режима «Журнал» — ring buffer
-// событий на 200 записей, подписка на Tauri-события, рендер записей только через
-// textContent (без innerHTML в ленте — CSP/XSS), бейдж непрочитанных.
+// событий на 200 записей, подписка на Tauri-события, бейдж непрочитанных.
+// Записи рендерятся только через textContent (CSP/XSS).
 //
 // Состояния дока: hidden (нет в layout, дефолт) / collapsed (полоса-шапка) /
 // expanded (тело режима видно). Скрытие — кнопка × (#logs-close) и прогрессивный
@@ -95,7 +95,7 @@ const STICK_THRESHOLD = 4;
 /** «11 октября» — форматтер создаётся один раз: рендер идёт на каждое событие. */
 const DAY_FORMATTER = new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long" });
 
-/** Получение элемента по id с проверкой: разметка панели — контракт, падение — сразу. */
+// Разметка панели — контракт: отсутствие элемента валит сразу.
 function byId<T extends HTMLElement>(id: string): T {
   const el = document.getElementById(id);
   if (!el) throw new Error(`logs-panel: не найден элемент #${id}`);
@@ -158,8 +158,8 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
   function push(level: LogLevel, category: LogCategory, message: string, detail?: string): void {
     entries.push({ id: nextId++, timestamp: Date.now(), level, category, message, detail });
     if (entries.length > MAX_ENTRIES) entries.splice(0, entries.length - MAX_ENTRIES);
-    // Непрочитанные копятся, пока лента журнала не видна: свёрнутый док или
-    // активный другой режим (тело «Журнал» скрыто) — событие непрочитано.
+    // Непрочитанные копятся, пока тело «Журнала» не видно: свёрнутый док или
+    // активный другой режим — событие непрочитано.
     if (!open || mode !== "logs") {
       unread++;
       if (level === "error") unreadErrors++;
@@ -201,12 +201,12 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
     ai: "AI-ассистент",
   };
 
-  /** Показать/скрыть режимные поля шапки (`.logs-only`/`.mon-only`/`.ai-only`). */
+  // Показать/скрыть режимные поля шапки (`.logs-only`/`.mon-only`/`.ai-only`).
   function toggleModeFields(selector: string, show: boolean): void {
     for (const el of panel.querySelectorAll<HTMLElement>(selector)) el.hidden = !show;
   }
 
-  /** Отразить активный режим: табы, заголовок, тела вкладок и режимные поля шапки. */
+  // Отразить активный режим: табы, заголовок, тела вкладок и режимные поля шапки.
   function applyMode(): void {
     panel.dataset.mode = mode;
     title.textContent = MODE_TITLE[mode];
@@ -227,7 +227,7 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
     toggleModeFields(".ai-only", isAi);
   }
 
-  /** Переключить режим дока (без изменения высоты/свёртки, ADR-0030 §2.2 №7). */
+  // Переключить режим дока (без изменения высоты/свёртки, ADR-0030 §2.2 №7).
   function setMode(next: DockMode): void {
     if (next === mode) return;
     mode = next;
@@ -238,7 +238,7 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
     notifyLayout();
   }
 
-  /** Текущее состояние видимости дока — единственная точка чтения для shell.ts. */
+  // Единственная точка чтения состояния дока для shell.ts.
   function state(): DockState {
     if (panel.hidden) return "hidden";
     return open ? "expanded" : "collapsed";
@@ -251,13 +251,13 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
     return trigger;
   }
 
-  /** Догон отложенного рендера монитора + шов AI-панели после смены состояния/режима. */
+  // Догон отложенного рендера монитора + шов AI-панели после смены состояния/режима.
   function notifyLayout(): void {
     opts.onLayoutChange?.();
     opts.onModeChange?.(mode, state());
   }
 
-  /** Отразить активность триггеров: `.active`/`aria-expanded` только у раскрытого режима. */
+  // `.active`/`aria-expanded` — только у раскрытого режима.
   function syncTriggers(): void {
     const st = state();
     const logsActive = st === "expanded" && mode === "logs";
@@ -273,7 +273,7 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
     aiToolbarTrigger.setAttribute("aria-expanded", String(aiActive));
   }
 
-  /** Раскрыть док (тело активного режима видно). */
+  // Раскрыть док (тело активного режима видно).
   function expand(moveFocus = true): void {
     if (!panel.hidden && open) return;
     panel.hidden = false;
@@ -284,7 +284,6 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
     panel.classList.remove("collapsed");
     open = true;
     caret.setAttribute("aria-expanded", "true");
-    // Док раскрыт — события прочитаны: сбрасываем счётчики и бейдж.
     markRead();
     render();
     stick = true;
@@ -299,7 +298,7 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
     }
   }
 
-  /** Свернуть док до полосы-шапки (тело скрыто, шапка на месте). */
+  // Свернуть док до полосы-шапки (тело скрыто, шапка на месте).
   function collapse(moveFocus = true): void {
     if (panel.hidden || !open) return;
     endResize(); // незавершённый drag не должен пережить свёртку
@@ -313,7 +312,7 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
     if (moveFocus) activeTrigger().focus({ preventScroll: true });
   }
 
-  /** Полностью скрыть док: дока нет в layout, вернуть его могут триггеры статусбара. */
+  // Дока нет в layout; вернуть его могут триггеры статусбара.
   function hide(moveFocus = true): void {
     if (panel.hidden) return;
     endResize();
@@ -328,7 +327,7 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
     if (moveFocus) activeTrigger().focus({ preventScroll: true });
   }
 
-  /** Открыть док в указанном режиме (раскрыть + переключить вкладку). */
+  // Открыть док в указанном режиме (раскрыть + переключить вкладку).
   function openMode(next: DockMode): void {
     setMode(next);
     expand(true);
@@ -336,7 +335,7 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
 
   /**
    * Триггер статусбара (ADR-0030 §2.2 №9): скрыт/свёрнут → открыть в своём режиме;
-   * раскрыт в другом → переключить; раскрыт в том же → свернуть. Скрытие — × и Esc.
+   * раскрыт в другом → переключить; раскрыт в том же → свернуть.
    */
   function triggerMode(next: DockMode): void {
     const st = state();
@@ -348,7 +347,7 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
     else setMode(next);
   }
 
-  /** Шеврон: свернуть ↔ развернуть (в hidden не бывает — шапка не видна). */
+  // Шеврон: свернуть ↔ развернуть (в hidden не бывает — шапка не видна).
   function toggleCollapse(): void {
     const st = state();
     if (st === "collapsed") expand(true);
@@ -370,7 +369,6 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
   }
 
   function clearLog(): void {
-    // Опустошаем ленту и счётчики; подписки продолжают приносить новые записи.
     entries.length = 0;
     unread = 0;
     unreadErrors = 0;
@@ -408,7 +406,7 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
   // --- рендер (§4.3: по requestAnimationFrame; §4.6: только textContent) ---
 
   function scheduleRender(): void {
-    // Панель скрыта — не пересоздаём DOM ленты; при раскрытии expand() вызывает render() напрямую.
+    // Панель скрыта — DOM ленты не пересоздаём; при раскрытии expand() рендерит.
     if (panel.hidden) return;
     if (renderQueued) return;
     renderQueued = true;
@@ -430,10 +428,10 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
     } else {
       let currentDay = "";
       for (const entry of visible) {
-        // Разделитель даты — перед первой записью каждого дня (§6.7).
         const day = dayKey(entry.timestamp);
         if (day !== currentDay) {
           currentDay = day;
+          // Разделитель даты — перед первой записью каждого дня (§6.7).
           list.appendChild(renderDaySeparator(entry.timestamp));
         }
         list.appendChild(renderItem(entry));
@@ -478,7 +476,7 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
     item.dataset.category = entry.category;
     // Стабильный признак уровня для тестов/ассертов (вместо разбора классов точки).
     item.dataset.level = entry.level;
-    // Точка: уровень warn/error перекрывает цвет категории (§6.3).
+    // Уровень warn/error перекрывает цвет категории (§6.3).
     const dot = document.createElement("span");
     dot.className =
       "log-dot " + (entry.level === "error" ? "error" : entry.level === "warn" ? "warning" : entry.category);

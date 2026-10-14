@@ -1,8 +1,7 @@
 // shell.ts — привязка оболочки к DOM: кнопки тулбара, горячие клавиши, тумблеры
 // предпросмотра/синхронизации, формат-группа, палитра, триггер дровера плагинов,
-// журнал-панель, фокус активной панели, закрытие окна. Логики домена здесь
-// нет — только вызовы команд из main.ts. Хоткеи глушатся, пока открыт модальный
-// диалог (dialog.ts).
+// журнал-панель, фокус активной панели, закрытие окна. Доменной логики нет — только
+// вызовы команд из main.ts.
 
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { confirm } from "@tauri-apps/plugin-dialog";
@@ -24,17 +23,14 @@ export interface ShellCommands {
   setSyncEnabled(on: boolean): void;
   setActivePane(paneId: PaneId): void;
   isDirty(): boolean;
-  /** Открыть/закрыть палитру команд (Ctrl+K). */
   palette(): void;
   /** Ctrl+R: перезагрузить плагин-владелец открытого `.lua` или все включённые. */
   reloadPlugins(): void;
-  /** Кратковременное сообщение в статусбар. */
   flash(msg: string): void;
 }
 
 export interface ShellOptions {
   commands: ShellCommands;
-  /** Действия форматирования над выделением редактора. */
   format: FormatActions;
   /** Правый модальный дровер плагинов. */
   drawer: Drawer;
@@ -62,7 +58,6 @@ export function createShell(opts: ShellOptions): void {
   byId<HTMLButtonElement>("btn-save-as").addEventListener("click", commands.saveAs);
   byId<HTMLButtonElement>("btn-inspect").addEventListener("click", commands.toggleInspector);
 
-  // Формат-группа: кнопки различаются data-action.
   const formatById: Record<string, () => void> = {
     bold: opts.format.bold,
     italic: opts.format.italic,
@@ -76,14 +71,11 @@ export function createShell(opts: ShellOptions): void {
     if (fn) btn.addEventListener("click", fn);
   }
 
-  // Палитра команд открывается по кнопке и Ctrl+K (обработчик в shell keydown).
   byId<HTMLButtonElement>("palette-trigger").addEventListener("click", commands.palette);
-  // Дровер плагинов: триггер в тулбаре (повторный клик закрывает).
   byId<HTMLButtonElement>("tb-plugins").addEventListener("click", () => opts.drawer.toggle());
-  // Триггеры дока (#sb-logs/#sb-mon) вешает сам logPanel — он владеет режимами;
-  // shell отвечает только за прогрессивный Esc (ниже), чтобы не разделять логику.
+  // Триггеры дока (#sb-logs/#sb-mon) вешает сам logPanel — режимами владеет он;
+  // shell отвечает только за прогрессивный Esc (ниже).
 
-  // Активная панель (фокус) — для визуализации Pane/View.
   editor.addEventListener("focus", () => commands.setActivePane(opts.editorPane));
   preview.addEventListener("mousedown", () => commands.setActivePane(opts.previewPane));
   // Активная панель следует и за клавиатурным фокусом (Tab): любой сфокусированный
@@ -103,9 +95,8 @@ export function createShell(opts: ShellOptions): void {
     // управление (в т.ч. Escape) остаётся за dialog.ts.
     if (isModalOpen()) return;
     // Esc в доке — прогрессивный (ADR-0030 §2.2 №10): развёрнут → свернуть,
-    // свёрнут → скрыть; фокус возвращается на триггер активного режима (в logPanel).
-    // Только при фокусе внутри панели (§4.5 ТЗ): иначе Esc остаётся инспектору/
-    // редактору — не перехватываем и пропускаем дальше по обработчику.
+    // свёрнут → скрыть. Только при фокусе внутри панели (§4.5 ТЗ), иначе Esc
+    // остаётся инспектору/редактору.
     if (e.key === "Escape") {
       const panel = document.getElementById("logs-panel");
       if (panel && !panel.hidden && panel.contains(document.activeElement)) {
@@ -134,10 +125,9 @@ export function createShell(opts: ShellOptions): void {
     // Ctrl+Shift+A — открыть/свернуть режим «AI-ассистент» дока (тот же путь, что
     // триггеры #sb-ai/#tb-ai: режимами владеет logPanel, не shell).
     else if (k === "a" && e.shiftKey) { e.preventDefault(); opts.logPanel.toggleMode("ai"); }
-    // Dev-only: DevTools. WebView2 по настройке глушит свои акселераторы
-    // DevTools (F12 / Ctrl+Shift+C) — см. disable_browser_accelerator_keys в Rust,
-    // поэтому даём явный вход на стандартном Chromium-хоткее Ctrl+Shift+I.
-    // В prod-сборке ветка вырезается (`import.meta.env.DEV`).
+    // Dev-only: WebView2 по настройке глушит свои акселераторы (F12 /
+    // Ctrl+Shift+C — см. disable_browser_accelerator_keys в Rust), поэтому
+    // даём явный вход на Ctrl+Shift+I. В prod ветка вырезается.
     else if (import.meta.env.DEV && k === "i" && e.shiftKey) {
       e.preventDefault();
       void openDevtools().catch((err) => console.error("open_devtools:", err));

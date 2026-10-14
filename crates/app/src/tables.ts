@@ -133,7 +133,7 @@ function apply(entry: TableEntry) {
   const rows = bodyRows(table);
   const colCount = headers.length || (rows[0]?.cells.length ?? 0);
 
-  // типы колонок посчитаны один раз в enhance() — на клик не пересчитываем (P2.1)
+  // Типы колонок посчитаны один раз в enhance() — на клик не пересчитываем (P2.1)
   const kinds = entry.kinds;
 
   // 1. видимость строк (поиск + фильтры по колонкам)
@@ -294,7 +294,6 @@ function createMenuController(): MenuController {
     menu.setAttribute("aria-label", anchor.getAttribute("aria-label") ?? "Фильтр по столбцу");
     menu.setAttribute("data-anchor", anchor.getAttribute("data-anchor-id") ?? "");
 
-    // уникальные значения колонки с количеством повторов
     const uniq = new Map<string, number>();
     for (const r of bodyRows(table)) {
       const v = cellText(r.cells[col]).trim();
@@ -386,9 +385,8 @@ function createMenuController(): MenuController {
     };
     document.addEventListener("mousedown", outsideHandler, true);
 
-    // Escape закрывает поповер и возвращает фокус на воронку (M5). Слушаем в
-    // capture и глушим событие, чтобы оно не ушло в глобальный обработчик shell
-    // (иначе Escape заодно переключил бы режим инспектора).
+    // Слушаем в capture и гасим событие, иначе Escape заодно переключил бы
+    // режим инспектора.
     escapeHandler = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       e.preventDefault();
@@ -407,7 +405,8 @@ function enhance(table: HTMLTableElement, menu: MenuController) {
   if (registry.has(table)) return;
 
   const headers = headerCells(table);
-  if (headers.length === 0) return; // без thead сортировать и фильтровать нечего
+  // Без thead сортировать и фильтровать нечего
+  if (headers.length === 0) return;
 
   const entryRef: { current: TableEntry | null } = { current: null };
   const tools = makeTools(entryRef);

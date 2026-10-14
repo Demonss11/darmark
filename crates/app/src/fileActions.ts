@@ -1,12 +1,12 @@
 // fileActions.ts — файловые команды (Новый/Открыть/Сохранить/Сохранить как).
 // Нативные диалоги — на фронтенде (модель Notepad++); текстом и путём владеет
-// docStore (проекция Rust-стора, D5). Вынесено из main.ts.
+// docStore (проекция Rust-стора, D5).
 
 import { confirm, open, save } from "@tauri-apps/plugin-dialog";
 import type { DocStore } from "./docStore";
 import { errorMessage } from "./tauri";
 
-/** Фильтр нативных диалогов (замороженный набор расширений). */
+/** Фильтр нативных диалогов. */
 const MD_FILTER = {
   name: "Markdown",
   extensions: ["md", "markdown", "mdown", "mkd", "txt"],
@@ -25,7 +25,6 @@ export function createFileActions(opts: {
   status(msg: string): void;
   /** Путь документа изменился (Save As) — перерезолвить локальные картинки. */
   onPathChanged(): void;
-  /** Вернуть фокус редактору после команды. */
   focusEditor(): void;
 }): FileActions {
   const { store, status, onPathChanged, focusEditor } = opts;

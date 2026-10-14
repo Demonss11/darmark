@@ -135,7 +135,7 @@ export function createResourceMonitor(opts: ResourceMonitorOptions): ResourceMon
 
   // --- вычисление состояния ---
 
-  /** Состояние главного процесса по рабочему набору и CPU (TZ §6.5, строгие `>`). */
+  // Состояние главного процесса по рабочему набору и CPU (TZ §6.5, строгие `>`).
   function mainState(main: MainMetrics): { state: MonState; reason: string } {
     const mem: MonState =
       main.mem_bytes > MAIN_CRIT_BYTES ? "crit" : main.mem_bytes > MAIN_WARN_BYTES ? "warn" : "ok";
@@ -156,7 +156,7 @@ export function createResourceMonitor(opts: ResourceMonitorOptions): ResourceMon
     return { state, reason: parts.join(", ") };
   }
 
-  /** Состояние плагина по доле commit от лимита Job Object и CPU (TZ §6.5). */
+  // Состояние плагина по доле commit от лимита Job Object и CPU (TZ §6.5).
   function childState(child: ChildMetrics): { state: MonState; reason: string } {
     const ratio = child.mem_limit_bytes > 0 ? child.mem_bytes / child.mem_limit_bytes : 0;
     const mem: MonState =
@@ -208,8 +208,7 @@ export function createResourceMonitor(opts: ResourceMonitorOptions): ResourceMon
   /**
    * Пересчёт состояний и журналирование переходов — **до и независимо** от рендера
    * (TZ §6.5, AC-5): при скрытой панели DOM не трогаем, но переходы порога `main`
-   * и каждого child'а не теряются (logs-режимный слот, ADR-0030). Ключи дедупа
-   * разведены по пространствам имён: `proc:main` против `plugin:<id>` (§6.5).
+   * и каждого child'а не теряются (logs-режимный слот, ADR-0030).
    */
   function evaluateSnapshot(snap: ResourceSnapshot): void {
     const main = mainState(snap.main);
@@ -238,7 +237,7 @@ export function createResourceMonitor(opts: ResourceMonitorOptions): ResourceMon
     return el;
   }
 
-  /** «N сек назад» по `ts` последнего снимка (TZ §6.4). */
+  // «N сек назад» по `ts` последнего снимка (TZ §6.4).
   function ageText(): string {
     if (!snapshot) return "нет данных";
     const secs = Math.max(0, Math.floor((Date.now() - snapshot.ts) / 1000));
@@ -249,7 +248,7 @@ export function createResourceMonitor(opts: ResourceMonitorOptions): ResourceMon
     if (state === "warn" || state === "crit") row.classList.add(state);
   }
 
-  /** Подсказка главного процесса: рабочий набор и CPU; хендлы — лишь при пороге. */
+  // Подсказка главного процесса: рабочий набор и CPU; хендли — лишь при пороге.
   function mainTitle(main: MainMetrics, state: MonState): string {
     const parts = [`рабочий набор ${formatMb(main.mem_bytes)}`];
     if (main.cpu_percent !== undefined) parts.push(`CPU ${main.cpu_percent.toFixed(1)}%`);
@@ -260,7 +259,7 @@ export function createResourceMonitor(opts: ResourceMonitorOptions): ResourceMon
     return parts.join(", ");
   }
 
-  /** Подсказка плагина: commit из лимита Job Object, PID, CPU; хендлы — при пороге. */
+  // Подсказка плагина: commit из лимита Job Object, PID, CPU; хендлы — при пороге.
   function childTitle(child: ChildMetrics, state: MonState): string {
     const ratio =
       child.mem_limit_bytes > 0 ? Math.round((child.mem_bytes / child.mem_limit_bytes) * 100) : 0;
@@ -276,12 +275,12 @@ export function createResourceMonitor(opts: ResourceMonitorOptions): ResourceMon
     return parts.join(", ");
   }
 
-  /** Пустая ячейка сетки — держит колонки, когда значения нет (бар у главного). */
+  // Пустая ячейка сетки — держит колонки, когда значения нет (бар у главного).
   function emptyCell(className = ""): HTMLSpanElement {
     return makeSpan(className);
   }
 
-  /** Главная строка: `ПЕНАЛ 156 МБ · CPU 3% · 2 сек назад` (TZ §6.3). */
+  // Главная строка: `ПЕНАЛ 156 МБ · CPU 3% · 2 сек назад` (TZ §6.3).
   function renderMainRow(main: MainMetrics): HTMLElement {
     const { state } = mainState(main);
 
@@ -298,7 +297,7 @@ export function createResourceMonitor(opts: ResourceMonitorOptions): ResourceMon
     ageEl = age;
     // У главного процесса бара нет — колонка «Нагрузка» остаётся пустой.
     const bar = emptyCell();
-    // CPU опционален (§4.4): первый тик без предыдущего замера его не даёт.
+    // CPU опционален: первый тик без предыдущего замера его не даёт (§4.4).
     const cpu = makeSpan("mon-cpu");
     cpu.textContent = main.cpu_percent !== undefined ? `CPU ${Math.round(main.cpu_percent)}%` : "";
     row.append(dot, name, val, bar, cpu, age);
@@ -307,10 +306,8 @@ export function createResourceMonitor(opts: ResourceMonitorOptions): ResourceMon
     return row;
   }
 
-  /**
-   * Строка плагина: `● id 24 / 64 МБ ▮` (TZ §6.3). `orphan` — завершённый child:
-   * бар погашен, пометка «завершён», строка удаляется по TTL (TZ §6.6).
-   */
+  // Строка плагина: `● id 24 / 64 МБ ▮` (TZ §6.3). `orphan` — завершённый child:
+  // бар погашен, строка удаляется по TTL (TZ §6.6).
   function renderChildRow(child: ChildMetrics, orphan: boolean): HTMLElement {
     const row = makeSpan("mon-row mon-child mon-grid");
     row.dataset.pluginId = child.plugin_id;
@@ -329,7 +326,6 @@ export function createResourceMonitor(opts: ResourceMonitorOptions): ResourceMon
     const age = makeSpan("mon-age");
 
     if (orphan) {
-      // Бар погашен, CPU/возраст — заглушки, справа пометка «завершён» (§6.6).
       row.classList.add("orphan");
       cpu.classList.add("empty");
       cpu.textContent = "—";
@@ -352,7 +348,6 @@ export function createResourceMonitor(opts: ResourceMonitorOptions): ResourceMon
     fill.style.setProperty("--fill", `${Math.round(ratio * 100)}%`);
     barEl.appendChild(fill);
     bar.appendChild(barEl);
-    // CPU опционален (§4.4).
     if (child.cpu_percent !== undefined) {
       cpu.textContent = `CPU ${Math.round(child.cpu_percent)}%`;
     }
@@ -362,7 +357,7 @@ export function createResourceMonitor(opts: ResourceMonitorOptions): ResourceMon
     return row;
   }
 
-  /** Строка-заглушка «нет данных» при устаревшем снимке (TZ §6.4). */
+  // Строка-заглушка «нет данных» при устаревшем снимке (TZ §6.4).
   function renderStale(): HTMLElement {
     const row = makeSpan("mon-row mon-main mon-grid");
     row.dataset.pid = "main";
@@ -382,7 +377,7 @@ export function createResourceMonitor(opts: ResourceMonitorOptions): ResourceMon
     return row;
   }
 
-  /** Пустое состояние: снимок есть, но активных плагинов нет (TZ §6.3). */
+  // Пустое состояние: снимок есть, но активных плагинов нет (TZ §6.3).
   function renderEmpty(): HTMLElement {
     const box = makeSpan("mon-empty");
     const title = makeSpan("t");
@@ -393,13 +388,13 @@ export function createResourceMonitor(opts: ResourceMonitorOptions): ResourceMon
     return box;
   }
 
-  /** Дети: активные из снимка + осиротевшие, порядок детерминирован (по `plugin_id`). */
+  // Дети: активные из снимка + осиротевшие, порядок детерминирован (по `plugin_id`).
   function renderChildren(): DocumentFragment {
     const frag = document.createDocumentFragment();
     const children = snapshot?.children ?? [];
     const byId = new Map<string, ChildMetrics>();
-    // Учёт `lastChild`/`orphans` и снятие `orphan` по новому PID — в `evaluateSnapshot`,
-    // чтобы не зависеть от видимости панели (TZ §6.6).
+    // Учёт `lastChild`/`orphans` и снятие `orphan` — в `evaluateSnapshot`, чтобы не
+    // зависеть от видимости панели (TZ §6.6).
     for (const child of children) byId.set(child.plugin_id, child);
     const ids = new Set<string>([...byId.keys(), ...orphans.keys()]);
     if (ids.size === 0) {
@@ -420,7 +415,7 @@ export function createResourceMonitor(opts: ResourceMonitorOptions): ResourceMon
     return frag;
   }
 
-  /** Тихая сводка в шапке: `ПЕНАЛ 156 МБ · плагинов 2 · 2 сек назад` (TZ §6.4). */
+  // Тихая сводка в шапке: `ПЕНАЛ 156 МБ · плагинов 2 · 2 сек назад` (TZ §6.4).
   function renderSummary(): void {
     if (!summary) return;
     if (!snapshot) {
@@ -434,7 +429,7 @@ export function createResourceMonitor(opts: ResourceMonitorOptions): ResourceMon
     summary.textContent = `ПЕНАЛ ${formatMb(snapshot.main.mem_bytes)} · плагинов ${snapshot.children.length} · ${ageText()}`;
   }
 
-  /** Полная пересборка строк; при скрытом доке/вкладке — отметка об отложенном рендере. */
+  // Полная пересборка строк; при скрытом доке/вкладке — отметка об отложенном рендере.
   function renderAll(): void {
     if (panel?.hidden || monBody?.hidden) {
       pendingRender = true;
@@ -460,7 +455,7 @@ export function createResourceMonitor(opts: ResourceMonitorOptions): ResourceMon
 
   // --- события host → front (TZ §4.4) ---
 
-  /** Подписка с сохранением отписки; `dispose()` до разрешения `listen` не течёт. */
+  // Подписка с сохранением отписки; `dispose()` до разрешения `listen` не течёт.
   function subscribe<T>(event: string, handler: (e: Event<T>) => void): void {
     void listen<T>(event, handler)
       .then((un) => {

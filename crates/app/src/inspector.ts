@@ -1,13 +1,12 @@
-// inspector.ts — режим инспектора: двусторонняя подсветка «блок предпросмотра
-// ↔ фрагмент исходника в редакторе». Блоки размечаются на Rust-стороне
+// inspector.ts — двусторонняя подсветка «блок предпросмотра ↔ фрагмент
+// исходника в редакторе». Блоки размечаются на Rust-стороне
 // (md-core::to_html_mapped) атрибутом data-md="start,end", где start/end —
 // байтовые смещения в исходном markdown.
 //
 // Главная сложность — единицы измерения: textarea оперирует UTF-16 code units
 // (selectionStart/End), а pulldown-cmark — байтами UTF-8. Карты byte↔UTF-16 и
-// список блоков берутся из общего RenderIndex (Фаза 4): индекс строит
-// previewView по тексту рендера, здесь он только читается. Синхронизация
-// скролла использует тот же снимок, исключая дубль построения.
+// список блоков берутся из общего RenderIndex: индекс строит previewView по
+// тексту рендера, здесь он только читается.
 
 import {
   type Block,
@@ -24,9 +23,8 @@ export interface Inspector {
   enable(): void;
   disable(): void;
   /**
-   * Индекс изменился (перестроен после рендера или сброшен при правке).
-   * Данные берутся из RenderIndex: там уже лежит `source` рендера и посчитанные
-   * по нему карты/блоки. Просто пересчитываем привязки либо сбрасываем их.
+   * Индекс изменился (перестроен после рендера или сброшен при правке):
+   * пересчитываем привязки либо сбрасываем их.
    */
   onIndexChanged(): void;
   /** Синхронизация editor→preview; вызывается из общего хука main.ts (T-11). */
@@ -66,7 +64,7 @@ export function createInspector(opts: {
   editor: HTMLTextAreaElement;
   preview: HTMLElement;
   statusEl: HTMLElement;
-  /** Общий индекс рендера: карты byte↔UTF-16 и блоки (Фаза 4). */
+  /** Общий индекс рендера: карты byte↔UTF-16 и блоки. */
   index: RenderIndex;
   /** Вызывается перед программным scrollIntoView (чтобы синхронизация скролла не тянула вторую панель). */
   beforeScrollIntoView?: () => void;
@@ -74,8 +72,8 @@ export function createInspector(opts: {
   const { editor, preview, statusEl, index, beforeScrollIntoView } = opts;
 
   let active = false;
-  // Привязки читаются из снимка индекса; здесь — только текущие ссылки на
-  // активные данные (валидны ровно пока индекс не перестроен/не сброшен).
+  // Привязки читаются из снимка индекса; здесь — только ссылки на активные
+  // данные (валидны ровно пока индекс не перестроен/не сброшен).
   let blocks: Block[] | null = null;
   let maps: UnitMaps | null = null;
   let activeBlockEl: HTMLElement | null = null;
@@ -86,18 +84,16 @@ export function createInspector(opts: {
   let lastHoverShift = false;
   // Выделение, выставленное инспектором программно. `selectionchange` приходит
   // асинхронно, поэтому по совпадению значений отличаем своё выделение от
-  // пользовательского: иначе обработчик каретки перебил бы подсветку ячейки
-  // блочной (он ищет `.md-block`, а не `tr/th/td`).
+  // пользовательского: иначе обработчик каретки перебил бы гранулярную
+  // подсветку ячейки блочной (он ищет `.md-block`, а не `tr/th/td`).
   let programmaticSel = { start: -1, end: -1 };
 
   // BUG-003: закрепление выделения. Клик по блоку фиксирует подсветку и
-  // выделение редактора — они переживают уход курсора (`mouseout`), наведение и
-  // движение каретки. Повторный клик снимает закрепление. Сбрасываем закрепление
-  // при перестройке индекса (правка/перерендер) и выходе из режима: байтовые
-  // смещения блока после правки недействительны.
+  // выделение редактора — они переживают уход курсора, наведение и движение
+  // каретки; повторный клик снимает. Сбрасывается при перестройке индекса
+  // (правка/перерендер) и выходе из режима: байтовые смещения блока недействительны.
   let pinned = false;
-  // Временная подсветка (click-to-inspect вне режима). В отличие от `pinned`,
-  // не закрепляется — снимается при любом клике.
+  // Временная подсветка (click-to-inspect вне режима) — снимается при любом клике.
   let transient = false;
 
   // Состояние textarea и фокуса до включения режима (восстанавливаем на выходе).
@@ -196,10 +192,7 @@ export function createInspector(opts: {
 
   // ---------- слушатели ----------
 
-  /**
-   * Получение индекса для click-to-inspect вне режима.
-   * В отличие от `onIndexChanged()`, не требует активного режима инспектора.
-   */
+  /** Снимок индекса для click-to-inspect вне активного режима. */
   function getIndex(): { blocks: Block[]; maps: UnitMaps } | null {
     const snap = index.current();
     if (!snap) return null;
@@ -227,29 +220,27 @@ export function createInspector(opts: {
   }
 
   /**
-   * Клик вне preview снимает подсветку и закрепление (исправление UX-бага).
-   * Раньше подсветка в предпросмотре оставалась, если кликнуть в другую область
-   * (редактор, тулбар и т.д.) после закрепления подсветки в предпросмотре.
-   * Также снимает временную подсветку (click-to-inspect вне режима).
+   * Клик вне preview снимает подсветку и закрепление: без этого подсветка
+   * оставалась бы после клика в редактор или тулбар. Также снимает временную
+   * подсветку (click-to-inspect вне режима).
    */
   function onDocumentClick(e: MouseEvent) {
     if (!active && !transient) return;
     const targetEl = e.target as Element | null;
-    if (preview.contains(targetEl)) return; // клик внутри preview — не наш случай
+    if (preview.contains(targetEl)) return;
     releasePin();
     if (active) restoreSavedFocus();
   }
 
   /**
-   * Click-to-inspect вне режима инспектора (пункт 11.1.3).
-   * Подсвечивает блок в предпросмотре и выделяет фрагмент в редакторе,
-   * но НЕ закрепляет подсветку — она исчезает при следующем клике.
+   * Click-to-inspect вне режима инспектора (пункт 11.1.3): подсвечивает блок и
+   * выделяет фрагмент в редакторе, но НЕ закрепляет — исчезает на клик.
    */
   function onClickPreview(e: MouseEvent) {
     if (active) return; // в режиме инспектора работает onClickCapture
     const targetEl = e.target as Element | null;
     const interactive = !!targetEl?.closest?.(INTERACTIVE_SELECTOR);
-    if (interactive) return; // интерактивные элементы — обычное поведение
+    if (interactive) return;
 
     const target = resolveTarget(targetEl, e.shiftKey);
     if (!target) return;
@@ -257,7 +248,6 @@ export function createInspector(opts: {
     const idx = getIndex();
     if (!idx) return;
 
-    // Подсвечиваем блок в предпросмотре (временно)
     clearBlockHighlight();
     const range = parseRange(target.el);
     if (!range) return;
@@ -267,7 +257,6 @@ export function createInspector(opts: {
     activeBlockEl = target.el;
     transient = true;
 
-    // Выделяем текст в редакторе и прокручиваем
     editor.focus();
     editor.setSelectionRange(start, end);
     programmaticSel = { start, end };
@@ -320,9 +309,6 @@ export function createInspector(opts: {
     scrollIntoViewIfNeeded(block.el);
   }
 
-  // Снимает закрепление и гасит подсветку/бэнды. Общее для повторного клика по
-  // закреплённому блоку, клика по пустой области и клика по интерактивному
-  // элементу (BUG-003).
   function releasePin() {
     pinned = false;
     transient = false;
@@ -395,7 +381,7 @@ export function createInspector(opts: {
     document.addEventListener("selectionchange", onEditorSelection);
     document.addEventListener("keydown", onShiftKey);
     document.addEventListener("keyup", onShiftKey);
-    // Привязки могли появиться, пока режим был выключен, — подхватываем индекс.
+    // Привязки могли появиться, пока режим был выключен.
     onIndexChanged();
   }
 
@@ -427,13 +413,13 @@ export function createInspector(opts: {
   }
 
   function onIndexChanged(): void {
-    pinned = false; // индекс перестроен: закреплённые смещения устарели
-    transient = false; // индекс перестроен: временная подсветка устарела
+    // Индекс перестроен — все смещения устарели.
+    pinned = false;
+    transient = false;
     clearBlockHighlight();
     blocks = null;
     maps = null;
     programmaticSel = { start: -1, end: -1 };
-    // Индекс пуст (текст изменён до рендера) или режим выключен — только сброс.
     if (!active) return;
     const snap = index.current();
     if (!snap) return;

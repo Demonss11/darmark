@@ -1,10 +1,10 @@
 // linkController.ts — связка inspector + scrollsync над парой панелей
-// (DESIGN_DOC §5.5). Оба читают один и тот же RenderIndex (Фаза 4); контроллер
-// владеет их жизненным циклом и даёт единую точку для main.ts.
+// (DESIGN_DOC §5.5). Оба читают один и тот же RenderIndex; контроллер владеет их
+// жизненным циклом и даёт единую точку для main.ts.
 //
-// Хосты (editor/preview) статичны: элементы живут всё время приложения, при
-// выключении предпросмотра панель лишь скрывается (§paneHost), а scrollsync сам
-// безопасно пропускает синхронизацию, когда у панели нулевая высота (AC-9).
+// Хосты (editor/preview) статичны: при выключении предпросмотра панель лишь
+// скрывается (§paneHost), а scrollsync безопасно пропускает синхронизацию при
+// нулевой высоте панели (AC-9).
 
 import { createInspector, type Inspector } from "./inspector";
 import { createScrollSync, type ScrollSync } from "./scrollsync";

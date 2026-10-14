@@ -1,14 +1,14 @@
 // pluginManager.ts — менеджер плагинов в дровере `#drawer-body` (H2, Фаза 5).
 //
-// Контроллер показывает снимок плагинов из Rust-хоста (команда `list_plugins`):
-// статус, тумблер вкл/выкл, «Перезагрузить», инлайн-согласие на permissions
-// (§11.1 п.4), кнопки команд плагина и форму настроек по `contributes.settings`
-// (S5b). Тело панели собирается DOM-узлами и `textContent` — строки из
-// манифеста/хоста не проходят через `innerHTML` (защита от инъекции).
+// Показывает снимок плагинов из Rust-хоста (`list_plugins`): статус, тумблер
+// вкл/выкл, «Перезагрузить», инлайн-согласие на permissions (§11.1 п.4),
+// кнопки команд и форму настроек по `contributes.settings` (S5b). Тело панели
+// собирается DOM-узлами и `textContent` — строки из манифеста/хоста не проходят
+// через `innerHTML`.
 //
-// Состав/статусы меняются и по инициативе хоста: событие `plugins-changed` (без
-// payload) заставляет перечитать снимок. Обработчики — делегированные на корне,
-// поэтому перерисовка списка не оставляет висячих слушателей.
+// Состав и статусы меняются по инициативе хоста: событие `plugins-changed` (без
+// payload) заставляет перечитать снимок. Обработчики делегированы корню, поэтому
+// перерисовка списка не оставляет висячих слушателей.
 
 import { listen } from "@tauri-apps/api/event";
 import {
@@ -52,7 +52,6 @@ export interface PluginManagerOptions {
   onPlugins?(list: PluginInfo[]): void;
 }
 
-/** Человекочитаемая подпись статуса для бейджа. */
 const STATUS_LABELS: Record<PluginStatus["state"], string> = {
   active: "активен",
   failed: "ошибка",
@@ -67,9 +66,8 @@ const STATUS_LABELS: Record<PluginStatus["state"], string> = {
 const QUARANTINE_THRESHOLD = 3;
 
 /**
- * Человекочитаемые описания прав (S12b). Единое место маппинга: `renderConsent`
- * берёт подпись отсюда, сырой токен показывается вторично. Фолбэк — сам токен,
- * чтобы неизвестное право не исчезало из UI (см. `permissionLabel`).
+ * Подписи прав (S12b). Фолбэк — сам токен, чтобы неизвестное право не исчезало
+ * из UI.
  */
 const PERMISSION_LABELS: Record<string, string> = {
   "document:read": "Чтение документа",
@@ -84,7 +82,6 @@ function permissionLabel(permission: string): string {
   return PERMISSION_LABELS[permission] ?? permission;
 }
 
-/** Сообщение статуса, если оно есть (`failed`), иначе `null`. */
 function statusMessage(status: PluginStatus): string | null {
   return status.state === "failed" ? status.message : null;
 }
@@ -105,8 +102,7 @@ function stateHint(status: PluginStatus): string | null {
 /**
  * Первая notice о доступе к документу — для инлайн-`.pl-boundary` рядом с
  * согласием (S12b). Эвристика по слову «документ»: строки приходят из Rust-ядра
- * (`permission_notices`). Общая памятка об изоляции остаётся в поповере и здесь
- * не дублируется, поэтому берём именно документную notice.
+ * (`permission_notices`); общая памятка об изоляции остаётся в поповере.
  */
 function documentBoundaryNotice(info: PluginInfo): string | null {
   return info.notices.find((notice) => notice.toLowerCase().includes("документ")) ?? null;
@@ -122,11 +118,8 @@ function settingValue(info: PluginInfo, key: string, prop: PluginSettingProperty
   return stored !== undefined ? stored : prop.default;
 }
 
-/**
- * Строка настройки: подпись + контрол (`<label>` даёт неявную связь и клик по
- * тексту), ниже — мелкое описание. Все строки из манифеста идут через
- * `textContent`, без `innerHTML`.
- */
+// Строка настройки: `<label>` даёт неявную связь с контролом и клик по тексту.
+// Все строки из манифеста идут через `textContent`, без `innerHTML`.
 function renderSettingRow(
   key: string,
   prop: PluginSettingProperty,
@@ -164,8 +157,8 @@ function bodyId(pluginId: string): string {
 }
 
 /**
- * Инфо-иконка (круг с «i») как inline SVG: CSP `default-src 'self'` разрешает
- * inline-контент, и, в отличие от Unicode `ⓘ`, рендер не зависит от системных шрифтов.
+ * Инфо-иконка как inline SVG: CSP `default-src 'self'` разрешает inline-контент,
+ * и, в отличие от Unicode `ⓘ`, рендер не зависит от системных шрифтов.
  */
 function infoIcon(): SVGSVGElement {
   const NS = "http://www.w3.org/2000/svg";
@@ -218,7 +211,6 @@ function chevronIcon(): SVGSVGElement {
 
 /**
  * Щит как inline SVG — маркер граничной notice о доступе к документу (S12b).
- * CSP `default-src 'self'` разрешает inline-контент; внешних ассетов нет.
  */
 function shieldIcon(): SVGSVGElement {
   const NS = "http://www.w3.org/2000/svg";
@@ -241,8 +233,8 @@ function shieldIcon(): SVGSVGElement {
 }
 
 /**
- * Идентичность плагина (S12a): человекочитаемое имя из манифеста + версия
- * первичны, сырой `id` — вторично мелким моно. Пустое имя деградирует к `id`.
+ * Идентичность плагина (S12a): имя из манифеста + версия первичны, сырой `id` —
+ * вторично мелким моно. Пустое имя деградирует к `id`.
  */
 function renderIdentity(info: PluginInfo): HTMLElement {
   const ident = el("div", "pl-ident");
@@ -266,7 +258,7 @@ function renderIdentity(info: PluginInfo): HTMLElement {
   return ident;
 }
 
-/** Кнопка-иконка «инфо» о границах изоляции плагина (в `.pl-item-head`). */
+// Кнопка-иконка «инфо» о границах изоляции плагина (в `.pl-item-head`).
 function renderInfoButton(info: PluginInfo): HTMLButtonElement {
   const btn = document.createElement("button");
   btn.type = "button";
@@ -278,10 +270,8 @@ function renderInfoButton(info: PluginInfo): HTMLButtonElement {
   return btn;
 }
 
-/**
- * Скрытый поповер с формулировками границы изоляции. Текст — только `textContent`
- * (строки приходят из Rust-ядра и не проходят через `innerHTML`).
- */
+// Скрытый поповер с формулировками границы изоляции. Текст — только
+// `textContent`: строки приходят из Rust-ядра и не проходят через `innerHTML`.
 function renderInfoPopover(info: PluginInfo): HTMLElement {
   const pop = el("div", "pl-info-pop");
   pop.id = infoPopoverId(info.id);
@@ -296,7 +286,7 @@ function renderInfoPopover(info: PluginInfo): HTMLElement {
   return pop;
 }
 
-/** Кнопка-шеврон раскрытия карточки (в конце `.pl-item-head`, перед поповером). */
+// Кнопка-шеврон раскрытия карточки (в конце `.pl-item-head`, перед поповером).
 function renderExpandButton(info: PluginInfo, open: boolean): HTMLButtonElement {
   const btn = document.createElement("button");
   btn.type = "button";
@@ -318,15 +308,15 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
   let lastList: PluginInfo[] = [];
   // Идущая перезагрузка: конкурентные Ctrl+R переиспользуют её (см. reloadForDocument).
   let reloading: Promise<void> | null = null;
-  // Кнопка открытого поповера информации — их не больше одного (см. toggleInfoPopover).
+  // Открытый поповер информации — он не больше одного (см. toggleInfoPopover).
   let openInfoButton: HTMLButtonElement | null = null;
   // Связь кнопки с её поповером по DOM-узлу — без запросов к document и без утечек.
   const infoPopovers = new WeakMap<HTMLButtonElement, HTMLElement>();
   // Допустимые значения `<select>` настройки: индекс опции → исходное значение схемы.
   // WeakMap по узлу — не удерживает DOM после перерисовки и не течёт.
   const settingEnums = new WeakMap<HTMLSelectElement, Json[]>();
-  // Раскрытые карточки — вне DOM: `render` пересоздаёт узлы (`replaceChildren`),
-  // а раскрытие должно переживать перерисовку после действий (toggle/grant/reload).
+  // Раскрытые карточки — вне DOM: `render` пересоздаёт узлы, а раскрытие должно
+  // переживать перерисовку после действий (toggle/grant/reload).
   const expanded = new Set<string>();
 
   function renderBadge(info: PluginInfo): HTMLElement {
@@ -404,8 +394,7 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
       section.append(hint);
     }
 
-    // Граничная notice о доступе к документу — инлайн, коротко (S12b): общая
-    // памятка об изоляции остаётся в поповере и здесь не дублируется.
+    // Граничная notice о доступе к документу — инлайн, коротко (S12b).
     const boundaryNotice = documentBoundaryNotice(info);
     if (boundaryNotice) {
       const boundary = el("div", "pl-boundary");
@@ -463,10 +452,8 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     return input;
   }
 
-  /**
-   * Секция «Настройки» в теле карточки (S5b). `null`, если схемы/`properties`
-   * нет или все свойства неизвестного типа — пустую секцию не показываем.
-   */
+  // Секция «Настройки» в теле карточки (S5b). `null`, если схемы/`properties`
+  // нет или все свойства неизвестного типа — пустую секцию не показываем.
   function renderSettings(info: PluginInfo): HTMLElement | null {
     const properties = info.settings_schema?.properties;
     if (!properties) return null;
@@ -485,7 +472,7 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     return section;
   }
 
-  /** Дизейблит контролы настроек на время IPC (защита от повторного ввода). */
+  // Дизейблит контролы настроек на время IPC (защита от повторного ввода).
   function setSettingsBusy(item: HTMLElement, busy: boolean): void {
     for (const control of item.querySelectorAll<HTMLInputElement | HTMLSelectElement>(
       ".pl-setting-control"
@@ -494,7 +481,7 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     }
   }
 
-  /** Значение контрола в тип схемы; `undefined` — ввод невалиден (пустое число). */
+  // Значение контрола в тип схемы; `undefined` — ввод невалиден (пустое число).
   function readSettingValue(
     control: HTMLInputElement | HTMLSelectElement
   ): Json | undefined {
@@ -514,7 +501,7 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     return control.value;
   }
 
-  /** Один плагин: голова-строка (тумблер/имя/инфо/бейдж/шеврон) + тело-аккордеон. */
+  // Один плагин: голова-строка (тумблер/имя/инфо/бейдж/шеврон) + тело-аккордеон.
   function renderItem(info: PluginInfo): HTMLElement {
     const item = el("div", "pl-item");
     item.dataset.plugin = info.id;
@@ -549,8 +536,8 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     const body = el("div", "pl-item-body");
     body.id = bodyId(info.id);
 
-    // Порядок тела: критичное выше рутины — fail-notice/state-hint → actions → consent.
-    // Статус `failed` несёт сообщение — показываем его первым.
+    // Порядок тела: критичное выше рутины — fail-notice/state-hint → actions →
+    // consent → settings.
     const failMessage = statusMessage(info.status);
     if (failMessage) {
       const node = el("div", "pl-notice");
@@ -558,7 +545,7 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
       body.append(node);
     }
 
-    // S12c: подсказка восстановления для `failed`/`quarantined` — рядом с причиной.
+    // S12c: подсказка восстановления — рядом с причиной.
     const hintText = stateHint(info.status);
     if (hintText) {
       const hint = el("div", "pl-state-hint");
@@ -594,11 +581,9 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     }
     body.append(actions);
 
-    // Инлайн-секция согласия: запросы манифеста + фактически выданные права.
     const consent = renderConsent(info);
     if (consent) body.append(consent);
 
-    // S5b: настройки плагина по схеме `contributes.settings` — ниже согласия.
     const settings = renderSettings(info);
     if (settings) body.append(settings);
 
@@ -609,11 +594,11 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     return item;
   }
 
-  /** Открывает поповер кнопки; повторный клик или открытие другого закрывает предыдущий. */
+  // Открывает поповер кнопки; повторный клик или открытие другого закрывает
+  // предыдущий.
   function toggleInfoPopover(button: HTMLButtonElement): void {
     const popover = infoPopovers.get(button);
     if (!popover) return;
-    // Повторный клик по той же кнопке закрывает; открытие другой — закрывает текущий.
     const wasOpen = openInfoButton === button;
     closeAllInfoPopovers();
     if (wasOpen) return;
@@ -623,7 +608,7 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     openInfoButton = button;
   }
 
-  /** Закрывает открытый поповер (он один) и возвращает кнопку — для возврата фокуса. */
+  // Закрывает открытый поповер (он один) и возвращает кнопку — для фокуса.
   function closeAllInfoPopovers(): HTMLButtonElement | null {
     const button = openInfoButton;
     if (!button) return null;
@@ -656,7 +641,7 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
   function render(list: PluginInfo[]): void {
     // `replaceChildren` уничтожит узлы, включая открытый поповер, — сбрасываем ссылку.
     closeAllInfoPopovers();
-    // Прунинг: выкидываем раскрытие исчезнувших плагинов, иначе `Set` растёт вечно.
+    // Прунинг: иначе `Set` растёт вечно.
     const ids = new Set(list.map((info) => info.id));
     for (const id of expanded) {
       if (!ids.has(id)) expanded.delete(id);
@@ -666,7 +651,6 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
       const title = el("div", "pl-empty-title");
       title.textContent = "Плагины не найдены";
       const hint = el("div", "pl-empty-hint");
-      // Статические строки (путь/состав папки) — textContent, без innerHTML.
       hint.append("Положите плагин в ");
       const code = document.createElement("code");
       code.textContent = "%APPDATA%/darmark/plugins/<id>/";
@@ -703,8 +687,8 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
    * разрушителен: карантин и согласие сохраняются.
    */
   async function reloadForDocument(path: string | null): Promise<void> {
-    // Защита от конкурентных нажатий Ctrl+R: пока идёт перезагрузка, повторный
-    // вызов переиспользует тот же промис (иначе child-процессы рестартуют дважды).
+    // Пока идёт перезагрузка, повторный вызов переиспользует тот же промис
+    // (иначе child-процессы рестартуют дважды).
     if (reloading) return reloading;
     reloading = doReload(path).finally(() => {
       reloading = null;
@@ -713,7 +697,7 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
   }
 
   async function doReload(path: string | null): Promise<void> {
-    // Снимок может быть пуст — refresh ещё не прошёл (например, старт приложения).
+    // Снимок может быть пуст — refresh ещё не прошёл (например, на старте).
     const source = lastList.length > 0 ? lastList : await listPlugins();
     const enabled = source.filter((info) => info.enabled);
     if (enabled.length === 0) {
@@ -745,7 +729,7 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     await refresh();
   }
 
-  /** Дизейблит контролы согласия плагина на время IPC (защита от повторного клика). */
+  // Дизейблит контролы согласия плагина на время IPC (защита от повторного клика).
   function setConsentBusy(item: HTMLElement, busy: boolean): void {
     for (const cb of item.querySelectorAll<HTMLInputElement>("input.pl-grant")) {
       cb.disabled = busy;
@@ -755,7 +739,7 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     }
   }
 
-  /** Собирает **весь** набор отмеченных прав `.pl-item` и фиксирует согласие. */
+  // Собирает **весь** набор отмеченных прав `.pl-item` и фиксирует согласие.
   async function handleGrant(input: HTMLInputElement): Promise<void> {
     const item = input.closest<HTMLElement>(".pl-item");
     const id = item?.dataset.plugin;
@@ -773,7 +757,7 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     await refresh();
   }
 
-  /** Групповые кнопки «Выдать все»/«Снять все» для согласия плагина. */
+  // Групповые кнопки «Выдать все»/«Снять все» для согласия плагина.
   async function handleGrantBulk(btn: HTMLButtonElement): Promise<void> {
     const item = btn.closest<HTMLElement>(".pl-item");
     const id = item?.dataset.plugin;
@@ -794,7 +778,7 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     await refresh();
   }
 
-  /** Записывает изменённую настройку плагина и перечитывает снимок (S5b). */
+  // Записывает изменённую настройку плагина и перечитывает снимок (S5b).
   async function handleSettingChange(
     control: HTMLInputElement | HTMLSelectElement
   ): Promise<void> {
@@ -826,10 +810,8 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     await refresh();
   }
 
-  /**
-   * Confirm-диалог удаления плагина через `dialog.ts` (variant «center»).
-   * Возвращает `true`, если пользователь подтвердил удаление.
-   */
+  // Confirm-диалог удаления плагина через `dialog.ts` (variant «center»);
+  // `true`, если пользователь подтвердил удаление.
   function confirmRemovePlugin(id: string): Promise<boolean> {
     return new Promise((resolve) => {
       const content = el("div", "pl-confirm-remove");
@@ -942,7 +924,7 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     if (bulk) void handleGrantBulk(bulk);
   }
 
-  /** Клик вне кнопки/поповера закрывает его (делегирование на `document`). */
+  // Клик вне кнопки/поповера закрывает его.
   function onDocumentClick(e: MouseEvent): void {
     const button = openInfoButton;
     if (!button) return;
@@ -952,7 +934,7 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     closeAllInfoPopovers();
   }
 
-  /** Escape закрывает поповер и возвращает фокус на кнопку. */
+  // Escape закрывает поповер и возвращает фокус на кнопку.
   function onDocumentKeydown(e: KeyboardEvent): void {
     if (e.key !== "Escape" || !openInfoButton) return;
     // Поповер — верхний слой: поглощаем Escape, чтобы он не закрыл дровер
@@ -978,7 +960,7 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
 
     dispose(): void {
       disposed = true;
-      expanded.clear(); // симметрия с create: контроллер не удерживает id после уничтожения
+      expanded.clear();
       closeAllInfoPopovers();
       root.removeEventListener("change", onChange);
       root.removeEventListener("click", onClick);

@@ -46,8 +46,7 @@ function joinPath(baseDir: string, rel: string): string {
 
 /**
  * Заменяет относительные (и абсолютные локальные) `src` картинок на asset-URL.
- * Идемпотентна: уже сконвертированные (`asset:`/`http:`) пропускает. Без пути к
- * документу (`безымянный`) ничего не делает — резолвить не от чего.
+ * Идемпотентна. Без пути к документу (безымянный) ничего не делает.
  */
 export function resolveLocalImages(root: HTMLElement, docPath: string | null): void {
   if (!docPath) return;
@@ -57,7 +56,7 @@ export function resolveLocalImages(root: HTMLElement, docPath: string | null): v
   for (const img of root.querySelectorAll<HTMLImageElement>("img[src]")) {
     const src = img.getAttribute("src");
     if (!src) continue;
-    // Абсолютный локальный путь → сразу в asset-URL; схему (`http:`/`data:`) не трогаем.
+    // Абсолютный локальный путь → сразу в asset-URL.
     if (isWindowsAbsolute(src) || (!windowsDoc && src.startsWith("/") && !src.startsWith("//"))) {
       img.setAttribute("src", convertFileSrc(src));
     } else if (!hasScheme(src)) {

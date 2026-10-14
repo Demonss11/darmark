@@ -2,16 +2,12 @@
 //
 // Плагин с `contributes.views[{kind,title,tier:1}]` становится ещё одним
 // `HtmlViewProvider` в общем `viewRegistry` (ADR-0022, IDEA-003): нативный
-// Markdown-предпросмотр остаётся дефолтным провайдером, а плагинные вкладки —
-// выбираемые в `.view-switch`. Контроллер лишь:
-//   — держит список представлений (приходит из Rust командой `plugin_views`);
-//   — регистрирует/создаёт провайдер и `HtmlView` на каждый view через реестр;
-//   — переключает вкладки и отдаёт активному view присланный HTML.
+// Markdown-предпросмотр остаётся дефолтным провайдером, плагинные вкладки —
+// выбираемыми в `.view-switch`.
 //
-// Сам `HtmlView` (возвращаемый `createView`) владеет своим DOM-поведением:
-// пишет санитизированный хостом HTML в контейнер и слушает клики
-// `data-p-<plugin_id>-action/-payload`, возвращая их в плагин (`plugin_view_action`).
-// Никакого доступа к `window`/`fetch`/ФС из контейнера нет.
+// Контент санитизирует хост; контроллер пишет его в контейнер и возвращает
+// клики `data-p-<plugin_id>-action/-payload` в плагин (`plugin_view_action`).
+// Доступа к `window`/`fetch`/ФС из контейнера нет.
 
 import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -23,10 +19,7 @@ import { pluginColor } from "./pluginColor";
 export interface PluginViews {
   /** Запросить список представлений и перестроить вкладки/контейнер. */
   refresh(): Promise<void>;
-  /**
-   * Показать первое представление плагина (по `plugin_id`). Возвращает `false`,
-   * если у плагина нет ни одного зарегистрированного представления (no-op).
-   */
+  /** Показать первое представление плагина; `false` — у него их нет (no-op). */
   openPlugin(pluginId: string): boolean;
   /** Есть ли у плагина зарегистрированное тир-1 представление. */
   hasView(pluginId: string): boolean;
@@ -54,8 +47,8 @@ export interface PluginViewsOptions {
   /** `#preview` — скрывается, пока активна плагинная вкладка. */
   previewEl: HTMLElement;
   /**
-   * Кнопка быстрого возврата к предпросмотру (`#btn-back-preview`). Видна только
-   * при активной плагинной вкладке; клик эквивалентен клику по core-вкладке.
+   * Кнопка быстрого возврата к предпросмотру (`#btn-back-preview`); её клик
+   * эквивалентен клику по core-вкладке.
    */
   backButtonEl: HTMLElement | null;
   /** Сообщение в статусбар (ошибки IPC/действия). */
@@ -81,11 +74,10 @@ function parsePayload(raw: string | null): Json | undefined {
 }
 
 /**
- * Создаёт `HtmlViewProvider` одного плагинного представления (тир-1, ADR-0022).
- *
- * `kind` — `view_id` (`<plugin_id>:<kind>`): уникален для нескольких плагинов с
- * одинаковым `kind`. `createView` возвращает [`PluginHtmlView`], который владеет
- * контейнером: пишет HTML и маршрутизирует клики обратно в плагин.
+ * `HtmlViewProvider` одного плагинного представления (тир-1, ADR-0022).
+ * `kind` — `view_id` (`<plugin_id>:<kind>`): уникален для плагинов с одинаковым
+ * `kind`. Возвращаемый `PluginHtmlView` владеет контейнером: пишет HTML и
+ * маршрутизирует клики обратно в плагин.
  */
 function createPluginViewProvider(
   info: PluginViewInfo,
@@ -155,13 +147,12 @@ export function createPluginViews(opts: PluginViewsOptions): PluginViews {
   // Защита от гонок: ответ устаревшего `plugin_views` не должен перетирать свежий.
   let refreshSeq = 0;
 
-  // Подписка на изменение списка/контента представлений. Ошибку установки
-  // глушим: в обычном (не плагинном) запуске событий просто не будет.
+  // Ошибку установки глушим: в обычном (не плагинном) запуске событий не будет.
   const unlistenPromise = listen("plugin-views-changed", () => {
     void refresh();
   }).catch(() => null);
 
-  /** Подсветить вкладку: `null` — core, иначе плагинная с данным view_id. */
+  // Подсветить вкладку: `null` — core, иначе плагинная с данным view_id.
   function setActiveTab(viewId: string | null): void {
     for (const tab of switchEl.querySelectorAll<HTMLElement>(".vtab")) {
       const isPlugin = tab.classList.contains("plugin");
@@ -172,7 +163,7 @@ export function createPluginViews(opts: PluginViewsOptions): PluginViews {
     }
   }
 
-  /** Вернуться к core-вкладке «Предпросмотр» (container остаётся в DOM, скрыт). */
+  // Вернуться к core-вкладке «Предпросмотр» (container остаётся в DOM, скрыт).
   function showPreview(): void {
     activeViewId = null;
     for (const runtime of runtimes.values()) runtime.view.setActive(false);
@@ -182,7 +173,7 @@ export function createPluginViews(opts: PluginViewsOptions): PluginViews {
     setActiveTab(null);
   }
 
-  /** Показать плагинное представление (HTML пишет его `HtmlView`). */
+  // Показать плагинное представление (HTML пишет его `HtmlView`).
   function showPlugin(viewId: string): void {
     const runtime = runtimes.get(viewId);
     if (!runtime) {
@@ -197,7 +188,7 @@ export function createPluginViews(opts: PluginViewsOptions): PluginViews {
     setActiveTab(viewId);
   }
 
-  /** Синхронизирует созданные view с пришедшим списком (регистрация/удаление/HTML). */
+  // Синхронизирует созданные view с пришедшим списком (регистрация/удаление/HTML).
   function syncRuntimes(list: PluginViewInfo[]): void {
     const seen = new Set<string>();
     for (const info of list) {
@@ -225,7 +216,7 @@ export function createPluginViews(opts: PluginViewsOptions): PluginViews {
     }
   }
 
-  /** Пересобрать только плагинные вкладки (core-вкладка заморожена H1). */
+  // Пересобрать только плагинные вкладки (core-вкладка заморожена H1).
   function renderTabs(list: PluginViewInfo[]): void {
     for (const old of switchEl.querySelectorAll<HTMLElement>(".vtab.plugin")) old.remove();
     for (const info of list) {
@@ -242,7 +233,7 @@ export function createPluginViews(opts: PluginViewsOptions): PluginViews {
     }
   }
 
-  /** Перестроить вкладки и восстановить активное состояние. */
+  // Перестроить вкладки и восстановить активное состояние.
   function render(list: PluginViewInfo[]): void {
     syncRuntimes(list);
     renderTabs(list);
@@ -281,8 +272,7 @@ export function createPluginViews(opts: PluginViewsOptions): PluginViews {
 
   switchEl.addEventListener("click", onSwitchClick);
 
-  // Быстрый возврат к предпросмотру с плагинной вкладки — та же логика, что у
-  // core-вкладки. Слушатель вешаем только если кнопка присутствует в разметке.
+  // Слушатель вешаем только если кнопка присутствует в разметке.
   const onBackClick = (): void => showPreview();
   backButtonEl?.addEventListener("click", onBackClick);
 

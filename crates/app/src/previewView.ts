@@ -1,10 +1,11 @@
 // previewView.ts — предпросмотр по тир-1 контракту (HtmlView), встроен на хосте (D2).
 //
 // Единственное место, где выполняется `preview.innerHTML = html` (ТЗ-H1, Фаза 4).
-// Сюда переехали из `main.ts:onRender`: применение HTML, украшение таблиц
+// Сюда переехали из `main.ts:onRender` применение HTML, украшение таблиц
 // (`createTablesController`, per-view), `resolveLocalImages`, делегирование
-// внешних ссылок и перестроение общего `RenderIndex`. Завтра тот же класс может быть заменён плагином: контракт
-// `HtmlView.render(doc)` + `ViewContext` ничего хост-специфичного не знают.
+// внешних ссылок и перестроение общего `RenderIndex`. Контракт
+// `HtmlView.render(doc)` + `ViewContext` ничего хост-специфичного не знает —
+// тот же класс может быть заменён плагином.
 //
 // Конвейер: docStore (`onRender`) вызывает `applyRender(res, source)`;
 // `source` — текст, ушедший в рендер (не текущий буфер редактора), по нему
@@ -33,9 +34,9 @@ export interface PreviewView extends HtmlView {
 }
 
 /**
- * Живые ссылки на DOM-зависимости. Формально `opts` контракта — `Json`
- * (§5.3), но встроенный на хосте провайдер (D2) вправе передавать больше;
- * плагин-провайдер получит строгий `Json`.
+ * Живые ссылки на DOM-зависимости. Формально `opts` контракта — `Json` (§5.3),
+ * но встроенный на хосте провайдер (D2) вправе передавать больше; плагин
+ * получит строгий `Json`.
  */
 export interface PreviewViewOptions {
   previewEl: HTMLElement;
@@ -65,16 +66,14 @@ export const previewViewProvider: HtmlViewProvider = {
       }
     };
     previewEl.addEventListener("click", handleClick);
-    // Таблицы: украшение + меню фильтров — состояние ЭКЗЕМПЛЯРА preview-вида
-    // (§5.6): меню вешается в body, dispose() его убирает и снимает слушатель.
+    // Таблицы: состояние меню — ЭКЗЕМПЛЯРА preview-вида (§5.6): dispose() убирает
+    // меню из body и снимает слушатель.
     const tables = createTablesController(previewEl);
 
-    // HTML, последний раз переданный в `previewEl.innerHTML` (без последующих
-    // `tables.enhance()`/`resolveLocalImages`, которые мутируют DOM уже после
-    // присваивания). `res.changed` хоста считается per-document, а предпросмотр
-    // один на всё приложение: при возврате на ранее отрендеренную вкладку
-    // `changed` может быть `false`, хотя в DOM остался HTML другого документа.
-    // Поэтому применяем ещё и по фактическому различию HTML.
+    // HTML, последний раз присвоенный `previewEl.innerHTML`. `res.changed` хоста
+    // считается per-document, а предпросмотр один на всё приложение: при
+    // возврате на ранее отрендеренную вкладку `changed` может быть `false`,
+    // хотя в DOM остался HTML другого документа — поэтому сверяем и HTML.
     let lastHtml = "";
 
     function applyRender(res: RenderResult, source: string): void {
@@ -82,7 +81,7 @@ export const previewViewProvider: HtmlViewProvider = {
         previewEl.innerHTML = res.html;
         lastHtml = res.html;
         try {
-          tables.enhance(); // Excel-подобные сортировка/фильтры для всех <table>
+          tables.enhance();
         } catch (e) {
           // Украшение таблиц упало — оставляем читаемый HTML без улучшений (P1.2).
           ctx.status(`Таблицы: ${String(e)}`);
@@ -90,18 +89,15 @@ export const previewViewProvider: HtmlViewProvider = {
       }
       // Локальные картинки: относительные src → asset-URL (идемпотентно).
       resolveLocalImages(previewEl, ctx.document()?.path ?? null);
-      // Переиндексация нужна всегда: индекс привязан к тексту рендера (`source`).
+      // Индекс привязан к тексту рендера (`source`) — переиндексация нужна всегда.
       index.set(source, res.rev, previewEl);
       o.onIndexed();
     }
 
-    // Copy HTML: автономный HTML-фрагмент для буфера обмена. Вместо копирования
-    // текущего innerHTML (классы приложения) собираем документ со встроенными
-    // стилями. Копирование — ВСЕГДА светлая тема (решение пользователя, ADR-0037):
-    // не зависит от активной темы приложения, поэтому переключение темы не
-    // меняет содержимое буфера. Один набор правил — и для Markdown-превью, и для
-    // плагинных view. Frontmatter (YAML-шапка) копируется как есть — таблицей.
-    // Цвета — светлые токены (ADR-0037).
+    // Copy HTML: вместо копирования innerHTML (классы приложения) собираем
+    // автономный фрагмент со встроенными стилями. Копирование — ВСЕГДА светлая
+    // тема, независимо от темы приложения (ADR-0037). Один набор правил — и для
+    // Markdown-превью, и для плагинных view; frontmatter копируется как есть.
     const COPY_CSS = `
       h1 { font-size: 30px; font-weight: 700; color: #0f1115; margin: 0 0 14px; border-bottom: 1px solid #b8bfcc; padding-bottom: 0.2em; }
       h2 { font-size: 21px; font-weight: 700; color: #0f1115; margin: 24px 0 10px; border-bottom: 1px solid #d0d5e0; padding-bottom: 0.2em; }
@@ -125,8 +121,7 @@ export const previewViewProvider: HtmlViewProvider = {
       input[type="checkbox"] { margin-right: 6px; }
     `.trim();
     const buildCopyHtml = (source: HTMLElement): string => {
-      // Клонируем контейнер, чтобы вычистить классы/стили/атрибуты приложения,
-      // не трогая живой DOM. Markdown-структура (теги) сохраняется.
+      // Чистим клон, не трогая живой DOM: markdown-структура (теги) сохраняется.
       const clone = source.cloneNode(true) as HTMLElement;
       clone.removeAttribute("class");
       clone.removeAttribute("style");
@@ -139,8 +134,7 @@ export const previewViewProvider: HtmlViewProvider = {
         el.removeAttribute("style");
         el.removeAttribute("data-md");
       }
-      // Убираем UI таблиц (панель инструментов, счётчики, меню фильтров):
-      // это интерактивные элементы приложения, а не содержимое документа.
+      // UI таблиц — элементы приложения, а не содержимое документа.
       for (const sel of [".table-tools", ".table-count", ".col-filter-menu", ".col-filter-btn", ".col-filter-list", ".col-filter-item", ".col-filter-empty", ".col-filter-footer", ".table-scroll"]) {
         for (const el of clone.querySelectorAll<HTMLElement>(sel)) el.remove();
       }
@@ -170,8 +164,8 @@ export const previewViewProvider: HtmlViewProvider = {
       } catch {
         // WebView2 может не поддерживать ClipboardItem с text/html — fallback ниже.
       }
-      // Fallback для WebView2: временный div + execCommand('copy') с выделением.
-      // execCommand копирует выделенный HTML как rich text (text/html) в буфер обмена.
+      // Fallback для WebView2: временный div + execCommand копирует выделение
+      // как rich text (text/html).
       const tempDiv = document.createElement("div");
       tempDiv.innerHTML = html;
       tempDiv.style.position = "fixed";
@@ -211,7 +205,6 @@ export const previewViewProvider: HtmlViewProvider = {
       },
 
       // Тир-1 путь: документ → HTML (через ctx.render) → применение.
-      // В текущем конвейере главный вход — `applyRender` из docStore.
       async render(doc: DocumentSnapshot): Promise<void> {
         const res = await ctx.render(doc.text, mapped);
         applyRender(res, doc.text);
