@@ -1,0 +1,103 @@
+/* ===================== ТУЛБАР ===================== */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: var(--h-toolbar);
+  padding: 0 8px;
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--line-soft);
+  flex-shrink: 0;
+  user-select: none;
+}
+.brand {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 6px;
+  padding: 0 4px 0 2px;
+}
+.brand-mark {
+  display: block;
+  height: 20px;
+  width: auto;
+}
+/* Переключение логотипа по теме (data-theme на <html>): в тёмной — белый,
+   в светлой — тёмный. Без JS, чистый CSS. */
+.brand-mark--light { display: none; }
+:root[data-theme="light"] .brand-mark--dark { display: none; }
+:root[data-theme="light"] .brand-mark--light { display: block; }
+
+.file-actions { display: inline-flex; align-items: center; gap: 0; }
+.file-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 280px;
+  min-width: 0;
+  padding: 3px 9px;
+  border-radius: var(--r-sm);
+  color: var(--fg-dim);
+  font-size: 12px;
+}
+.file-chip .fname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); }
+
+/* иконочные кнопки тулбара/дровера */
+.tbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--fg-dim);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.12s, color 0.12s;
+}
+.tbtn:hover { background: var(--bg-3); color: var(--fg); }
+.tbtn.active,
+.tbtn[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+.tbtn svg { width: 15px; height: 15px; }
+/* тумблеры: залиты, когда включены */
+.tbtn:has(> input:checked) { color: var(--accent); background: var(--accent-soft); }
+.toggle-input { position: absolute; width: 0; height: 0; opacity: 0; pointer-events: none; }
+/* Фокус на скрытом input невидим сам по себе — показываем его на обёртке (B1).
+   Только клавиатурный фокус (`:focus-visible`): иначе после клика по тумблеру
+   рамка остаётся висеть до клика вне него (BUG-008). */
+label.tbtn:has(> input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.format-group { display: flex; align-items: center; gap: 0; opacity: 0.55; transition: opacity 0.18s; }
+.format-group:focus-within { opacity: 1; }
+
+.palette-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 24px;
+  padding: 0 10px 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg-3);
+  color: var(--fg-mute);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: border-color 0.12s, color 0.12s;
+}
+.palette-trigger:hover { color: var(--fg-dim); border-color: var(--fg-mute); }
+.palette-trigger svg { width: 12px; height: 12px; }
+.palette-trigger kbd {
+  font-family: inherit;
+  font-size: 10px;
+  padding: 1px 5px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--bg-1);
+  color: var(--fg-mute);
+}
+
+.div-v { width: 1px; height: 16px; margin: 0 6px; background: var(--line); opacity: 0.75; flex-shrink: 0; }

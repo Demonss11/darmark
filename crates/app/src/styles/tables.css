@@ -1,0 +1,191 @@
+/* ===================== ТАБЛИЦЫ (ключевая фича) ===================== */
+.markdown-body table {
+  border-collapse: separate;
+  border-spacing: 0;
+  margin: 0;
+  width: auto;
+  max-width: 100%;
+  font-size: 12.5px;
+}
+.table-enhanced {
+  margin: 1em 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg-0);
+  overflow: hidden;
+}
+.table-scroll { overflow-x: auto; max-height: 60vh; }
+.markdown-body table th,
+.markdown-body table td {
+  padding: 6px 13px;
+  text-align: left;
+  border-bottom: 1px solid var(--line-soft);
+  border-right: 1px solid var(--line-soft);
+}
+.markdown-body table th:last-child,
+.markdown-body table td:last-child { border-right: none; }
+.markdown-body table tbody tr:last-child td { border-bottom: none; }
+.markdown-body table th { background: var(--bg-2); color: var(--head); font-weight: 600; }
+.markdown-body table tbody tr:hover td { background: var(--bg-2); }
+
+/* YAML-шапка (md-core::frontmatter): «таблица-таблиц» ключ → значение. */
+.md-frontmatter {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg-1);
+}
+.md-frontmatter th.fm-key,
+.md-frontmatter td.fm-val { vertical-align: top; text-align: left; }
+.md-frontmatter th.fm-key {
+  width: 1%;
+  white-space: nowrap;
+  background: transparent;
+  color: var(--fg-dim);
+  font-weight: 600;
+}
+.md-frontmatter td.fm-val { color: var(--fg); }
+.md-frontmatter tbody tr:hover td { background: transparent; }
+/* Вложенные таблицы-значения: компактнее, без тяжёлой рамки. */
+.md-frontmatter .md-frontmatter {
+  width: auto;
+  margin: 2px 0;
+  border-color: var(--line-soft);
+  background: transparent;
+}
+.md-frontmatter .md-frontmatter th.fm-key { background: transparent; }
+.md-frontmatter .fm-list { margin: 2px 0; padding-left: 18px; }
+.md-frontmatter .fm-null,
+.md-frontmatter .fm-empty,
+.md-frontmatter .fm-deep { color: var(--fg-mute); }
+.md-frontmatter-source {
+  margin: 1em 0;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg-1);
+  overflow-x: auto;
+  font-size: 12.5px;
+}
+.md-frontmatter-source code { white-space: pre; }
+
+/* панель инструментов над таблицей: поиск / счётчик / сброс */
+.table-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--bg-1);
+}
+.table-search {
+  flex: 0 1 260px;
+  min-width: 120px;
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--bg-0);
+  color: var(--fg);
+  font: inherit;
+}
+.table-count { font-size: 12px; color: var(--fg-mute); white-space: nowrap; }
+.table-count.active { color: var(--accent); }
+.table-reset {
+  margin-left: auto;
+  padding: 2px 10px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--bg-0);
+  color: var(--fg-dim);
+  cursor: pointer;
+  font: inherit;
+}
+.table-reset:not(:disabled):hover { color: var(--fg); border-color: var(--fg-mute); }
+.table-reset:disabled { opacity: 0.45; cursor: default; }
+
+/* кликабельные заголовки-сортировщики: интерактив — вложенная кнопка, сам th
+   остаётся columnheader (M3). */
+.table-enhanced thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  user-select: none;
+  white-space: nowrap;
+}
+.table-enhanced thead th:hover { color: var(--accent); }
+.table-enhanced thead th::after { content: ""; margin-left: 6px; font-size: 10px; opacity: 0.5; }
+.table-enhanced thead th.sorted-asc::after { content: "▲"; opacity: 1; color: var(--accent); }
+.table-enhanced thead th.sorted-desc::after { content: "▼"; opacity: 1; color: var(--accent); }
+.table-enhanced thead th.filtered { color: var(--accent); }
+/* Сортировка — кнопка, замаскированная под текст заголовка. */
+.col-sort-btn {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.col-sort-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+.col-filter-btn {
+  margin-left: 6px;
+  padding: 0 3px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: 10px;
+  vertical-align: baseline;
+}
+.col-filter-btn:hover { background: color-mix(in srgb, var(--accent) 20%, transparent); }
+th.filtered .col-filter-btn { color: var(--accent); font-weight: 700; }
+
+.col-filter-menu {
+  z-index: 10;
+  width: 260px;
+  max-height: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg-2);
+  color: var(--fg);
+  font: 13px/1.4 -apple-system, "Segoe UI", system-ui, sans-serif;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+}
+.col-filter-menu > input[type="search"] {
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--bg-0);
+  color: var(--fg);
+  font: inherit;
+}
+.col-filter-list { overflow-y: auto; min-height: 40px; max-height: 200px; display: flex; flex-direction: column; }
+.col-filter-item { display: flex; align-items: center; gap: 6px; padding: 2px 4px; border-radius: 4px; cursor: pointer; }
+.col-filter-item:hover { background: var(--bg-3); }
+.col-filter-item span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.col-filter-item em { font-style: normal; font-size: 11px; opacity: 0.55; }
+.col-filter-empty { padding: 6px; opacity: 0.6; font-size: 12px; }
+.col-filter-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  border-top: 1px solid var(--line);
+  padding-top: 6px;
+}
+.col-filter-footer button {
+  padding: 2px 10px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--bg-0);
+  color: var(--fg-dim);
+  cursor: pointer;
+  font: inherit;
+}
+.col-filter-footer button:hover { color: var(--fg); border-color: var(--fg-mute); }

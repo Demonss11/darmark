@@ -1,0 +1,112 @@
+/* ===================== ДРОВЕР ПЛАГИНОВ (drawer.ts) ===================== */
+.drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: var(--w-drawer);
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  background: var(--popover);
+  border-left: 1px solid var(--pop-border);
+  transform: translateX(100%);
+  transition: transform 0.22s cubic-bezier(0.2, 0.9, 0.3, 1);
+  box-shadow: var(--shadow-lg);
+}
+.drawer.open { transform: none; }
+.drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(0, 0, 0, 0.42);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s;
+}
+.drawer-backdrop.open { opacity: 1; pointer-events: auto; }
+.drawer-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 10px 8px 14px;
+  border-bottom: 1px solid var(--line-soft);
+  flex-shrink: 0;
+}
+.drawer-head .side-title { flex: 1; }
+.drawer-body { flex: 1; overflow-y: auto; padding: 2px 0 24px; }
+
+/* Триггер дровера в тулбаре: icon-only + счётчик активных + точка проблемы */
+.ipbtn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--fg-dim);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.12s, color 0.12s;
+}
+.ipbtn:hover { background: var(--bg-3); color: var(--fg); }
+.ipbtn.active { background: var(--accent-soft); color: var(--accent); }
+.ipbtn svg { width: 15px; height: 15px; }
+.ipbtn .cnt {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  min-width: 13px;
+  height: 13px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: var(--pc);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--bg-1);
+}
+.ipbtn .pdot {
+  position: absolute;
+  bottom: 2px;
+  left: 3px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--pc);
+}
+.ipbtn.has-problem .pdot { background: var(--error); animation: drawer-pulse 2s ease-in-out infinite; }
+.ipbtn.has-problem .cnt { background: var(--warning); color: #1a1400; }
+@keyframes drawer-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* Журнал в статусбаре (Фаза 3, заглушка) */
+.stat.clickable {
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.stat.clickable:hover { background: var(--bg-3); color: var(--fg-dim); }
+.badge {
+  padding: 0 5px;
+  border-radius: 7px;
+  background: var(--bg-3);
+  color: var(--fg-dim);
+  font-size: 10px;
+  font-weight: 600;
+}
+/* Цвет бейджа по уровню непрочитанных (§6.5): ошибки → красный,
+   предупреждения без ошибок → янтарный. */
+.badge.error { background: var(--error); color: var(--on-error); }
+.badge.warning { background: var(--warning); color: #1a1400; }

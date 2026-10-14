@@ -1,0 +1,81 @@
+/* ===================== ПРЕДПРОСМОТР ===================== */
+/* Тело предпросмотра — ролевой стек Inter (ADR-0037 §2.4.2: осознанная плотность
+   «инструмента» — 13px / 1.7 / max-width 860px). */
+.markdown-body {
+  max-width: 860px;
+  color: var(--body);
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.7;
+  word-wrap: break-word;
+}
+/* Заголовки предпросмотра — ролевой стек Source Serif 4 (засечки, ADR-0037
+   §2.4.6): кегли 30/21/17, line-height 1.22/1.30/1.32, вес 700. :not(.sem-title)
+   — как в прототипе: апперкейс-плейблы легенд остаются на системном sans
+   (класса в продукте нет — исключение защитное). UI-элементы внутри
+   предпросмотра (плагинные view, тулбары таблиц) — не h1–h3, селектор их
+   не захватывает. */
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3:not(.sem-title) {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  color: var(--head);
+}
+.markdown-body h1,
+.markdown-body h2 {
+  /* Source Serif 4 не любит зажатых пар — трекинг снят (прототип). */
+  letter-spacing: 0;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 0.2em;
+}
+.markdown-body h1 { font-size: 30px; line-height: 1.22; margin: 0 0 14px; }
+/* Линейка под h2 ослаблена до --line-soft: две полновесные горизонтали на
+   коротком отрезке дают полосатость (прототип, правка после рендер-разбора). */
+.markdown-body h2 {
+  font-size: 21px;
+  line-height: 1.30;
+  margin: 24px 0 10px;
+  border-bottom-color: var(--line-soft);
+}
+.markdown-body h3:not(.sem-title) { font-size: 17px; line-height: 1.32; margin: 18px 0 8px; }
+.markdown-body p { margin: 0 0 10px; }
+.markdown-body a { color: var(--link); text-decoration: none; border-bottom: 1px dashed rgba(91, 140, 255, 0.35); }
+.markdown-body a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+.markdown-body code {
+  font-family: var(--font-mono);
+  background: var(--bg-3);
+  color: var(--code-fg);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 12.5px;
+}
+.markdown-body pre {
+  background: var(--bg-1);
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  padding: 14px 18px;
+  margin: 12px 0 18px;
+  overflow-x: auto;
+}
+.markdown-body pre code { background: transparent; padding: 0; color: var(--fg-dim); }
+.markdown-body blockquote {
+  margin: 14px 0;
+  padding: 4px 14px;
+  color: var(--fg-dim);
+  background: var(--accent-soft);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 6px 6px 0;
+}
+.markdown-body ul,
+.markdown-body ol { padding-left: 22px; margin: 8px 0 14px; }
+.markdown-body li { margin: 4px 0; }
+.markdown-body hr { border: none; border-top: 1px solid var(--line); margin: 22px 0; }
+.markdown-body img { max-width: 100%; }
+.markdown-body li input[type="checkbox"] { margin-right: 6px; }
+
+/* блоки инспектора: вертикальный зазор между обёртками нужен sync-эвристике
+   «верхний блок» (`bottom >= top`) — если блоки стыкуются вплотную, соседний
+   сверху ошибочно считается видимым. Зазор должен быть больше padding-top #preview. */
+#preview .md-block { scroll-margin-top: 12px; border-radius: 4px; padding: 2px 8px; margin: 14px -8px; transition: background 0.18s; }
+#preview .md-block.cursor { background: var(--accent-soft); }

@@ -1,0 +1,79 @@
+/* ===================== КОНТЕНТ ПЛАГИННОГО VIEW (H2) =====================
+   HTML приходит от хоста уже санитизированным: inline-`style` и `<button>`
+   вырезаны, поэтому оформление — только этими классами. Плагины эмитят
+   div-«кнопки» (role="button") и текстовую строку прогресса. */
+.pv-head { display: flex; align-items: center; gap: 9px; margin-bottom: 16px; }
+.pv-head b { font-size: 13px; color: var(--head); }
+/* нота прижата к правому краю: в макете это делал inline `margin-left:auto`, срезанный санитайзером */
+.pv-note { margin-left: auto; font-size: 11px; color: var(--fg-mute); }
+
+.wc-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
+.wc-grid > div { padding: 10px 12px; background: var(--bg-2); border: 1px solid var(--line-soft); border-radius: 8px; }
+.wc-grid span { display: block; font-size: 10.5px; color: var(--fg-mute); margin-bottom: 3px; }
+.wc-grid b { font-size: 15px; font-weight: 600; color: var(--fg); }
+
+/* div-«кнопка»: <button> запрещён санитайзером, роль несёт role="button" */
+.wc-btn {
+  display: inline-flex; align-items: center; gap: 7px; padding: 7px 14px; border-radius: var(--r-md);
+  font-size: 12px; font-weight: 600; background: var(--accent-soft); color: var(--accent);
+  border: 1px solid rgba(var(--accent-rgb), 0.3); cursor: pointer; transition: background 0.15s;
+}
+.wc-btn:hover { background: rgba(var(--accent-rgb), 0.2); }
+.wc-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* строка-«кнопка» задачи; фон/рамка только на hover, чтобы список не «рябил» */
+.tl-item {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  padding: 8px 10px; border-radius: var(--r-md); cursor: pointer; font-size: 12.5px;
+  color: var(--fg-dim); border: 1px solid transparent; background: transparent;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.tl-item:hover { background: var(--bg-2); border-color: var(--line-soft); color: var(--fg); }
+.tl-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* чекбокс виден и пустым (пустой state), галочка — цветом успеха */
+.tl-check {
+  width: 15px; height: 15px; border: 1.5px solid var(--fg-mute); border-radius: 4px; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center; font-size: 10px; color: transparent;
+}
+/* --teal из макета в токенах нет; семантический --success (зелёный) ближе всего и не ломает тему */
+.tl-item.done .tl-check {
+  border-color: var(--success); color: var(--success);
+  background: color-mix(in srgb, var(--success) 12%, transparent);
+}
+.tl-item.done .tl-text { text-decoration: line-through; color: var(--fg-mute); }
+.tl-ln {
+  margin-left: auto; font-family: var(--font-mono);
+  font-size: 10px; color: var(--fg-mute);
+}
+
+/* прогресс — текстовая строка (`######---- 2/3 (67%)`), а не тонкая полоса:
+   макетный <i style="width"> срезан санитайзером, полоса 4px обрезала бы текст */
+.tl-progress {
+  display: inline-block; margin: 4px 0 14px; padding: 5px 12px; border-radius: var(--r-md);
+  background: var(--bg-3); border: 1px solid var(--line-soft);
+  font-family: var(--font-mono); font-size: 11px;
+  letter-spacing: 0.04em; color: var(--fg-dim); white-space: pre;
+}
+
+.tl-empty { padding: 32px; text-align: center; color: var(--fg-mute); font-size: 12px; }
+
+/* Группа задач по заголовку Markdown (todo-lens, H2). Заголовок и счётчик группы;
+   размер заголовка зависит от уровня (# — крупнее, #### и глубже — мельче). */
+.tl-heading {
+  display: flex; align-items: baseline; gap: 8px;
+  margin: 16px 0 6px; padding-bottom: 4px;
+  border-bottom: 1px solid var(--line-soft);
+  font-weight: 600; font-size: 13px; color: var(--head);
+}
+.tl-heading:first-child { margin-top: 0; }
+.tl-heading.tl-h1 { font-size: 15px; }
+.tl-heading.tl-h2 { font-size: 14px; }
+.tl-heading.tl-h4,
+.tl-heading.tl-h5,
+.tl-heading.tl-h6 { font-size: 12px; }
+/* Задачи до первого заголовка — приглушённый «Без раздела». */
+.tl-heading-none { font-style: italic; font-weight: 500; color: var(--fg-mute); }
+.tl-group-progress {
+  margin-left: auto; font-size: 10.5px; font-weight: 500; color: var(--fg-mute);
+  font-family: var(--font-mono); letter-spacing: 0.03em;
+}

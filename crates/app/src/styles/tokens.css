@@ -1,0 +1,76 @@
+:root {
+  color-scheme: dark; /* тёмные нативные контролы/скроллбары (Web Interface Guidelines) */
+  /* поверхности и текст (ADR-0024: холодные глубокие тона с синим подтоном) */
+  --bg-0: #111318;
+  --bg-1: #161920;
+  --bg-2: #1c1f28;
+  --bg-3: #242836;
+  --line: #2e3348;
+  --line-soft: #232736;
+  --fg: #e8eaf0;
+  --fg-dim: #a0a6bd;
+  /* WCAG AA ≥4.5:1 на --bg-0..--bg-3. */
+  --fg-mute: #8a90b0;
+  --head: #ffffff;
+  --body: #d0d3e0;
+  --accent: #9d8fff;
+  --accent-2: #6ea8fe;
+  --accent-soft: rgba(157, 143, 255, 0.14);
+  /* текст на заливке акцентом/ошибкой: тёмный ради WCAG AA (белый на светлом не проходит) */
+  --on-accent: #17121f; /* на --accent #9d8fff ~6.8:1 */
+  --on-error: #2a0f0f; /* на --error #f87171 ~6.5:1 */
+  --green: #34d399;
+  --amber: #fbbf24;
+  --red: #f87171;
+  --gutter: #0f1014;
+
+  /* Семантические токены (ADR-0024 §2.2): намерение → статусный цвет */
+  --success: var(--green);
+  --warning: var(--amber);
+  --error: var(--red);
+  --info: var(--accent-2);
+  --disabled: #6b7280;
+  --link: var(--accent-2);
+
+  /* метрики оболочки */
+  --h-toolbar: 36px;
+  --h-tabs: 32px;
+  --h-status: 24px;
+  /* Нижний док (S11, ADR-0030 §2.2 №5): развёрнутая и свёрнутая (полоса-шапка) */
+  --h-dock: 300px;
+  --h-dock-bar: 28px;
+  --w-drawer: 440px;
+  --r-sm: 5px;
+  --r-md: 7px;
+  --r-lg: 12px;
+
+  /* геометрия редактора — общая для #editor и #gutter, иначе номера «поедут» (ADR-0024 §2.3) */
+  --ed-fs: 14.5px;
+  --ed-lh: 26px;
+  --ed-pad-y: 20px;
+
+  /* токены §11.1 (idea7): акцент-rgb и цвет инлайн-кода */
+  --accent-rgb: 157, 143, 255;
+  --code-fg: #e9b3ff;
+  /* Ролевые гарнитуры (ADR-0037 §2.3): оболочка — системный стек; редактор/код —
+     JetBrains Mono (OFL 1.1); тело предпросмотра — Inter; заголовки — Source
+     Serif 4. Стек не зависит от темы, поэтому определён один раз в :root. */
+  --font-ui: -apple-system, "Segoe UI", system-ui, Roboto, Arial, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --font-body: "Inter", -apple-system, "Segoe UI", system-ui, Roboto, Arial, sans-serif;
+  --font-heading: "Source Serif 4", Georgia, "Times New Roman", serif;
+
+  /* Скроллбары/выделение: общие токены, переопределяются светлой темой
+     (иначе в светлой теме остались бы тёмные полосы прокрутки). */
+  --sb-thumb: #272935;
+  --sb-thumb-hover: #3a3d52;
+  --sel-bg: rgba(157, 143, 255, 0.32);
+  --sel-fg: #ffffff;
+
+  /* поповеры/диалоги/тосты (§4, §11.1 шаг 3; ADR-0024: синхронизированы с --bg-*) */
+  --popover: #181b24;
+  --pop-border: #2e3348;
+  --shadow-lg: 0 20px 60px rgba(0, 0, 0, 0.55);
+  --shadow-sm: 0 6px 18px rgba(0, 0, 0, 0.35);
+  --pc: var(--accent); /* цвет плагина; core-пункты наследуют акцент */
+}

@@ -1,0 +1,15 @@
+/* ===================== РЕЖИМ ИНСПЕКТОРА ===================== */
+/* outline, а не border — не сдвигает layout и не конфликтует с таблицами */
+.inspect-active {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-radius: 2px;
+}
+/* Бэнды строки/столбца: фон, не outline. Транзиентные классы живут только
+   пока курсор над элементом, поэтому «!important» не нужен. */
+#preview .inspect-col,
+#preview tr.inspect-row > td,
+#preview tr.inspect-row > th {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}

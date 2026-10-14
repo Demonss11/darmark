@@ -1,0 +1,484 @@
+/* ===================== РАБОЧАЯ ОБЛАСТЬ ===================== */
+.workspace { display: flex; flex: 1; min-height: 0; }
+
+/* inline-flex+baseline: счётчик встаёт на базовую линию заголовка (заполняется
+   композиционным корнем — updatePluginCount в main.ts). */
+.side-title {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--fg-mute);
+}
+/* Счётчик в шапке дровера; .warn — «N с проблемой» (есть failed/quarantined). */
+.side-count { color: var(--fg-mute); font-weight: 500; font-size: 11px; }
+.side-count.warn { color: var(--warning); }
+.side-empty { padding: 10px 12px; color: var(--fg-mute); font-size: 12px; }
+
+/* ===== Менеджер плагинов (H2, Фаза 5) ===== */
+.pl-item {
+  position: relative; /* база для полоски плагина ::before */
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid var(--line-soft);
+}
+.pl-item:last-child { border-bottom: none; }
+/* Hover строки: фон меняется, полоска ::before остаётся поверх (не перекрывается). */
+.pl-item:hover { background: var(--bg-2); }
+.pl-item-head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px; /* высота строки-объекта; внутри живут input/button, поэтому не button */
+  padding: 0 10px 0 12px;
+}
+.pl-toggle { display: inline-flex; align-items: center; cursor: pointer; flex-shrink: 0; }
+.pl-toggle input { margin: 0; accent-color: var(--accent); cursor: pointer; }
+.pl-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--fg);
+}
+/* Статус: точка + слово (не pill). Классы состояний сохранены — их читает e2e. */
+.pl-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  color: var(--fg-mute);
+}
+.pl-badge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+.pl-badge.active { color: var(--success); }
+.pl-badge.failed { color: var(--error); }
+.pl-badge.quarantined { color: var(--warning); }
+.pl-badge.stopped { color: var(--fg-mute); }
+
+/* ===== Инфо-кнопка плагина: формулировки границы изоляции (F38-notices) ===== */
+.pl-info {
+  position: relative; /* база для hit-area-псевдоэлемента */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--fg-mute);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.12s, color 0.12s;
+}
+/* Расширяет зону нажатия, не раздувая визуальный размер кнопки.
+   По вертикали inset = -6px: зона ровно в 36px-строку и не заходит на
+   соседние карточки. По горизонтали соседи — некликабельные имя (слева)
+   и бейдж (справа), до интерактивных тумблера/шеврона зона не достаёт. */
+.pl-info::before {
+  content: "";
+  position: absolute;
+  inset: -6px;
+}
+.pl-info:hover { background: var(--bg-3); color: var(--fg); }
+.pl-info[aria-expanded="true"] { background: var(--accent-soft); color: var(--pc); }
+.pl-info:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* Поповер: absolute к `.pl-item-head` (right:0 — чтобы не вылезал за край дровера). */
+.pl-info-pop {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 100;
+  /* Ограничиваем по ширине дровера, иначе в 440px поповер обрезается краем. */
+  max-width: min(300px, calc(var(--w-drawer) - 24px));
+  padding: 10px 12px;
+  background: var(--popover);
+  border: 1px solid var(--pop-border);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-sm);
+  color: var(--fg-dim);
+  font-size: 11.5px;
+  line-height: 1.5;
+  overflow-wrap: break-word;
+}
+.pl-info-pop[hidden] { display: none; }
+/* Это справка, а не предупреждение: не наследуем янтарный цвет `.pl-notice`. */
+.pl-info-pop .pl-notice { color: inherit; }
+.pl-info-pop .pl-notice + .pl-notice {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line-soft);
+}
+@media (prefers-reduced-motion: reduce) {
+  .pl-info { transition: none; }
+}
+/* ==== Строка-объект + аккордеон (Фаза 2) ====
+   Полоска `::before` выровнена по голове строки (36px). `.pl-item-expand` —
+   шеврон в конце головы; `.pl-item-body` — тело аккордеона, всегда в DOM. ==== */
+/* Полоска плагина слева (--pc), выровнена по голове строки (~36px). */
+.pl-item::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 7px;
+  width: 2px;
+  height: 22px;
+  border-radius: 0 2px 2px 0;
+  background: var(--pc);
+  opacity: 0.8;
+}
+/* Кнопка-шеврон раскрытия в конце головы. */
+.pl-item-expand {
+  position: relative; /* база для расширенной зоны нажатия */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--fg-mute);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.12s, color 0.12s;
+}
+.pl-item-expand::before { content: ""; position: absolute; inset: -6px; }
+.pl-item-expand:hover { background: var(--bg-3); color: var(--fg); }
+.pl-item-expand:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.pl-item-expand svg { width: 14px; height: 14px; transition: transform 0.15s ease; }
+.pl-item.open .pl-item-expand svg { transform: rotate(90deg); }
+/* Тело аккордеона: всегда в DOM, скрывается только CSS — так e2e кликает скрытые контролы. */
+.pl-item-body { display: none; }
+.pl-item.open .pl-item-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 2px 12px 12px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pl-item-expand svg { transition: none; }
+}
+/* Согласие на права плагина (§11.1 п.4): инлайн-секция, не read-only chips.
+   Состояние права дублируется словом (`.pl-perm-state`), не только цветом. */
+.pl-perms { display: flex; flex-direction: column; gap: 4px; }
+.pl-perms-head { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+/* nowrap+ellipsis: длинная шапка «Доступ: N из M» не выдавливает bulk-кнопки. */
+.pl-perms-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--fg-mute);
+}
+.pl-perms-bulk { display: flex; gap: 4px; flex-shrink: 0; margin-left: auto; }
+/* Строки прав без рамки: разделителем служит hover-подсветка, а не border. */
+.pl-perm {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 6px;
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--fg-dim);
+  font-size: 11px;
+  cursor: pointer;
+}
+.pl-perm:hover { background: var(--bg-3); }
+.pl-perm:focus-within { background: var(--bg-3); }
+.pl-grant { margin: 0; flex-shrink: 0; accent-color: var(--accent); cursor: pointer; }
+.pl-grant:disabled { cursor: default; }
+.pl-perm-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pl-perm-state { flex-shrink: 0; color: var(--fg-mute); }
+/* Выданное право — зелёное состояние + слово «выдано»; акцент не как мелкий текст. */
+.pl-perm:has(> input.pl-grant:checked) .pl-perm-name { color: var(--fg); }
+.pl-perm:has(> input.pl-grant:checked) .pl-perm-state { color: var(--success); }
+.pl-consent-hint { color: var(--warning); font-size: 11px; line-height: 1.35; }
+.pl-notice { color: var(--warning); font-size: 11px; line-height: 1.35; }
+
+/* ===== S12a — идентичность плагина: имя из манифеста + версия, id вторично =====
+   Две строки: [имя · версия] и [id мелким моно]. `.pl-ident` — распорка головы:
+   занимает свободное место, прижимая инфо/бейдж/шеврон вправо. */
+.pl-ident {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 6px;
+  row-gap: 1px;
+}
+/* Имя не тянется на всю ширину — иначе версия уедет на вторую строку. */
+.pl-version {
+  flex: 0 0 auto;
+  font-size: 10.5px;
+  color: var(--fg-mute);
+  font-variant-numeric: tabular-nums;
+}
+/* id всегда на отдельной строке: flex-basis 100% вынуждает перенос. */
+.pl-id {
+  flex-basis: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--fg-mute);
+  opacity: 0.85;
+}
+
+/* ===== S12b — права: человекочитаемое имя + сырой токен вторично ===== */
+.pl-perm-token {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--fg-mute);
+  opacity: 0.85;
+}
+/* Граничная notice о доступе к документу — инлайн рядом с согласием (S12b).
+   Нейтральная справка, а не предупреждение: не наследует янтарный `.pl-notice`. */
+.pl-boundary {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 2px;
+  padding: 6px 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-sm);
+  background: var(--bg-2);
+  color: var(--fg-dim);
+  font-size: 11px;
+  line-height: 1.4;
+}
+.pl-boundary .ic {
+  display: inline-flex;
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--accent-2);
+}
+.pl-boundary .ic svg { display: block; width: 14px; height: 14px; }
+.pl-boundary-text { min-width: 0; overflow-wrap: break-word; }
+
+/* ===== S5b — настройки плагина: контролы по `contributes.settings` =====
+   Секция в теле карточки: подпись + контрол в строке, мелкое описание под ним.
+   Строка — `<label>` (клик по подписи фокусирует/переключает контрол). */
+.pl-settings { display: flex; flex-direction: column; gap: 6px; }
+.pl-settings-title { font-size: 11px; color: var(--fg-mute); }
+.pl-setting { display: flex; flex-direction: column; gap: 2px; }
+.pl-setting-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 6px;
+  border-radius: var(--r-sm);
+  font-size: 11px;
+  color: var(--fg-dim);
+  cursor: pointer;
+}
+.pl-setting-head:hover { background: var(--bg-3); }
+.pl-setting-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pl-setting-control {
+  flex-shrink: 0;
+  min-width: 110px;
+  max-width: 160px;
+  min-height: 22px;
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-2);
+  color: var(--fg);
+  font: inherit;
+  font-size: 11px;
+}
+.pl-setting-control:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.pl-setting-control:disabled { opacity: 0.6; cursor: default; }
+/* Чекбокс — нативный размер: рамка/фон/ширина текстового поля ему не нужны. */
+.pl-setting-control[type="checkbox"] {
+  width: auto;
+  min-width: 0;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.pl-setting-desc { padding: 0 6px; font-size: 10.5px; line-height: 1.4; color: var(--fg-mute); }
+
+/* ===== S12c — состояния: причина + что делать (failed/quarantined) ===== */
+.pl-state-hint { font-size: 11px; line-height: 1.4; color: var(--fg-dim); }
+/* Разделитель не нужен: строки-карточки уже отделены border-bottom. */
+.pl-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+/* База --bg-2, hover светлит до --bg-3 (как .tbtn) — инверсия против старого вида. */
+.pl-actions button,
+.pl-perms-bulk button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-2);
+  color: var(--fg-dim);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.pl-actions button:hover:not(:disabled),
+.pl-perms-bulk button:hover:not(:disabled) { background: var(--bg-3); color: var(--fg); }
+.pl-actions button:disabled,
+.pl-perms-bulk button:disabled { opacity: 0.6; cursor: default; }
+.pl-actions button:focus-visible,
+.pl-perms-bulk button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* Bulk-кнопки согласия компактнее: в шапке секции дорога горизонталь. */
+.pl-perms-bulk button { min-height: 22px; padding: 2px 8px; font-size: 11px; }
+/* Кнопка «Удалить» — деструктивное действие: красный акцент. */
+.pl-remove { color: var(--error, #d33); }
+.pl-remove:hover:not(:disabled) { color: var(--on-error); background: var(--error, #d33); border-color: var(--error, #d33); }
+/* Confirm-диалог удаления плагина. */
+.pl-confirm-remove { padding: 4px 0; }
+.pl-confirm-text { margin: 0 0 12px; font-size: 12px; line-height: 1.5; color: var(--fg); }
+.pl-confirm-buttons { display: flex; gap: 8px; justify-content: flex-end; }
+.pl-confirm-buttons button {
+  min-height: 26px;
+  padding: 4px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-2);
+  color: var(--fg);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.pl-confirm-buttons button:hover { background: var(--bg-3); }
+.pl-confirm-cancel:hover { background: var(--bg-3); }
+.pl-confirm-ok { color: var(--on-error); background: var(--error, #d33); border-color: var(--error, #d33); }
+/* hover — тёмный красный #b22: здесь белый текст проходит (~5.8:1), тёмный был бы нечитаем */
+.pl-confirm-ok:hover { background: #b22; border-color: #b22; color: #fff; }
+/* Панель плагинов: чуть больше воздуха, чем у общего `.side-empty` (референс idea8). */
+.pl-empty { padding: 16px 12px; }
+/* Структурное пустое состояние (рендер заменится в Фазе 3). */
+.pl-empty-title { color: var(--fg-dim); font-size: 12px; font-weight: 600; margin-bottom: 4px; }
+.pl-empty-hint { font-size: 11px; color: var(--fg-mute); }
+.pl-empty-hint code {
+  font-family: var(--font-mono);
+  color: var(--accent-2);
+  word-break: break-all;
+}
+
+.main { flex: 1; display: flex; flex-direction: column; min-width: 0; background: var(--bg-0); }
+
+/* вкладки: ЗАГЛУШКА — один плейсхолдер-таб текущего файла */
+.tabrow {
+  display: flex;
+  align-items: stretch;
+  height: var(--h-tabs);
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--line-soft);
+  flex-shrink: 0;
+  overflow: hidden;
+}
+.tab-strip { display: flex; align-items: stretch; flex: 1; min-width: 0; overflow-x: auto; }
+.tab-strip::-webkit-scrollbar { height: 0; }
+.tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 80px;
+  max-width: 180px;
+  padding: 0 12px;
+  border-right: 1px solid var(--line-soft);
+  background: var(--bg-1);
+  color: var(--fg-mute);
+  font-size: 12px;
+  cursor: default;
+  flex-shrink: 0;
+}
+.tab.active { background: var(--bg-0); color: var(--fg); }
+.tab.active::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 2px;
+  background: var(--accent);
+}
+/* Явный фокус-ринг для вкладки (значения — как у глобального :focus-visible,
+   строка ~274): закрепляем намерение для ARIA-паттерна tabs (ADR-0037). */
+.tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 4px; }
+.tab .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tab .dirty { width: 6px; height: 6px; border-radius: 50%; background: var(--warning); flex-shrink: 0; }
+.tab .ficon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  background: var(--bg-2);
+  color: var(--fg-dim);
+  font-size: 10px;
+  font-weight: 700;
+  flex-shrink: 0;
+  user-select: none;
+}
+.tab .close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--fg-mute);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
+}
+.tab:hover .close,
+.tab:focus-within .close { opacity: 1; }
+.tab .close:hover { background: var(--bg-2); color: var(--fg); }
+.tab .close:focus-visible { opacity: 1; outline: 1px solid var(--accent); outline-offset: -1px; }

@@ -1,0 +1,116 @@
+/* ===================== ПАНЕЛИ ===================== */
+.panes { flex: 1; display: flex; min-height: 0; overflow: hidden; }
+.pane {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-0);
+}
+.divider { width: 1px; flex-shrink: 0; background: var(--line-soft); }
+
+.pane-head {
+  display: flex;
+  align-items: center;
+  height: var(--h-tabs);
+  padding: 0 8px 0 4px;
+  gap: 2px;
+  background: var(--bg-0);
+  border-bottom: 1px solid var(--line-soft);
+  flex-shrink: 0;
+}
+.view-switch { display: flex; align-items: stretch; height: 100%; overflow-x: auto; }
+.view-switch::-webkit-scrollbar { height: 0; }
+.vtab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 11px;
+  border: none;
+  background: transparent;
+  color: var(--fg-mute);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: default;
+  white-space: nowrap;
+}
+.vtab.active { color: var(--fg); }
+.vtab.active::after {
+  content: "";
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: var(--accent);
+}
+.vtab .origin { width: 5px; height: 5px; border-radius: 50%; background: var(--fg-mute); }
+.vtab.core .origin { background: var(--accent); }
+/* Плагинная вкладка (H2): кликабельна, origin — цвет плагина (--pc из pluginColor.ts). */
+.vtab.plugin { cursor: pointer; }
+.vtab.plugin .origin { background: var(--pc); }
+.pane-head-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; padding-left: 6px; flex-shrink: 0; }
+.tbtn-sm { width: 24px; height: 24px; }
+.tbtn-sm svg { width: 13px; height: 13px; }
+
+/* редактор + gutter: общая font-size/line-height/padding-block */
+.editor-wrap { flex: 1; display: flex; min-height: 0; overflow: hidden; }
+.line-numbers {
+  min-width: 44px;
+  padding: var(--ed-pad-y) 8px var(--ed-pad-y) 12px;
+  background: var(--gutter);
+  border-right: 1px solid var(--line-soft);
+  color: var(--fg-mute);
+  font-family: var(--font-mono);
+  font-size: var(--ed-fs);
+  line-height: var(--ed-lh);
+  text-align: right;
+  white-space: pre;
+  overflow: hidden;
+  user-select: none;
+}
+#editor {
+  flex: 1;
+  min-width: 0;
+  padding: var(--ed-pad-y) 20px;
+  border: none;
+  outline: none;
+  resize: none;
+  background: var(--bg-0);
+  color: var(--fg);
+  caret-color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: var(--ed-fs);
+  line-height: var(--ed-lh);
+  tab-size: 4;
+  /* Мягкий перенос отключён: логические строки совпадают с визуальными —
+     иначе формула scrollTop/lineH для анкорной синхронизации теряет смысл. */
+  white-space: pre;
+  overflow-x: auto;
+  overflow-y: auto;
+}
+
+/* #editor — основная область ввода и почти всегда в фокусе, поэтому постоянный
+   focus-ring (M8) выглядел навязчиво и убран; индикатор фокуса здесь — каретка. */
+
+/* Лигатуры в редакторе и коде (ADR-0037 §2.4.5): редактор — Markdown-исходник,
+   не IDE. Стандартные лигатуры (fi, fl) оставлены включёнными — в прозе и
+   разметке не мешают; calt выключены: контекстные альтернативы могут скрывать
+   реальные символы исходника (a => b не должно выглядеть как a → b). В
+   предпросмотре-тексте лигатуры не гасим — там рендер результата. */
+#editor,
+.line-numbers,
+.markdown-body code {
+  font-feature-settings: "liga" 1, "calt" 0;
+}
+
+#preview { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; padding: 10px 34px 80px; }
+
+/* Плагинное тир-1 view (H2): тот же скролл/отступ, что у #preview; показывается
+   вместо него, пока активна плагинная вкладка (управляет pluginViews.ts). */
+.plugin-view { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; padding: 10px 34px 80px; }
