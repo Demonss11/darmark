@@ -18,8 +18,9 @@ use serde_json::Value;
 use crate::ai::types::AiValidationResult;
 use crate::error::{CommandError, ErrorCode};
 
-/// Версия схемы JSON-отчёта CLI, которой доверяет harness (совпадает с `plugin-cli`).
-pub const REPORT_SCHEMA_VERSION: u64 = 1;
+/// Версия схемы JSON-отчёта CLI задаётся в `plugin-core` (ADR-0034 §2.4): писатель
+/// (`plugin-cli`) и читатель (harness) обязаны свериться с одним значением.
+use plugin_core::REPORT_SCHEMA_VERSION;
 
 /// Максимальная длина id плагина (защита от гигантских имён каталогов).
 const MAX_PLUGIN_ID_LEN: usize = 64;
@@ -234,7 +235,7 @@ pub fn ensure_plugin_path_allowed(path: &Path) -> Result<PathBuf, CommandError> 
 pub fn parse_cli_report(stdout: &str) -> Option<AiValidationResult> {
     let value: Value = serde_json::from_str(stdout.trim()).ok()?;
     let schema = value.get("schema_version")?.as_u64()?;
-    if schema != REPORT_SCHEMA_VERSION {
+    if schema != u64::from(REPORT_SCHEMA_VERSION) {
         return None;
     }
     let ok = value.get("ok").and_then(Value::as_bool)?;
