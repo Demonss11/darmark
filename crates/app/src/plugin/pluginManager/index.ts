@@ -1,4 +1,4 @@
-// pluginManager.ts — менеджер плагинов в дровере `#drawer-body` (H2, Фаза 5).
+// pluginManager/index.ts — менеджер плагинов в дровере `#drawer-body` (H2, Фаза 5).
 //
 // Показывает снимок плагинов из Rust-хоста (`list_plugins`): статус, тумблер
 // вкл/выкл, «Перезагрузить», инлайн-согласие на permissions (§11.1 п.4),
@@ -22,12 +22,28 @@ import {
   setPluginSetting,
   type PluginInfo,
   type PluginSettingProperty,
-  type PluginStatus,
-} from "../core/tauri";
-import { openDialog, type Dialog } from "../ui/dialog";
-import { ownerPluginId } from "../plugin/pluginTarget";
-import { pluginColor } from "../plugin/pluginColor";
-import type { Json } from "../viewRegistry";
+} from "../../core/tauri";
+import { openDialog, type Dialog } from "../../ui/dialog";
+import { ownerPluginId } from "../pluginTarget";
+import { pluginColor } from "../pluginColor";
+import type { Json } from "../../viewRegistry";
+import {
+  STATUS_LABELS,
+  permissionLabel,
+  statusMessage,
+  stateHint,
+  documentBoundaryNotice,
+} from "./labels";
+import { el, bodyId } from "./dom";
+import { shieldIcon } from "./icons";
+import { settingValue, renderSettingRow } from "./settings";
+import {
+  renderIdentity,
+  renderInfoButton,
+  renderInfoPopover,
+  renderExpandButton,
+} from "./render";
+
 
 interface PluginManager {
   refresh(): Promise<void>;
@@ -39,206 +55,6 @@ interface PluginManagerOptions {
   root: HTMLElement;
   status(msg: string): void;
   onPlugins?(list: PluginInfo[]): void;
-}
-
-const STATUS_LABELS: Record<PluginStatus["state"], string> = {
-  active: "активен",
-  failed: "ошибка",
-  quarantined: "карантин",
-  stopped: "остановлен",
-};
-
-const QUARANTINE_THRESHOLD = 3;
-
-const PERMISSION_LABELS: Record<string, string> = {
-  "document:read": "Чтение документа",
-  "document:write": "Правка документа",
-  "view:create": "Своя вкладка в предпросмотре",
-  "view:modify": "Запись в свою вкладку",
-  "ui:statusbar": "Сообщения в статусбар",
-};
-
-function permissionLabel(permission: string): string {
-  return PERMISSION_LABELS[permission] ?? permission;
-}
-
-function statusMessage(status: PluginStatus): string | null {
-  return status.state === "failed" ? status.message : null;
-}
-
-function stateHint(status: PluginStatus): string | null {
-  if (status.state === "failed") return "Исправьте код плагина и нажмите «Перезагрузить».";
-  if (status.state === "quarantined") {
-    return `Автоотключён после ${QUARANTINE_THRESHOLD} падений подряд. Исправьте и включите тумблером — карантин сбросится.`;
-  }
-  return null;
-}
-
-function documentBoundaryNotice(info: PluginInfo): string | null {
-  return info.notices.find((notice) => notice.toLowerCase().includes("документ")) ?? null;
-}
-
-function settingValue(info: PluginInfo, key: string, prop: PluginSettingProperty): unknown {
-  const stored = info.settings_values[key];
-  return stored !== undefined ? stored : prop.default;
-}
-
-function renderSettingRow(
-  key: string,
-  prop: PluginSettingProperty,
-  control: HTMLInputElement | HTMLSelectElement
-): HTMLElement {
-  const row = el("div", "pl-setting");
-  const head = el("label", "pl-setting-head");
-  const label = el("span", "pl-setting-label");
-  label.textContent = prop.title ?? key;
-  control.dataset.settingKey = key;
-  head.append(label, control);
-  row.append(head);
-  if (prop.description) {
-    const desc = el("div", "pl-setting-desc");
-    desc.textContent = prop.description;
-    row.append(desc);
-  }
-  return row;
-}
-
-function el(tag: string, className?: string): HTMLElement {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  return node;
-}
-
-function infoPopoverId(pluginId: string): string {
-  return `pl-info-pop-${pluginId}`;
-}
-
-function bodyId(pluginId: string): string {
-  return `pl-body-${pluginId}`;
-}
-
-function infoIcon(): SVGSVGElement {
-  const NS = "http://www.w3.org/2000/svg";
-  const svg = document.createElementNS(NS, "svg");
-  svg.setAttribute("viewBox", "0 0 16 16");
-  svg.setAttribute("width", "14");
-  svg.setAttribute("height", "14");
-  svg.setAttribute("aria-hidden", "true");
-
-  const circle = document.createElementNS(NS, "circle");
-  circle.setAttribute("cx", "8");
-  circle.setAttribute("cy", "8");
-  circle.setAttribute("r", "7");
-  circle.setAttribute("fill", "none");
-  circle.setAttribute("stroke", "currentColor");
-  circle.setAttribute("stroke-width", "1.5");
-
-  const text = document.createElementNS(NS, "text");
-  text.setAttribute("x", "8");
-  text.setAttribute("y", "11.5");
-  text.setAttribute("text-anchor", "middle");
-  text.setAttribute("font-size", "10");
-  text.setAttribute("fill", "currentColor");
-  text.setAttribute("font-family", "inherit");
-  text.textContent = "i";
-
-  svg.append(circle, text);
-  return svg;
-}
-
-function chevronIcon(): SVGSVGElement {
-  const NS = "http://www.w3.org/2000/svg";
-  const svg = document.createElementNS(NS, "svg");
-  svg.setAttribute("viewBox", "0 0 24 24");
-  svg.setAttribute("aria-hidden", "true");
-  svg.setAttribute("fill", "none");
-  svg.setAttribute("stroke", "currentColor");
-  svg.setAttribute("stroke-width", "2");
-
-  const polyline = document.createElementNS(NS, "polyline");
-  polyline.setAttribute("points", "9 6 15 12 9 18");
-
-  svg.append(polyline);
-  return svg;
-}
-
-function shieldIcon(): SVGSVGElement {
-  const NS = "http://www.w3.org/2000/svg";
-  const svg = document.createElementNS(NS, "svg");
-  svg.setAttribute("viewBox", "0 0 24 24");
-  svg.setAttribute("width", "14");
-  svg.setAttribute("height", "14");
-  svg.setAttribute("aria-hidden", "true");
-  svg.setAttribute("fill", "none");
-  svg.setAttribute("stroke", "currentColor");
-  svg.setAttribute("stroke-width", "1.8");
-
-  const outline = document.createElementNS(NS, "path");
-  outline.setAttribute("d", "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z");
-  const check = document.createElementNS(NS, "polyline");
-  check.setAttribute("points", "9 12 11 14 15 10");
-
-  svg.append(outline, check);
-  return svg;
-}
-
-function renderIdentity(info: PluginInfo): HTMLElement {
-  const ident = el("div", "pl-ident");
-  ident.title = info.id;
-
-  const name = el("span", "pl-name");
-  name.textContent = info.name || info.id;
-  ident.append(name);
-
-  if (info.version) {
-    const version = el("span", "pl-version");
-    version.textContent = `· ${info.version}`;
-    ident.append(version);
-  }
-
-  const id = el("span", "pl-id");
-  id.textContent = info.id;
-  id.title = `id: ${info.id}`;
-  ident.append(id);
-
-  return ident;
-}
-
-function renderInfoButton(info: PluginInfo): HTMLButtonElement {
-  const btn = document.createElement("button");
-  btn.type = "button";
-  btn.className = "pl-info";
-  btn.setAttribute("aria-expanded", "false");
-  btn.setAttribute("aria-controls", infoPopoverId(info.id));
-  btn.setAttribute("aria-label", `Информация о границах изоляции плагина ${info.id}`);
-  btn.append(infoIcon());
-  return btn;
-}
-
-function renderInfoPopover(info: PluginInfo): HTMLElement {
-  const pop = el("div", "pl-info-pop");
-  pop.id = infoPopoverId(info.id);
-  pop.setAttribute("role", "tooltip");
-  pop.setAttribute("aria-hidden", "true");
-  pop.hidden = true;
-  for (const notice of info.notices) {
-    const line = el("div", "pl-notice");
-    line.textContent = notice;
-    pop.append(line);
-  }
-  return pop;
-}
-
-function renderExpandButton(info: PluginInfo, open: boolean): HTMLButtonElement {
-  const btn = document.createElement("button");
-  btn.type = "button";
-  btn.className = "pl-item-expand";
-  btn.dataset.expand = info.id;
-  btn.setAttribute("aria-expanded", String(open));
-  btn.setAttribute("aria-controls", bodyId(info.id));
-  btn.setAttribute("aria-label", `${open ? "Свернуть" : "Развернуть"} карточку ${info.id}`);
-  btn.append(chevronIcon());
-  return btn;
 }
 
 export function createPluginManager(opts: PluginManagerOptions): PluginManager {
