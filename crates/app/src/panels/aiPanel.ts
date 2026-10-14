@@ -18,7 +18,7 @@
 
 import { listen, type Event, type UnlistenFn } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { openDialog, isModalOpen, type Dialog } from "../dialog";
+import { openDialog, isModalOpen, type Dialog } from "../ui/dialog";
 import {
   aiApplyEdit,
   aiChat,

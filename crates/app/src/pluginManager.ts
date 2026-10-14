@@ -24,7 +24,7 @@ import {
   type PluginSettingProperty,
   type PluginStatus,
 } from "./core/tauri";
-import { openDialog, type Dialog } from "./dialog";
+import { openDialog, type Dialog } from "./ui/dialog";
 import { ownerPluginId } from "./pluginTarget";
 import { pluginColor } from "./pluginColor";
 import type { Json } from "./viewRegistry";
