@@ -1,4 +1,4 @@
-// aiPanel.ts — тело режима «AI-ассистент» нижнего дока (ADR-0030; сеть и
+// aiPanel/index.ts — тело режима «AI-ассистент» нижнего дока (ADR-0030; сеть и
 // провайдер — ADR-0032/0033; рантайм — ADR-0034). Модуль-оболочка (как
 // logPanel/resourceMonitor), НЕ view и НЕ pane: монтируется logPanel'ом в
 // контейнер #logs-panel (режим ai).
@@ -18,7 +18,7 @@
 
 import { listen, type Event, type UnlistenFn } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { openDialog, isModalOpen, type Dialog } from "../ui/dialog";
+import { openDialog, isModalOpen, type Dialog } from "../../ui/dialog";
 import {
   aiApplyEdit,
   aiChat,
@@ -38,7 +38,7 @@ import {
   errorMessage,
   reloadPlugin,
   undoDocument,
-} from "../core/tauri";
+} from "../../core/tauri";
 import type {
   AiDiff,
   AiMessage,
@@ -46,122 +46,23 @@ import type {
   AiSettingsView,
   AiSkill,
   AiUsage,
-  PluginStatus,
-} from "../core/tauri";
-import { renderAiMarkdown, setSanitizedHtml } from "../core/safeHtml";
-import { buildUnitMaps, bytesToUnits } from "../core/mapping";
-import type { DocumentId } from "../core/ids";
-import type { Json } from "../viewRegistry";
-import type { DockMode, DockState, LogCategory, LogLevel } from "./logPanel";
+} from "../../core/tauri";
+import { renderAiMarkdown, setSanitizedHtml } from "../../core/safeHtml";
+import type { DocumentId } from "../../core/ids";
+import type { DockMode, DockState, LogCategory, LogLevel } from "../logPanel";
+import { byId, must, nowTime, shortModel, el, actionButton } from "./dom";
+import { MAX_DOC_BYTES, STICK_THRESHOLD, type AiDotState } from "./constants";
+import { errorTitle, errorKind, errorCode, type ErrorKind, type ErrorAction } from "./errors";
+import { renderDiffBody } from "./diff";
+import { FALLBACK_SKILLS } from "./skills";
+import {
+  PLUGIN_STATUS_LABELS,
+  extractPluginProposal,
+  confirmDeletePlugin,
+  type AiPluginProposal,
+  type PluginCardState,
+} from "./pluginProposal";
 
-const MAX_DOC_BYTES = 100 * 1024;
-
-const STICK_THRESHOLD = 24;
-
-type AiDotState = "off" | "warn" | "ready" | "error";
-
-type ErrorKind = "auth" | "offline" | "rate" | "context" | "generic";
-
-interface ErrorAction {
-  label: string;
-  run(): void;
-}
-
-const FALLBACK_SKILLS: readonly AiSkill[] = [
-  {
-    id: "explain",
-    title: "Объяснить файл",
-    description: "Разобрать и объяснить текущий документ",
-    prompt_template: `Ты — разборщик Markdown-документов в редакторе ПЕНАЛ. Ниже документ; объясни его простыми
-словами, опираясь ТОЛЬКО на этот текст (содержимое вне документа не подмешивай).
-
-Ответь на русском ровно по этой структуре, без вступлений и извинений:
-1. О чём — суть в 1–3 предложениях.
-2. Структура — какие разделы есть (по заголовкам) и как они связаны.
-3. Разметка — какие элементы Markdown использованы и что они дают именно здесь (заголовки, списки,
-   таблицы, блоки кода, ссылки, цитаты, YAML-шапка).
-4. На что обратить внимание — неочевидные или спорные места; если их нет, скажи прямо.
-
-Правила: не выдумывай то, чего в тексте нет; не перепечатывай документ целиком и не переписывай его;
-если документ пуст или почти пуст — ответь одной строкой об этом.
-
-Документ:
-{{doc}}`,
-    category: "document",
-  },
-  {
-    id: "create-plugin",
-    title: "Создать плагин",
-    description: "Сгенерировать новый Lua-плагин по описанию",
-    prompt_template: `Ты — генератор Lua-плагинов для ПЕНАЛ (Lua 5.5 в песочнице; нет os/io/require/load, нет host.document/host.ui/host.view/host.commands). По описанию: {{input}}
-
-Верни РОВНО один fenced-блок \`\`\`json с одним объектом (никакого текста вне блока):
-{"id": "…", "name": "…", "version": "1.0.0", "permissions": [], "source": "полный код main.lua"}
-
-Контракт \`source\` (иначе плагин отвергается загрузкой):
-- Точка входа — ГЛОБАЛЬНАЯ функция: function on_activate(ctx) ... end.
-  Запрещено: модуль-таблица (local M = {} ... return M), M.on_activate, local on_activate, trailing return.
-- Опционально глобальные: on_deactivate(ctx), on_event(name, payload), on_action(view_id, action, payload).
-- on_activate держи лёгким: чтение документа делай в обработчиках событий, а не на активации.
-- Код должен компилироваться: без require/os/io, без вызовов несуществующих функций.
-- host-функции с разрешением возвращают (value, err): используй значение только при err == nil; при отказе
-  не падай — сообщи через host.show_message и продолжай.
-
-Доступен ТОЛЬКО этот API:
-- ctx.subscribe(name, handler) -> unsubscribe; handler(name, payload).
-  События: document:changed {doc_id, rev}, document:opened {doc_id, path},
-  document:closed {doc_id, path}, command:invoked {command_id, doc_id}.
-- host.get_document_len(doc_id) -> (integer, err)
-- host.get_document_range(doc_id, start, len) -> (string, err)  -- основной путь чтения; смещения байтовые (UTF-8)
-- host.get_document_text(doc_id) -> (string, err)
-- host.get_document_version(doc_id) -> (integer, err)
-- host.apply_edit(doc_id, start, stop, text) -> (boolean, err)  -- document:write
-- host.set_view_content(view_id, html) -> (boolean, err)        -- ТОЛЬКО для вкладок (view:modify)
-- host.show_message(text) -> (boolean, err)                     -- текст в статусбар (ui:statusbar)
-- host.log(level, message), host.get_setting(key), host.set_setting(key, value), host.export_html(html)
-- md.to_html(text), md.to_html_mapped(text), json.encode(value), json.decode(s)
-
-Не путай три механизма:
-- Вкладка (view): объяви в contributes.views [{"kind": "<kind>", "title": "…", "tier": 1}] (ровно эти поля),
-  permission view:create; содержимое пиши через host.set_view_content(VIEW_ID, html) (нужен view:modify), где
-  VIEW_ID = "<id плагина>:<kind>": <id плагина> — это поле id из этого же JSON, <kind> — из contributes.views.
-  HTML санитизируется на хосте.
-- Статусбар: короткий текст показывай через host.show_message(text) (permission ui:statusbar);
-  host.set_view_content для статусбара НЕ используй.
-- Команда: объяви в contributes.commands и обрабатывай событие command:invoked {command_id}.
-
-permissions — только из набора: document:read, document:write, view:create, view:modify, ui:statusbar.
-id — только [a-z0-9_-]. Если вкладка/команда/статусбар не нужны — ключ contributes не добавляй.
-
-Пример каркаса (подстрой под задачу, не копируй дословно):
-\`\`\`lua
-local VIEW_ID = "my-plugin:stats"   -- "<id плагина>:<kind>"
-
-function on_activate(ctx)
-  ctx.subscribe("document:changed", function(name, payload)
-    local text, err = host.get_document_text(payload.doc_id)
-    if err == nil and text then host.set_view_content(VIEW_ID, "<p>длина " .. #text .. "</p>") end
-  end)
-end
-\`\`\``,
-    category: "plugins",
-  },
-];
-
-const ERROR_TITLES: Record<ErrorKind, string> = {
-  auth: "Неверный API-ключ",
-  offline: "Нет соединения",
-  rate: "Превышен лимит запросов",
-  context: "Документ слишком большой",
-  generic: "Ошибка AI",
-};
-
-function errorTitle(kind: ErrorKind, code: string): string {
-  if (code === "ai_no_key") return "Ключ routerai.ru не задан";
-  if (code === "ai_no_consent") return "Нужно согласие на отправку";
-  if (code === "ai_disabled") return "AI выключен";
-  return ERROR_TITLES[kind];
-}
 
 interface AiPanelOptions {
   root: HTMLElement;
@@ -173,214 +74,6 @@ interface AiPanelOptions {
 export interface AiPanel {
   onDockState(mode: DockMode, state: DockState): void;
   dispose(): void;
-}
-
-function errorKind(code: string, message: string): ErrorKind {
-  const c = code.toLowerCase();
-  const m = message.toLowerCase();
-  if (c.includes("key") || c.includes("auth") || c.includes("401") || m.includes("401") || m.includes("ключ")) {
-    return "auth";
-  }
-  if (
-    c.includes("offline") ||
-    c.includes("network") ||
-    c.includes("timeout") ||
-    m.includes("соедин") ||
-    m.includes("network") ||
-    m.includes("timeout") ||
-    m.includes("офлайн")
-  ) {
-    return "offline";
-  }
-  if (c.includes("rate") || m.includes("429") || m.includes("лимит")) return "rate";
-  if (c.includes("context") || m.includes("context length") || m.includes("слишком большой")) {
-    return "context";
-  }
-  return "generic";
-}
-
-function byId<T extends HTMLElement>(id: string): T {
-  const el = document.getElementById(id);
-  if (!el) throw new Error(`aiPanel: не найден элемент #${id}`);
-  return el as T;
-}
-
-function must<T>(value: T | null, what: string): T {
-  if (!value) throw new Error(`aiPanel: не найден ${what}`);
-  return value;
-}
-
-function nowTime(): string {
-  const d = new Date();
-  const p = (n: number): string => String(n).padStart(2, "0");
-  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
-}
-
-function shortModel(model: string): string {
-  const parts = model.split("/");
-  return parts[parts.length - 1] || model;
-}
-
-const MAX_DIFF_LINES = 500;
-
-const PLUGIN_STATUS_LABELS: Record<PluginStatus["state"], string> = {
-  active: "активен",
-  failed: "ошибка",
-  quarantined: "карантин",
-  stopped: "остановлен",
-};
-
-const PLUGIN_FENCE = /```json[^\n]*\n([\s\S]*?)```/gi;
-
-interface AiPluginProposal {
-  id: string;
-  name: string;
-  version: string;
-  source: string;
-  manifest: Json;
-}
-
-interface PluginCardState {
-  id: string;
-  isInstalled(): boolean;
-  installed(label: string, stateClass: string): void;
-  deleted(): void;
-}
-
-function errorCode(e: unknown): string | undefined {
-  if (e && typeof e === "object" && "code" in e) {
-    const code = (e as { code?: unknown }).code;
-    if (typeof code === "string") return code;
-  }
-  return undefined;
-}
-
-function el<K extends keyof HTMLElementTagNameMap>(
-  tag: K,
-  className?: string
-): HTMLElementTagNameMap[K] {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  return node;
-}
-
-function actionButton(label: string, className: string, ariaLabel?: string): HTMLButtonElement {
-  const button = el("button", className);
-  button.type = "button";
-  button.textContent = label;
-  if (ariaLabel) button.setAttribute("aria-label", ariaLabel);
-  return button;
-}
-
-function splitLines(text: string): string[] {
-  if (text === "") return [];
-  const lines = text.split("\n");
-  if (lines.length > 1 && lines[lines.length - 1] === "") lines.pop();
-  return lines;
-}
-
-function appendDiffLine(pre: HTMLElement, kind: "add" | "del", line: string): void {
-  const span = el("span", kind === "add" ? "ai-diff-add" : "ai-diff-del");
-  span.textContent = `${kind === "add" ? "+" : "-"} ${line}`;
-  pre.appendChild(span);
-}
-
-function renderDiffBody(pre: HTMLElement, diff: AiDiff): void {
-  const maps = buildUnitMaps(diff.original);
-  const ops = [...diff.ops].sort((a, b) => a.start - b.start);
-  let shown = 0;
-  let truncated = false;
-  for (const op of ops) {
-    const removed = diff.original.slice(bytesToUnits(maps, op.start), bytesToUnits(maps, op.end));
-    for (const line of splitLines(removed)) {
-      if (shown >= MAX_DIFF_LINES) {
-        truncated = true;
-        break;
-      }
-      appendDiffLine(pre, "del", line);
-      shown++;
-    }
-    if (truncated) break;
-    for (const line of splitLines(op.text)) {
-      if (shown >= MAX_DIFF_LINES) {
-        truncated = true;
-        break;
-      }
-      appendDiffLine(pre, "add", line);
-      shown++;
-    }
-    if (truncated) break;
-  }
-  if (truncated) {
-    const note = el("span", "ai-diff-more");
-    note.textContent = `… дифф сокращён (лимит ${MAX_DIFF_LINES} строк)`;
-    pre.appendChild(note);
-  }
-}
-
-function extractPluginProposal(content: string): AiPluginProposal | null {
-  PLUGIN_FENCE.lastIndex = 0;
-  let match: RegExpExecArray | null;
-  while ((match = PLUGIN_FENCE.exec(content)) !== null) {
-    const proposal = parsePluginBlock(match[1]);
-    if (proposal) return proposal;
-  }
-  return null;
-}
-
-function parsePluginBlock(raw: string): AiPluginProposal | null {
-  let data: unknown;
-  try {
-    data = JSON.parse(raw);
-  } catch {
-    return null;
-  }
-  if (!data || typeof data !== "object" || Array.isArray(data)) return null;
-  const obj = data as Record<string, unknown>;
-  const id = typeof obj.id === "string" ? obj.id.trim() : "";
-  const source = typeof obj.source === "string" ? obj.source : "";
-  if (!id || !source) return null;
-  const name = typeof obj.name === "string" && obj.name.trim() ? obj.name.trim() : id;
-  const version =
-    typeof obj.version === "string" && obj.version.trim() ? obj.version.trim() : "0.1.0";
-  const rawPermissions: unknown[] = Array.isArray(obj.permissions) ? obj.permissions : [];
-  const permissions = rawPermissions.filter((p): p is string => typeof p === "string");
-  const manifest: Json = { id, name, version, api_version: 1, entry: "main.lua", permissions };
-  const contributes = obj.contributes;
-  if (contributes && typeof contributes === "object" && !Array.isArray(contributes)) {
-    manifest.contributes = contributes as Json;
-  }
-  return { id, name, version, source, manifest };
-}
-
-function confirmDeletePlugin(pluginId: string): Promise<boolean> {
-  return new Promise((resolve) => {
-    const content = el("div", "ai-confirm");
-    const text = el("p", "ai-confirm-text");
-    text.textContent = `Плагин «${pluginId}» будет удалён безвозвратно: файлы и настройки.`;
-    content.appendChild(text);
-
-    const buttons = el("div", "dialog-actions");
-    const cancel = actionButton("Отмена", "btn ghost");
-    const confirm = actionButton("Удалить", "btn primary");
-    buttons.append(cancel, confirm);
-    content.appendChild(buttons);
-
-    let dialog: Dialog | null = null;
-    const finish = (value: boolean): void => {
-      resolve(value);
-      dialog?.close();
-    };
-    cancel.addEventListener("click", () => finish(false));
-    confirm.addEventListener("click", () => finish(true));
-
-    dialog = openDialog({
-      title: "Удаление плагина",
-      content,
-      initialFocus: cancel,
-      onClose: () => resolve(false),
-    });
-  });
 }
 
 export function createAiPanel(opts: AiPanelOptions): AiPanel {
