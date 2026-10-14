@@ -1,5 +1,11 @@
 # План работ: AI-ассистент Фаза 3 + MCP Tool-loop
 
+> **⚠️ УСТАРЕЛО (черновик v1), НЕ ИСПОЛНЯТЬ.** Действующий план — `tasks/PLAN-AI-PHASE3-MCP-v2.md`
+> (подготовлен Волной 0). Этот документ сохранён как история: расхождения с ним — в разделе
+> «Расхождения с черновиком плана v1» плана v2 (19 пунктов: имена JSON-полей `baseURL`/`apiKey`,
+> отсутствующая `md_core::sanitize_html`, `ChatRequest` без `headers`/`body`/`timeout`, поля скиллов,
+> `dirs` вне зависимостей, tool-calling в транспорте и др.). Правки сюда не вносятся.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Завершить AI-ассистент (Фаза 3) и tool-loop MCP: универсальная конфигурация провайдеров, Rust-санитайзер ответа, остальные скиллы, персистентность истории, пользовательские скиллы, tool-loop.
