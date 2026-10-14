@@ -1,4 +1,4 @@
-// logPanel.ts — нижний док (S11, ADR-0029/0030): контроллер режимов
+// logPanel/index.ts — нижний док (S11, ADR-0029/0030): контроллер режимов
 // «Журнал | Мониторинг | AI-ассистент» плюс тело режима «Журнал» — ring buffer
 // событий на 200 записей, подписка на Tauri-события, бейдж непрочитанных.
 // Записи рендерятся только через textContent (CSP/XSS).
@@ -11,69 +11,28 @@
 // drag-resize высоты и автопрокрутка с заморозкой.
 
 import { listen, type Event, type UnlistenFn } from "@tauri-apps/api/event";
+import {
+  MAX_ENTRIES,
+  MIN_HEIGHT,
+  STICK_THRESHOLD,
+  DAY_FORMATTER,
+  byId,
+  dayKey,
+  clampHeight,
+} from "./helpers";
+import type {
+  LogLevel,
+  LogCategory,
+  LogEntry,
+  LogPanel,
+  LogPanelOptions,
+  DockMode,
+  DockState,
+  LogFilter,
+} from "./types";
 
-export type LogLevel = "info" | "warn" | "error";
+export type { LogLevel, LogCategory, DockMode, DockState, LogPanel } from "./types";
 
-export type LogCategory = "plugin" | "document" | "system";
-
-interface LogEntry {
-  id: number;
-  timestamp: number;
-  level: LogLevel;
-  category: LogCategory;
-  message: string;
-  detail?: string;
-}
-
-export interface LogPanel {
-  state(): DockState;
-  mode(): DockMode;
-  collapse(moveFocus?: boolean): void;
-  hide(): void;
-  toggleMode(next: DockMode): void;
-  log(level: LogLevel, category: LogCategory, message: string, detail?: string): void;
-  dispose(): void;
-}
-
-export type DockMode = "logs" | "mon" | "ai";
-
-export type DockState = "hidden" | "collapsed" | "expanded";
-
-interface LogPanelOptions {
-  trigger: HTMLElement;
-  monTrigger: HTMLElement;
-  aiTrigger: HTMLElement;
-  aiToolbarTrigger: HTMLElement;
-  badge: HTMLElement;
-  onLayoutChange?: () => void;
-  onModeChange?: (mode: DockMode, state: DockState) => void;
-}
-
-type LogFilter = "all" | "error";
-
-const MAX_ENTRIES = 200;
-
-const MIN_HEIGHT = 28;
-const MAX_HEIGHT = 520;
-
-const STICK_THRESHOLD = 4;
-
-const DAY_FORMATTER = new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long" });
-
-function byId<T extends HTMLElement>(id: string): T {
-  const el = document.getElementById(id);
-  if (!el) throw new Error(`logs-panel: не найден элемент #${id}`);
-  return el as T;
-}
-
-function dayKey(ts: number): string {
-  const d = new Date(ts);
-  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-}
-
-function clampHeight(value: number): number {
-  return Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, Math.round(value)));
-}
 
 export function createLogPanel(opts: LogPanelOptions): LogPanel {
   const { trigger, monTrigger, aiTrigger, aiToolbarTrigger, badge } = opts;
