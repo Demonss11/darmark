@@ -14,7 +14,7 @@ use crate::ai::types::AiMessage;
 use crate::error::CommandError;
 
 /// Текущая версия схемы файла истории.
-const SCHEMA_VERSION: u32 = 1;
+pub(crate) const SCHEMA_VERSION: u32 = 1;
 
 /// Сколько сообщений хранить в истории (последние N).
 pub const MAX_HISTORY_MESSAGES: usize = 40;
@@ -40,7 +40,7 @@ pub struct HistoryFile {
 
 impl HistoryFile {
     /// Пустая сессия (нет файла / битый файл / неизвестная схема).
-    fn empty() -> Self {
+    pub fn empty() -> Self {
         Self {
             schema_version: SCHEMA_VERSION,
             session_id: String::new(),
@@ -171,8 +171,9 @@ pub fn save(base: Option<&Path>, history: &HistoryFile) -> Result<(), CommandErr
 }
 
 /// Мьютекс для тестов, меняющих переменные окружения (параллельные тесты не должны конфликтовать).
+/// Общий на весь модуль `ai`: `commands` и `history` сериализуют доступ к `DARMARK_CONFIG_PATH`.
 #[cfg(test)]
-fn env_lock() -> std::sync::MutexGuard<'static, ()> {
+pub(crate) fn env_lock() -> std::sync::MutexGuard<'static, ()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
     LOCK.get_or_init(|| Mutex::new(()))
         .lock()

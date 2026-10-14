@@ -6,11 +6,14 @@
 use tauri::{AppHandle, Emitter, State};
 
 use crate::ai::gate;
+use crate::ai::history::{self, HistoryFile, SCHEMA_VERSION};
+use crate::ai::settings;
 use crate::ai::skills;
 use crate::ai::state::AiState;
 use crate::ai::transport::{ChatRequest, TestRequest};
 use crate::ai::types::{
     AiMessage, AiResponse, AiSettingsInput, AiSettingsView, AiSkill, AiTestResult, AiUsage,
+    HistoryView,
 };
 use crate::error::{CommandError, ErrorCode};
 
@@ -206,6 +209,63 @@ pub fn ai_render_markdown(text: String) -> String {
     md_core::to_html(&text)
 }
 
+/// Возвращает историю чата для фронтенда (без секретов и абсолютных путей).
+///
+/// Ошибок не возвращает: битый файл / превышение лимита / отсутствие файла — пустая
+/// сессия + `warning` (приложение стартует, см. `history::load`).
+#[tauri::command]
+pub fn ai_history_load() -> HistoryView {
+    let base = history_base();
+    let (file, warning) = history::load(base.as_deref());
+    HistoryView {
+        session_id: file.session_id,
+        updated_at: file.updated_at,
+        messages: file.messages,
+        warning,
+    }
+}
+
+/// Сохраняет историю чата (полная замена файла). Принимает только `role`/`content`.
+///
+/// Неизвестные поля в JSON игнорируются serde (контракт с фронтендом). Лимит сообщений
+/// и атомарная запись — в `history::save`.
+#[tauri::command]
+pub fn ai_history_save(messages: Vec<AiMessage>) -> Result<(), CommandError> {
+    let base = history_base();
+    let file = HistoryFile {
+        schema_version: SCHEMA_VERSION,
+        session_id: String::new(),
+        updated_at: now_secs(),
+        messages,
+    };
+    history::save(base.as_deref(), &file)
+}
+
+/// Очищает историю чата: перезаписывает файл пустой сессией со свежей меткой времени.
+#[tauri::command]
+pub fn ai_history_clear() -> Result<(), CommandError> {
+    let base = history_base();
+    let mut file = HistoryFile::empty();
+    file.updated_at = now_secs();
+    history::save(base.as_deref(), &file)
+}
+
+/// Каталог для файла истории: родитель конфига (каталог данных приложения).
+///
+/// На Windows и в тестах путь конфига читает `DARMARK_CONFIG_PATH` (см.
+/// `plugins::settings::SettingsStore::config_path`); история лежит рядом с конфигом.
+fn history_base() -> Option<std::path::PathBuf> {
+    settings::config_path().and_then(|path| path.parent().map(|dir| dir.to_path_buf()))
+}
+
+/// Текущие unix-секунды (метка `updated_at` для истории).
+fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -277,6 +337,56 @@ mod tests {
         assert_eq!(payload["message_id"], "ai-123-1");
         assert_eq!(payload["finish_reason"], serde_json::Value::Null);
         assert_eq!(payload["usage"], serde_json::Value::Null);
+    }
+
+    /// Roundtrip команд истории: save → load → clear → load.
+    ///
+    /// Изоляция от реального профиля: общий `env_lock` с тестами `history`
+    /// (команда `DARMARK_CONFIG_PATH` общая на процесс) + уникальный temp-каталог
+    /// на процесс. Команды внутри используют `settings::config_path()`.
+    #[test]
+    fn history_commands_roundtrip() {
+        use crate::ai::history::env_lock;
+
+        let _guard = env_lock();
+
+        let dir =
+            std::env::temp_dir().join(format!("darmark-history-roundtrip-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let config_path = dir.join("config.json");
+        std::env::set_var("DARMARK_CONFIG_PATH", &config_path);
+
+        ai_history_save(vec![
+            AiMessage {
+                role: "user".to_string(),
+                content: "привет".to_string(),
+            },
+            AiMessage {
+                role: "assistant".to_string(),
+                content: "здравствуйте".to_string(),
+            },
+        ])
+        .expect("сохранение истории");
+
+        let view = ai_history_load();
+        assert_eq!(view.messages.len(), 2, "оба сообщения сохранены");
+        assert_eq!(view.messages[0].role, "user");
+        assert_eq!(view.messages[0].content, "привет");
+        assert_eq!(view.messages[1].role, "assistant");
+        assert_eq!(view.messages[1].content, "здравствуйте");
+        assert!(
+            view.warning.is_none(),
+            "предупреждений быть не должно: {:?}",
+            view.warning
+        );
+
+        ai_history_clear().expect("очистка истории");
+        let view = ai_history_load();
+        assert!(view.messages.is_empty(), "история очищена");
+
+        std::env::remove_var("DARMARK_CONFIG_PATH");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// Эталонный XSS-payload из ADR-0038 §2.5: команда обязана вырезать `onerror`,

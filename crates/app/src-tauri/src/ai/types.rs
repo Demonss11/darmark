@@ -147,6 +147,22 @@ pub struct AiSettingsInput {
     pub consent_document_send: bool,
 }
 
+/// Представление истории чата для фронтенда (`ai_history_load`).
+///
+/// Секретов и абсолютных путей не содержит: только идентификатор сессии,
+/// метка времени, сообщения и опциональное предупреждение о проблеме загрузки.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct HistoryView {
+    /// Идентификатор сессии чата.
+    pub session_id: String,
+    /// Время последнего обновления (unix-секунды).
+    pub updated_at: u64,
+    /// Сообщения чата (последние первыми — новые в конце).
+    pub messages: Vec<AiMessage>,
+    /// Предупреждение о проблеме загрузки (битый файл, превышение лимита и т.п.).
+    pub warning: Option<String>,
+}
+
 /// Результат лёгкой проверки соединения (`ai_test_connection`).
 #[derive(Clone, Debug, Serialize)]
 pub struct AiTestResult {

@@ -23,5 +23,5 @@ pub mod types;
 
 pub use types::{
     AiDiff, AiEditOp, AiMessage, AiResponse, AiSettings, AiSettingsInput, AiSettingsView, AiSkill,
-    AiTestResult, AiUsage, AiValidationResult,
+    AiTestResult, AiUsage, AiValidationResult, HistoryView,
 };
