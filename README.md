@@ -25,7 +25,8 @@ sequenceDiagram
 
 ## Установка
 
-**Через установщик:** [релизы](https://github.com/Demonss11/darmark/releases) — на Windows 10 установщик подтянет WebView2.
+**Через установщик:** [релизы](https://github.com/Demonss11/darmark/releases)
+Зависимости: если не стоит WebView2, он автоматически скачается и установится.
 
 **Из исходников** (Rust 1.99, Node 24):
 
