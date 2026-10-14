@@ -318,6 +318,11 @@ export function aiTestConnection(): Promise<AiTestResult> {
   return invoke<AiTestResult>("ai_test_connection");
 }
 
+/** Рендер текста ответа AI как Markdown через `md-core` (ADR-0038 §2.2). */
+export function aiRenderMarkdown(text: string): Promise<string> {
+  return invoke<string>("ai_render_markdown", { text });
+}
+
 // --- AI-ассистент: harness Фазы 2 (ADR-0034) ---
 // Правка документа идёт через `DocumentStore::apply_edit` (D5); плагины — через
 // тот же цикл валидации, что и пользовательские (песочница, D16).
