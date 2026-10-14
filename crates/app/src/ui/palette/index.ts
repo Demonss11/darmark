@@ -1,42 +1,18 @@
-// palette.ts — палитра команд (Ctrl+K), построена на dialog.ts (variant "top").
+// palette/index.ts — палитра команд (Ctrl+K), построена на dialog.ts (variant "top").
 //
 // Провайдеры команд: core (синхронный список из main.ts) и плагинные
 // (асинхронно, list_plugins/run_plugin_command). Палитра не парсит Markdown и не
 // хранит доменное состояние; ошибка провайдера уходит в onError. Ответы
 // устаревших запросов отбрасываются по счётчику сессий (seq-гейт).
 
-import { openDialog, type Dialog } from "./dialog";
-import { pluginColor } from "../plugin/pluginColor";
-import { errorMessage } from "../core/tauri";
+import { openDialog, type Dialog } from "../dialog";
+import { pluginColor } from "../../plugin/pluginColor";
+import { errorMessage } from "../../core/tauri";
+import { originLabel } from "./origin";
+import type { PaletteCommand, PaletteOptions, PaletteController } from "./types";
 
-export interface PaletteCommand {
-  id: string;
-  title: string;
-  group: string;
-  origin: "core" | `plugin:${string}`;
-  hotkey?: string;
-  run(): void | Promise<void>;
-}
+export type { PaletteCommand, CommandProvider } from "./types";
 
-export interface CommandProvider {
-  list(): PaletteCommand[] | Promise<PaletteCommand[]>;
-}
-
-interface PaletteOptions {
-  providers: CommandProvider[];
-  onError?(message: string): void;
-}
-
-interface PaletteController {
-  open(): void;
-  close(): void;
-  toggle(): void;
-  isOpen(): boolean;
-}
-
-function originLabel(origin: PaletteCommand["origin"]): string {
-  return origin.startsWith("plugin:") ? origin.slice("plugin:".length) : "ПЕНАЛ";
-}
 
 export function createPalette(opts: PaletteOptions): PaletteController {
   let dialog: Dialog | null = null;
