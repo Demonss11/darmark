@@ -12,7 +12,7 @@
 // строится индекс, иначе `data-md` разъедется с HTML.
 
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { createTablesController } from "./tables";
+import { createTablesController } from "./panels/tables";
 import { resolveLocalImages } from "./images";
 import type { RenderIndex } from "./doc/renderIndex";
 import type { HtmlView, HtmlViewProvider, Json, ViewContext } from "./viewRegistry";

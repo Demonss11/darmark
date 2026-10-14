@@ -8,7 +8,7 @@ import { confirm } from "@tauri-apps/plugin-dialog";
 import type { PaneId } from "../core/ids";
 import type { FormatActions } from "../formatActions";
 import type { Drawer } from "../drawer";
-import type { LogPanel } from "../logPanel";
+import type { LogPanel } from "../panels/logPanel";
 import { isModalOpen } from "../dialog";
 import { openDevtools } from "../core/tauri";
 
