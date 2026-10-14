@@ -12,7 +12,7 @@
 // когда тот же `plugin_id` вернулся в свежий снимок с **новым** PID (рестарт).
 
 import { listen, type Event, type UnlistenFn } from "@tauri-apps/api/event";
-import { pluginColor } from "../pluginColor";
+import { pluginColor } from "../plugin/pluginColor";
 import type { LogCategory, LogLevel } from "./logPanel";
 
 // --- контракт снимка (TZ §5; зеркало Rust `plugins::resource`) ---

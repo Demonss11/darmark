@@ -27,7 +27,7 @@ import {
 import { openDialog, type Dialog } from "../ui/dialog";
 import { ownerPluginId } from "../plugin/pluginTarget";
 import { pluginColor } from "../plugin/pluginColor";
-import type { Json } from "./viewRegistry";
+import type { Json } from "../viewRegistry";
 
 /** Публичный фасад контроллера менеджера плагинов. */
 export interface PluginManager {

@@ -12,7 +12,8 @@
 import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { errorMessage, pluginViewAction, pluginViews, type PluginViewInfo } from "../core/tauri";
-import type { HtmlView, HtmlViewProvider, Json, ViewContext, ViewRegistry } from "./viewRegistry";
+import type { DocumentSnapshot } from "../core/tauri";
+import type { HtmlView, HtmlViewProvider, Json, ViewContext, ViewRegistry } from "../viewRegistry";
 import { pluginColor } from "../plugin/pluginColor";
 
 /** Публичный фасад контроллера: перестроение из Rust и освобождение ресурсов. */
@@ -128,7 +129,7 @@ function createPluginViewProvider(
           if (value) containerEl.innerHTML = html;
         },
         // Контент приходит событием `plugin-views-changed`, а не из документа.
-        async render(): Promise<void> {},
+        async render(_doc: DocumentSnapshot): Promise<void> {},
         dispose(): void {
           containerEl.removeEventListener("click", onClick);
         },

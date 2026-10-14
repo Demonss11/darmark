@@ -19,9 +19,9 @@ import { createLinkController } from "./linkController";
 import { createPaneHost } from "./layout/paneHost";
 import { applyLayout, LayoutError, type LayoutNode, type Pane } from "./layout/layout";
 import { createStatusBar } from "./statusBar";
-import { createPluginViews } from "../plugin/pluginViews";
-import { createPluginManager } from "../plugin/pluginManager";
-import { createPluginStatusBar } from "../plugin/pluginStatusBar";
+import { createPluginViews } from "./plugin/pluginViews";
+import { createPluginManager } from "./plugin/pluginManager";
+import { createPluginStatusBar } from "./plugin/pluginStatusBar";
 import { createFileActions } from "./fileActions";
 import { createShell } from "./layout/shell";
 import { createDrawer } from "./ui/drawer";
@@ -149,7 +149,7 @@ const pluginViews = createPluginViews({
   containerEl: document.getElementById("plugin-view") as HTMLElement,
   previewEl: preview,
   backButtonEl: document.getElementById("btn-back-preview"),
-  status: (msg) => status.flash(msg),
+  status: (msg: string) => status.flash(msg),
   // Появление/пропадание view меняет интерактивность статусбара, а события
   // `plugins-changed`/`plugin-views-changed` приходят независимо.
   onViewsChanged: () => pluginStatus.render(lastPlugins),
@@ -159,8 +159,8 @@ const pluginViews = createPluginViews({
 // `ui:statusbar`. Клик — открыть представление, «+N» — панель.
 const pluginStatus = createPluginStatusBar({
   root: document.getElementById("plugin-status") as HTMLElement,
-  hasView: (id) => pluginViews.hasView(id),
-  onActivate: (id) => {
+  hasView: (id: string) => pluginViews.hasView(id),
+  onActivate: (id: string) => {
     // Панель предпросмотра могла быть скрыта (Ctrl+P): показываем её через чекбокс,
     // чтобы состояние было согласовано, и уже затем открываем представление.
     const chk = document.getElementById("chk-preview") as HTMLInputElement | null;
@@ -214,8 +214,8 @@ function updatePluginCount(list: PluginInfo[]): void {
 //    `plugins-changed`; ошибки IPC глушит контроллер.
 const pluginManager = createPluginManager({
   root: drawer.content,
-  status: (msg) => status.flash(msg),
-  onPlugins: (list) => {
+  status: (msg: string) => status.flash(msg),
+  onPlugins: (list: PluginInfo[]) => {
     lastPlugins = list;
     pluginStatus.render(list);
     // Счётчик в шапке дровера владеет композиционный корень, не контроллер.
@@ -567,7 +567,7 @@ createShell({
     reloadPlugins: () =>
       void pluginManager
         .reloadForDocument(store.active()?.path ?? null)
-        .catch((e) => status.flash(`Плагины: ${errorMessage(e)}`)),
+        .catch((e: unknown) => status.flash(`Плагины: ${errorMessage(e)}`)),
     flash: (m) => status.flash(m),
   },
   format,
