@@ -1,25 +1,25 @@
-// drawer.ts — правый модальный дровер (ADR-0024, вариант C).
+﻿// drawer.ts вЂ” РїСЂР°РІС‹Р№ РјРѕРґР°Р»СЊРЅС‹Р№ РґСЂРѕРІРµСЂ (ADR-0024, РІР°СЂРёР°РЅС‚ C).
 //
-// Маленький интерфейс (open/close/toggle/isOpen/content/dispose) и много
-// скрытого поведения: фокус-трап, Esc (capture + stopPropagation, как в
-// dialog.ts), клик по backdrop, синхронизация `aria-expanded`/`.active` на
-// триггере, возврат фокуса на триггер.
+// РњР°Р»РµРЅСЊРєРёР№ РёРЅС‚РµСЂС„РµР№СЃ (open/close/toggle/isOpen/content/dispose) Рё РјРЅРѕРіРѕ
+// СЃРєСЂС‹С‚РѕРіРѕ РїРѕРІРµРґРµРЅРёСЏ: С„РѕРєСѓСЃ-С‚СЂР°Рї, Esc (capture + stopPropagation, РєР°Рє РІ
+// dialog.ts), РєР»РёРє РїРѕ backdrop, СЃРёРЅС…СЂРѕРЅРёР·Р°С†РёСЏ `aria-expanded`/`.active` РЅР°
+// С‚СЂРёРіРіРµСЂРµ, РІРѕР·РІСЂР°С‚ С„РѕРєСѓСЃР° РЅР° С‚СЂРёРіРіРµСЂ.
 //
-// Дровер — ПОСТОЯННЫЙ DOM (#drawer + #backdrop — прямые дети body), а не
-// транзитный оверлей openDialog: #plugin-manager и #side-count обязаны
-// существовать постоянно (состояние раскрытия карточек, счётчик).
+// Р”СЂРѕРІРµСЂ вЂ” РџРћРЎРўРћРЇРќРќР«Р™ DOM (#drawer + #backdrop вЂ” РїСЂСЏРјС‹Рµ РґРµС‚Рё body), Р° РЅРµ
+// С‚СЂР°РЅР·РёС‚РЅС‹Р№ РѕРІРµСЂР»РµР№ openDialog: #plugin-manager Рё #side-count РѕР±СЏР·Р°РЅС‹
+// СЃСѓС‰РµСЃС‚РІРѕРІР°С‚СЊ РїРѕСЃС‚РѕСЏРЅРЅРѕ (СЃРѕСЃС‚РѕСЏРЅРёРµ СЂР°СЃРєСЂС‹С‚РёСЏ РєР°СЂС‚РѕС‡РµРє, СЃС‡С‘С‚С‡РёРє).
 //
-// Примитивы из dialog.ts (`inert`, focus-trap) переиспользуются, но не
-// openDialog: там `inert` ставится на ВСЕ прямые дети body кроме
-// #modal-root/#toast-host — для дровера это неверно (сам #drawer стал бы
-// инертным), поэтому глушим только #app.
+// РџСЂРёРјРёС‚РёРІС‹ РёР· dialog.ts (`inert`, focus-trap) РїРµСЂРµРёСЃРїРѕР»СЊР·СѓСЋС‚СЃСЏ, РЅРѕ РЅРµ
+// openDialog: С‚Р°Рј `inert` СЃС‚Р°РІРёС‚СЃСЏ РЅР° Р’РЎР• РїСЂСЏРјС‹Рµ РґРµС‚Рё body РєСЂРѕРјРµ
+// #modal-root/#toast-host вЂ” РґР»СЏ РґСЂРѕРІРµСЂР° СЌС‚Рѕ РЅРµРІРµСЂРЅРѕ (СЃР°Рј #drawer СЃС‚Р°Р» Р±С‹
+// РёРЅРµСЂС‚РЅС‹Рј), РїРѕСЌС‚РѕРјСѓ РіР»СѓС€РёРј С‚РѕР»СЊРєРѕ #app.
 
 export interface Drawer {
   open(): void;
   close(): void;
   toggle(): void;
   isOpen(): boolean;
-  /** Контейнер содержимого (#plugin-manager); менеджер монтируется сюда один раз. */
+  /** РљРѕРЅС‚РµР№РЅРµСЂ СЃРѕРґРµСЂР¶РёРјРѕРіРѕ (#plugin-manager); РјРµРЅРµРґР¶РµСЂ РјРѕРЅС‚РёСЂСѓРµС‚СЃСЏ СЃСЋРґР° РѕРґРёРЅ СЂР°Р·. */
   readonly content: HTMLElement;
   dispose(): void;
 }
@@ -29,46 +29,46 @@ export interface DrawerOptions {
   trigger: HTMLElement;     // #tb-plugins
   closeButton: HTMLElement; // #drawer-close
   backdrop: HTMLElement;    // #backdrop
-  title: string;            // "Плагины"
+  title: string;            // "РџР»Р°РіРёРЅС‹"
 }
 
-// Feature-detect: WebView2 может не знать `inert`; тогда фон не изолируем.
+
 const supportsInert = "inert" in HTMLElement.prototype;
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), ' +
   'textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-/** Фокусируемые элементы внутри контейнера (без нулевой геометрии). */
+/** Р¤РѕРєСѓСЃРёСЂСѓРµРјС‹Рµ СЌР»РµРјРµРЅС‚С‹ РІРЅСѓС‚СЂРё РєРѕРЅС‚РµР№РЅРµСЂР° (Р±РµР· РЅСѓР»РµРІРѕР№ РіРµРѕРјРµС‚СЂРёРё). */
 function focusable(scope: HTMLElement): HTMLElement[] {
   return Array.from(scope.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
     (el) => el.getClientRects().length > 0
   );
 }
 
-/** Длительность закрывающей анимации (мс) — скрываем #drawer после неё. */
+/** Р”Р»РёС‚РµР»СЊРЅРѕСЃС‚СЊ Р·Р°РєСЂС‹РІР°СЋС‰РµР№ Р°РЅРёРјР°С†РёРё (РјСЃ) вЂ” СЃРєСЂС‹РІР°РµРј #drawer РїРѕСЃР»Рµ РЅРµС‘. */
 const CLOSE_MS = 220;
 
 export function createDrawer(opts: DrawerOptions): Drawer {
   const { root, trigger, closeButton, backdrop } = opts;
 
   const titleEl = root.querySelector<HTMLElement>("#drawer-title");
-  if (!titleEl) throw new Error("#drawer должен содержать #drawer-title");
+  if (!titleEl) throw new Error("#drawer РґРѕР»Р¶РµРЅ СЃРѕРґРµСЂР¶Р°С‚СЊ #drawer-title");
   const content = root.querySelector<HTMLElement>("#plugin-manager");
-  if (!content) throw new Error("#drawer должен содержать #plugin-manager");
+  if (!content) throw new Error("#drawer РґРѕР»Р¶РµРЅ СЃРѕРґРµСЂР¶Р°С‚СЊ #plugin-manager");
   if (opts.title) titleEl.textContent = opts.title;
 
-  // aria-labelledby уже в разметке; на всякий случай обеспечиваем связь.
+
   if (!root.hasAttribute("aria-labelledby")) {
     root.setAttribute("aria-labelledby", "drawer-title");
   }
 
-  // inert только на #app: #drawer/#backdrop/#modal-root/#toast-host —
-  // прямые дети body и должны остаться доступными.
+
+
   const app = document.getElementById("app");
 
   let open = false;
-  // Таймер закрывающей анимации (скрытие #drawer после transition).
+
   let closeTimer: number | null = null;
 
   function setInert(on: boolean): void {
@@ -85,7 +85,7 @@ export function createDrawer(opts: DrawerOptions): Drawer {
     open = true;
     root.hidden = false;
     backdrop.classList.add("open");
-    // reflow: transition transform срабатывает только после показа узла.
+
     void root.offsetWidth;
     root.classList.add("open");
     trigger.classList.add("active");
@@ -102,10 +102,10 @@ export function createDrawer(opts: DrawerOptions): Drawer {
     trigger.classList.remove("active");
     trigger.setAttribute("aria-expanded", "false");
     setInert(false);
-    // Возврат фокуса на триггер — единственная предсказуемая точка (дровер
-    // открывают и из тулбара, и из статусбара).
+
+
     trigger.focus({ preventScroll: true });
-    // Скрываем после анимации закрытия, чтобы transform-переход был виден.
+
     if (closeTimer !== null) window.clearTimeout(closeTimer);
     closeTimer = window.setTimeout(() => {
       closeTimer = null;
@@ -121,8 +121,8 @@ export function createDrawer(opts: DrawerOptions): Drawer {
   function onKeydown(e: KeyboardEvent): void {
     if (!open) return;
     if (e.key === "Escape") {
-      // Вложенный поповер (role="tooltip", напр. инфо плагина) — верхний слой:
-      // отдаём Escape ему, дровер не закрываем (pluginManager поглотит событие).
+
+
       if (root.querySelector('[role="tooltip"]:not([hidden])')) return;
       e.preventDefault();
       e.stopPropagation();
@@ -130,7 +130,7 @@ export function createDrawer(opts: DrawerOptions): Drawer {
       return;
     }
     if (e.key !== "Tab") return;
-    // Focus-trap: Tab/Shift+Tab не покидают дровер.
+
     const items = focusable(root);
     if (items.length === 0) {
       e.preventDefault();
@@ -151,11 +151,11 @@ export function createDrawer(opts: DrawerOptions): Drawer {
     }
   }
 
-  // Клик по триггеру привязывает shell.ts (ADR-0024): не дублируем.
+
   closeButton.addEventListener("click", hide);
   backdrop.addEventListener("click", hide);
-  // Escape — на window с capture: как в dialog.ts, чтобы событие не дошло
-  // до обработчиков shell.ts (там Escape выключает режим инспектора).
+
+
   window.addEventListener("keydown", onKeydown, { capture: true });
 
   return {
@@ -178,7 +178,7 @@ export function createDrawer(opts: DrawerOptions): Drawer {
         backdrop.classList.remove("open");
         trigger.classList.remove("active");
         trigger.setAttribute("aria-expanded", "false");
-        // Иначе фокус останется внутри скрытого дровера.
+
         trigger.focus({ preventScroll: true });
       }
       root.hidden = true;

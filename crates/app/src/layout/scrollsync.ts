@@ -1,23 +1,23 @@
-// scrollsync.ts — синхронизация вертикальной прокрутки редактора и предпросмотра.
+﻿// scrollsync.ts вЂ” СЃРёРЅС…СЂРѕРЅРёР·Р°С†РёСЏ РІРµСЂС‚РёРєР°Р»СЊРЅРѕР№ РїСЂРѕРєСЂСѓС‚РєРё СЂРµРґР°РєС‚РѕСЂР° Рё РїСЂРµРґРїСЂРѕСЃРјРѕС‚СЂР°.
 //
-// Анкорная привязка через `data-md` работает, когда в DOM есть размеченные блоки
-// (mapped-рендер, т.е. включён инспектор): редактор → блок, содержащий верхнюю
-// видимую логическую строку; предпросмотр → строка начала верхнего видимого
-// блока. Иначе (и между вводом и перерендером) — пропорциональный fallback.
+// РђРЅРєРѕСЂРЅР°СЏ РїСЂРёРІСЏР·РєР° С‡РµСЂРµР· `data-md` СЂР°Р±РѕС‚Р°РµС‚, РєРѕРіРґР° РІ DOM РµСЃС‚СЊ СЂР°Р·РјРµС‡РµРЅРЅС‹Рµ Р±Р»РѕРєРё
+// (mapped-СЂРµРЅРґРµСЂ, С‚.Рµ. РІРєР»СЋС‡С‘РЅ РёРЅСЃРїРµРєС‚РѕСЂ): СЂРµРґР°РєС‚РѕСЂ в†’ Р±Р»РѕРє, СЃРѕРґРµСЂР¶Р°С‰РёР№ РІРµСЂС…РЅСЋСЋ
+// РІРёРґРёРјСѓСЋ Р»РѕРіРёС‡РµСЃРєСѓСЋ СЃС‚СЂРѕРєСѓ; РїСЂРµРґРїСЂРѕСЃРјРѕС‚СЂ в†’ СЃС‚СЂРѕРєР° РЅР°С‡Р°Р»Р° РІРµСЂС…РЅРµРіРѕ РІРёРґРёРјРѕРіРѕ
+// Р±Р»РѕРєР°. РРЅР°С‡Рµ (Рё РјРµР¶РґСѓ РІРІРѕРґРѕРј Рё РїРµСЂРµСЂРµРЅРґРµСЂРѕРј) вЂ” РїСЂРѕРїРѕСЂС†РёРѕРЅР°Р»СЊРЅС‹Р№ fallback.
 //
-// Карты byte↔UTF-16, начала строк и блоки берутся из общего RenderIndex, здесь
-// только читается снимок — тот же, что видит инспектор (без дубля построения).
+// РљР°СЂС‚С‹ byteв†”UTF-16, РЅР°С‡Р°Р»Р° СЃС‚СЂРѕРє Рё Р±Р»РѕРєРё Р±РµСЂСѓС‚СЃСЏ РёР· РѕР±С‰РµРіРѕ RenderIndex, Р·РґРµСЃСЊ
+// С‚РѕР»СЊРєРѕ С‡РёС‚Р°РµС‚СЃСЏ СЃРЅРёРјРѕРє вЂ” С‚РѕС‚ Р¶Рµ, С‡С‚Рѕ РІРёРґРёС‚ РёРЅСЃРїРµРєС‚РѕСЂ (Р±РµР· РґСѓР±Р»СЏ РїРѕСЃС‚СЂРѕРµРЅРёСЏ).
 //
-// Логические строки тождественны визуальным: мягкий перенос у редактора отключён
-// (`wrap="off"` + `white-space: pre` в style.css), поэтому `scrollTop/lineH`
-// точно указывает на логическую строку, а `lineStarts` (по `\n`) и `lineH`
-// согласованы. При включённом переносе формула теряет смысл.
+// Р›РѕРіРёС‡РµСЃРєРёРµ СЃС‚СЂРѕРєРё С‚РѕР¶РґРµСЃС‚РІРµРЅРЅС‹ РІРёР·СѓР°Р»СЊРЅС‹Рј: РјСЏРіРєРёР№ РїРµСЂРµРЅРѕСЃ Сѓ СЂРµРґР°РєС‚РѕСЂР° РѕС‚РєР»СЋС‡С‘РЅ
+// (`wrap="off"` + `white-space: pre` РІ style.css), РїРѕСЌС‚РѕРјСѓ `scrollTop/lineH`
+// С‚РѕС‡РЅРѕ СѓРєР°Р·С‹РІР°РµС‚ РЅР° Р»РѕРіРёС‡РµСЃРєСѓСЋ СЃС‚СЂРѕРєСѓ, Р° `lineStarts` (РїРѕ `\n`) Рё `lineH`
+// СЃРѕРіР»Р°СЃРѕРІР°РЅС‹. РџСЂРё РІРєР»СЋС‡С‘РЅРЅРѕРј РїРµСЂРµРЅРѕСЃРµ С„РѕСЂРјСѓР»Р° С‚РµСЂСЏРµС‚ СЃРјС‹СЃР».
 //
-// Защита от обратной связи двухуровневая: флаг `syncing` поднимается ДО записи
-// scrollTop и снимается в rAF (гасит синхронное эхо), окно `ECHO_MS` после
-// записи гасит инерционное эхо WebView2, приходящее уже после снятия флага.
-// Игнорируются события только той панели, в которую писала синхронизация
-// (`lastWriteTarget`), иначе быстрый скролл источника сам себя глушил бы.
+// Р—Р°С‰РёС‚Р° РѕС‚ РѕР±СЂР°С‚РЅРѕР№ СЃРІСЏР·Рё РґРІСѓС…СѓСЂРѕРІРЅРµРІР°СЏ: С„Р»Р°Рі `syncing` РїРѕРґРЅРёРјР°РµС‚СЃСЏ Р”Рћ Р·Р°РїРёСЃРё
+// scrollTop Рё СЃРЅРёРјР°РµС‚СЃСЏ РІ rAF (РіР°СЃРёС‚ СЃРёРЅС…СЂРѕРЅРЅРѕРµ СЌС…Рѕ), РѕРєРЅРѕ `ECHO_MS` РїРѕСЃР»Рµ
+// Р·Р°РїРёСЃРё РіР°СЃРёС‚ РёРЅРµСЂС†РёРѕРЅРЅРѕРµ СЌС…Рѕ WebView2, РїСЂРёС…РѕРґСЏС‰РµРµ СѓР¶Рµ РїРѕСЃР»Рµ СЃРЅСЏС‚РёСЏ С„Р»Р°РіР°.
+// РРіРЅРѕСЂРёСЂСѓСЋС‚СЃСЏ СЃРѕР±С‹С‚РёСЏ С‚РѕР»СЊРєРѕ С‚РѕР№ РїР°РЅРµР»Рё, РІ РєРѕС‚РѕСЂСѓСЋ РїРёСЃР°Р»Р° СЃРёРЅС…СЂРѕРЅРёР·Р°С†РёСЏ
+// (`lastWriteTarget`), РёРЅР°С‡Рµ Р±С‹СЃС‚СЂС‹Р№ СЃРєСЂРѕР»Р» РёСЃС‚РѕС‡РЅРёРєР° СЃР°Рј СЃРµР±СЏ РіР»СѓС€РёР» Р±С‹.
 
 import {
   type Block,
@@ -32,21 +32,17 @@ import type { RenderIndex } from "../doc/renderIndex";
 
 export interface ScrollSync {
   isEnabled(): boolean;
-  /** Включение/выключение; при включении панели сразу выравниваются. */
+  /** Р’РєР»СЋС‡РµРЅРёРµ/РІС‹РєР»СЋС‡РµРЅРёРµ; РїСЂРё РІРєР»СЋС‡РµРЅРёРё РїР°РЅРµР»Рё СЃСЂР°Р·Сѓ РІС‹СЂР°РІРЅРёРІР°СЋС‚СЃСЏ. */
   setEnabled(enabled: boolean): void;
-  /**
-   * Индекс изменился (перестроен после рендера или сброшен при правке).
-   * Данные берутся из RenderIndex; без снимка — fallback на пропорцию.
-   */
+
+
   onIndexChanged(): void;
-  /**
-   * Гасит синхронизацию на короткое время: программная прокрутка инспектора
-   * не должна тянуть вторую панель.
-   */
+
+
   suspend(): void;
 }
 
-/** Окно игнорирования эха WebView2 после программной записи scrollTop, мс. */
+/** РћРєРЅРѕ РёРіРЅРѕСЂРёСЂРѕРІР°РЅРёСЏ СЌС…Р° WebView2 РїРѕСЃР»Рµ РїСЂРѕРіСЂР°РјРјРЅРѕР№ Р·Р°РїРёСЃРё scrollTop, РјСЃ. */
 const ECHO_MS = 100;
 
 function clamp(v: number, lo: number, hi: number): number {
@@ -56,26 +52,26 @@ function clamp(v: number, lo: number, hi: number): number {
 export function createScrollSync(opts: {
   editor: HTMLTextAreaElement;
   preview: HTMLElement;
-  /** Общий индекс рендера: карты, строки, блоки (Фаза 4). */
+  /** РћР±С‰РёР№ РёРЅРґРµРєСЃ СЂРµРЅРґРµСЂР°: РєР°СЂС‚С‹, СЃС‚СЂРѕРєРё, Р±Р»РѕРєРё (Р¤Р°Р·Р° 4). */
   index: RenderIndex;
 }): ScrollSync {
   const { editor, preview, index } = opts;
 
   let enabled = true;
-  let syncing = false;          // поднят на время программной записи scrollTop
-  let rafId = 0;                // отложенная запись (throttle на кадр)
-  let pending: (() => void) | null = null; // последняя запрошенная операция
-  let clearRaf = 0;             // снятие флага syncing в следующем кадре
-  let lastWriteAt = 0;          // timestamp последней программной записи
-  let lastWriteTarget: HTMLElement | null = null; // в какую панель писали
+  let syncing = false;          // РїРѕРґРЅСЏС‚ РЅР° РІСЂРµРјСЏ РїСЂРѕРіСЂР°РјРјРЅРѕР№ Р·Р°РїРёСЃРё scrollTop
+  let rafId = 0;                // РѕС‚Р»РѕР¶РµРЅРЅР°СЏ Р·Р°РїРёСЃСЊ (throttle РЅР° РєР°РґСЂ)
+  let pending: (() => void) | null = null; // РїРѕСЃР»РµРґРЅСЏСЏ Р·Р°РїСЂРѕС€РµРЅРЅР°СЏ РѕРїРµСЂР°С†РёСЏ
+  let clearRaf = 0;             // СЃРЅСЏС‚РёРµ С„Р»Р°РіР° syncing РІ СЃР»РµРґСѓСЋС‰РµРј РєР°РґСЂРµ
+  let lastWriteAt = 0;          // timestamp РїРѕСЃР»РµРґРЅРµР№ РїСЂРѕРіСЂР°РјРјРЅРѕР№ Р·Р°РїРёСЃРё
+  let lastWriteTarget: HTMLElement | null = null; // РІ РєР°РєСѓСЋ РїР°РЅРµР»СЊ РїРёСЃР°Р»Рё
 
   let blocks: Block[] | null = null;
   let maps: UnitMaps | null = null;
   let lineStarts: Int32Array | null = null;
-  let lineH = 0;                // измеренная высота строки редактора, px
-  let previewPadTop = 0;        // верхний padding предпросмотра, px
+  let lineH = 0;                // РёР·РјРµСЂРµРЅРЅР°СЏ РІС‹СЃРѕС‚Р° СЃС‚СЂРѕРєРё СЂРµРґР°РєС‚РѕСЂР°, px
+  let previewPadTop = 0;        // РІРµСЂС…РЅРёР№ padding РїСЂРµРґРїСЂРѕСЃРјРѕС‚СЂР°, px
 
-  /** Анкорная привязка доступна только когда в DOM есть размеченные блоки. */
+  /** РђРЅРєРѕСЂРЅР°СЏ РїСЂРёРІСЏР·РєР° РґРѕСЃС‚СѓРїРЅР° С‚РѕР»СЊРєРѕ РєРѕРіРґР° РІ DOM РµСЃС‚СЊ СЂР°Р·РјРµС‡РµРЅРЅС‹Рµ Р±Р»РѕРєРё. */
   function hasAnchors(): boolean {
     return !!blocks && blocks.length > 0 && !!maps && !!lineStarts && lineH > 0;
   }
@@ -84,15 +80,15 @@ export function createScrollSync(opts: {
     return el.scrollHeight - el.clientHeight;
   }
 
-  /** Эхо возможно только от панели, в которую писали (`lastWriteTarget`). */
+  /** Р­С…Рѕ РІРѕР·РјРѕР¶РЅРѕ С‚РѕР»СЊРєРѕ РѕС‚ РїР°РЅРµР»Рё, РІ РєРѕС‚РѕСЂСѓСЋ РїРёСЃР°Р»Рё (`lastWriteTarget`). */
   function isEcho(target: EventTarget | null): boolean {
     if (target !== lastWriteTarget) return false;
     return syncing || performance.now() - lastWriteAt < ECHO_MS;
   }
 
-  /** Запись scrollTop под флагом syncing; флаг снимается в следующем кадре. */
+  /** Р—Р°РїРёСЃСЊ scrollTop РїРѕРґ С„Р»Р°РіРѕРј syncing; С„Р»Р°Рі СЃРЅРёРјР°РµС‚СЃСЏ РІ СЃР»РµРґСѓСЋС‰РµРј РєР°РґСЂРµ. */
   function writeScrollTop(to: HTMLElement, target: number) {
-    if (to.clientHeight === 0) return; // панель скрыта — нечего синхронизировать
+    if (to.clientHeight === 0) return; // РїР°РЅРµР»СЊ СЃРєСЂС‹С‚Р° вЂ” РЅРµС‡РµРіРѕ СЃРёРЅС…СЂРѕРЅРёР·РёСЂРѕРІР°С‚СЊ
     const hi = maxScroll(to);
     if (hi <= 0) return;
     const next = clamp(target, 0, hi);
@@ -108,7 +104,7 @@ export function createScrollSync(opts: {
     });
   }
 
-  /** Ставит операцию на следующий кадр; при частых скроллах побеждает последняя. */
+  /** РЎС‚Р°РІРёС‚ РѕРїРµСЂР°С†РёСЋ РЅР° СЃР»РµРґСѓСЋС‰РёР№ РєР°РґСЂ; РїСЂРё С‡Р°СЃС‚С‹С… СЃРєСЂРѕР»Р»Р°С… РїРѕР±РµР¶РґР°РµС‚ РїРѕСЃР»РµРґРЅСЏСЏ. */
   function schedule(fn: () => void) {
     pending = fn;
     if (rafId) return;
@@ -120,18 +116,18 @@ export function createScrollSync(opts: {
     });
   }
 
-  /** Пропорция — fallback, когда анкоров нет. */
+  /** РџСЂРѕРїРѕСЂС†РёСЏ вЂ” fallback, РєРѕРіРґР° Р°РЅРєРѕСЂРѕРІ РЅРµС‚. */
   function syncPair(from: HTMLElement, to: HTMLElement) {
     const fromMax = maxScroll(from);
     const toMax = maxScroll(to);
-    if (fromMax <= 0 || toMax <= 0) return; // панель скрыта/без скролла
+    if (fromMax <= 0 || toMax <= 0) return; // РїР°РЅРµР»СЊ СЃРєСЂС‹С‚Р°/Р±РµР· СЃРєСЂРѕР»Р»Р°
     schedule(() => {
       if (!enabled) return;
       writeScrollTop(to, (from.scrollTop / fromMax) * toMax);
     });
   }
 
-  // ---------- редактор → предпросмотр ----------
+
 
   function alignEditorToPreview() {
     if (!hasAnchors()) {
@@ -142,11 +138,11 @@ export function createScrollSync(opts: {
     const mp = maps!;
     const bl = blocks!;
     const topLine = clamp(Math.floor(editor.scrollTop / lineH), 0, ls.length - 1);
-    // Верхняя логическая строка 0: предпросмотр ставим в естественное начало,
-    // не выравнивая блок по верхнему padding — иначе панели сдвигаются вниз
-    // (BUG-005). Ограничение: для документов, где первый блок начинается не с
-    // байта 0 (ведущие пустые строки, ссылки-определения), прямое и обратное
-    // выравнивание тут взаимно не обратимы.
+
+
+
+
+
     if (topLine === 0) {
       schedule(() => {
         if (enabled) writeScrollTop(preview, 0);
@@ -161,7 +157,7 @@ export function createScrollSync(opts: {
     }
     schedule(() => {
       if (!enabled) return;
-      // Разность координат надёжнее offsetTop-цепочки при вложенности/sticky.
+
       const pr = preview.getBoundingClientRect();
       const br = block.el.getBoundingClientRect();
       const delta = br.top - pr.top;
@@ -169,7 +165,7 @@ export function createScrollSync(opts: {
     });
   }
 
-  // ---------- предпросмотр → редактор ----------
+
 
   function alignPreviewToEditor() {
     if (!hasAnchors()) {
@@ -181,11 +177,11 @@ export function createScrollSync(opts: {
     let block: Block | null = null;
     for (const b of bl) {
       if (b.el.getBoundingClientRect().bottom >= prTop) {
-        block = b; // верхний видимый блок
+        block = b; // РІРµСЂС…РЅРёР№ РІРёРґРёРјС‹Р№ Р±Р»РѕРє
         break;
       }
     }
-    if (!block) block = bl[bl.length - 1] ?? null; // всё выше — последний
+    if (!block) block = bl[bl.length - 1] ?? null; // РІСЃС‘ РІС‹С€Рµ вЂ” РїРѕСЃР»РµРґРЅРёР№
     if (!block) {
       syncPair(preview, editor);
       return;
@@ -195,8 +191,8 @@ export function createScrollSync(opts: {
     const line = findLineAt(lineStarts!, bytesToUnits(mp, bytePos));
     schedule(() => {
       if (!enabled) return;
-      // Инвариант §5.1: при scrollTop = line*lineH строка `line` встаёт на тот же
-      // визуальный отступ, что первая строка при scrollTop = 0 (padding-top).
+
+
       writeScrollTop(editor, line * lineH);
     });
   }
@@ -205,7 +201,7 @@ export function createScrollSync(opts: {
     const cs = getComputedStyle(editor);
     const lh = parseFloat(cs.lineHeight);
     const fs = parseFloat(cs.fontSize);
-    // "normal"/нечисловое → эвристика fontSize * 1.2.
+
     lineH = Number.isFinite(lh) && lh > 0 ? lh : Number.isFinite(fs) ? fs * 1.2 : 21;
     previewPadTop = parseFloat(getComputedStyle(preview).paddingTop) || 0;
   }
@@ -249,12 +245,12 @@ export function createScrollSync(opts: {
         cancelPending();
         return;
       }
-      alignEditorToPreview(); // редактор — источник истины при включении
+      alignEditorToPreview(); // СЂРµРґР°РєС‚РѕСЂ вЂ” РёСЃС‚РѕС‡РЅРёРє РёСЃС‚РёРЅС‹ РїСЂРё РІРєР»СЋС‡РµРЅРёРё
     },
     onIndexChanged() {
       const snap = index.current();
       if (!snap) {
-        // Между вводом и рендером анкоры устарели — только пропорция.
+
         blocks = null;
         maps = null;
         lineStarts = null;
@@ -271,7 +267,7 @@ export function createScrollSync(opts: {
     suspend() {
       syncing = true;
       lastWriteAt = performance.now();
-      lastWriteTarget = preview; // программный scrollIntoView идёт в предпросмотр
+      lastWriteTarget = preview; // РїСЂРѕРіСЂР°РјРјРЅС‹Р№ scrollIntoView РёРґС‘С‚ РІ РїСЂРµРґРїСЂРѕСЃРјРѕС‚СЂ
       if (clearRaf) cancelAnimationFrame(clearRaf);
       clearRaf = requestAnimationFrame(() => {
         syncing = false;

@@ -1,22 +1,22 @@
-// mapping.ts — чистая логика сопоставления исходника и блоков предпросмотра.
+﻿// mapping.ts вЂ” С‡РёСЃС‚Р°СЏ Р»РѕРіРёРєР° СЃРѕРїРѕСЃС‚Р°РІР»РµРЅРёСЏ РёСЃС…РѕРґРЅРёРєР° Рё Р±Р»РѕРєРѕРІ РїСЂРµРґРїСЂРѕСЃРјРѕС‚СЂР°.
 //
-// Только конвертация единиц (байты UTF-8 ↔ UTF-16 code units), начала
-// логических строк и поиск блоков по байтовому смещению. Одну и ту же логику
-// используют инспектор (`inspector.ts`) и синхронизация скролла (`scrollsync.ts`),
-// поэтому она вынесена сюда, а не продублирована.
+// РўРѕР»СЊРєРѕ РєРѕРЅРІРµСЂС‚Р°С†РёСЏ РµРґРёРЅРёС† (Р±Р°Р№С‚С‹ UTF-8 в†” UTF-16 code units), РЅР°С‡Р°Р»Р°
+// Р»РѕРіРёС‡РµСЃРєРёС… СЃС‚СЂРѕРє Рё РїРѕРёСЃРє Р±Р»РѕРєРѕРІ РїРѕ Р±Р°Р№С‚РѕРІРѕРјСѓ СЃРјРµС‰РµРЅРёСЋ. РћРґРЅСѓ Рё С‚Сѓ Р¶Рµ Р»РѕРіРёРєСѓ
+// РёСЃРїРѕР»СЊР·СѓСЋС‚ РёРЅСЃРїРµРєС‚РѕСЂ (`inspector.ts`) Рё СЃРёРЅС…СЂРѕРЅРёР·Р°С†РёСЏ СЃРєСЂРѕР»Р»Р° (`scrollsync.ts`),
+// РїРѕСЌС‚РѕРјСѓ РѕРЅР° РІС‹РЅРµСЃРµРЅР° СЃСЋРґР°, Р° РЅРµ РїСЂРѕРґСѓР±Р»РёСЂРѕРІР°РЅР°.
 //
-// Единственная DOM-зависимость — `collectBlocks`/`parseRange`: они читают
-// `data-md` из готового предпросмотра. Всё остальное тестируемо без DOM.
+// Р•РґРёРЅСЃС‚РІРµРЅРЅР°СЏ DOM-Р·Р°РІРёСЃРёРјРѕСЃС‚СЊ вЂ” `collectBlocks`/`parseRange`: РѕРЅРё С‡РёС‚Р°СЋС‚
+// `data-md` РёР· РіРѕС‚РѕРІРѕРіРѕ РїСЂРµРґРїСЂРѕСЃРјРѕС‚СЂР°. Р’СЃС‘ РѕСЃС‚Р°Р»СЊРЅРѕРµ С‚РµСЃС‚РёСЂСѓРµРјРѕ Р±РµР· DOM.
 
 export interface Block {
-  start: number; // байтовый offset (inclusive)
-  end: number;   // байтовый offset (exclusive)
+  start: number; // Р±Р°Р№С‚РѕРІС‹Р№ offset (inclusive)
+  end: number;   // Р±Р°Р№С‚РѕРІС‹Р№ offset (exclusive)
   el: HTMLElement;
 }
 
 export interface UnitMaps {
-  b2u: Int32Array; // байтовый индекс → UTF-16 code units
-  u2b: Int32Array; // UTF-16 code units → байтовый индекс
+  b2u: Int32Array; // Р±Р°Р№С‚РѕРІС‹Р№ РёРЅРґРµРєСЃ в†’ UTF-16 code units
+  u2b: Int32Array; // UTF-16 code units в†’ Р±Р°Р№С‚РѕРІС‹Р№ РёРЅРґРµРєСЃ
 }
 
 function utf8ByteLength(code: number): number {
@@ -26,14 +26,11 @@ function utf8ByteLength(code: number): number {
   return 4;
 }
 
-/**
- * Строит префиксные карты byte↔UTF-16 по тексту. Текст должен быть тем же,
- * по которому посчитаны `data-md` (обычно — текстом, ушедшим в рендер), иначе
- * смещения разъедутся.
- */
+
+
 export function buildUnitMaps(text: string): UnitMaps {
   let byteLen = 0;
-  // Итерация по code points: суррогатные пары не разрываются.
+
   for (const ch of text) byteLen += utf8ByteLength(ch.codePointAt(0)!);
 
   const b2u = new Int32Array(byteLen + 1);
@@ -55,19 +52,14 @@ export function buildUnitMaps(text: string): UnitMaps {
 }
 
 export function bytesToUnits(maps: UnitMaps, b: number): number {
-  // Зажимаем индекс: выход за границы Int32Array даёт undefined (→ 0, начало
-  // документа) и подсветил бы не тот блок.
+
+
   const i = Math.min(Math.max(b, 0), maps.b2u.length - 1);
   return maps.b2u[i]!;
 }
 
-/**
- * UTF-16-индекс, соответствующий байтовому (UTF-8) смещению `byte` в `text`.
- * Однопроходный скан без префиксных карт: для разовых переводов (выделение
- * после undo/redo) строить `UnitMaps` дороже самого перевода. Семантика
- * совпадает с `bytesToUnits`: смещение не на границе символа округляется вниз
- * до его начала.
- */
+
+
 export function byteToUtf16(text: string, byte: number): number {
   let consumed = 0;
   let unit = 0;
@@ -85,7 +77,7 @@ export function unitsToBytes(maps: UnitMaps, u: number): number {
   return maps.u2b[i]!;
 }
 
-/** Префиксный массив UTF-16-индексов начал логических строк (по \n); lineStarts[0] === 0. */
+/** РџСЂРµС„РёРєСЃРЅС‹Р№ РјР°СЃСЃРёРІ UTF-16-РёРЅРґРµРєСЃРѕРІ РЅР°С‡Р°Р» Р»РѕРіРёС‡РµСЃРєРёС… СЃС‚СЂРѕРє (РїРѕ \n); lineStarts[0] === 0. */
 export function buildLineStarts(text: string): Int32Array {
   const starts: number[] = [0];
   for (let i = 0; i < text.length; i++) {
@@ -115,12 +107,12 @@ export function parseRange(el: HTMLElement): { start: number; end: number } | nu
   return { start, end };
 }
 
-/** Размеченные блоки из корня (обычно — предпросмотра), по возрастанию start. */
+/** Р Р°Р·РјРµС‡РµРЅРЅС‹Рµ Р±Р»РѕРєРё РёР· РєРѕСЂРЅСЏ (РѕР±С‹С‡РЅРѕ вЂ” РїСЂРµРґРїСЂРѕСЃРјРѕС‚СЂР°), РїРѕ РІРѕР·СЂР°СЃС‚Р°РЅРёСЋ start. */
 export function collectBlocks(root: ParentNode): Block[] {
   const list: Block[] = [];
-  // Селектор сужен намеренно: `data-md` несут и вложенные элементы таблиц
-  // (tr/th/td) ради гранулярности инспектора, но блочные потребители (каретка,
-  // синхронизация скролла) обязаны видеть только топ-блоки `.md-block`.
+
+
+
   for (const el of root.querySelectorAll<HTMLElement>(".md-block[data-md]")) {
     const range = parseRange(el);
     if (range) list.push({ start: range.start, end: range.end, el });
@@ -129,10 +121,8 @@ export function collectBlocks(root: ParentNode): Block[] {
   return list;
 }
 
-/**
- * Блок, содержащий байтовую позицию. Совпадающая с концом документа позиция
- * относится к последнему блоку (семантика инспектора).
- */
+
+
 export function findBlock(blocks: Block[] | null, bytePos: number): Block | null {
   if (!blocks || blocks.length === 0) return null;
   for (const block of blocks) {
@@ -149,7 +139,7 @@ export function findBlockContaining(blocks: Block[], bytePos: number): Block | n
   return null;
 }
 
-/** Первый блок, начинающийся после позиции (для «каретки в воздухе»). */
+/** РџРµСЂРІС‹Р№ Р±Р»РѕРє, РЅР°С‡РёРЅР°СЋС‰РёР№СЃСЏ РїРѕСЃР»Рµ РїРѕР·РёС†РёРё (РґР»СЏ В«РєР°СЂРµС‚РєРё РІ РІРѕР·РґСѓС…РµВ»). */
 export function nextBlockAfter(blocks: Block[], bytePos: number): Block | null {
   for (const block of blocks) {
     if (block.start > bytePos) return block;

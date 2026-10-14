@@ -1,8 +1,8 @@
-// editorView — тир-2 представление редактора (textarea). `editor.value` — лишь
-// отображение проекции стора, не источник истины (D5).
+﻿// editorView вЂ” С‚РёСЂ-2 РїСЂРµРґСЃС‚Р°РІР»РµРЅРёРµ СЂРµРґР°РєС‚РѕСЂР° (textarea). `editor.value` вЂ” Р»РёС€СЊ
+// РѕС‚РѕР±СЂР°Р¶РµРЅРёРµ РїСЂРѕРµРєС†РёРё СЃС‚РѕСЂР°, РЅРµ РёСЃС‚РѕС‡РЅРёРє РёСЃС‚РёРЅС‹ (D5).
 //
-// Нативный undo/redo браузера отключён: владелец undo-стека — Rust
-// (D5/ADR-0028), иначе два стека разъедутся.
+// РќР°С‚РёРІРЅС‹Р№ undo/redo Р±СЂР°СѓР·РµСЂР° РѕС‚РєР»СЋС‡С‘РЅ: РІР»Р°РґРµР»РµС† undo-СЃС‚РµРєР° вЂ” Rust
+// (D5/ADR-0028), РёРЅР°С‡Рµ РґРІР° СЃС‚РµРєР° СЂР°Р·СЉРµРґСѓС‚СЃСЏ.
 
 import type { DocStore } from "./docStore";
 import { byteToUtf16 } from "../core/mapping";
@@ -20,9 +20,9 @@ export function createEditorView(
   const onInput = (): void => store.setText(host.value);
   const onSelect = (): void => onSelection();
 
-  // Rust отдаёт выделение в байтах UTF-8, textarea оперирует UTF-16 code units —
-  // конвертируем по тексту результата. Однопроходного перевода достаточно:
-  // полные карты на весь документ ради одного выделения — лишняя аллокация O(n).
+
+
+
   async function applyHistory(
     run: () => Promise<{ start: number; end: number } | null>
   ): Promise<void> {
@@ -34,8 +34,8 @@ export function createEditorView(
     onSelection();
   }
 
-  // Ctrl+Z — undo; Ctrl+Y и Ctrl+Shift+Z — redo. `e.code` вместо `e.key`:
-  // независимо от раскладки.
+
+
   const onKeyDown = (e: KeyboardEvent): void => {
     if (!e.ctrlKey || e.altKey || e.metaKey) return;
     if (e.code === "KeyZ" && !e.shiftKey) {
@@ -47,8 +47,8 @@ export function createEditorView(
     }
   };
 
-  // Меню браузера/контекстное шлют `beforeinput` вместо keydown. Ctrl+Z сюда не
-  // попадает: keydown уже отменил событие.
+
+
   const onBeforeInput = (e: InputEvent): void => {
     if (e.inputType === "historyUndo") {
       e.preventDefault();
@@ -66,8 +66,8 @@ export function createEditorView(
   host.addEventListener("click", onSelect);
   host.addEventListener("select", onSelect);
 
-  // Внешняя смена документа (open/new/switchTab): подтягиваем буфер без
-  // генерации `input`. Сравнение значений исключает цикл store → view → store.
+
+
   const unsubscribe = store.subscribe((tabs, activeId) => {
     const active = tabs.find((t) => t.id === activeId) ?? null;
     if (active && active.text !== host.value) {

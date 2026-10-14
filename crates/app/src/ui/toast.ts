@@ -1,23 +1,23 @@
-// toast.ts — тост-уведомления в `#toast-host`.
+﻿// toast.ts вЂ” С‚РѕСЃС‚-СѓРІРµРґРѕРјР»РµРЅРёСЏ РІ `#toast-host`.
 //
-// Неинтерактивные (хост `pointer-events: none`); авто-скрытие; не более трёх
-// одновременно (самый старый убирается). Вход/выход — только `opacity`/
-// `transform`, их гасит глобальный `prefers-reduced-motion`. Live-region —
-// сам хост (`aria-live="polite"`); ошибки дополнительно несут `role="alert"`,
-// чтобы озвучиваться сразу (assertive).
+// РќРµРёРЅС‚РµСЂР°РєС‚РёРІРЅС‹Рµ (С…РѕСЃС‚ `pointer-events: none`); Р°РІС‚Рѕ-СЃРєСЂС‹С‚РёРµ; РЅРµ Р±РѕР»РµРµ С‚СЂС‘С…
+// РѕРґРЅРѕРІСЂРµРјРµРЅРЅРѕ (СЃР°РјС‹Р№ СЃС‚Р°СЂС‹Р№ СѓР±РёСЂР°РµС‚СЃСЏ). Р’С…РѕРґ/РІС‹С…РѕРґ вЂ” С‚РѕР»СЊРєРѕ `opacity`/
+// `transform`, РёС… РіР°СЃРёС‚ РіР»РѕР±Р°Р»СЊРЅС‹Р№ `prefers-reduced-motion`. Live-region вЂ”
+// СЃР°Рј С…РѕСЃС‚ (`aria-live="polite"`); РѕС€РёР±РєРё РґРѕРїРѕР»РЅРёС‚РµР»СЊРЅРѕ РЅРµСЃСѓС‚ `role="alert"`,
+// С‡С‚РѕР±С‹ РѕР·РІСѓС‡РёРІР°С‚СЊСЃСЏ СЃСЂР°Р·Сѓ (assertive).
 
 export type ToastKind = "info" | "success" | "warning" | "error";
 
 export interface ToastOptions {
   kind?: ToastKind;
-  /** Длительность показа в мс; `<= 0` — «залипающий» тост без авто-скрытия. */
+  /** Р”Р»РёС‚РµР»СЊРЅРѕСЃС‚СЊ РїРѕРєР°Р·Р° РІ РјСЃ; `<= 0` вЂ” В«Р·Р°Р»РёРїР°СЋС‰РёР№В» С‚РѕСЃС‚ Р±РµР· Р°РІС‚Рѕ-СЃРєСЂС‹С‚РёСЏ. */
   duration?: number;
 }
 
 const MAX_TOASTS = 3;
 const EXIT_MS = 200;
 
-/** Убрать тост с обратной анимацией (идемпотентно). */
+/** РЈР±СЂР°С‚СЊ С‚РѕСЃС‚ СЃ РѕР±СЂР°С‚РЅРѕР№ Р°РЅРёРјР°С†РёРµР№ (РёРґРµРјРїРѕС‚РµРЅС‚РЅРѕ). */
 function dismiss(node: HTMLElement): void {
   if (node.dataset.leaving) return;
   node.dataset.leaving = "1";
@@ -25,7 +25,7 @@ function dismiss(node: HTMLElement): void {
   window.setTimeout(() => node.remove(), EXIT_MS);
 }
 
-/** Показать тост; `duration <= 0` — тост не исчезает сам. */
+/** РџРѕРєР°Р·Р°С‚СЊ С‚РѕСЃС‚; `duration <= 0` вЂ” С‚РѕСЃС‚ РЅРµ РёСЃС‡РµР·Р°РµС‚ СЃР°Рј. */
 export function toast(message: string, opts: ToastOptions = {}): void {
   const host = document.getElementById("toast-host");
   if (!host) return;
@@ -33,13 +33,13 @@ export function toast(message: string, opts: ToastOptions = {}): void {
   const kind: ToastKind = opts.kind ?? "info";
   const node = document.createElement("div");
   node.className = `toast toast-${kind}`;
-  // Ошибки — assertive; остальные озвучивает сам `#toast-host`, поэтому свою
-  // live-роль не дублируем.
+
+
   if (kind === "error") node.setAttribute("role", "alert");
 
   host.append(node);
-  // Текст ставим ПОСЛЕ вставки в live-region — иначе часть скринридеров не
-  // объявит готовый узел. Принудительный reflow: без него transition не стартует.
+
+
   node.textContent = message;
   void node.offsetWidth;
   node.classList.add("toast-show");
@@ -52,7 +52,7 @@ export function toast(message: string, opts: ToastOptions = {}): void {
   if (duration > 0) {
     window.setTimeout(() => dismiss(node), duration);
   } else {
-    // Залипающий тост: даём закрыть кликом (иначе «мёртвый» клик-барьер).
+
     node.classList.add("toast-sticky");
     node.addEventListener("click", () => dismiss(node));
   }

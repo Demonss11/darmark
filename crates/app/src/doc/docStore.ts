@@ -1,8 +1,8 @@
-// docStore — TS-проекция Rust-стора (D5): текст, ревизия, путь и dirty.
+﻿// docStore вЂ” TS-РїСЂРѕРµРєС†РёСЏ Rust-СЃС‚РѕСЂР° (D5): С‚РµРєСЃС‚, СЂРµРІРёР·РёСЏ, РїСѓС‚СЊ Рё dirty.
 //
-// Модуль без DOM: ввод приходит из editorView (`setText`), HTML уходит в
-// `onRender`. Рендер и его кэш принадлежат Rust; здесь — дебаунс IPC,
-// отбрасывание устаревших ответов и подписки. Никаких обращений к document/window.
+// РњРѕРґСѓР»СЊ Р±РµР· DOM: РІРІРѕРґ РїСЂРёС…РѕРґРёС‚ РёР· editorView (`setText`), HTML СѓС…РѕРґРёС‚ РІ
+// `onRender`. Р РµРЅРґРµСЂ Рё РµРіРѕ РєСЌС€ РїСЂРёРЅР°РґР»РµР¶Р°С‚ Rust; Р·РґРµСЃСЊ вЂ” РґРµР±Р°СѓРЅСЃ IPC,
+// РѕС‚Р±СЂР°СЃС‹РІР°РЅРёРµ СѓСЃС‚Р°СЂРµРІС€РёС… РѕС‚РІРµС‚РѕРІ Рё РїРѕРґРїРёСЃРєРё. РќРёРєР°РєРёС… РѕР±СЂР°С‰РµРЅРёР№ Рє document/window.
 
 import {
   newDocument as ipcNew,
@@ -19,24 +19,24 @@ import {
 import type { DocumentId } from "../core/ids";
 import type { DocumentSnapshot, RenderResult } from "../core/tauri";
 
-/** Проекция документа: зеркало Rust-стора + буфер редактора и dirty. */
+/** РџСЂРѕРµРєС†РёСЏ РґРѕРєСѓРјРµРЅС‚Р°: Р·РµСЂРєР°Р»Рѕ Rust-СЃС‚РѕСЂР° + Р±СѓС„РµСЂ СЂРµРґР°РєС‚РѕСЂР° Рё dirty. */
 export interface Tab {
   id: DocumentId;
   path: string | null;
   rev: number;
-  /** Актуальный буфер редактора (обновляется синхронно вводу, до IPC). */
+  /** РђРєС‚СѓР°Р»СЊРЅС‹Р№ Р±СѓС„РµСЂ СЂРµРґР°РєС‚РѕСЂР° (РѕР±РЅРѕРІР»СЏРµС‚СЃСЏ СЃРёРЅС…СЂРѕРЅРЅРѕ РІРІРѕРґСѓ, РґРѕ IPC). */
   text: string;
-  /** Текст на момент последнего сохранения/открытия — база для вывода `dirty`. */
+  /** РўРµРєСЃС‚ РЅР° РјРѕРјРµРЅС‚ РїРѕСЃР»РµРґРЅРµРіРѕ СЃРѕС…СЂР°РЅРµРЅРёСЏ/РѕС‚РєСЂС‹С‚РёСЏ вЂ” Р±Р°Р·Р° РґР»СЏ РІС‹РІРѕРґР° `dirty`. */
   savedText: string;
-  /** Производное от `text !== savedText`: незаписанные в файл изменения (§4.2). */
+  /** РџСЂРѕРёР·РІРѕРґРЅРѕРµ РѕС‚ `text !== savedText`: РЅРµР·Р°РїРёСЃР°РЅРЅС‹Рµ РІ С„Р°Р№Р» РёР·РјРµРЅРµРЅРёСЏ (В§4.2). */
   dirty: boolean;
   name: string;
 }
 
 export interface DocStoreOptions {
-  /** Вызывается в момент рендера, а не при подписке. */
+  /** Р’С‹Р·С‹РІР°РµС‚СЃСЏ РІ РјРѕРјРµРЅС‚ СЂРµРЅРґРµСЂР°, Р° РЅРµ РїСЂРё РїРѕРґРїРёСЃРєРµ. */
   renderMapped(): boolean;
-  /** Единственная точка применения HTML (previewView.applyRender). */
+  /** Р•РґРёРЅСЃС‚РІРµРЅРЅР°СЏ С‚РѕС‡РєР° РїСЂРёРјРµРЅРµРЅРёСЏ HTML (previewView.applyRender). */
   onRender(res: RenderResult, source: string): void;
   onStatus(msg: string): void;
 }
@@ -45,48 +45,42 @@ export interface DocStore {
   tabs(): Tab[];
   activeId(): DocumentId | null;
   active(): Tab | null;
-  /** Подписка на изменение списка/активной вкладки; возвращает unsubscribe (§5.6). */
+  /** РџРѕРґРїРёСЃРєР° РЅР° РёР·РјРµРЅРµРЅРёРµ СЃРїРёСЃРєР°/Р°РєС‚РёРІРЅРѕР№ РІРєР»Р°РґРєРё; РІРѕР·РІСЂР°С‰Р°РµС‚ unsubscribe (В§5.6). */
   subscribe(cb: (tabs: Tab[], activeId: DocumentId | null) => void): () => void;
 
   snapshot(): DocumentSnapshot | null;
   onDocument(cb: (d: DocumentSnapshot) => void): () => void;
-  /**
-   * Рендер переданного текста без применения результата (ViewContext.render):
-   * вызывающий сам решает, куда деть HTML. Не путать с конвейером `setText`.
-   */
+
+
   renderText(text: string, mapped: boolean): Promise<RenderResult>;
 
-  /** Правка из редактора: сразу в активную вкладку + dirty + дебаунс IPC-рендера. */
+  /** РџСЂР°РІРєР° РёР· СЂРµРґР°РєС‚РѕСЂР°: СЃСЂР°Р·Сѓ РІ Р°РєС‚РёРІРЅСѓСЋ РІРєР»Р°РґРєСѓ + dirty + РґРµР±Р°СѓРЅСЃ IPC-СЂРµРЅРґРµСЂР°. */
   setText(text: string): void;
-  /** Отменить дебаунс и немедленно отправить текст активной вкладки в Rust. */
+  /** РћС‚РјРµРЅРёС‚СЊ РґРµР±Р°СѓРЅСЃ Рё РЅРµРјРµРґР»РµРЅРЅРѕ РѕС‚РїСЂР°РІРёС‚СЊ С‚РµРєСЃС‚ Р°РєС‚РёРІРЅРѕР№ РІРєР»Р°РґРєРё РІ Rust. */
   flush(): Promise<void>;
-  /**
-   * Отменить последнюю правку (Rust-undo, D5/ADR-0028). Возвращает байтовый
-   * (UTF-8) диапазон результата для выделения либо `null`, если отменять нечего.
-   */
+
+
   undo(): Promise<{ start: number; end: number } | null>;
-  /** Повторить отменённую правку; `null`, если повторять нечего. */
+  /** РџРѕРІС‚РѕСЂРёС‚СЊ РѕС‚РјРµРЅС‘РЅРЅСѓСЋ РїСЂР°РІРєСѓ; `null`, РµСЃР»Рё РїРѕРІС‚РѕСЂСЏС‚СЊ РЅРµС‡РµРіРѕ. */
   redo(): Promise<{ start: number; end: number } | null>;
   reload(): void;
-  /**
-   * Внешняя правка документа (событие `document-updated`): pull-снапшот из Rust
-   * и применение к соответствующей вкладке. Устаревшие/чужие события игнорируются.
-   */
+
+
   applyHostUpdate(hostDocId: string, rev: number): void;
 
-  /** Новая вкладка, не закрывая существующие (`open` — то же из файла). */
+  /** РќРѕРІР°СЏ РІРєР»Р°РґРєР°, РЅРµ Р·Р°РєСЂС‹РІР°СЏ СЃСѓС‰РµСЃС‚РІСѓСЋС‰РёРµ (`open` вЂ” С‚Рѕ Р¶Рµ РёР· С„Р°Р№Р»Р°). */
   newDocument(text?: string): Promise<void>;
   open(path: string): Promise<void>;
   save(path?: string): Promise<void>;
   switchTab(id: DocumentId): void;
-  /** Закрыть вкладку + переключиться на соседнюю. */
+  /** Р—Р°РєСЂС‹С‚СЊ РІРєР»Р°РґРєСѓ + РїРµСЂРµРєР»СЋС‡РёС‚СЊСЃСЏ РЅР° СЃРѕСЃРµРґРЅСЋСЋ. */
   closeTab(id: DocumentId): Promise<void>;
 }
 
-/** Дебаунс IPC-рендера: не спамить `update_document` на каждое нажатие. */
+/** Р”РµР±Р°СѓРЅСЃ IPC-СЂРµРЅРґРµСЂР°: РЅРµ СЃРїР°РјРёС‚СЊ `update_document` РЅР° РєР°Р¶РґРѕРµ РЅР°Р¶Р°С‚РёРµ. */
 const DEBOUNCE_MS = 120;
 
-/** Код IPC-ошибки из `CommandError { code, message }` (или `undefined`). */
+/** РљРѕРґ IPC-РѕС€РёР±РєРё РёР· `CommandError { code, message }` (РёР»Рё `undefined`). */
 function errorCode(e: unknown): string | undefined {
   if (e && typeof e === "object" && "code" in e) {
     const code = (e as { code?: unknown }).code;
@@ -108,14 +102,14 @@ function makeTab(snap: DocumentSnapshot): Tab {
     text: snap.text,
     savedText: snap.text,
     dirty: false,
-    name: snap.path ? baseName(snap.path) : "безымянный",
+    name: snap.path ? baseName(snap.path) : "Р±РµР·С‹РјСЏРЅРЅС‹Р№",
   };
 }
 
 export function createDocStore(opts: DocStoreOptions): DocStore {
   let tabs: Tab[] = [];
   let activeId: DocumentId | null = null;
-  // Владелец кэша и ревизии — Rust; `lastRev` лишь отбрасывает устаревшие ответы IPC.
+
   let lastRev = -1;
   let debounceTimer = 0;
   const subs = new Set<(tabs: Tab[], activeId: DocumentId | null) => void>();
@@ -130,7 +124,7 @@ export function createDocStore(opts: DocStoreOptions): DocStore {
   }
 
   function applyRes(res: RenderResult, source: string): void {
-    if (res.rev < lastRev) return; // устаревший ответ
+    if (res.rev < lastRev) return; // СѓСЃС‚Р°СЂРµРІС€РёР№ РѕС‚РІРµС‚
     lastRev = res.rev;
     if (activeId) {
       tabs = tabs.map((t) => (t.id === activeId ? { ...t, rev: res.rev } : t));
@@ -139,11 +133,8 @@ export function createDocStore(opts: DocStoreOptions): DocStore {
     notify();
   }
 
-  /**
-   * Отправляет текст активной вкладки в Rust. Возвращает именно отправленный
-   * текст: `save` берёт его за базу `savedText`, а не буфер, который мог
-   * измениться, пока шла запись.
-   */
+
+
   async function pushText(): Promise<string | null> {
     const id = activeId;
     if (!id) return null;
@@ -160,8 +151,8 @@ export function createDocStore(opts: DocStoreOptions): DocStore {
     try {
       await pushText();
     } catch (e) {
-      lastRev = -1; // сообщение об ошибке должно пережить следующий changed:false
-      opts.onStatus(`Ошибка рендера: ${errorMessage(e)}`);
+      lastRev = -1; // СЃРѕРѕР±С‰РµРЅРёРµ РѕР± РѕС€РёР±РєРµ РґРѕР»Р¶РЅРѕ РїРµСЂРµР¶РёС‚СЊ СЃР»РµРґСѓСЋС‰РёР№ changed:false
+      opts.onStatus(`РћС€РёР±РєР° СЂРµРЅРґРµСЂР°: ${errorMessage(e)}`);
     }
   }
 
@@ -193,15 +184,13 @@ export function createDocStore(opts: DocStoreOptions): DocStore {
       } catch (e) {
         if (id !== activeId) return;
         lastRev = -1;
-        opts.onStatus(`Ошибка рендера: ${errorMessage(e)}`);
+        opts.onStatus(`РћС€РёР±РєР° СЂРµРЅРґРµСЂР°: ${errorMessage(e)}`);
       }
     })();
   }
 
-  /**
-   * Общий путь undo/redo (D5/ADR-0028): сначала слить отложенный ввод, чтобы Rust
-   * отменял с учётом текущего буфера, а не устаревшего, затем применить историю.
-   */
+
+
   async function history(
     direction: "undo" | "redo"
   ): Promise<{ start: number; end: number } | null> {
@@ -215,7 +204,7 @@ export function createDocStore(opts: DocStoreOptions): DocStore {
       await pushText();
     } catch (e) {
       lastRev = -1;
-      opts.onStatus(`Ошибка рендера: ${errorMessage(e)}`);
+      opts.onStatus(`РћС€РёР±РєР° СЂРµРЅРґРµСЂР°: ${errorMessage(e)}`);
       return null;
     }
     if (id !== activeId) return null;
@@ -223,11 +212,11 @@ export function createDocStore(opts: DocStoreOptions): DocStore {
     try {
       const res = direction === "undo" ? await ipcUndo(id) : await ipcRedo(id);
       if (id !== activeId) return null;
-      if (res.rev < lastRev) return null; // гонка двух отмен подряд
-      // Держим `lastRev` на новой ревизии: устаревший ответ IPC не откатит текст.
+      if (res.rev < lastRev) return null; // РіРѕРЅРєР° РґРІСѓС… РѕС‚РјРµРЅ РїРѕРґСЂСЏРґ
+
       lastRev = res.rev;
-      // dirty выводим из сравнения с сохранённым текстом: отмена до последнего
-      // сохранения должна вернуть вкладку в чистое состояние (§4.2).
+
+
       tabs = tabs.map((t) =>
         t.id === id
           ? { ...t, text: res.text, rev: res.rev, dirty: res.text !== t.savedText }
@@ -237,10 +226,10 @@ export function createDocStore(opts: DocStoreOptions): DocStore {
       reload();
       return { start: res.start, end: res.end };
     } catch (e) {
-      // «Нечего отменять/повторять» — нормальный сценарий: тихо, без тоста.
+
       const code = errorCode(e);
       if (code === "nothing_to_undo" || code === "nothing_to_redo") return null;
-      opts.onStatus(`Отмена/повтор: ${errorMessage(e)}`);
+      opts.onStatus(`РћС‚РјРµРЅР°/РїРѕРІС‚РѕСЂ: ${errorMessage(e)}`);
       return null;
     }
   }
@@ -263,7 +252,7 @@ export function createDocStore(opts: DocStoreOptions): DocStore {
     snapshot: () => toSnapshot(tabs.find((t) => t.id === activeId) ?? null),
 
     onDocument(cb) {
-      // ViewContext-подписка: только созданный документ.
+
       const inner = (list: Tab[], id: DocumentId | null): void => {
         const tab = list.find((t) => t.id === id);
         if (tab) cb(toSnapshot(tab)!);
@@ -274,11 +263,11 @@ export function createDocStore(opts: DocStoreOptions): DocStore {
 
     async renderText(text: string, mapped: boolean): Promise<RenderResult> {
       const id = activeId;
-      if (!id) throw new Error("Документ не создан — рендер недоступно");
+      if (!id) throw new Error("Р”РѕРєСѓРјРµРЅС‚ РЅРµ СЃРѕР·РґР°РЅ вЂ” СЂРµРЅРґРµСЂ РЅРµРґРѕСЃС‚СѓРїРЅРѕ");
       const tab = tabs.find((t) => t.id === id);
-      if (!tab) throw new Error("Документ не создан — рендер недоступно");
-      // Тот же текст, что в сторе → render_document (текст не меняется).
-      // Иначе update_document: стор применит правку — осознанный путь edit/render.
+      if (!tab) throw new Error("Р”РѕРєСѓРјРµРЅС‚ РЅРµ СЃРѕР·РґР°РЅ вЂ” СЂРµРЅРґРµСЂ РЅРµРґРѕСЃС‚СѓРїРЅРѕ");
+
+
       if (text === tab.text) return ipcRender(id, mapped);
       return ipcUpdate(id, text, mapped);
     },
@@ -307,24 +296,24 @@ export function createDocStore(opts: DocStoreOptions): DocStore {
 
     applyHostUpdate(hostDocId: string, rev: number): void {
       const tab = tabs.find((t) => t.id === hostDocId);
-      if (!tab) return; // чужой/неизвестный документ
-      if (rev <= tab.rev) return; // устаревшее событие или эхо собственной правки
-      // Внешняя (плагинная) правка перекрывает отложенный push: команду вызвал
-      // пользователь, её результат авторитетнее неотправленного локального ввода.
-      // Дебаунс отменяем только у активной вкладки: у фоновой он относится к
-      // собственному вводу и должен отработать как обычно.
+      if (!tab) return; // С‡СѓР¶РѕР№/РЅРµРёР·РІРµСЃС‚РЅС‹Р№ РґРѕРєСѓРјРµРЅС‚
+      if (rev <= tab.rev) return; // СѓСЃС‚Р°СЂРµРІС€РµРµ СЃРѕР±С‹С‚РёРµ РёР»Рё СЌС…Рѕ СЃРѕР±СЃС‚РІРµРЅРЅРѕР№ РїСЂР°РІРєРё
+
+
+
+
       const isActive = tab.id === activeId;
       if (isActive) clearTimeout(debounceTimer);
       void (async () => {
         try {
           const snap = await documentSnapshot(tab.id);
           if (!snap || snap.rev < rev) return;
-          // `lastRev` держим на новой ревизии: устаревший ответ IPC не должен
-          // откатить `st` и перерисовать DOM старым текстом (сброс в -1 эту
-          // защиту инвертировал бы).
+
+
+
           lastRev = snap.rev;
-          // dirty выводим из сравнения: плагин мог вернуть текст, совпадающий
-          // с сохранённым, — тогда вкладка снова чистая.
+
+
           tabs = tabs.map((t) =>
             t.id === tab.id
               ? { ...t, rev: snap.rev, text: snap.text, dirty: snap.text !== t.savedText }
@@ -332,10 +321,10 @@ export function createDocStore(opts: DocStoreOptions): DocStore {
           );
           notify();
           if (isActive) {
-            reload(); // textarea подтянет editorView
+            reload(); // textarea РїРѕРґС‚СЏРЅРµС‚ editorView
           }
         } catch (e) {
-          opts.onStatus(`Внешняя правка: ${errorMessage(e)}`);
+          opts.onStatus(`Р’РЅРµС€РЅСЏСЏ РїСЂР°РІРєР°: ${errorMessage(e)}`);
         }
       })();
     },
@@ -349,12 +338,12 @@ export function createDocStore(opts: DocStoreOptions): DocStore {
 
     async save(path?: string): Promise<void> {
       const id = activeId;
-      if (!id) throw new Error("Документ не создан — сохранение недоступно");
-      // Ошибку пробрасываем: точку отсчёта dirty даёт pushText, а не буфер,
-      // который мог измениться за время записи.
+      if (!id) throw new Error("Р”РѕРєСѓРјРµРЅС‚ РЅРµ СЃРѕР·РґР°РЅ вЂ” СЃРѕС…СЂР°РЅРµРЅРёРµ РЅРµРґРѕСЃС‚СѓРїРЅРѕ");
+
+
       const savedText = await pushText();
       const tab = tabs.find((t) => t.id === id);
-      if (!tab) throw new Error("Документ не создан — сохранение недоступно");
+      if (!tab) throw new Error("Р”РѕРєСѓРјРµРЅС‚ РЅРµ СЃРѕР·РґР°РЅ вЂ” СЃРѕС…СЂР°РЅРµРЅРёРµ РЅРµРґРѕСЃС‚СѓРїРЅРѕ");
       const meta = await ipcSave(id, path);
       if (id !== activeId) return;
       const base = savedText ?? tab.text;
@@ -388,15 +377,15 @@ export function createDocStore(opts: DocStoreOptions): DocStore {
       const wasActive = activeId === id;
       tabs = tabs.filter((t) => t.id !== id);
       if (wasActive) {
-        // Соседняя: предыдущая, если есть, иначе следующая.
+
         const next = tabs[Math.min(idx, tabs.length - 1)] ?? null;
         activeId = next?.id ?? null;
         lastRev = -1;
         clearTimeout(debounceTimer);
       }
-      void ipcClose(id).catch((e: unknown) => opts.onStatus(`Ошибка закрытия: ${errorMessage(e)}`));
+      void ipcClose(id).catch((e: unknown) => opts.onStatus(`РћС€РёР±РєР° Р·Р°РєСЂС‹С‚РёСЏ: ${errorMessage(e)}`));
       if (tabs.length === 0) {
-        // Открываем пустую вкладку, чтобы редактор не оставался пустым.
+
         await newDocument();
         return;
       }

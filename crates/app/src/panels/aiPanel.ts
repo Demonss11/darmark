@@ -1,20 +1,20 @@
-// aiPanel.ts — тело режима «AI-ассистент» нижнего дока (ADR-0030; сеть и
-// провайдер — ADR-0032/0033; рантайм — ADR-0034). Модуль-оболочка (как
-// logPanel/resourceMonitor), НЕ view и НЕ pane: монтируется logPanel'ом в
-// контейнер #logs-panel (режим ai).
+﻿// aiPanel.ts вЂ” С‚РµР»Рѕ СЂРµР¶РёРјР° В«AI-Р°СЃСЃРёСЃС‚РµРЅС‚В» РЅРёР¶РЅРµРіРѕ РґРѕРєР° (ADR-0030; СЃРµС‚СЊ Рё
+// РїСЂРѕРІР°Р№РґРµСЂ вЂ” ADR-0032/0033; СЂР°РЅС‚Р°Р№Рј вЂ” ADR-0034). РњРѕРґСѓР»СЊ-РѕР±РѕР»РѕС‡РєР° (РєР°Рє
+// logPanel/resourceMonitor), РќР• view Рё РќР• pane: РјРѕРЅС‚РёСЂСѓРµС‚СЃСЏ logPanel'РѕРј РІ
+// РєРѕРЅС‚РµР№РЅРµСЂ #logs-panel (СЂРµР¶РёРј ai).
 //
-// Инварианты: сетевые вызовы — только на Rust-стороне (CSP `default-src 'self'`).
-// Рендер ответа ассистента — только через `safeHtml.setSanitizedHtml` (ADR-0038
-// §2.1/§2.2): HTML ответа модели проходит Rust-санитайзер `md-core`, прямых
-// присваиваний `innerHTML` в этом модуле нет. Всё, что не проходит этот хелпер —
-// стриминг, код плагина, дифф, ошибки — только `textContent`.
-// История чата — в памяти на сессию (без персист.) и хранит ТЕКСТ ответа, не HTML.
-// Стриминг: события ai:chunk/ai:done/ai:error дописывают/финализируют текущий
-// пузырь ассистента; отписки сохраняются и снимаются.
+// РРЅРІР°СЂРёР°РЅС‚С‹: СЃРµС‚РµРІС‹Рµ РІС‹Р·РѕРІС‹ вЂ” С‚РѕР»СЊРєРѕ РЅР° Rust-СЃС‚РѕСЂРѕРЅРµ (CSP `default-src 'self'`).
+// Р РµРЅРґРµСЂ РѕС‚РІРµС‚Р° Р°СЃСЃРёСЃС‚РµРЅС‚Р° вЂ” С‚РѕР»СЊРєРѕ С‡РµСЂРµР· `safeHtml.setSanitizedHtml` (ADR-0038
+// В§2.1/В§2.2): HTML РѕС‚РІРµС‚Р° РјРѕРґРµР»Рё РїСЂРѕС…РѕРґРёС‚ Rust-СЃР°РЅРёС‚Р°Р№Р·РµСЂ `md-core`, РїСЂСЏРјС‹С…
+// РїСЂРёСЃРІР°РёРІР°РЅРёР№ `innerHTML` РІ СЌС‚РѕРј РјРѕРґСѓР»Рµ РЅРµС‚. Р’СЃС‘, С‡С‚Рѕ РЅРµ РїСЂРѕС…РѕРґРёС‚ СЌС‚РѕС‚ С…РµР»РїРµСЂ вЂ”
+// СЃС‚СЂРёРјРёРЅРі, РєРѕРґ РїР»Р°РіРёРЅР°, РґРёС„С„, РѕС€РёР±РєРё вЂ” С‚РѕР»СЊРєРѕ `textContent`.
+// РСЃС‚РѕСЂРёСЏ С‡Р°С‚Р° вЂ” РІ РїР°РјСЏС‚Рё РЅР° СЃРµСЃСЃРёСЋ (Р±РµР· РїРµСЂСЃРёСЃС‚.) Рё С…СЂР°РЅРёС‚ РўР•РљРЎРў РѕС‚РІРµС‚Р°, РЅРµ HTML.
+// РЎС‚СЂРёРјРёРЅРі: СЃРѕР±С‹С‚РёСЏ ai:chunk/ai:done/ai:error РґРѕРїРёСЃС‹РІР°СЋС‚/С„РёРЅР°Р»РёР·РёСЂСѓСЋС‚ С‚РµРєСѓС‰РёР№
+// РїСѓР·С‹СЂСЊ Р°СЃСЃРёСЃС‚РµРЅС‚Р°; РѕС‚РїРёСЃРєРё СЃРѕС…СЂР°РЅСЏСЋС‚СЃСЏ Рё СЃРЅРёРјР°СЋС‚СЃСЏ.
 //
-// Фаза 2 (harness, ADR-0034): под ответом ассистента — «Применить как правку»
-// (дифф через ai_apply_edit + undo_document) и карточка плагина из ```json-блока
-// (через ai_*_plugin).
+// Р¤Р°Р·Р° 2 (harness, ADR-0034): РїРѕРґ РѕС‚РІРµС‚РѕРј Р°СЃСЃРёСЃС‚РµРЅС‚Р° вЂ” В«РџСЂРёРјРµРЅРёС‚СЊ РєР°Рє РїСЂР°РІРєСѓВ»
+// (РґРёС„С„ С‡РµСЂРµР· ai_apply_edit + undo_document) Рё РєР°СЂС‚РѕС‡РєР° РїР»Р°РіРёРЅР° РёР· ```json-Р±Р»РѕРєР°
+// (С‡РµСЂРµР· ai_*_plugin).
 
 import { listen, type Event, type UnlistenFn } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -54,16 +54,16 @@ import type { DocumentId } from "../core/ids";
 import type { Json } from "../viewRegistry";
 import type { DockMode, DockState, LogCategory, LogLevel } from "./logPanel";
 
-/** Лимит текста документа за запрос (ADR-0032). */
+/** Р›РёРјРёС‚ С‚РµРєСЃС‚Р° РґРѕРєСѓРјРµРЅС‚Р° Р·Р° Р·Р°РїСЂРѕСЃ (ADR-0032). */
 const MAX_DOC_BYTES = 100 * 1024;
 
-/** Допуск «чат прижат к низу», px — автопрокрутка с заморозкой. */
+/** Р”РѕРїСѓСЃРє В«С‡Р°С‚ РїСЂРёР¶Р°С‚ Рє РЅРёР·СѓВ», px вЂ” Р°РІС‚РѕРїСЂРѕРєСЂСѓС‚РєР° СЃ Р·Р°РјРѕСЂРѕР·РєРѕР№. */
 const STICK_THRESHOLD = 24;
 
-/** Состояние индикатора #ai-dot (ADR-0030/0034). */
+/** РЎРѕСЃС‚РѕСЏРЅРёРµ РёРЅРґРёРєР°С‚РѕСЂР° #ai-dot (ADR-0030/0034). */
 type AiDotState = "off" | "warn" | "ready" | "error";
 
-/** Классификация ошибки для карточки и действий. */
+/** РљР»Р°СЃСЃРёС„РёРєР°С†РёСЏ РѕС€РёР±РєРё РґР»СЏ РєР°СЂС‚РѕС‡РєРё Рё РґРµР№СЃС‚РІРёР№. */
 type ErrorKind = "auth" | "offline" | "rate" | "context" | "generic";
 
 interface ErrorAction {
@@ -71,90 +71,86 @@ interface ErrorAction {
   run(): void;
 }
 
-/**
- * Встроенные скиллы-фолбэк, если `ai_list_skills` недоступен (ADR-0032).
- * Оставлены 2 MVP-скилла (`explain`, `create-plugin`) как деградированный минимум.
- * Полный список из 7 скиллов приходит из Rust (`ai/skills.rs`) — дублировать 5 больших
- * промтов в TS не нужно: это источник дрейфа (рассинхрон id/title/prompt_template).
- */
+
+
 const FALLBACK_SKILLS: readonly AiSkill[] = [
   {
     id: "explain",
-    title: "Объяснить файл",
-    description: "Разобрать и объяснить текущий документ",
-    // Синхронизирован с Rust (`ai/skills.rs`, `EXPLAIN_PROMPT`): явная структура из 4 частей.
-    prompt_template: `Ты — разборщик Markdown-документов в редакторе ПЕНАЛ. Ниже документ; объясни его простыми
-словами, опираясь ТОЛЬКО на этот текст (содержимое вне документа не подмешивай).
+    title: "РћР±СЉСЏСЃРЅРёС‚СЊ С„Р°Р№Р»",
+    description: "Р Р°Р·РѕР±СЂР°С‚СЊ Рё РѕР±СЉСЏСЃРЅРёС‚СЊ С‚РµРєСѓС‰РёР№ РґРѕРєСѓРјРµРЅС‚",
 
-Ответь на русском ровно по этой структуре, без вступлений и извинений:
-1. О чём — суть в 1–3 предложениях.
-2. Структура — какие разделы есть (по заголовкам) и как они связаны.
-3. Разметка — какие элементы Markdown использованы и что они дают именно здесь (заголовки, списки,
-   таблицы, блоки кода, ссылки, цитаты, YAML-шапка).
-4. На что обратить внимание — неочевидные или спорные места; если их нет, скажи прямо.
+    prompt_template: `РўС‹ вЂ” СЂР°Р·Р±РѕСЂС‰РёРє Markdown-РґРѕРєСѓРјРµРЅС‚РѕРІ РІ СЂРµРґР°РєС‚РѕСЂРµ РџР•РќРђР›. РќРёР¶Рµ РґРѕРєСѓРјРµРЅС‚; РѕР±СЉСЏСЃРЅРё РµРіРѕ РїСЂРѕСЃС‚С‹РјРё
+СЃР»РѕРІР°РјРё, РѕРїРёСЂР°СЏСЃСЊ РўРћР›Р¬РљРћ РЅР° СЌС‚РѕС‚ С‚РµРєСЃС‚ (СЃРѕРґРµСЂР¶РёРјРѕРµ РІРЅРµ РґРѕРєСѓРјРµРЅС‚Р° РЅРµ РїРѕРґРјРµС€РёРІР°Р№).
 
-Правила: не выдумывай то, чего в тексте нет; не перепечатывай документ целиком и не переписывай его;
-если документ пуст или почти пуст — ответь одной строкой об этом.
+РћС‚РІРµС‚СЊ РЅР° СЂСѓСЃСЃРєРѕРј СЂРѕРІРЅРѕ РїРѕ СЌС‚РѕР№ СЃС‚СЂСѓРєС‚СѓСЂРµ, Р±РµР· РІСЃС‚СѓРїР»РµРЅРёР№ Рё РёР·РІРёРЅРµРЅРёР№:
+1. Рћ С‡С‘Рј вЂ” СЃСѓС‚СЊ РІ 1вЂ“3 РїСЂРµРґР»РѕР¶РµРЅРёСЏС….
+2. РЎС‚СЂСѓРєС‚СѓСЂР° вЂ” РєР°РєРёРµ СЂР°Р·РґРµР»С‹ РµСЃС‚СЊ (РїРѕ Р·Р°РіРѕР»РѕРІРєР°Рј) Рё РєР°Рє РѕРЅРё СЃРІСЏР·Р°РЅС‹.
+3. Р Р°Р·РјРµС‚РєР° вЂ” РєР°РєРёРµ СЌР»РµРјРµРЅС‚С‹ Markdown РёСЃРїРѕР»СЊР·РѕРІР°РЅС‹ Рё С‡С‚Рѕ РѕРЅРё РґР°СЋС‚ РёРјРµРЅРЅРѕ Р·РґРµСЃСЊ (Р·Р°РіРѕР»РѕРІРєРё, СЃРїРёСЃРєРё,
+   С‚Р°Р±Р»РёС†С‹, Р±Р»РѕРєРё РєРѕРґР°, СЃСЃС‹Р»РєРё, С†РёС‚Р°С‚С‹, YAML-С€Р°РїРєР°).
+4. РќР° С‡С‚Рѕ РѕР±СЂР°С‚РёС‚СЊ РІРЅРёРјР°РЅРёРµ вЂ” РЅРµРѕС‡РµРІРёРґРЅС‹Рµ РёР»Рё СЃРїРѕСЂРЅС‹Рµ РјРµСЃС‚Р°; РµСЃР»Рё РёС… РЅРµС‚, СЃРєР°Р¶Рё РїСЂСЏРјРѕ.
 
-Документ:
+РџСЂР°РІРёР»Р°: РЅРµ РІС‹РґСѓРјС‹РІР°Р№ С‚Рѕ, С‡РµРіРѕ РІ С‚РµРєСЃС‚Рµ РЅРµС‚; РЅРµ РїРµСЂРµРїРµС‡Р°С‚С‹РІР°Р№ РґРѕРєСѓРјРµРЅС‚ С†РµР»РёРєРѕРј Рё РЅРµ РїРµСЂРµРїРёСЃС‹РІР°Р№ РµРіРѕ;
+РµСЃР»Рё РґРѕРєСѓРјРµРЅС‚ РїСѓСЃС‚ РёР»Рё РїРѕС‡С‚Рё РїСѓСЃС‚ вЂ” РѕС‚РІРµС‚СЊ РѕРґРЅРѕР№ СЃС‚СЂРѕРєРѕР№ РѕР± СЌС‚РѕРј.
+
+Р”РѕРєСѓРјРµРЅС‚:
 {{doc}}`,
     category: "document",
   },
   {
     id: "create-plugin",
-    title: "Создать плагин",
-    description: "Сгенерировать новый Lua-плагин по описанию",
-    // Синхронизирован с Rust (`ai/skills.rs`, `CREATE_PLUGIN_PROMPT`): модель обязана вернуть
-    // РОВНО один fenced ```json с { id, name, version, permissions, contributes?, source },
-    // иначе карточка плагина не парсится (`extractPluginProposal`).
-    prompt_template: `Ты — генератор Lua-плагинов для ПЕНАЛ (Lua 5.5 в песочнице; нет os/io/require/load, нет host.document/host.ui/host.view/host.commands). По описанию: {{input}}
+    title: "РЎРѕР·РґР°С‚СЊ РїР»Р°РіРёРЅ",
+    description: "РЎРіРµРЅРµСЂРёСЂРѕРІР°С‚СЊ РЅРѕРІС‹Р№ Lua-РїР»Р°РіРёРЅ РїРѕ РѕРїРёСЃР°РЅРёСЋ",
 
-Верни РОВНО один fenced-блок \`\`\`json с одним объектом (никакого текста вне блока):
-{"id": "…", "name": "…", "version": "1.0.0", "permissions": [], "source": "полный код main.lua"}
 
-Контракт \`source\` (иначе плагин отвергается загрузкой):
-- Точка входа — ГЛОБАЛЬНАЯ функция: function on_activate(ctx) ... end.
-  Запрещено: модуль-таблица (local M = {} ... return M), M.on_activate, local on_activate, trailing return.
-- Опционально глобальные: on_deactivate(ctx), on_event(name, payload), on_action(view_id, action, payload).
-- on_activate держи лёгким: чтение документа делай в обработчиках событий, а не на активации.
-- Код должен компилироваться: без require/os/io, без вызовов несуществующих функций.
-- host-функции с разрешением возвращают (value, err): используй значение только при err == nil; при отказе
-  не падай — сообщи через host.show_message и продолжай.
 
-Доступен ТОЛЬКО этот API:
+    prompt_template: `РўС‹ вЂ” РіРµРЅРµСЂР°С‚РѕСЂ Lua-РїР»Р°РіРёРЅРѕРІ РґР»СЏ РџР•РќРђР› (Lua 5.5 РІ РїРµСЃРѕС‡РЅРёС†Рµ; РЅРµС‚ os/io/require/load, РЅРµС‚ host.document/host.ui/host.view/host.commands). РџРѕ РѕРїРёСЃР°РЅРёСЋ: {{input}}
+
+Р’РµСЂРЅРё Р РћР’РќРћ РѕРґРёРЅ fenced-Р±Р»РѕРє \`\`\`json СЃ РѕРґРЅРёРј РѕР±СЉРµРєС‚РѕРј (РЅРёРєР°РєРѕРіРѕ С‚РµРєСЃС‚Р° РІРЅРµ Р±Р»РѕРєР°):
+{"id": "вЂ¦", "name": "вЂ¦", "version": "1.0.0", "permissions": [], "source": "РїРѕР»РЅС‹Р№ РєРѕРґ main.lua"}
+
+РљРѕРЅС‚СЂР°РєС‚ \`source\` (РёРЅР°С‡Рµ РїР»Р°РіРёРЅ РѕС‚РІРµСЂРіР°РµС‚СЃСЏ Р·Р°РіСЂСѓР·РєРѕР№):
+- РўРѕС‡РєР° РІС…РѕРґР° вЂ” Р“Р›РћР‘РђР›Р¬РќРђРЇ С„СѓРЅРєС†РёСЏ: function on_activate(ctx) ... end.
+  Р—Р°РїСЂРµС‰РµРЅРѕ: РјРѕРґСѓР»СЊ-С‚Р°Р±Р»РёС†Р° (local M = {} ... return M), M.on_activate, local on_activate, trailing return.
+- РћРїС†РёРѕРЅР°Р»СЊРЅРѕ РіР»РѕР±Р°Р»СЊРЅС‹Рµ: on_deactivate(ctx), on_event(name, payload), on_action(view_id, action, payload).
+- on_activate РґРµСЂР¶Рё Р»С‘РіРєРёРј: С‡С‚РµРЅРёРµ РґРѕРєСѓРјРµРЅС‚Р° РґРµР»Р°Р№ РІ РѕР±СЂР°Р±РѕС‚С‡РёРєР°С… СЃРѕР±С‹С‚РёР№, Р° РЅРµ РЅР° Р°РєС‚РёРІР°С†РёРё.
+- РљРѕРґ РґРѕР»Р¶РµРЅ РєРѕРјРїРёР»РёСЂРѕРІР°С‚СЊСЃСЏ: Р±РµР· require/os/io, Р±РµР· РІС‹Р·РѕРІРѕРІ РЅРµСЃСѓС‰РµСЃС‚РІСѓСЋС‰РёС… С„СѓРЅРєС†РёР№.
+- host-С„СѓРЅРєС†РёРё СЃ СЂР°Р·СЂРµС€РµРЅРёРµРј РІРѕР·РІСЂР°С‰Р°СЋС‚ (value, err): РёСЃРїРѕР»СЊР·СѓР№ Р·РЅР°С‡РµРЅРёРµ С‚РѕР»СЊРєРѕ РїСЂРё err == nil; РїСЂРё РѕС‚РєР°Р·Рµ
+  РЅРµ РїР°РґР°Р№ вЂ” СЃРѕРѕР±С‰Рё С‡РµСЂРµР· host.show_message Рё РїСЂРѕРґРѕР»Р¶Р°Р№.
+
+Р”РѕСЃС‚СѓРїРµРЅ РўРћР›Р¬РљРћ СЌС‚РѕС‚ API:
 - ctx.subscribe(name, handler) -> unsubscribe; handler(name, payload).
-  События: document:changed {doc_id, rev}, document:opened {doc_id, path},
+  РЎРѕР±С‹С‚РёСЏ: document:changed {doc_id, rev}, document:opened {doc_id, path},
   document:closed {doc_id, path}, command:invoked {command_id, doc_id}.
 - host.get_document_len(doc_id) -> (integer, err)
-- host.get_document_range(doc_id, start, len) -> (string, err)  -- основной путь чтения; смещения байтовые (UTF-8)
+- host.get_document_range(doc_id, start, len) -> (string, err)  -- РѕСЃРЅРѕРІРЅРѕР№ РїСѓС‚СЊ С‡С‚РµРЅРёСЏ; СЃРјРµС‰РµРЅРёСЏ Р±Р°Р№С‚РѕРІС‹Рµ (UTF-8)
 - host.get_document_text(doc_id) -> (string, err)
 - host.get_document_version(doc_id) -> (integer, err)
 - host.apply_edit(doc_id, start, stop, text) -> (boolean, err)  -- document:write
-- host.set_view_content(view_id, html) -> (boolean, err)        -- ТОЛЬКО для вкладок (view:modify)
-- host.show_message(text) -> (boolean, err)                     -- текст в статусбар (ui:statusbar)
+- host.set_view_content(view_id, html) -> (boolean, err)        -- РўРћР›Р¬РљРћ РґР»СЏ РІРєР»Р°РґРѕРє (view:modify)
+- host.show_message(text) -> (boolean, err)                     -- С‚РµРєСЃС‚ РІ СЃС‚Р°С‚СѓСЃР±Р°СЂ (ui:statusbar)
 - host.log(level, message), host.get_setting(key), host.set_setting(key, value), host.export_html(html)
 - md.to_html(text), md.to_html_mapped(text), json.encode(value), json.decode(s)
 
-Не путай три механизма:
-- Вкладка (view): объяви в contributes.views [{"kind": "<kind>", "title": "…", "tier": 1}] (ровно эти поля),
-  permission view:create; содержимое пиши через host.set_view_content(VIEW_ID, html) (нужен view:modify), где
-  VIEW_ID = "<id плагина>:<kind>": <id плагина> — это поле id из этого же JSON, <kind> — из contributes.views.
-  HTML санитизируется на хосте.
-- Статусбар: короткий текст показывай через host.show_message(text) (permission ui:statusbar);
-  host.set_view_content для статусбара НЕ используй.
-- Команда: объяви в contributes.commands и обрабатывай событие command:invoked {command_id}.
+РќРµ РїСѓС‚Р°Р№ С‚СЂРё РјРµС…Р°РЅРёР·РјР°:
+- Р’РєР»Р°РґРєР° (view): РѕР±СЉСЏРІРё РІ contributes.views [{"kind": "<kind>", "title": "вЂ¦", "tier": 1}] (СЂРѕРІРЅРѕ СЌС‚Рё РїРѕР»СЏ),
+  permission view:create; СЃРѕРґРµСЂР¶РёРјРѕРµ РїРёС€Рё С‡РµСЂРµР· host.set_view_content(VIEW_ID, html) (РЅСѓР¶РµРЅ view:modify), РіРґРµ
+  VIEW_ID = "<id РїР»Р°РіРёРЅР°>:<kind>": <id РїР»Р°РіРёРЅР°> вЂ” СЌС‚Рѕ РїРѕР»Рµ id РёР· СЌС‚РѕРіРѕ Р¶Рµ JSON, <kind> вЂ” РёР· contributes.views.
+  HTML СЃР°РЅРёС‚РёР·РёСЂСѓРµС‚СЃСЏ РЅР° С…РѕСЃС‚Рµ.
+- РЎС‚Р°С‚СѓСЃР±Р°СЂ: РєРѕСЂРѕС‚РєРёР№ С‚РµРєСЃС‚ РїРѕРєР°Р·С‹РІР°Р№ С‡РµСЂРµР· host.show_message(text) (permission ui:statusbar);
+  host.set_view_content РґР»СЏ СЃС‚Р°С‚СѓСЃР±Р°СЂР° РќР• РёСЃРїРѕР»СЊР·СѓР№.
+- РљРѕРјР°РЅРґР°: РѕР±СЉСЏРІРё РІ contributes.commands Рё РѕР±СЂР°Р±Р°С‚С‹РІР°Р№ СЃРѕР±С‹С‚РёРµ command:invoked {command_id}.
 
-permissions — только из набора: document:read, document:write, view:create, view:modify, ui:statusbar.
-id — только [a-z0-9_-]. Если вкладка/команда/статусбар не нужны — ключ contributes не добавляй.
+permissions вЂ” С‚РѕР»СЊРєРѕ РёР· РЅР°Р±РѕСЂР°: document:read, document:write, view:create, view:modify, ui:statusbar.
+id вЂ” С‚РѕР»СЊРєРѕ [a-z0-9_-]. Р•СЃР»Рё РІРєР»Р°РґРєР°/РєРѕРјР°РЅРґР°/СЃС‚Р°С‚СѓСЃР±Р°СЂ РЅРµ РЅСѓР¶РЅС‹ вЂ” РєР»СЋС‡ contributes РЅРµ РґРѕР±Р°РІР»СЏР№.
 
-Пример каркаса (подстрой под задачу, не копируй дословно):
+РџСЂРёРјРµСЂ РєР°СЂРєР°СЃР° (РїРѕРґСЃС‚СЂРѕР№ РїРѕРґ Р·Р°РґР°С‡Сѓ, РЅРµ РєРѕРїРёСЂСѓР№ РґРѕСЃР»РѕРІРЅРѕ):
 \`\`\`lua
-local VIEW_ID = "my-plugin:stats"   -- "<id плагина>:<kind>"
+local VIEW_ID = "my-plugin:stats"   -- "<id РїР»Р°РіРёРЅР°>:<kind>"
 
 function on_activate(ctx)
   ctx.subscribe("document:changed", function(name, payload)
     local text, err = host.get_document_text(payload.doc_id)
-    if err == nil and text then host.set_view_content(VIEW_ID, "<p>длина " .. #text .. "</p>") end
+    if err == nil and text then host.set_view_content(VIEW_ID, "<p>РґР»РёРЅР° " .. #text .. "</p>") end
   end)
 end
 \`\`\``,
@@ -163,100 +159,100 @@ end
 ];
 
 const ERROR_TITLES: Record<ErrorKind, string> = {
-  auth: "Неверный API-ключ",
-  offline: "Нет соединения",
-  rate: "Превышен лимит запросов",
-  context: "Документ слишком большой",
-  generic: "Ошибка AI",
+  auth: "РќРµРІРµСЂРЅС‹Р№ API-РєР»СЋС‡",
+  offline: "РќРµС‚ СЃРѕРµРґРёРЅРµРЅРёСЏ",
+  rate: "РџСЂРµРІС‹С€РµРЅ Р»РёРјРёС‚ Р·Р°РїСЂРѕСЃРѕРІ",
+  context: "Р”РѕРєСѓРјРµРЅС‚ СЃР»РёС€РєРѕРј Р±РѕР»СЊС€РѕР№",
+  generic: "РћС€РёР±РєР° AI",
 };
 
-// Заголовок карточки: уточняем по коду Rust (`ai_no_key`/`ai_no_consent`/…).
+
 function errorTitle(kind: ErrorKind, code: string): string {
-  if (code === "ai_no_key") return "Ключ routerai.ru не задан";
-  if (code === "ai_no_consent") return "Нужно согласие на отправку";
-  if (code === "ai_disabled") return "AI выключен";
+  if (code === "ai_no_key") return "РљР»СЋС‡ routerai.ru РЅРµ Р·Р°РґР°РЅ";
+  if (code === "ai_no_consent") return "РќСѓР¶РЅРѕ СЃРѕРіР»Р°СЃРёРµ РЅР° РѕС‚РїСЂР°РІРєСѓ";
+  if (code === "ai_disabled") return "AI РІС‹РєР»СЋС‡РµРЅ";
   return ERROR_TITLES[kind];
 }
 
 export interface AiPanelOptions {
-  /** Контейнер тела режима AI (#ai-mode). */
+  /** РљРѕРЅС‚РµР№РЅРµСЂ С‚РµР»Р° СЂРµР¶РёРјР° AI (#ai-mode). */
   root: HTMLElement;
-  /** Шов записи в журнал: владелец ленты — logPanel (без своей подписки). */
+  /** РЁРѕРІ Р·Р°РїРёСЃРё РІ Р¶СѓСЂРЅР°Р»: РІР»Р°РґРµР»РµС† Р»РµРЅС‚С‹ вЂ” logPanel (Р±РµР· СЃРІРѕРµР№ РїРѕРґРїРёСЃРєРё). */
   log(level: LogLevel, category: LogCategory, message: string, detail?: string): void;
-  /** Текущий текст активного документа (для подстановки {{doc}}). */
+  /** РўРµРєСѓС‰РёР№ С‚РµРєСЃС‚ Р°РєС‚РёРІРЅРѕРіРѕ РґРѕРєСѓРјРµРЅС‚Р° (РґР»СЏ РїРѕРґСЃС‚Р°РЅРѕРІРєРё {{doc}}). */
   getDocumentText(): string;
-  /** Активный документ для harness-правок (id + rev) или `null`, если открытого нет. */
+  /** РђРєС‚РёРІРЅС‹Р№ РґРѕРєСѓРјРµРЅС‚ РґР»СЏ harness-РїСЂР°РІРѕРє (id + rev) РёР»Рё `null`, РµСЃР»Рё РѕС‚РєСЂС‹С‚РѕРіРѕ РЅРµС‚. */
   getActiveDocument(): { id: DocumentId; rev: number } | null;
 }
 
 export interface AiPanel {
-  /** Реакция на смену режима/состояния дока: фокус ввода, закрытие поповера. */
+  /** Р РµР°РєС†РёСЏ РЅР° СЃРјРµРЅСѓ СЂРµР¶РёРјР°/СЃРѕСЃС‚РѕСЏРЅРёСЏ РґРѕРєР°: С„РѕРєСѓСЃ РІРІРѕРґР°, Р·Р°РєСЂС‹С‚РёРµ РїРѕРїРѕРІРµСЂР°. */
   onDockState(mode: DockMode, state: DockState): void;
   dispose(): void;
 }
 
-// Классификация ошибки по коду/тексту Rust — определяет заголовок и действия.
+
 function errorKind(code: string, message: string): ErrorKind {
   const c = code.toLowerCase();
   const m = message.toLowerCase();
-  if (c.includes("key") || c.includes("auth") || c.includes("401") || m.includes("401") || m.includes("ключ")) {
+  if (c.includes("key") || c.includes("auth") || c.includes("401") || m.includes("401") || m.includes("РєР»СЋС‡")) {
     return "auth";
   }
   if (
     c.includes("offline") ||
     c.includes("network") ||
     c.includes("timeout") ||
-    m.includes("соедин") ||
+    m.includes("СЃРѕРµРґРёРЅ") ||
     m.includes("network") ||
     m.includes("timeout") ||
-    m.includes("офлайн")
+    m.includes("РѕС„Р»Р°Р№РЅ")
   ) {
     return "offline";
   }
-  if (c.includes("rate") || m.includes("429") || m.includes("лимит")) return "rate";
-  if (c.includes("context") || m.includes("context length") || m.includes("слишком большой")) {
+  if (c.includes("rate") || m.includes("429") || m.includes("Р»РёРјРёС‚")) return "rate";
+  if (c.includes("context") || m.includes("context length") || m.includes("СЃР»РёС€РєРѕРј Р±РѕР»СЊС€РѕР№")) {
     return "context";
   }
   return "generic";
 }
 
-// Разметка AI-панели — контракт: отсутствие элемента валит сразу.
+
 function byId<T extends HTMLElement>(id: string): T {
   const el = document.getElementById(id);
-  if (!el) throw new Error(`aiPanel: не найден элемент #${id}`);
+  if (!el) throw new Error(`aiPanel: РЅРµ РЅР°Р№РґРµРЅ СЌР»РµРјРµРЅС‚ #${id}`);
   return el as T;
 }
 
-/** Значение с проверкой на null (для `querySelector`/`closest`). */
+/** Р—РЅР°С‡РµРЅРёРµ СЃ РїСЂРѕРІРµСЂРєРѕР№ РЅР° null (РґР»СЏ `querySelector`/`closest`). */
 function must<T>(value: T | null, what: string): T {
-  if (!value) throw new Error(`aiPanel: не найден ${what}`);
+  if (!value) throw new Error(`aiPanel: РЅРµ РЅР°Р№РґРµРЅ ${what}`);
   return value;
 }
 
-/** «14:31:02» — время сообщения. */
+/** В«14:31:02В» вЂ” РІСЂРµРјСЏ СЃРѕРѕР±С‰РµРЅРёСЏ. */
 function nowTime(): string {
   const d = new Date();
   const p = (n: number): string => String(n).padStart(2, "0");
   return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
-/** Короткое имя модели для строки в шапке: «routerai · deepseek-v4.1-flash». */
+/** РљРѕСЂРѕС‚РєРѕРµ РёРјСЏ РјРѕРґРµР»Рё РґР»СЏ СЃС‚СЂРѕРєРё РІ С€Р°РїРєРµ: В«routerai В· deepseek-v4.1-flashВ». */
 function shortModel(model: string): string {
   const parts = model.split("/");
   return parts[parts.length - 1] || model;
 }
 
-/** Лимит строк диффа в карточке: защита от огромных правок (ADR-0032, 10 000 строк). */
+/** Р›РёРјРёС‚ СЃС‚СЂРѕРє РґРёС„С„Р° РІ РєР°СЂС‚РѕС‡РєРµ: Р·Р°С‰РёС‚Р° РѕС‚ РѕРіСЂРѕРјРЅС‹С… РїСЂР°РІРѕРє (ADR-0032, 10 000 СЃС‚СЂРѕРє). */
 const MAX_DIFF_LINES = 500;
 
 const PLUGIN_STATUS_LABELS: Record<PluginStatus["state"], string> = {
-  active: "активен",
-  failed: "ошибка",
-  quarantined: "карантин",
-  stopped: "остановлен",
+  active: "Р°РєС‚РёРІРµРЅ",
+  failed: "РѕС€РёР±РєР°",
+  quarantined: "РєР°СЂР°РЅС‚РёРЅ",
+  stopped: "РѕСЃС‚Р°РЅРѕРІР»РµРЅ",
 };
 
-/** Кодовый блок ```json в ответе модели — предложение плагина (скилл create-plugin, ADR-0034/ADR-0026). */
+/** РљРѕРґРѕРІС‹Р№ Р±Р»РѕРє ```json РІ РѕС‚РІРµС‚Рµ РјРѕРґРµР»Рё вЂ” РїСЂРµРґР»РѕР¶РµРЅРёРµ РїР»Р°РіРёРЅР° (СЃРєРёР»Р» create-plugin, ADR-0034/ADR-0026). */
 const PLUGIN_FENCE = /```json[^\n]*\n([\s\S]*?)```/gi;
 
 interface AiPluginProposal {
@@ -264,20 +260,20 @@ interface AiPluginProposal {
   name: string;
   version: string;
   source: string;
-  /** Собранный `plugin.json` (без `source`) для `ai_validate_plugin`/`ai_create_plugin`. */
+  /** РЎРѕР±СЂР°РЅРЅС‹Р№ `plugin.json` (Р±РµР· `source`) РґР»СЏ `ai_validate_plugin`/`ai_create_plugin`. */
   manifest: Json;
 }
 
-/** Карточка плагина, зарегистрированная для реакции на события `ai:plugin_*`. */
+/** РљР°СЂС‚РѕС‡РєР° РїР»Р°РіРёРЅР°, Р·Р°СЂРµРіРёСЃС‚СЂРёСЂРѕРІР°РЅРЅР°СЏ РґР»СЏ СЂРµР°РєС†РёРё РЅР° СЃРѕР±С‹С‚РёСЏ `ai:plugin_*`. */
 interface PluginCardState {
   id: string;
-  /** Установлен ли плагин карточки (идемпотентная реакция на события). */
+  /** РЈСЃС‚Р°РЅРѕРІР»РµРЅ Р»Рё РїР»Р°РіРёРЅ РєР°СЂС‚РѕС‡РєРё (РёРґРµРјРїРѕС‚РµРЅС‚РЅР°СЏ СЂРµР°РєС†РёСЏ РЅР° СЃРѕР±С‹С‚РёСЏ). */
   isInstalled(): boolean;
   installed(label: string, stateClass: string): void;
   deleted(): void;
 }
 
-/** Код IPC-ошибки из `CommandError { code, message }` (или `undefined`). */
+/** РљРѕРґ IPC-РѕС€РёР±РєРё РёР· `CommandError { code, message }` (РёР»Рё `undefined`). */
 function errorCode(e: unknown): string | undefined {
   if (e && typeof e === "object" && "code" in e) {
     const code = (e as { code?: unknown }).code;
@@ -286,7 +282,7 @@ function errorCode(e: unknown): string | undefined {
   return undefined;
 }
 
-/** Создаёт элемент с классом: карточки собираются только DOM API (без innerHTML). */
+/** РЎРѕР·РґР°С‘С‚ СЌР»РµРјРµРЅС‚ СЃ РєР»Р°СЃСЃРѕРј: РєР°СЂС‚РѕС‡РєРё СЃРѕР±РёСЂР°СЋС‚СЃСЏ С‚РѕР»СЊРєРѕ DOM API (Р±РµР· innerHTML). */
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
   className?: string
@@ -296,7 +292,7 @@ function el<K extends keyof HTMLElementTagNameMap>(
   return node;
 }
 
-/** Кнопка карточки: тип, подпись и доступное имя (для скринридеров). */
+/** РљРЅРѕРїРєР° РєР°СЂС‚РѕС‡РєРё: С‚РёРї, РїРѕРґРїРёСЃСЊ Рё РґРѕСЃС‚СѓРїРЅРѕРµ РёРјСЏ (РґР»СЏ СЃРєСЂРёРЅСЂРёРґРµСЂРѕРІ). */
 function actionButton(label: string, className: string, ariaLabel?: string): HTMLButtonElement {
   const button = el("button", className);
   button.type = "button";
@@ -305,7 +301,7 @@ function actionButton(label: string, className: string, ariaLabel?: string): HTM
   return button;
 }
 
-/** Разбивает текст на строки; пустой ввод — пустой список (пустую строку не рисуем). */
+/** Р Р°Р·Р±РёРІР°РµС‚ С‚РµРєСЃС‚ РЅР° СЃС‚СЂРѕРєРё; РїСѓСЃС‚РѕР№ РІРІРѕРґ вЂ” РїСѓСЃС‚РѕР№ СЃРїРёСЃРѕРє (РїСѓСЃС‚СѓСЋ СЃС‚СЂРѕРєСѓ РЅРµ СЂРёСЃСѓРµРј). */
 function splitLines(text: string): string[] {
   if (text === "") return [];
   const lines = text.split("\n");
@@ -313,17 +309,15 @@ function splitLines(text: string): string[] {
   return lines;
 }
 
-/** Строка диффа: `+`/`-` + текст (только textContent); перенос даёт `display:block`. */
+/** РЎС‚СЂРѕРєР° РґРёС„С„Р°: `+`/`-` + С‚РµРєСЃС‚ (С‚РѕР»СЊРєРѕ textContent); РїРµСЂРµРЅРѕСЃ РґР°С‘С‚ `display:block`. */
 function appendDiffLine(pre: HTMLElement, kind: "add" | "del", line: string): void {
   const span = el("span", kind === "add" ? "ai-diff-add" : "ai-diff-del");
   span.textContent = `${kind === "add" ? "+" : "-"} ${line}`;
   pre.appendChild(span);
 }
 
-/**
- * Рисует тело диффа по `ops`: удалённые фрагменты — красным, добавленные — зелёным.
- * Байтовые (UTF-8) смещения переводятся в UTF-16 едиными картами `mapping.ts`.
- */
+
+
 function renderDiffBody(pre: HTMLElement, diff: AiDiff): void {
   const maps = buildUnitMaps(diff.original);
   const ops = [...diff.ops].sort((a, b) => a.start - b.start);
@@ -352,14 +346,14 @@ function renderDiffBody(pre: HTMLElement, diff: AiDiff): void {
   }
   if (truncated) {
     const note = el("span", "ai-diff-more");
-    note.textContent = `… дифф сокращён (лимит ${MAX_DIFF_LINES} строк)`;
+    note.textContent = `вЂ¦ РґРёС„С„ СЃРѕРєСЂР°С‰С‘РЅ (Р»РёРјРёС‚ ${MAX_DIFF_LINES} СЃС‚СЂРѕРє)`;
     pre.appendChild(note);
   }
 }
 
-// Ищет первый валидный ```json-блок плагина в ответе ассистента (ADR-0034/ADR-0026).
+
 function extractPluginProposal(content: string): AiPluginProposal | null {
-  PLUGIN_FENCE.lastIndex = 0; // глобальный regexp: сбрасываем позицию между вызовами
+  PLUGIN_FENCE.lastIndex = 0; // РіР»РѕР±Р°Р»СЊРЅС‹Р№ regexp: СЃР±СЂР°СЃС‹РІР°РµРј РїРѕР·РёС†РёСЋ РјРµР¶РґСѓ РІС‹Р·РѕРІР°РјРё
   let match: RegExpExecArray | null;
   while ((match = PLUGIN_FENCE.exec(content)) !== null) {
     const proposal = parsePluginBlock(match[1]);
@@ -368,7 +362,7 @@ function extractPluginProposal(content: string): AiPluginProposal | null {
   return null;
 }
 
-/** Разбирает JSON-блок плагина и собирает `plugin.json` (без `source`). */
+/** Р Р°Р·Р±РёСЂР°РµС‚ JSON-Р±Р»РѕРє РїР»Р°РіРёРЅР° Рё СЃРѕР±РёСЂР°РµС‚ `plugin.json` (Р±РµР· `source`). */
 function parsePluginBlock(raw: string): AiPluginProposal | null {
   let data: unknown;
   try {
@@ -386,11 +380,11 @@ function parsePluginBlock(raw: string): AiPluginProposal | null {
     typeof obj.version === "string" && obj.version.trim() ? obj.version.trim() : "0.1.0";
   const rawPermissions: unknown[] = Array.isArray(obj.permissions) ? obj.permissions : [];
   const permissions = rawPermissions.filter((p): p is string => typeof p === "string");
-  // api_version/entry — значения по умолчанию шаблона `darmark-plugin init` (ADR-0034 §2.4).
+
   const manifest: Json = { id, name, version, api_version: 1, entry: "main.lua", permissions };
-  // `contributes` (views/commands/statusbar/toolbar/settings) пробрасываем как есть:
-  // без него AI-плагин не может зарегистрировать view (ADR-0026). Схему валидирует хост
-  // (`Manifest::from_json`) на шаге ai_validate_plugin/ai_create_plugin.
+
+
+
   const contributes = obj.contributes;
   if (contributes && typeof contributes === "object" && !Array.isArray(contributes)) {
     manifest.contributes = contributes as Json;
@@ -398,24 +392,24 @@ function parsePluginBlock(raw: string): AiPluginProposal | null {
   return { id, name, version, source, manifest };
 }
 
-// Confirm-диалог удаления плагина через `dialog.ts` (по образцу pluginManager).
+
 function confirmDeletePlugin(pluginId: string): Promise<boolean> {
   return new Promise((resolve) => {
     const content = el("div", "ai-confirm");
     const text = el("p", "ai-confirm-text");
-    text.textContent = `Плагин «${pluginId}» будет удалён безвозвратно: файлы и настройки.`;
+    text.textContent = `РџР»Р°РіРёРЅ В«${pluginId}В» Р±СѓРґРµС‚ СѓРґР°Р»С‘РЅ Р±РµР·РІРѕР·РІСЂР°С‚РЅРѕ: С„Р°Р№Р»С‹ Рё РЅР°СЃС‚СЂРѕР№РєРё.`;
     content.appendChild(text);
 
     const buttons = el("div", "dialog-actions");
-    const cancel = actionButton("Отмена", "btn ghost");
-    const confirm = actionButton("Удалить", "btn primary");
+    const cancel = actionButton("РћС‚РјРµРЅР°", "btn ghost");
+    const confirm = actionButton("РЈРґР°Р»РёС‚СЊ", "btn primary");
     buttons.append(cancel, confirm);
     content.appendChild(buttons);
 
     let dialog: Dialog | null = null;
     const finish = (value: boolean): void => {
-      // Сначала фиксируем результат: `close()` вызовет `onClose` (resolve(false)),
-      // который после уже принятого resolve игнорируется.
+
+
       resolve(value);
       dialog?.close();
     };
@@ -423,7 +417,7 @@ function confirmDeletePlugin(pluginId: string): Promise<boolean> {
     confirm.addEventListener("click", () => finish(true));
 
     dialog = openDialog({
-      title: "Удаление плагина",
+      title: "РЈРґР°Р»РµРЅРёРµ РїР»Р°РіРёРЅР°",
       content,
       initialFocus: cancel,
       onClose: () => resolve(false),
@@ -434,7 +428,7 @@ function confirmDeletePlugin(pluginId: string): Promise<boolean> {
 export function createAiPanel(opts: AiPanelOptions): AiPanel {
   const { root, log, getDocumentText, getActiveDocument } = opts;
 
-  // --- DOM ---
+
   const offStub = byId<HTMLElement>("ai-off");
   const enableBtn = byId<HTMLButtonElement>("ai-enable");
   const skillsRow = byId<HTMLElement>("ai-skills");
@@ -446,7 +440,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
   const statusDot = document.getElementById("ai-status-dot");
   const statusText = byId<HTMLElement>("ai-status-text");
   const settingsBtn = byId<HTMLButtonElement>("ai-settings");
-  // Шапка сессии: «сессия от <дата>» (id контракт с index.html).
+
   const sessionHeader = document.getElementById("ai-session");
   const popover = byId<HTMLElement>("ai-settings-pop");
   const settingsClose = byId<HTMLButtonElement>("ai-settings-close");
@@ -463,16 +457,16 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
   const testBtn = byId<HTMLButtonElement>("ai-test");
   const testResult = byId<HTMLElement>("ai-test-result");
   const modelLabel = root.closest<HTMLElement>("#logs-panel")?.querySelector<HTMLElement>(".ai-model") ?? null;
-  const inputRow = must(input.closest<HTMLElement>(".ai-input"), "контейнер .ai-input");
+  const inputRow = must(input.closest<HTMLElement>(".ai-input"), "РєРѕРЅС‚РµР№РЅРµСЂ .ai-input");
 
-  // --- состояние ---
+
   let settings: AiSettingsView | null = null;
   let skills: readonly AiSkill[] = [];
   let skillsLoaded = false;
   let skillsLoading = false;
-  let consentDenied = false; // пользователь отказал в отправке (жёлтый)
-  let authError = false; // неверный ключ (401) — жёлтый «нет ключа»
-  let lastError = false; // ошибка сети/LLM (красный)
+  let consentDenied = false; // РїРѕР»СЊР·РѕРІР°С‚РµР»СЊ РѕС‚РєР°Р·Р°Р» РІ РѕС‚РїСЂР°РІРєРµ (Р¶С‘Р»С‚С‹Р№)
+  let authError = false; // РЅРµРІРµСЂРЅС‹Р№ РєР»СЋС‡ (401) вЂ” Р¶С‘Р»С‚С‹Р№ В«РЅРµС‚ РєР»СЋС‡Р°В»
+  let lastError = false; // РѕС€РёР±РєР° СЃРµС‚Рё/LLM (РєСЂР°СЃРЅС‹Р№)
   let busy = false;
   let stick = true;
   let popoverOpen = false;
@@ -482,7 +476,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
   let disposed = false;
   const unlisteners: UnlistenFn[] = [];
 
-  /** Текущий стриминговый запрос (один за раз). */
+  /** РўРµРєСѓС‰РёР№ СЃС‚СЂРёРјРёРЅРіРѕРІС‹Р№ Р·Р°РїСЂРѕСЃ (РѕРґРёРЅ Р·Р° СЂР°Р·). */
   interface Pending {
     token: number;
     row: HTMLElement;
@@ -497,21 +491,21 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
   let pending: Pending | null = null;
   let requestToken = 0;
 
-  // Фаза 2 (harness): карточки плагина, зарегистрированные для реакции на события
-  // `ai:plugin_*`. Карточка диффа НЕ регистрируется: пометку «применено» ставит
-  // синхронный ответ `ai_apply_edit` той карточки, на которой нажали «Применить»
-  // (иначе событие пометило бы все карточки документа). Счётчик даёт уникальные id.
+
+
+
+
   let cardSeq = 0;
   const pluginCards = new Set<PluginCardState>();
 
-  // Подсказка пустого чата (внутри live-региона, но скрыта от скринридеров).
+
   const emptyHint = document.createElement("div");
   emptyHint.className = "ai-chat-empty";
   emptyHint.setAttribute("aria-hidden", "true");
-  emptyHint.textContent = "Выберите скилл выше или напишите запрос.";
+  emptyHint.textContent = "Р’С‹Р±РµСЂРёС‚Рµ СЃРєРёР»Р» РІС‹С€Рµ РёР»Рё РЅР°РїРёС€РёС‚Рµ Р·Р°РїСЂРѕСЃ.";
   chat.appendChild(emptyHint);
 
-  // --- состояния и рендер UI ---
+
 
   function paintDot(el: HTMLElement | null, st: AiDotState): void {
     if (!el) return;
@@ -528,15 +522,15 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
   }
 
   function stateLabel(st: AiDotState): string {
-    if (st === "off") return "выключен";
-    if (st === "error") return "ошибка · нет соединения";
-    if (st === "ready") return "доступен · встроен";
-    if (authError) return "неверный ключ";
-    if (settings && !settings.has_key) return "нет ключа";
-    return "нет согласия на отправку";
+    if (st === "off") return "РІС‹РєР»СЋС‡РµРЅ";
+    if (st === "error") return "РѕС€РёР±РєР° В· РЅРµС‚ СЃРѕРµРґРёРЅРµРЅРёСЏ";
+    if (st === "ready") return "РґРѕСЃС‚СѓРїРµРЅ В· РІСЃС‚СЂРѕРµРЅ";
+    if (authError) return "РЅРµРІРµСЂРЅС‹Р№ РєР»СЋС‡";
+    if (settings && !settings.has_key) return "РЅРµС‚ РєР»СЋС‡Р°";
+    return "РЅРµС‚ СЃРѕРіР»Р°СЃРёСЏ РЅР° РѕС‚РїСЂР°РІРєСѓ";
   }
 
-  // Единая точка приведения UI к состоянию: индикатор, заглушка, поля.
+
   function applyState(): void {
     const st = currentDotState();
     const label = stateLabel(st);
@@ -550,14 +544,14 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     skillsRow.hidden = !enabled;
     chat.hidden = !enabled;
     inputRow.hidden = !enabled;
-    // Шапка сессии видна только при включённом AI (непустая история — ответственность
-    // restoreHistory/saveHistory/hideSessionHeader).
+
+
     if (!enabled && sessionHeader) sessionHeader.hidden = true;
     input.disabled = !enabled;
     sendBtn.disabled = !enabled || busy;
 
     enabledInput.checked = enabled;
-    enabledSub.textContent = enabled ? "включён" : "выключен";
+    enabledSub.textContent = enabled ? "РІРєР»СЋС‡С‘РЅ" : "РІС‹РєР»СЋС‡РµРЅ";
     config.classList.toggle("is-disabled", !enabled);
     providerInput.disabled = !enabled;
     modelInput.disabled = !enabled;
@@ -567,13 +561,13 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     testBtn.disabled = !enabled;
 
     if (settings) {
-      // Не перезатираем поля, которые пользователь редактирует прямо сейчас.
+
       if (document.activeElement !== providerInput) providerInput.value = settings.provider;
       baseUrlInput.value = settings.base_url;
       if (document.activeElement !== modelInput) modelInput.value = settings.model;
-      if (modelLabel) modelLabel.textContent = `routerai · ${shortModel(settings.model)}`;
+      if (modelLabel) modelLabel.textContent = `routerai В· ${shortModel(settings.model)}`;
     }
-    keyHint.textContent = settings?.has_key ? "Ключ сохранён" : "Ключ не задан";
+    keyHint.textContent = settings?.has_key ? "РљР»СЋС‡ СЃРѕС…СЂР°РЅС‘РЅ" : "РљР»СЋС‡ РЅРµ Р·Р°РґР°РЅ";
   }
 
   function updateEmpty(): void {
@@ -590,9 +584,9 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     dot.classList.toggle("busy", busy);
   }
 
-  // --- скиллы ---
 
-  /** Id плагинных скиллов (категория `plugins`) — для иконки 🧩; остальные — документные ▤. */
+
+  /** Id РїР»Р°РіРёРЅРЅС‹С… СЃРєРёР»Р»РѕРІ (РєР°С‚РµРіРѕСЂРёСЏ `plugins`) вЂ” РґР»СЏ РёРєРѕРЅРєРё рџ§©; РѕСЃС‚Р°Р»СЊРЅС‹Рµ вЂ” РґРѕРєСѓРјРµРЅС‚РЅС‹Рµ в–¤. */
   const PLUGIN_SKILL_IDS: readonly string[] = ["create-plugin", "debug-plugin", "add-view"];
 
   function ensureSkills(): void {
@@ -604,7 +598,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
       })
       .catch((e) => {
         skills = FALLBACK_SKILLS;
-        log("warn", "system", `AI: скиллы недоступны (${errorMessage(e)}) — используются встроенные`);
+        log("warn", "system", `AI: СЃРєРёР»Р»С‹ РЅРµРґРѕСЃС‚СѓРїРЅС‹ (${errorMessage(e)}) вЂ” РёСЃРїРѕР»СЊР·СѓСЋС‚СЃСЏ РІСЃС‚СЂРѕРµРЅРЅС‹Рµ`);
       })
       .finally(() => {
         skillsLoading = false;
@@ -624,7 +618,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
       const icon = document.createElement("span");
       icon.className = "skill-icon";
       icon.setAttribute("aria-hidden", "true");
-      icon.textContent = PLUGIN_SKILL_IDS.includes(skill.id) ? "🧩" : "▤";
+      icon.textContent = PLUGIN_SKILL_IDS.includes(skill.id) ? "рџ§©" : "в–¤";
       const title = document.createElement("span");
       title.textContent = skill.title;
       btn.append(icon, title);
@@ -633,7 +627,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     }
   }
 
-  // Подстановка шаблона скилла: {{doc}} — из документа, {{input}} — из поля ввода.
+
   function onSkillClick(skill: AiSkill): void {
     if (!settings?.enabled) return;
     const tpl = skill.prompt_template;
@@ -645,7 +639,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
       const desc = input.value.trim();
       if (!desc) {
         input.focus();
-        log("info", "system", "AI: для скилла «Создать плагин» нужно описание в поле ввода");
+        log("info", "system", "AI: РґР»СЏ СЃРєРёР»Р»Р° В«РЎРѕР·РґР°С‚СЊ РїР»Р°РіРёРЅВ» РЅСѓР¶РЅРѕ РѕРїРёСЃР°РЅРёРµ РІ РїРѕР»Рµ РІРІРѕРґР°");
         return;
       }
       send(desc, tpl.replace("{{input}}", desc));
@@ -654,22 +648,22 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     send(skill.title, tpl);
   }
 
-  /** Обрезка текста документа до лимита байт UTF-8 (без разрыва символа). */
+  /** РћР±СЂРµР·РєР° С‚РµРєСЃС‚Р° РґРѕРєСѓРјРµРЅС‚Р° РґРѕ Р»РёРјРёС‚Р° Р±Р°Р№С‚ UTF-8 (Р±РµР· СЂР°Р·СЂС‹РІР° СЃРёРјРІРѕР»Р°). */
   function truncateDoc(text: string): string {
     const bytes = new TextEncoder().encode(text);
     if (bytes.length <= MAX_DOC_BYTES) return text;
     const cut = new TextDecoder().decode(bytes.subarray(0, MAX_DOC_BYTES));
-    log("warn", "system", `AI: документ обрезан до ${Math.round(MAX_DOC_BYTES / 1024)} КБ`);
+    log("warn", "system", `AI: РґРѕРєСѓРјРµРЅС‚ РѕР±СЂРµР·Р°РЅ РґРѕ ${Math.round(MAX_DOC_BYTES / 1024)} РљР‘`);
     return cut.replace(/\uFFFD+$/u, "");
   }
 
-  // --- сообщения чата (только textContent) ---
+
 
   function appendUser(text: string): void {
     const row = document.createElement("div");
     row.className = "msg user";
     row.setAttribute("role", "article");
-    row.setAttribute("aria-label", "Сообщение пользователя");
+    row.setAttribute("aria-label", "РЎРѕРѕР±С‰РµРЅРёРµ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ");
     const col = document.createElement("div");
     col.className = "msg-col";
     const bubble = document.createElement("div");
@@ -688,7 +682,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     const row = document.createElement("div");
     row.className = "msg assistant";
     row.setAttribute("role", "article");
-    row.setAttribute("aria-label", "Сообщение ассистента");
+    row.setAttribute("aria-label", "РЎРѕРѕР±С‰РµРЅРёРµ Р°СЃСЃРёСЃС‚РµРЅС‚Р°");
     const avatar = document.createElement("span");
     avatar.className = "avatar";
     avatar.setAttribute("aria-hidden", "true");
@@ -710,7 +704,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
   function appendUsage(col: HTMLElement, usage: AiUsage): void {
     const el = document.createElement("span");
     el.className = "msg-usage";
-    el.textContent = `токены: ${usage.prompt_tokens} + ${usage.completion_tokens}`;
+    el.textContent = `С‚РѕРєРµРЅС‹: ${usage.prompt_tokens} + ${usage.completion_tokens}`;
     col.appendChild(el);
   }
 
@@ -723,7 +717,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     const icon = document.createElement("span");
     icon.className = "error-icon";
     icon.setAttribute("aria-hidden", "true");
-    icon.textContent = "⚠";
+    icon.textContent = "вљ ";
     const body = document.createElement("div");
     body.className = "error-body";
     const t = document.createElement("div");
@@ -753,9 +747,9 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     if (stick) scrollToBottom();
   }
 
-  // --- Фаза 2: harness — карточка диффа и карточка плагина (ADR-0034) ---
 
-  // Короткая заметка под сообщением (info/error) — только textContent.
+
+
   function appendNotice(col: HTMLElement, text: string, kind: "info" | "error"): void {
     const note = el("div", kind === "error" ? "ai-note ai-note-error" : "ai-note");
     note.setAttribute("role", kind === "error" ? "alert" : "status");
@@ -764,31 +758,31 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     if (stick) scrollToBottom();
   }
 
-  // Считает дифф по ответу ассистента и рисует карточку. `false` — правок нет,
-  // нет активного документа или ошибка IPC (заметка уже показана).
+
+
   async function buildDiff(col: HTMLElement, content: string): Promise<boolean> {
     const doc = getActiveDocument();
     if (!doc) {
-      appendNotice(col, "Нет активного документа — правку применить некуда.", "error");
+      appendNotice(col, "РќРµС‚ Р°РєС‚РёРІРЅРѕРіРѕ РґРѕРєСѓРјРµРЅС‚Р° вЂ” РїСЂР°РІРєСѓ РїСЂРёРјРµРЅРёС‚СЊ РЅРµРєСѓРґР°.", "error");
       return false;
     }
     try {
       const diff = await aiDiff(doc.id, content);
       if (disposed) return false;
       if (diff.ops.length === 0) {
-        appendNotice(col, "Правок не требуется — ответ совпадает с документом.", "info");
+        appendNotice(col, "РџСЂР°РІРѕРє РЅРµ С‚СЂРµР±СѓРµС‚СЃСЏ вЂ” РѕС‚РІРµС‚ СЃРѕРІРїР°РґР°РµС‚ СЃ РґРѕРєСѓРјРµРЅС‚РѕРј.", "info");
         return false;
       }
       renderDiffCard(col, diff, doc.id, content);
       return true;
     } catch (e) {
       if (disposed) return false;
-      appendNotice(col, `Не удалось подготовить правку: ${errorMessage(e)}`, "error");
+      appendNotice(col, `РќРµ СѓРґР°Р»РѕСЃСЊ РїРѕРґРіРѕС‚РѕРІРёС‚СЊ РїСЂР°РІРєСѓ: ${errorMessage(e)}`, "error");
       return false;
     }
   }
 
-  // Клик «Применить как правку»: кнопку гасим только при успехе (карточка построена).
+
   async function requestDiff(
     col: HTMLElement,
     content: string,
@@ -799,7 +793,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     if (!disposed && !ok) button.disabled = false;
   }
 
-  // Карточка диффа: предпросмотр по `ops` + «Применить»/«Отклонить»/«Отменить».
+
   function renderDiffCard(
     col: HTMLElement,
     diff: AiDiff,
@@ -810,22 +804,22 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     const card = el("div", "ai-diff");
     card.id = `ai-diff-${id}`;
     card.setAttribute("role", "group");
-    card.setAttribute("aria-label", "Предлагаемая правка");
+    card.setAttribute("aria-label", "РџСЂРµРґР»Р°РіР°РµРјР°СЏ РїСЂР°РІРєР°");
 
     const header = el("div", "ai-diff-header");
-    header.textContent = "Предлагаемая правка";
+    header.textContent = "РџСЂРµРґР»Р°РіР°РµРјР°СЏ РїСЂР°РІРєР°";
 
     const body = el("pre", "ai-diff-body");
     renderDiffBody(body, diff);
 
     const status = el("div", "ai-diff-status");
     status.setAttribute("role", "status");
-    status.textContent = `Изменений: ${diff.ops.length}.`;
+    status.textContent = `РР·РјРµРЅРµРЅРёР№: ${diff.ops.length}.`;
 
     const actions = el("div", "ai-diff-actions");
-    const apply = actionButton("Применить", "btn primary", "Применить правку к документу");
+    const apply = actionButton("РџСЂРёРјРµРЅРёС‚СЊ", "btn primary", "РџСЂРёРјРµРЅРёС‚СЊ РїСЂР°РІРєСѓ Рє РґРѕРєСѓРјРµРЅС‚Сѓ");
     apply.id = `ai-diff-apply-${id}`;
-    const reject = actionButton("Отклонить", "btn ghost", "Отклонить правку");
+    const reject = actionButton("РћС‚РєР»РѕРЅРёС‚СЊ", "btn ghost", "РћС‚РєР»РѕРЅРёС‚СЊ РїСЂР°РІРєСѓ");
     reject.id = `ai-diff-reject-${id}`;
     actions.append(apply, reject);
 
@@ -835,16 +829,16 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
 
     let applied = false;
 
-    // Правка применена (синхронный ответ `ai_apply_edit`): показываем «Отменить».
+
     function markApplied(rev: number): void {
       if (applied) return;
       applied = true;
       actions.textContent = "";
-      const undo = actionButton("Отменить", "btn ghost", "Отменить применённую правку");
+      const undo = actionButton("РћС‚РјРµРЅРёС‚СЊ", "btn ghost", "РћС‚РјРµРЅРёС‚СЊ РїСЂРёРјРµРЅС‘РЅРЅСѓСЋ РїСЂР°РІРєСѓ");
       undo.id = `ai-diff-undo-${id}`;
       undo.addEventListener("click", () => void undoEdit(undo));
       actions.appendChild(undo);
-      status.textContent = `Правка применена (rev ${rev}).`;
+      status.textContent = `РџСЂР°РІРєР° РїСЂРёРјРµРЅРµРЅР° (rev ${rev}).`;
     }
 
     async function undoEdit(button: HTMLButtonElement): Promise<void> {
@@ -852,19 +846,19 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
       try {
         await undoDocument(docId);
         if (disposed) return;
-        status.textContent = "Правка отменена.";
+        status.textContent = "РџСЂР°РІРєР° РѕС‚РјРµРЅРµРЅР°.";
         actions.textContent = "";
       } catch (e) {
         if (disposed) return;
         button.disabled = false;
-        status.textContent = `Не удалось отменить: ${errorMessage(e)}`;
+        status.textContent = `РќРµ СѓРґР°Р»РѕСЃСЊ РѕС‚РјРµРЅРёС‚СЊ: ${errorMessage(e)}`;
       }
     }
 
     async function applyEdit(): Promise<void> {
       apply.disabled = true;
       reject.disabled = true;
-      status.textContent = "Применение…";
+      status.textContent = "РџСЂРёРјРµРЅРµРЅРёРµвЂ¦";
       try {
         const res = await aiApplyEdit(docId, diff.base_rev, diff.ops);
         if (disposed) return;
@@ -874,12 +868,12 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
         apply.disabled = false;
         reject.disabled = false;
         if (errorCode(e) === "ai_stale_edit") {
-          // Документ изменился между diff и apply — предлагаем пересчитать (ADR-0034).
-          status.textContent = "Документ изменился, пересмотрите правку.";
+
+          status.textContent = "Р”РѕРєСѓРјРµРЅС‚ РёР·РјРµРЅРёР»СЃСЏ, РїРµСЂРµСЃРјРѕС‚СЂРёС‚Рµ РїСЂР°РІРєСѓ.";
           const reconsider = actionButton(
-            "Пересмотреть",
+            "РџРµСЂРµСЃРјРѕС‚СЂРµС‚СЊ",
             "btn ghost",
-            "Пересчитать правку по актуальному документу"
+            "РџРµСЂРµСЃС‡РёС‚Р°С‚СЊ РїСЂР°РІРєСѓ РїРѕ Р°РєС‚СѓР°Р»СЊРЅРѕРјСѓ РґРѕРєСѓРјРµРЅС‚Сѓ"
           );
           reconsider.addEventListener("click", () => {
             card.remove();
@@ -887,7 +881,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
           });
           actions.appendChild(reconsider);
         } else {
-          status.textContent = `Не удалось применить: ${errorMessage(e)}`;
+          status.textContent = `РќРµ СѓРґР°Р»РѕСЃСЊ РїСЂРёРјРµРЅРёС‚СЊ: ${errorMessage(e)}`;
         }
       }
     }
@@ -900,44 +894,44 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     reject.addEventListener("click", rejectEdit);
   }
 
-  // Карточка плагина из ```json-блока: предпросмотр, валидация, создание/удаление.
+
   function renderPluginCard(col: HTMLElement, proposal: AiPluginProposal): void {
     const id = ++cardSeq;
     const card = el("div", "ai-plugin-card");
     card.id = `ai-plugin-${id}`;
     card.setAttribute("role", "group");
-    card.setAttribute("aria-label", `Плагин ${proposal.name} версии ${proposal.version}`);
+    card.setAttribute("aria-label", `РџР»Р°РіРёРЅ ${proposal.name} РІРµСЂСЃРёРё ${proposal.version}`);
 
     const header = el("div", "ai-plugin-header");
     const icon = el("span", "ai-plugin-icon");
     icon.setAttribute("aria-hidden", "true");
-    icon.textContent = "🧩";
+    icon.textContent = "рџ§©";
     const name = el("span", "ai-plugin-name");
     name.textContent = proposal.name;
     const version = el("span", "ai-plugin-version");
     version.textContent = `v${proposal.version}`;
     const badge = el("span", "ai-plugin-badge");
-    badge.textContent = "предлагается";
+    badge.textContent = "РїСЂРµРґР»Р°РіР°РµС‚СЃСЏ";
     header.append(icon, name, version, badge);
 
     const code = el("pre", "ai-plugin-code");
-    code.textContent = proposal.source; // сырой вывод модели — только textContent
+    code.textContent = proposal.source; // СЃС‹СЂРѕР№ РІС‹РІРѕРґ РјРѕРґРµР»Рё вЂ” С‚РѕР»СЊРєРѕ textContent
 
     const status = el("div", "ai-plugin-status");
     status.setAttribute("role", "status");
-    status.textContent = "Проверка…";
+    status.textContent = "РџСЂРѕРІРµСЂРєР°вЂ¦";
 
     const actions = el("div", "ai-plugin-actions");
-    const save = actionButton("Создать", "btn primary", `Создать плагин ${proposal.id}`);
+    const save = actionButton("РЎРѕР·РґР°С‚СЊ", "btn primary", `РЎРѕР·РґР°С‚СЊ РїР»Р°РіРёРЅ ${proposal.id}`);
     save.id = `ai-plugin-save-${id}`;
     const reload = actionButton(
-      "Перезагрузить",
+      "РџРµСЂРµР·Р°РіСЂСѓР·РёС‚СЊ",
       "btn ghost",
-      `Перезагрузить плагин ${proposal.id}`
+      `РџРµСЂРµР·Р°РіСЂСѓР·РёС‚СЊ РїР»Р°РіРёРЅ ${proposal.id}`
     );
     reload.id = `ai-plugin-reload-${id}`;
-    reload.disabled = true; // доступна только когда плагин уже установлен
-    const remove = actionButton("Удалить", "btn ghost danger", `Удалить плагин ${proposal.id}`);
+    reload.disabled = true; // РґРѕСЃС‚СѓРїРЅР° С‚РѕР»СЊРєРѕ РєРѕРіРґР° РїР»Р°РіРёРЅ СѓР¶Рµ СѓСЃС‚Р°РЅРѕРІР»РµРЅ
+    const remove = actionButton("РЈРґР°Р»РёС‚СЊ", "btn ghost danger", `РЈРґР°Р»РёС‚СЊ РїР»Р°РіРёРЅ ${proposal.id}`);
     remove.id = `ai-plugin-remove-${id}`;
     remove.disabled = true;
     actions.append(save, reload, remove);
@@ -959,13 +953,13 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     };
     pluginCards.add(state);
 
-    // Плагин установлен (создан/обновлён/уже существует): открываем reload/delete.
+
     function markInstalled(label: string, stateClass: string): void {
       exists = true;
       badge.className = `ai-plugin-badge ${stateClass}`;
       badge.textContent = label;
-      save.textContent = "Сохранить";
-      save.setAttribute("aria-label", `Сохранить плагин ${proposal.id}`);
+      save.textContent = "РЎРѕС…СЂР°РЅРёС‚СЊ";
+      save.setAttribute("aria-label", `РЎРѕС…СЂР°РЅРёС‚СЊ РїР»Р°РіРёРЅ ${proposal.id}`);
       save.disabled = false;
       reload.disabled = false;
       remove.disabled = false;
@@ -975,41 +969,41 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     function markDeleted(): void {
       exists = false;
       badge.className = "ai-plugin-badge stopped";
-      badge.textContent = "удалён";
+      badge.textContent = "СѓРґР°Р»С‘РЅ";
       save.disabled = true;
       reload.disabled = true;
       remove.disabled = true;
       status.classList.remove("is-error", "is-ok");
-      status.textContent = "Плагин удалён.";
+      status.textContent = "РџР»Р°РіРёРЅ СѓРґР°Р»С‘РЅ.";
       pluginCards.delete(state);
     }
 
-    // Валидация при появлении карточки (манифест + entry + песочница, ADR-0034/0026).
+
     async function validate(): Promise<void> {
-      status.textContent = "Проверка…";
+      status.textContent = "РџСЂРѕРІРµСЂРєР°вЂ¦";
       try {
         const res = await aiValidatePlugin(proposal.id, proposal.manifest, proposal.source);
         if (disposed) return;
         status.classList.toggle("is-ok", res.ok);
         status.classList.toggle("is-error", !res.ok);
         status.textContent = res.ok
-          ? "Проверка: ✓ пройдена"
-          : `Проверка не пройдена: ${res.errors.join("; ") || "неизвестная ошибка"}`;
+          ? "РџСЂРѕРІРµСЂРєР°: вњ“ РїСЂРѕР№РґРµРЅР°"
+          : `РџСЂРѕРІРµСЂРєР° РЅРµ РїСЂРѕР№РґРµРЅР°: ${res.errors.join("; ") || "РЅРµРёР·РІРµСЃС‚РЅР°СЏ РѕС€РёР±РєР°"}`;
       } catch (e) {
         if (disposed) return;
         status.classList.remove("is-ok");
         status.classList.add("is-error");
-        status.textContent = `Проверка недоступна: ${errorMessage(e)}`;
+        status.textContent = `РџСЂРѕРІРµСЂРєР° РЅРµРґРѕСЃС‚СѓРїРЅР°: ${errorMessage(e)}`;
       }
     }
 
-    // «Создать»/«Сохранить»: первый клик — create; при существующем плагине — update.
+
     async function savePlugin(): Promise<void> {
       save.disabled = true;
       reload.disabled = true;
       remove.disabled = true;
       status.classList.remove("is-error", "is-ok");
-      status.textContent = exists ? "Сохранение…" : "Создание…";
+      status.textContent = exists ? "РЎРѕС…СЂР°РЅРµРЅРёРµвЂ¦" : "РЎРѕР·РґР°РЅРёРµвЂ¦";
       try {
         const created = !exists;
         const info = exists
@@ -1018,7 +1012,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
         if (disposed) return;
         markInstalled(PLUGIN_STATUS_LABELS[info.status.state], info.status.state);
         status.classList.add("is-ok");
-        status.textContent = created ? "Плагин создан." : "Плагин обновлён.";
+        status.textContent = created ? "РџР»Р°РіРёРЅ СЃРѕР·РґР°РЅ." : "РџР»Р°РіРёРЅ РѕР±РЅРѕРІР»С‘РЅ.";
       } catch (e) {
         if (disposed) return;
         save.disabled = false;
@@ -1031,17 +1025,17 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
       status.classList.remove("is-ok");
       status.classList.add("is-error");
       if (code === "ai_plugin_exists") {
-        // Плагин уже стоит: переключаем на обновление и открываем reload/delete.
+
         exists = true;
-        save.textContent = "Сохранить";
-        save.setAttribute("aria-label", `Сохранить плагин ${proposal.id}`);
+        save.textContent = "РЎРѕС…СЂР°РЅРёС‚СЊ";
+        save.setAttribute("aria-label", `РЎРѕС…СЂР°РЅРёС‚СЊ РїР»Р°РіРёРЅ ${proposal.id}`);
         reload.disabled = false;
         remove.disabled = false;
-        status.textContent = "Плагин уже существует — нажмите «Сохранить», чтобы обновить.";
+        status.textContent = "РџР»Р°РіРёРЅ СѓР¶Рµ СЃСѓС‰РµСЃС‚РІСѓРµС‚ вЂ” РЅР°Р¶РјРёС‚Рµ В«РЎРѕС…СЂР°РЅРёС‚СЊВ», С‡С‚РѕР±С‹ РѕР±РЅРѕРІРёС‚СЊ.";
       } else if (code === "ai_plugin_invalid") {
-        status.textContent = `Плагин не прошёл проверку: ${errorMessage(e)}`;
+        status.textContent = `РџР»Р°РіРёРЅ РЅРµ РїСЂРѕС€С‘Р» РїСЂРѕРІРµСЂРєСѓ: ${errorMessage(e)}`;
       } else {
-        status.textContent = `Не удалось создать плагин: ${errorMessage(e)}`;
+        status.textContent = `РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕР·РґР°С‚СЊ РїР»Р°РіРёРЅ: ${errorMessage(e)}`;
       }
     }
 
@@ -1051,11 +1045,11 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
         await reloadPlugin(proposal.id);
         if (disposed) return;
         status.classList.remove("is-error");
-        status.textContent = "Плагин перезагружен.";
+        status.textContent = "РџР»Р°РіРёРЅ РїРµСЂРµР·Р°РіСЂСѓР¶РµРЅ.";
       } catch (e) {
         if (disposed) return;
         status.classList.add("is-error");
-        status.textContent = `Не удалось перезагрузить: ${errorMessage(e)}`;
+        status.textContent = `РќРµ СѓРґР°Р»РѕСЃСЊ РїРµСЂРµР·Р°РіСЂСѓР·РёС‚СЊ: ${errorMessage(e)}`;
       } finally {
         if (!disposed) reload.disabled = false;
       }
@@ -1072,7 +1066,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
       } catch (e) {
         if (disposed) return;
         status.classList.add("is-error");
-        status.textContent = `Не удалось удалить: ${errorMessage(e)}`;
+        status.textContent = `РќРµ СѓРґР°Р»РѕСЃСЊ СѓРґР°Р»РёС‚СЊ: ${errorMessage(e)}`;
         remove.disabled = false;
       }
     }
@@ -1083,13 +1077,13 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     void validate();
   }
 
-  // Действия под ответом ассистента: «Применить как правку» + карточка плагина.
+
   function appendAssistantActions(col: HTMLElement, content: string): void {
     const actions = el("div", "ai-msg-actions");
     const apply = actionButton(
-      "Применить как правку",
+      "РџСЂРёРјРµРЅРёС‚СЊ РєР°Рє РїСЂР°РІРєСѓ",
       "btn ghost",
-      "Применить ответ ассистента как правку документа"
+      "РџСЂРёРјРµРЅРёС‚СЊ РѕС‚РІРµС‚ Р°СЃСЃРёСЃС‚РµРЅС‚Р° РєР°Рє РїСЂР°РІРєСѓ РґРѕРєСѓРјРµРЅС‚Р°"
     );
     apply.addEventListener("click", () => void requestDiff(col, content, apply));
     actions.appendChild(apply);
@@ -1099,9 +1093,9 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     if (proposal) renderPluginCard(col, proposal);
   }
 
-  // --- история чата (персистентность, Task 4.3) ---
 
-  /** «сессия от 14.10, 16:23» — формат dd.mm, HH:MM из unix-секунд. */
+
+  /** В«СЃРµСЃСЃРёСЏ РѕС‚ 14.10, 16:23В» вЂ” С„РѕСЂРјР°С‚ dd.mm, HH:MM РёР· unix-СЃРµРєСѓРЅРґ. */
   function formatSessionDate(unixSecs: number): string {
     const d = new Date(unixSecs * 1000);
     const p = (n: number): string => String(n).padStart(2, "0");
@@ -1110,7 +1104,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
 
   function showSessionHeader(updatedAt: number): void {
     if (!sessionHeader) return;
-    sessionHeader.textContent = `сессия от ${formatSessionDate(updatedAt)}`;
+    sessionHeader.textContent = `СЃРµСЃСЃРёСЏ РѕС‚ ${formatSessionDate(updatedAt)}`;
     sessionHeader.hidden = false;
   }
 
@@ -1120,10 +1114,8 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     sessionHeader.textContent = "";
   }
 
-  /**
-   * Восстанавливает историю чата при инициализации панели. Ответ ассистента
-   * рендерится тем же путём, что живой (renderBubble → setSanitizedHtml).
-   */
+
+
   async function restoreHistory(): Promise<void> {
     try {
       const view = await aiHistoryLoad();
@@ -1150,11 +1142,11 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
       if (stick) scrollToBottom();
     } catch (e) {
       if (disposed) return;
-      log("warn", "system", `AI: история недоступна (${errorMessage(e)})`);
+      log("warn", "system", `AI: РёСЃС‚РѕСЂРёСЏ РЅРµРґРѕСЃС‚СѓРїРЅР° (${errorMessage(e)})`);
     }
   }
 
-  /** Fire-and-forget сохранение истории; ошибка — только в лог. */
+  /** Fire-and-forget СЃРѕС…СЂР°РЅРµРЅРёРµ РёСЃС‚РѕСЂРёРё; РѕС€РёР±РєР° вЂ” С‚РѕР»СЊРєРѕ РІ Р»РѕРі. */
   function saveHistory(): void {
     void aiHistorySave(history)
       .then(() => {
@@ -1167,23 +1159,23 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
       })
       .catch((e) => {
         if (disposed) return;
-        log("warn", "system", `AI: история не сохранена (${errorMessage(e)})`);
+        log("warn", "system", `AI: РёСЃС‚РѕСЂРёСЏ РЅРµ СЃРѕС…СЂР°РЅРµРЅР° (${errorMessage(e)})`);
       });
   }
 
-  // --- отправка ---
+
 
   function errorActions(kind: ErrorKind, code: string): ErrorAction[] {
     const c = code.toLowerCase();
-    if (kind === "auth") return [{ label: "Открыть настройки", run: openSettings }];
-    // Контекст/согласие/выключенность повторять бессмысленно — только сообщение.
+    if (kind === "auth") return [{ label: "РћС‚РєСЂС‹С‚СЊ РЅР°СЃС‚СЂРѕР№РєРё", run: openSettings }];
+
     if (kind === "context" || c === "ai_no_consent" || c === "ai_disabled") return [];
-    return [{ label: "Повторить", run: retry }];
+    return [{ label: "РџРѕРІС‚РѕСЂРёС‚СЊ", run: retry }];
   }
 
   function send(display: string, content: string): void {
     if (!settings?.enabled || busy) return;
-    // Согласие на отправку содержимого в облако — явный диалог перед первым запросом.
+
     if (!settings.consent_document_send || consentDenied) {
       askConsent(() => send(display, content));
       return;
@@ -1219,40 +1211,40 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     }
   }
 
-  // Финализация пузыря ассистента: Markdown-рендер — только через safeHtml
-  // (ADR-0038 §2.2), ответ модели → `ai_render_markdown` → санитизированный HTML.
-  // Fail-safe: команда недоступна/упала — в пузыре остаётся текст, чат не падает;
-  // негодный HTML `setSanitizedHtml` сам уводит в `textContent`.
+
+
+
+
   async function renderBubble(bubble: HTMLElement, content: string): Promise<void> {
     try {
       const html = await renderAiMarkdown(content);
-      // Гонка: пока шёл рендер, чат могли очистить (`#ai-clear` отсоединяет строку)
-      // или снять панель — в отсоединённый пузырь результат не пишем.
+
+
       if (disposed || !bubble.isConnected) return;
       setSanitizedHtml(bubble, html, content);
       if (stick) scrollToBottom();
     } catch (e) {
       if (disposed || !bubble.isConnected) return;
       bubble.textContent = content;
-      log("warn", "system", `AI: Markdown-рендер ответа недоступен — показан текст (${errorMessage(e)})`);
+      log("warn", "system", `AI: Markdown-СЂРµРЅРґРµСЂ РѕС‚РІРµС‚Р° РЅРµРґРѕСЃС‚СѓРїРµРЅ вЂ” РїРѕРєР°Р·Р°РЅ С‚РµРєСЃС‚ (${errorMessage(e)})`);
     }
   }
 
-  // Успешное завершение: финализировать пузырь, показать usage, обновить историю.
+
   function complete(p: Pending, usage: AiUsage | null): void {
     p.finalized = true;
     pending = null;
     setBusy(false);
     const isEmpty = p.content === "";
     const truncated = p.finishReason === "length";
-    // При обрыве по лимиту токенов пустой контент не добавляем в историю и не
-    // показываем действия — только заметку об обрыве.
-    const content = isEmpty ? (truncated ? "" : "Пустой ответ") : p.content;
-    // Пузырь читаем сразу: текст дописан стримингом, HTML появится после рендера.
+
+
+    const content = isEmpty ? (truncated ? "" : "РџСѓСЃС‚РѕР№ РѕС‚РІРµС‚") : p.content;
+
     p.bubble.textContent = content;
     if (content) void renderBubble(p.bubble, content);
     if (usage) appendUsage(p.col, usage);
-    // История хранит ТЕКСТ ответа (ADR-0038): на её основе уходит следующий запрос.
+
     if (!isEmpty || !truncated) {
       history = history.concat({ role: "assistant", content });
     }
@@ -1260,21 +1252,21 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
       appendAssistantActions(p.col, content);
     }
     if (truncated) {
-      appendNotice(p.col, "Ответ оборван лимитом токенов — увеличьте max_tokens или повторите запрос.", "error");
+      appendNotice(p.col, "РћС‚РІРµС‚ РѕР±РѕСЂРІР°РЅ Р»РёРјРёС‚РѕРј С‚РѕРєРµРЅРѕРІ вЂ” СѓРІРµР»РёС‡СЊС‚Рµ max_tokens РёР»Рё РїРѕРІС‚РѕСЂРёС‚Рµ Р·Р°РїСЂРѕСЃ.", "error");
     }
     authError = false;
     lastError = false;
     log(
       "info",
       "system",
-      `AI: ответ получен${usage ? ` (prompt ${usage.prompt_tokens}, completion ${usage.completion_tokens})` : ""}`
+      `AI: РѕС‚РІРµС‚ РїРѕР»СѓС‡РµРЅ${usage ? ` (prompt ${usage.prompt_tokens}, completion ${usage.completion_tokens})` : ""}`
     );
     applyState();
     saveHistory();
     if (stick) scrollToBottom();
   }
 
-  // Ошибка запроса: убрать пустой пузырь, показать карточку ошибки с действиями.
+
   function fail(p: Pending, code: string, message: string): void {
     p.finalized = true;
     pending = null;
@@ -1283,7 +1275,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     const c = code.toLowerCase();
     const kind = errorKind(code, message);
     if (c === "ai_no_consent") {
-      // Жёлтое состояние, без «повторить» (запрос не уйдёт).
+
       consentDenied = true;
       authError = false;
       lastError = false;
@@ -1294,12 +1286,12 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
       lastError = true;
     }
     appendErrorCard(errorTitle(kind, c), message, errorActions(kind, c));
-    log("error", "system", `AI: ${errorTitle(kind, c)} — ${message}`);
+    log("error", "system", `AI: ${errorTitle(kind, c)} вЂ” ${message}`);
     applyState();
     saveHistory();
   }
 
-  // Повтор последнего неудачного запроса (история уже содержит user-сообщение).
+
   function retry(): void {
     if (busy || !settings?.enabled || !lastRequest) return;
     const { row, bubble, col } = appendAssistant();
@@ -1318,8 +1310,8 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
   }
 
   function clearChat(): void {
-    // Инвалидируем текущий запрос: осиротевший ответ не должен дописаться в
-    // удалённый пузырь и попасть в очищенную history.
+
+
     requestToken++;
     if (pending) {
       pending.finalized = true;
@@ -1334,38 +1326,38 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     hideSessionHeader();
     void aiHistoryClear().catch((e) => {
       if (disposed) return;
-      log("warn", "system", `AI: история не очищена (${errorMessage(e)})`);
+      log("warn", "system", `AI: РёСЃС‚РѕСЂРёСЏ РЅРµ РѕС‡РёС‰РµРЅР° (${errorMessage(e)})`);
     });
   }
 
-  // --- согласие ---
+
 
   function askConsent(onAllowed: () => void): void {
     let accepted = false;
     const content = document.createElement("div");
     content.className = "ai-consent";
     const p = document.createElement("p");
-    // Формулировка — канон ADR-0032: явно называем получателя и модель.
+
     p.textContent =
-      "AI-ассистент может отправлять содержимое документа и историю чата в облачный сервис routerai.ru (для запроса к модели deepseek/deepseek-v4.1-flash). Разрешить?";
+      "AI-Р°СЃСЃРёСЃС‚РµРЅС‚ РјРѕР¶РµС‚ РѕС‚РїСЂР°РІР»СЏС‚СЊ СЃРѕРґРµСЂР¶РёРјРѕРµ РґРѕРєСѓРјРµРЅС‚Р° Рё РёСЃС‚РѕСЂРёСЋ С‡Р°С‚Р° РІ РѕР±Р»Р°С‡РЅС‹Р№ СЃРµСЂРІРёСЃ routerai.ru (РґР»СЏ Р·Р°РїСЂРѕСЃР° Рє РјРѕРґРµР»Рё deepseek/deepseek-v4.1-flash). Р Р°Р·СЂРµС€РёС‚СЊ?";
     const warn = document.createElement("div");
     warn.className = "ai-consent-warning";
-    warn.textContent = "Содержимое уйдёт на внешний сервер. Не отправляйте конфиденциальные документы.";
+    warn.textContent = "РЎРѕРґРµСЂР¶РёРјРѕРµ СѓР№РґС‘С‚ РЅР° РІРЅРµС€РЅРёР№ СЃРµСЂРІРµСЂ. РќРµ РѕС‚РїСЂР°РІР»СЏР№С‚Рµ РєРѕРЅС„РёРґРµРЅС†РёР°Р»СЊРЅС‹Рµ РґРѕРєСѓРјРµРЅС‚С‹.";
     const actions = document.createElement("div");
     actions.className = "dialog-actions";
     const deny = document.createElement("button");
     deny.type = "button";
     deny.className = "btn ghost";
-    deny.textContent = "Не разрешать";
+    deny.textContent = "РќРµ СЂР°Р·СЂРµС€Р°С‚СЊ";
     const allow = document.createElement("button");
     allow.type = "button";
     allow.className = "btn primary";
-    allow.textContent = "Разрешить";
+    allow.textContent = "Р Р°Р·СЂРµС€РёС‚СЊ";
     actions.append(deny, allow);
     content.append(p, warn, actions);
 
     const dialog: Dialog = openDialog({
-      title: "Отправка содержимого в routerai.ru",
+      title: "РћС‚РїСЂР°РІРєР° СЃРѕРґРµСЂР¶РёРјРѕРіРѕ РІ routerai.ru",
       content,
       initialFocus: allow,
       onClose: () => {
@@ -1374,7 +1366,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
         } else {
           consentDenied = true;
           applyState();
-          log("info", "system", "AI: отправка отклонена (нет согласия)");
+          log("info", "system", "AI: РѕС‚РїСЂР°РІРєР° РѕС‚РєР»РѕРЅРµРЅР° (РЅРµС‚ СЃРѕРіР»Р°СЃРёСЏ)");
         }
       },
     });
@@ -1390,11 +1382,11 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     if (settings?.consent_document_send) {
       consentDenied = false;
       applyState();
-      log("info", "system", "AI: согласие на отправку получено");
+      log("info", "system", "AI: СЃРѕРіР»Р°СЃРёРµ РЅР° РѕС‚РїСЂР°РІРєСѓ РїРѕР»СѓС‡РµРЅРѕ");
     }
   }
 
-  // --- настройки ---
+
 
   function toInput(s: AiSettingsView): AiSettingsInput {
     return {
@@ -1418,7 +1410,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     try {
       await aiSetSettings(input);
     } catch (e) {
-      log("error", "system", `AI: настройки не сохранены (${errorMessage(e)})`);
+      log("error", "system", `AI: РЅР°СЃС‚СЂРѕР№РєРё РЅРµ СЃРѕС…СЂР°РЅРµРЅС‹ (${errorMessage(e)})`);
       return;
     }
     settings = mergeSettings(settings, input);
@@ -1427,7 +1419,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
 
   async function saveKey(): Promise<void> {
     const key = keyInput.value.trim();
-    // Пустое поле + «Сохранить»/«Удалить ключ» = очистка: Rust трактует "" как снятие ключа.
+
     try {
       await aiSetApiKey(key);
       keyInput.value = "";
@@ -1435,31 +1427,31 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
       authError = false;
       lastError = false;
       applyState();
-      log("info", "system", key ? "AI: API-ключ сохранён" : "AI: API-ключ удалён");
+      log("info", "system", key ? "AI: API-РєР»СЋС‡ СЃРѕС…СЂР°РЅС‘РЅ" : "AI: API-РєР»СЋС‡ СѓРґР°Р»С‘РЅ");
     } catch (e) {
-      log("error", "system", `AI: ключ не сохранён (${errorMessage(e)})`);
+      log("error", "system", `AI: РєР»СЋС‡ РЅРµ СЃРѕС…СЂР°РЅС‘РЅ (${errorMessage(e)})`);
     }
   }
 
   async function testConnection(): Promise<void> {
     testBtn.disabled = true;
-    testResult.textContent = "Проверка соединения…";
+    testResult.textContent = "РџСЂРѕРІРµСЂРєР° СЃРѕРµРґРёРЅРµРЅРёСЏвЂ¦";
     try {
       const res = await aiTestConnection();
       if (res.ok) {
         authError = false;
         lastError = false;
-        testResult.textContent = res.model ? `Соединение установлено · ${res.model}` : "Соединение установлено";
-        log("info", "system", "AI: соединение установлено");
+        testResult.textContent = res.model ? `РЎРѕРµРґРёРЅРµРЅРёРµ СѓСЃС‚Р°РЅРѕРІР»РµРЅРѕ В· ${res.model}` : "РЎРѕРµРґРёРЅРµРЅРёРµ СѓСЃС‚Р°РЅРѕРІР»РµРЅРѕ";
+        log("info", "system", "AI: СЃРѕРµРґРёРЅРµРЅРёРµ СѓСЃС‚Р°РЅРѕРІР»РµРЅРѕ");
       } else {
-        if (settings?.has_key) lastError = true; // «нет ключа» остаётся жёлтым
-        testResult.textContent = res.error ? `Ошибка: ${res.error}` : "Не удалось соединиться";
-        log("warn", "system", `AI: проверка соединения не удалась${res.error ? ` (${res.error})` : ""}`);
+        if (settings?.has_key) lastError = true; // В«РЅРµС‚ РєР»СЋС‡Р°В» РѕСЃС‚Р°С‘С‚СЃСЏ Р¶С‘Р»С‚С‹Рј
+        testResult.textContent = res.error ? `РћС€РёР±РєР°: ${res.error}` : "РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕРµРґРёРЅРёС‚СЊСЃСЏ";
+        log("warn", "system", `AI: РїСЂРѕРІРµСЂРєР° СЃРѕРµРґРёРЅРµРЅРёСЏ РЅРµ СѓРґР°Р»Р°СЃСЊ${res.error ? ` (${res.error})` : ""}`);
       }
       applyState();
     } catch (e) {
       if (settings?.has_key) lastError = true;
-      testResult.textContent = `Ошибка: ${errorMessage(e)}`;
+      testResult.textContent = `РћС€РёР±РєР°: ${errorMessage(e)}`;
       applyState();
     } finally {
       testBtn.disabled = !(settings?.enabled ?? false);
@@ -1492,10 +1484,10 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     }
   }
 
-  // --- обработчики ---
+
 
   const onInputKeyDown = (e: KeyboardEvent): void => {
-    // Enter и Ctrl+Enter — отправить; Shift+Enter — перенос строки (ADR-0030).
+
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       submitInput();
@@ -1510,10 +1502,10 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     stick = chat.scrollHeight - chat.scrollTop - chat.clientHeight <= STICK_THRESHOLD;
   };
   const onClearClick = (): void => clearChat();
-  // Делегирование ссылок ответа ассистента: `http(s)` открываем системным
-  // браузером (window.open в WebView не гарантирует внешнее открытие и обходит
-  // CSP — образец `previewView.ts`), любые другие схемы/якоря гасим: навигация
-  // внутри WebView не нужна и опасна.
+
+
+
+
   const onChatClick = (e: MouseEvent): void => {
     const anchor = e.target instanceof Element ? e.target.closest("a") : null;
     if (!anchor) return;
@@ -1524,7 +1516,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     }
     e.preventDefault();
     void openUrl(href).catch((err) => {
-      log("warn", "system", `AI: ссылка не открыта — ${errorMessage(err)}`);
+      log("warn", "system", `AI: СЃСЃС‹Р»РєР° РЅРµ РѕС‚РєСЂС‹С‚Р° вЂ” ${errorMessage(err)}`);
     });
   };
 
@@ -1532,7 +1524,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
   const onSettingsClose = (): void => closeSettings();
   const onKeySave = (): void => void saveKey();
   const onKeyClear = (): void => {
-    keyInput.value = ""; // явная очистка: пустой ключ → ai_set_api_key("")
+    keyInput.value = ""; // СЏРІРЅР°СЏ РѕС‡РёСЃС‚РєР°: РїСѓСЃС‚РѕР№ РєР»СЋС‡ в†’ ai_set_api_key("")
     void saveKey();
   };
   const onTest = (): void => void testConnection();
@@ -1582,7 +1574,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
   document.addEventListener("pointerdown", onDocPointerDown);
   document.addEventListener("keydown", onDocKeyDown, true);
 
-  // --- события стриминга (host → front) ---
+
 
   function subscribe<T>(event: string, handler: (e: Event<T>) => void): void {
     void listen<T>(event, handler)
@@ -1597,7 +1589,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     const p = pending;
     if (!p) return;
     const { message_id, delta } = event.payload;
-    if (p.messageId !== null && p.messageId !== message_id) return; // чанк чужого/устаревшего ответа
+    if (p.messageId !== null && p.messageId !== message_id) return; // С‡Р°РЅРє С‡СѓР¶РѕРіРѕ/СѓСЃС‚Р°СЂРµРІС€РµРіРѕ РѕС‚РІРµС‚Р°
     p.messageId = message_id;
     p.content += delta;
     p.bubble.textContent = p.content;
@@ -1612,9 +1604,9 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     if (p.messageId !== null && p.messageId !== message_id) return;
     p.messageId = message_id;
     p.usage = usage;
-    // Rust может не прислать поле — нормализуем undefined → null.
+
     p.finishReason = finish_reason ?? null;
-    // Пустой стрим (чанков не было) финализирует ответ команды `ai_chat`.
+
     if (p.content) complete(p, usage);
   });
 
@@ -1624,17 +1616,17 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     fail(p, event.payload.code, event.payload.message);
   });
 
-  // --- события harness Фазы 2 (host → front) ---
-  // `ai:edit_applied` панель для карточек НЕ использует: применённую карточку
-  // помечает синхронный ответ `ai_apply_edit` (иначе событие пометило бы все
-  // карточки того же документа). Обновление редактора/предпросмотра идёт отдельным
-  // путём `document-updated` → `store.applyHostUpdate` (main.ts).
-  // Жизненный цикл плагина: карточку, уже обновлённую ответом IPC, событие не
-  // перетирает (гейт isInstalled).
+
+
+
+
+
+
+
   subscribe<{ plugin_id: string }>("ai:plugin_created", (event) => {
     for (const card of pluginCards) {
       if (card.id === event.payload.plugin_id && !card.isInstalled()) {
-        card.installed("установлен", "active");
+        card.installed("СѓСЃС‚Р°РЅРѕРІР»РµРЅ", "active");
       }
     }
   });
@@ -1642,7 +1634,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
   subscribe<{ plugin_id: string }>("ai:plugin_updated", (event) => {
     for (const card of pluginCards) {
       if (card.id === event.payload.plugin_id && !card.isInstalled()) {
-        card.installed("обновлён", "active");
+        card.installed("РѕР±РЅРѕРІР»С‘РЅ", "active");
       }
     }
   });
@@ -1653,7 +1645,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     }
   });
 
-  // --- публичный интерфейс ---
+
 
   function onDockState(mode: DockMode, state: DockState): void {
     const active = mode === "ai" && state === "expanded";
@@ -1661,8 +1653,8 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
       ensureSkills();
       input.focus();
     }
-    // Поповер настроек живёт только при активном раскрытии режима AI: при уходе в
-    // другой режим, свёртке или скрытии дока он теряет якорь — закрываем.
+
+
     if (!active) closeSettings();
     wasAiExpanded = active;
   }
@@ -1690,7 +1682,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     document.removeEventListener("keydown", onDocKeyDown, true);
   }
 
-  // Начальная загрузка настроек (локальное чтение config.json, не сеть).
+
   void aiGetSettings()
     .then((view) => {
       if (disposed) return;
@@ -1701,7 +1693,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     .catch((e) => {
       if (disposed) return;
       settings = null;
-      log("error", "system", `AI: настройки недоступны (${errorMessage(e)})`);
+      log("error", "system", `AI: РЅР°СЃС‚СЂРѕР№РєРё РЅРµРґРѕСЃС‚СѓРїРЅС‹ (${errorMessage(e)})`);
       applyState();
     });
   void restoreHistory().then(() => {
@@ -1709,7 +1701,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     applyState();
   });
 
-  renderSkills(); // чип «скоро» виден сразу; боевые скиллы добавятся после загрузки
+  renderSkills(); // С‡РёРї В«СЃРєРѕСЂРѕВ» РІРёРґРµРЅ СЃСЂР°Р·Сѓ; Р±РѕРµРІС‹Рµ СЃРєРёР»Р»С‹ РґРѕР±Р°РІСЏС‚СЃСЏ РїРѕСЃР»Рµ Р·Р°РіСЂСѓР·РєРё
   applyState();
   updateEmpty();
 

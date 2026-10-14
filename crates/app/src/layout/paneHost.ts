@@ -1,19 +1,19 @@
-// paneHost.ts — монтирование дерева панелей в DOM (DESIGN_DOC §5.2, §5.5).
+﻿// paneHost.ts вЂ” РјРѕРЅС‚РёСЂРѕРІР°РЅРёРµ РґРµСЂРµРІР° РїР°РЅРµР»РµР№ РІ DOM (DESIGN_DOC В§5.2, В§5.5).
 //
-// Каркас разметки статичен (`index.html`): слоты `.pane[data-pane]` с
-// `data-view`, разделитель `.divider`, шапка `pane-head`/`view-switch`.
-// paneHost применяет модель layout — показывает присутствующие в дереве панели
-// и скрывает отсутствующие.
+// РљР°СЂРєР°СЃ СЂР°Р·РјРµС‚РєРё СЃС‚Р°С‚РёС‡РµРЅ (`index.html`): СЃР»РѕС‚С‹ `.pane[data-pane]` СЃ
+// `data-view`, СЂР°Р·РґРµР»РёС‚РµР»СЊ `.divider`, С€Р°РїРєР° `pane-head`/`view-switch`.
+// paneHost РїСЂРёРјРµРЅСЏРµС‚ РјРѕРґРµР»СЊ layout вЂ” РїРѕРєР°Р·С‹РІР°РµС‚ РїСЂРёСЃСѓС‚СЃС‚РІСѓСЋС‰РёРµ РІ РґРµСЂРµРІРµ РїР°РЅРµР»Рё
+// Рё СЃРєСЂС‹РІР°РµС‚ РѕС‚СЃСѓС‚СЃС‚РІСѓСЋС‰РёРµ.
 //
-// Инвариант скроллеров: `#editor` и `#preview` — самостоятельные скролл-элементы
-// внутри слотов (e2e читает их `scrollTop`), paneHost их не оборачивает.
+// РРЅРІР°СЂРёР°РЅС‚ СЃРєСЂРѕР»Р»РµСЂРѕРІ: `#editor` Рё `#preview` вЂ” СЃР°РјРѕСЃС‚РѕСЏС‚РµР»СЊРЅС‹Рµ СЃРєСЂРѕР»Р»-СЌР»РµРјРµРЅС‚С‹
+// РІРЅСѓС‚СЂРё СЃР»РѕС‚РѕРІ (e2e С‡РёС‚Р°РµС‚ РёС… `scrollTop`), paneHost РёС… РЅРµ РѕР±РѕСЂР°С‡РёРІР°РµС‚.
 
 import { panes, type LayoutNode } from "./layout";
 import type { PaneId } from "../core/ids";
 
 export interface PaneHost {
   mount(layout: LayoutNode): void;
-  /** Пометить панель активной (фокус). */
+  /** РџРѕРјРµС‚РёС‚СЊ РїР°РЅРµР»СЊ Р°РєС‚РёРІРЅРѕР№ (С„РѕРєСѓСЃ). */
   setActive(paneId: PaneId): void;
 }
 
@@ -34,9 +34,9 @@ export function createPaneHost(root: HTMLElement): PaneHost {
       const list = panes(layout);
       const visible = new Set(list.map((p) => p.id as string));
       for (const [id, el] of slots) {
-        // Панель скрывается через `display`, но элемент (и вид) остаётся в DOM:
-        // так `#preview` переживает выключение предпросмотра (AC-9) и не требует
-        // пересоздания/повторного рендера.
+
+
+
         el.style.display = visible.has(id) ? "" : "none";
       }
       if (divider) divider.style.display = visible.size > 1 ? "" : "none";

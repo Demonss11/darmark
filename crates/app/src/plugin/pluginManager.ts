@@ -1,14 +1,14 @@
-// pluginManager.ts — менеджер плагинов в дровере `#drawer-body` (H2, Фаза 5).
+﻿// pluginManager.ts вЂ” РјРµРЅРµРґР¶РµСЂ РїР»Р°РіРёРЅРѕРІ РІ РґСЂРѕРІРµСЂРµ `#drawer-body` (H2, Р¤Р°Р·Р° 5).
 //
-// Показывает снимок плагинов из Rust-хоста (`list_plugins`): статус, тумблер
-// вкл/выкл, «Перезагрузить», инлайн-согласие на permissions (§11.1 п.4),
-// кнопки команд и форму настроек по `contributes.settings` (S5b). Тело панели
-// собирается DOM-узлами и `textContent` — строки из манифеста/хоста не проходят
-// через `innerHTML`.
+// РџРѕРєР°Р·С‹РІР°РµС‚ СЃРЅРёРјРѕРє РїР»Р°РіРёРЅРѕРІ РёР· Rust-С…РѕСЃС‚Р° (`list_plugins`): СЃС‚Р°С‚СѓСЃ, С‚СѓРјР±Р»РµСЂ
+// РІРєР»/РІС‹РєР», В«РџРµСЂРµР·Р°РіСЂСѓР·РёС‚СЊВ», РёРЅР»Р°Р№РЅ-СЃРѕРіР»Р°СЃРёРµ РЅР° permissions (В§11.1 Рї.4),
+// РєРЅРѕРїРєРё РєРѕРјР°РЅРґ Рё С„РѕСЂРјСѓ РЅР°СЃС‚СЂРѕРµРє РїРѕ `contributes.settings` (S5b). РўРµР»Рѕ РїР°РЅРµР»Рё
+// СЃРѕР±РёСЂР°РµС‚СЃСЏ DOM-СѓР·Р»Р°РјРё Рё `textContent` вЂ” СЃС‚СЂРѕРєРё РёР· РјР°РЅРёС„РµСЃС‚Р°/С…РѕСЃС‚Р° РЅРµ РїСЂРѕС…РѕРґСЏС‚
+// С‡РµСЂРµР· `innerHTML`.
 //
-// Состав и статусы меняются по инициативе хоста: событие `plugins-changed` (без
-// payload) заставляет перечитать снимок. Обработчики делегированы корню, поэтому
-// перерисовка списка не оставляет висячих слушателей.
+// РЎРѕСЃС‚Р°РІ Рё СЃС‚Р°С‚СѓСЃС‹ РјРµРЅСЏСЋС‚СЃСЏ РїРѕ РёРЅРёС†РёР°С‚РёРІРµ С…РѕСЃС‚Р°: СЃРѕР±С‹С‚РёРµ `plugins-changed` (Р±РµР·
+// payload) Р·Р°СЃС‚Р°РІР»СЏРµС‚ РїРµСЂРµС‡РёС‚Р°С‚СЊ СЃРЅРёРјРѕРє. РћР±СЂР°Р±РѕС‚С‡РёРєРё РґРµР»РµРіРёСЂРѕРІР°РЅС‹ РєРѕСЂРЅСЋ, РїРѕСЌС‚РѕРјСѓ
+// РїРµСЂРµСЂРёСЃРѕРІРєР° СЃРїРёСЃРєР° РЅРµ РѕСЃС‚Р°РІР»СЏРµС‚ РІРёСЃСЏС‡РёС… СЃР»СѓС€Р°С‚РµР»РµР№.
 
 import { listen } from "@tauri-apps/api/event";
 import {
@@ -29,55 +29,48 @@ import { ownerPluginId } from "../plugin/pluginTarget";
 import { pluginColor } from "../plugin/pluginColor";
 import type { Json } from "../viewRegistry";
 
-/** Публичный фасад контроллера менеджера плагинов. */
+/** РџСѓР±Р»РёС‡РЅС‹Р№ С„Р°СЃР°Рґ РєРѕРЅС‚СЂРѕР»Р»РµСЂР° РјРµРЅРµРґР¶РµСЂР° РїР»Р°РіРёРЅРѕРІ. */
 export interface PluginManager {
-  /** Перечитать список плагинов и перерисовать панель. */
+  /** РџРµСЂРµС‡РёС‚Р°С‚СЊ СЃРїРёСЃРѕРє РїР»Р°РіРёРЅРѕРІ Рё РїРµСЂРµСЂРёСЃРѕРІР°С‚СЊ РїР°РЅРµР»СЊ. */
   refresh(): Promise<void>;
-  /**
-   * `Ctrl+R`: перезагрузить плагин-владельца открытого `.lua`-документа, иначе —
-   * все включённые плагины (fallback). Нет включённых — no-op с сообщением.
-   * Ошибки IPC пробрасываются наружу (обрабатывает вызывающий).
-   */
+
+
   reloadForDocument(path: string | null): Promise<void>;
-  /** Снять слушатель события `plugins-changed`. */
+  /** РЎРЅСЏС‚СЊ СЃР»СѓС€Р°С‚РµР»СЊ СЃРѕР±С‹С‚РёСЏ `plugins-changed`. */
   dispose(): void;
 }
 
 export interface PluginManagerOptions {
-  /** Контейнер менеджера (`#plugin-manager` внутри `#drawer-body`). */
+  /** РљРѕРЅС‚РµР№РЅРµСЂ РјРµРЅРµРґР¶РµСЂР° (`#plugin-manager` РІРЅСѓС‚СЂРё `#drawer-body`). */
   root: HTMLElement;
-  /** Сообщение в статусбар (ошибки IPC/действий). */
+  /** РЎРѕРѕР±С‰РµРЅРёРµ РІ СЃС‚Р°С‚СѓСЃР±Р°СЂ (РѕС€РёР±РєРё IPC/РґРµР№СЃС‚РІРёР№). */
   status(msg: string): void;
-  /** Свежий снимок плагинов после успешного `list_plugins` (для статусбара). */
+  /** РЎРІРµР¶РёР№ СЃРЅРёРјРѕРє РїР»Р°РіРёРЅРѕРІ РїРѕСЃР»Рµ СѓСЃРїРµС€РЅРѕРіРѕ `list_plugins` (РґР»СЏ СЃС‚Р°С‚СѓСЃР±Р°СЂР°). */
   onPlugins?(list: PluginInfo[]): void;
 }
 
 const STATUS_LABELS: Record<PluginStatus["state"], string> = {
-  active: "активен",
-  failed: "ошибка",
-  quarantined: "карантин",
-  stopped: "остановлен",
+  active: "Р°РєС‚РёРІРµРЅ",
+  failed: "РѕС€РёР±РєР°",
+  quarantined: "РєР°СЂР°РЅС‚РёРЅ",
+  stopped: "РѕСЃС‚Р°РЅРѕРІР»РµРЅ",
 };
 
-/**
- * Порог автоотключения (карантина) — зеркало `QUARANTINE_THRESHOLD` в Rust-хосте.
- * Нужен только для текста подсказки (S12c): логику сброса держит хост, не фронт.
- */
+
+
 const QUARANTINE_THRESHOLD = 3;
 
-/**
- * Подписи прав (S12b). Фолбэк — сам токен, чтобы неизвестное право не исчезало
- * из UI.
- */
+
+
 const PERMISSION_LABELS: Record<string, string> = {
-  "document:read": "Чтение документа",
-  "document:write": "Правка документа",
-  "view:create": "Своя вкладка в предпросмотре",
-  "view:modify": "Запись в свою вкладку",
-  "ui:statusbar": "Сообщения в статусбар",
+  "document:read": "Р§С‚РµРЅРёРµ РґРѕРєСѓРјРµРЅС‚Р°",
+  "document:write": "РџСЂР°РІРєР° РґРѕРєСѓРјРµРЅС‚Р°",
+  "view:create": "РЎРІРѕСЏ РІРєР»Р°РґРєР° РІ РїСЂРµРґРїСЂРѕСЃРјРѕС‚СЂРµ",
+  "view:modify": "Р—Р°РїРёСЃСЊ РІ СЃРІРѕСЋ РІРєР»Р°РґРєСѓ",
+  "ui:statusbar": "РЎРѕРѕР±С‰РµРЅРёСЏ РІ СЃС‚Р°С‚СѓСЃР±Р°СЂ",
 };
 
-/** Человекочитаемое описание права; фолбэк — сырой токен. */
+/** Р§РµР»РѕРІРµРєРѕС‡РёС‚Р°РµРјРѕРµ РѕРїРёСЃР°РЅРёРµ РїСЂР°РІР°; С„РѕР»Р±СЌРє вЂ” СЃС‹СЂРѕР№ С‚РѕРєРµРЅ. */
 function permissionLabel(permission: string): string {
   return PERMISSION_LABELS[permission] ?? permission;
 }
@@ -86,40 +79,31 @@ function statusMessage(status: PluginStatus): string | null {
   return status.state === "failed" ? status.message : null;
 }
 
-/**
- * Подсказка восстановления для проблемных состояний (S12c): у `failed` и
- * `quarantined` — что делать дальше. У карантина сброс — это тумблер
- * (`set_plugin_enabled` снимает карантин), отдельной кнопки нет.
- */
+
+
 function stateHint(status: PluginStatus): string | null {
-  if (status.state === "failed") return "Исправьте код плагина и нажмите «Перезагрузить».";
+  if (status.state === "failed") return "РСЃРїСЂР°РІСЊС‚Рµ РєРѕРґ РїР»Р°РіРёРЅР° Рё РЅР°Р¶РјРёС‚Рµ В«РџРµСЂРµР·Р°РіСЂСѓР·РёС‚СЊВ».";
   if (status.state === "quarantined") {
-    return `Автоотключён после ${QUARANTINE_THRESHOLD} падений подряд. Исправьте и включите тумблером — карантин сбросится.`;
+    return `РђРІС‚РѕРѕС‚РєР»СЋС‡С‘РЅ РїРѕСЃР»Рµ ${QUARANTINE_THRESHOLD} РїР°РґРµРЅРёР№ РїРѕРґСЂСЏРґ. РСЃРїСЂР°РІСЊС‚Рµ Рё РІРєР»СЋС‡РёС‚Рµ С‚СѓРјР±Р»РµСЂРѕРј вЂ” РєР°СЂР°РЅС‚РёРЅ СЃР±СЂРѕСЃРёС‚СЃСЏ.`;
   }
   return null;
 }
 
-/**
- * Первая notice о доступе к документу — для инлайн-`.pl-boundary` рядом с
- * согласием (S12b). Эвристика по слову «документ»: строки приходят из Rust-ядра
- * (`permission_notices`); общая памятка об изоляции остаётся в поповере.
- */
+
+
 function documentBoundaryNotice(info: PluginInfo): string | null {
-  return info.notices.find((notice) => notice.toLowerCase().includes("документ")) ?? null;
+  return info.notices.find((notice) => notice.toLowerCase().includes("РґРѕРєСѓРјРµРЅС‚")) ?? null;
 }
 
-/**
- * Текущее значение настройки: сохранённое в сторе, иначе `default` из схемы
- * (S5b). Значения из IPC — `unknown`: контрол выбирается по `type` схемы, а
- * фактическое значение сужается проверками `typeof` при инициализации.
- */
+
+
 function settingValue(info: PluginInfo, key: string, prop: PluginSettingProperty): unknown {
   const stored = info.settings_values[key];
   return stored !== undefined ? stored : prop.default;
 }
 
-// Строка настройки: `<label>` даёт неявную связь с контролом и клик по тексту.
-// Все строки из манифеста идут через `textContent`, без `innerHTML`.
+
+
 function renderSettingRow(
   key: string,
   prop: PluginSettingProperty,
@@ -146,20 +130,18 @@ function el(tag: string, className?: string): HTMLElement {
   return node;
 }
 
-/** Уникальный id поповера информации — связывает кнопку (`aria-controls`) с содержимым. */
+/** РЈРЅРёРєР°Р»СЊРЅС‹Р№ id РїРѕРїРѕРІРµСЂР° РёРЅС„РѕСЂРјР°С†РёРё вЂ” СЃРІСЏР·С‹РІР°РµС‚ РєРЅРѕРїРєСѓ (`aria-controls`) СЃ СЃРѕРґРµСЂР¶РёРјС‹Рј. */
 function infoPopoverId(pluginId: string): string {
   return `pl-info-pop-${pluginId}`;
 }
 
-/** Уникальный id тела карточки — связывает шеврон (`aria-controls`) с аккордеоном. */
+/** РЈРЅРёРєР°Р»СЊРЅС‹Р№ id С‚РµР»Р° РєР°СЂС‚РѕС‡РєРё вЂ” СЃРІСЏР·С‹РІР°РµС‚ С€РµРІСЂРѕРЅ (`aria-controls`) СЃ Р°РєРєРѕСЂРґРµРѕРЅРѕРј. */
 function bodyId(pluginId: string): string {
   return `pl-body-${pluginId}`;
 }
 
-/**
- * Инфо-иконка как inline SVG: CSP `default-src 'self'` разрешает inline-контент,
- * и, в отличие от Unicode `ⓘ`, рендер не зависит от системных шрифтов.
- */
+
+
 function infoIcon(): SVGSVGElement {
   const NS = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(NS, "svg");
@@ -189,10 +171,8 @@ function infoIcon(): SVGSVGElement {
   return svg;
 }
 
-/**
- * Шеврон раскрытия как inline SVG (CSP `default-src 'self'` без внешних ассетов;
- * Unicode-стрелка зависела бы от системного шрифта). Поворот задаётся CSS.
- */
+
+
 function chevronIcon(): SVGSVGElement {
   const NS = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(NS, "svg");
@@ -209,9 +189,8 @@ function chevronIcon(): SVGSVGElement {
   return svg;
 }
 
-/**
- * Щит как inline SVG — маркер граничной notice о доступе к документу (S12b).
- */
+
+
 function shieldIcon(): SVGSVGElement {
   const NS = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(NS, "svg");
@@ -232,10 +211,8 @@ function shieldIcon(): SVGSVGElement {
   return svg;
 }
 
-/**
- * Идентичность плагина (S12a): имя из манифеста + версия первичны, сырой `id` —
- * вторично мелким моно. Пустое имя деградирует к `id`.
- */
+
+
 function renderIdentity(info: PluginInfo): HTMLElement {
   const ident = el("div", "pl-ident");
   ident.title = info.id;
@@ -246,7 +223,7 @@ function renderIdentity(info: PluginInfo): HTMLElement {
 
   if (info.version) {
     const version = el("span", "pl-version");
-    version.textContent = `· ${info.version}`;
+    version.textContent = `В· ${info.version}`;
     ident.append(version);
   }
 
@@ -258,20 +235,20 @@ function renderIdentity(info: PluginInfo): HTMLElement {
   return ident;
 }
 
-// Кнопка-иконка «инфо» о границах изоляции плагина (в `.pl-item-head`).
+
 function renderInfoButton(info: PluginInfo): HTMLButtonElement {
   const btn = document.createElement("button");
   btn.type = "button";
   btn.className = "pl-info";
   btn.setAttribute("aria-expanded", "false");
   btn.setAttribute("aria-controls", infoPopoverId(info.id));
-  btn.setAttribute("aria-label", `Информация о границах изоляции плагина ${info.id}`);
+  btn.setAttribute("aria-label", `РРЅС„РѕСЂРјР°С†РёСЏ Рѕ РіСЂР°РЅРёС†Р°С… РёР·РѕР»СЏС†РёРё РїР»Р°РіРёРЅР° ${info.id}`);
   btn.append(infoIcon());
   return btn;
 }
 
-// Скрытый поповер с формулировками границы изоляции. Текст — только
-// `textContent`: строки приходят из Rust-ядра и не проходят через `innerHTML`.
+
+
 function renderInfoPopover(info: PluginInfo): HTMLElement {
   const pop = el("div", "pl-info-pop");
   pop.id = infoPopoverId(info.id);
@@ -286,7 +263,7 @@ function renderInfoPopover(info: PluginInfo): HTMLElement {
   return pop;
 }
 
-// Кнопка-шеврон раскрытия карточки (в конце `.pl-item-head`, перед поповером).
+
 function renderExpandButton(info: PluginInfo, open: boolean): HTMLButtonElement {
   const btn = document.createElement("button");
   btn.type = "button";
@@ -294,7 +271,7 @@ function renderExpandButton(info: PluginInfo, open: boolean): HTMLButtonElement 
   btn.dataset.expand = info.id;
   btn.setAttribute("aria-expanded", String(open));
   btn.setAttribute("aria-controls", bodyId(info.id));
-  btn.setAttribute("aria-label", `${open ? "Свернуть" : "Развернуть"} карточку ${info.id}`);
+  btn.setAttribute("aria-label", `${open ? "РЎРІРµСЂРЅСѓС‚СЊ" : "Р Р°Р·РІРµСЂРЅСѓС‚СЊ"} РєР°СЂС‚РѕС‡РєСѓ ${info.id}`);
   btn.append(chevronIcon());
   return btn;
 }
@@ -302,38 +279,33 @@ function renderExpandButton(info: PluginInfo, open: boolean): HTMLButtonElement 
 export function createPluginManager(opts: PluginManagerOptions): PluginManager {
   const { root, status, onPlugins } = opts;
   let disposed = false;
-  // Защита от гонок: ответ устаревшего `list_plugins` не перетирает свежий.
+
   let refreshSeq = 0;
-  // Последний успешный снимок — источник списка включённых для `Ctrl+R`.
+
   let lastList: PluginInfo[] = [];
-  // Идущая перезагрузка: конкурентные Ctrl+R переиспользуют её (см. reloadForDocument).
+
   let reloading: Promise<void> | null = null;
-  // Открытый поповер информации — он не больше одного (см. toggleInfoPopover).
+
   let openInfoButton: HTMLButtonElement | null = null;
-  // Связь кнопки с её поповером по DOM-узлу — без запросов к document и без утечек.
+
   const infoPopovers = new WeakMap<HTMLButtonElement, HTMLElement>();
-  // Допустимые значения `<select>` настройки: индекс опции → исходное значение схемы.
-  // WeakMap по узлу — не удерживает DOM после перерисовки и не течёт.
+
+
   const settingEnums = new WeakMap<HTMLSelectElement, Json[]>();
-  // Раскрытые карточки — вне DOM: `render` пересоздаёт узлы, а раскрытие должно
-  // переживать перерисовку после действий (toggle/grant/reload).
+
+
   const expanded = new Set<string>();
 
   function renderBadge(info: PluginInfo): HTMLElement {
     const badge = el("span", `pl-badge ${info.status.state}`);
     badge.textContent = STATUS_LABELS[info.status.state];
-    // Тултип всегда: причина для `failed`, иначе — человекочитаемый статус.
+
     badge.title = statusMessage(info.status) ?? STATUS_LABELS[info.status.state];
     return badge;
   }
 
-  /**
-   * Инлайн-секция согласия: по чекбоксу на каждое запрошенное право. `checked` —
-   * право реально выдано (`granted_permissions`), состояние дублируется словом
-   * (не только цветом). Согласие — реальный гейт эффективных прав
-   * (`manifest ∩ granted`, deny-by-default, §11.1 п.4). `null`, если плагин
-   * ничего не запрашивает.
-   */
+
+
   function renderConsent(info: PluginInfo): HTMLElement | null {
     const requested = info.permissions;
     if (requested.length === 0) return null;
@@ -344,20 +316,20 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
 
     const head = el("div", "pl-perms-head");
     const title = el("span", "pl-perms-title");
-    title.textContent = `Доступ: ${grantedCount} из ${requested.length}`;
+    title.textContent = `Р”РѕСЃС‚СѓРї: ${grantedCount} РёР· ${requested.length}`;
 
     const bulk = el("div", "pl-perms-bulk");
     const grantAll = document.createElement("button");
     grantAll.type = "button";
     grantAll.className = "pl-grant-all";
     grantAll.dataset.grant = "all";
-    grantAll.textContent = "Выдать все";
+    grantAll.textContent = "Р’С‹РґР°С‚СЊ РІСЃРµ";
     grantAll.disabled = grantedCount === requested.length;
     const grantNone = document.createElement("button");
     grantNone.type = "button";
     grantNone.className = "pl-grant-none";
     grantNone.dataset.grant = "none";
-    grantNone.textContent = "Снять все";
+    grantNone.textContent = "РЎРЅСЏС‚СЊ РІСЃРµ";
     grantNone.disabled = grantedCount === 0;
     bulk.append(grantAll, grantNone);
     head.append(title, bulk);
@@ -370,10 +342,10 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
       checkbox.className = "pl-grant";
       checkbox.dataset.permission = permission;
       checkbox.checked = granted.has(permission);
-      // В aria-label — человекочитаемое право (S12b), сам токен остаётся в data-атрибуте.
+
       checkbox.setAttribute(
         "aria-label",
-        `${checkbox.checked ? "Снять" : "Выдать"} разрешение ${permissionLabel(permission)}`
+        `${checkbox.checked ? "РЎРЅСЏС‚СЊ" : "Р’С‹РґР°С‚СЊ"} СЂР°Р·СЂРµС€РµРЅРёРµ ${permissionLabel(permission)}`
       );
       const name = el("span", "pl-perm-name");
       name.textContent = permissionLabel(permission);
@@ -381,20 +353,20 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
       token.textContent = permission;
       token.title = permission;
       const state = el("span", "pl-perm-state");
-      state.textContent = checkbox.checked ? "выдано" : "отклонено";
+      state.textContent = checkbox.checked ? "РІС‹РґР°РЅРѕ" : "РѕС‚РєР»РѕРЅРµРЅРѕ";
       row.append(checkbox, name, token, state);
       section.append(row);
     }
 
-    // Подсказка, когда часть запрошенных прав отклонена (deny-by-default не очевиден).
+
     const missing = requested.filter((permission) => !granted.has(permission));
     if (missing.length > 0) {
       const hint = el("div", "pl-consent-hint");
-      hint.textContent = `Не выдано: ${missing.join(", ")}. Плагин не сможет их использовать.`;
+      hint.textContent = `РќРµ РІС‹РґР°РЅРѕ: ${missing.join(", ")}. РџР»Р°РіРёРЅ РЅРµ СЃРјРѕР¶РµС‚ РёС… РёСЃРїРѕР»СЊР·РѕРІР°С‚СЊ.`;
       section.append(hint);
     }
 
-    // Граничная notice о доступе к документу — инлайн, коротко (S12b).
+
     const boundaryNotice = documentBoundaryNotice(info);
     if (boundaryNotice) {
       const boundary = el("div", "pl-boundary");
@@ -409,12 +381,8 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     return section;
   }
 
-  /**
-   * Контрол по свойству схемы (S5b): `enum` → `<select>`, иначе по `type`
-   * (boolean → чекбокс, integer/number → число, string → текст). `null` —
-   * неизвестный/отсутствующий тип: контрол без семантики не рендерим.
-   * Значение из стора (`unknown`) сужается проверками `typeof`.
-   */
+
+
   function settingControl(
     prop: PluginSettingProperty,
     current: unknown
@@ -452,8 +420,8 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     return input;
   }
 
-  // Секция «Настройки» в теле карточки (S5b). `null`, если схемы/`properties`
-  // нет или все свойства неизвестного типа — пустую секцию не показываем.
+
+
   function renderSettings(info: PluginInfo): HTMLElement | null {
     const properties = info.settings_schema?.properties;
     if (!properties) return null;
@@ -467,12 +435,12 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
 
     const section = el("div", "pl-settings");
     const title = el("div", "pl-settings-title");
-    title.textContent = "Настройки";
+    title.textContent = "РќР°СЃС‚СЂРѕР№РєРё";
     section.append(title, ...rows);
     return section;
   }
 
-  // Дизейблит контролы настроек на время IPC (защита от повторного ввода).
+
   function setSettingsBusy(item: HTMLElement, busy: boolean): void {
     for (const control of item.querySelectorAll<HTMLInputElement | HTMLSelectElement>(
       ".pl-setting-control"
@@ -481,7 +449,7 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     }
   }
 
-  // Значение контрола в тип схемы; `undefined` — ввод невалиден (пустое число).
+
   function readSettingValue(
     control: HTMLInputElement | HTMLSelectElement
   ): Json | undefined {
@@ -501,7 +469,7 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     return control.value;
   }
 
-  // Один плагин: голова-строка (тумблер/имя/инфо/бейдж/шеврон) + тело-аккордеон.
+
   function renderItem(info: PluginInfo): HTMLElement {
     const item = el("div", "pl-item");
     item.dataset.plugin = info.id;
@@ -510,19 +478,19 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     const head = el("div", "pl-item-head");
 
     const toggleLabel = el("label", "pl-toggle");
-    toggleLabel.title = info.enabled ? "Выключить плагин" : "Включить плагин";
+    toggleLabel.title = info.enabled ? "Р’С‹РєР»СЋС‡РёС‚СЊ РїР»Р°РіРёРЅ" : "Р’РєР»СЋС‡РёС‚СЊ РїР»Р°РіРёРЅ";
     const toggle = document.createElement("input");
     toggle.type = "checkbox";
     toggle.className = "pl-enabled";
     toggle.checked = info.enabled;
-    toggle.setAttribute("aria-label", `${info.enabled ? "Выключить" : "Включить"} плагин ${info.id}`);
+    toggle.setAttribute("aria-label", `${info.enabled ? "Р’С‹РєР»СЋС‡РёС‚СЊ" : "Р’РєР»СЋС‡РёС‚СЊ"} РїР»Р°РіРёРЅ ${info.id}`);
     toggleLabel.append(toggle);
 
     const open = expanded.has(info.id);
 
-    // Порядок головы: тумблер → идентичность → инфо (если notices) → бейдж → шеврон.
+
     head.append(toggleLabel, renderIdentity(info));
-    // Инфо-кнопка — только при непустых notices: пустой поповер бессмыслен.
+
     const infoPopover = info.notices.length > 0 ? renderInfoPopover(info) : null;
     if (infoPopover) {
       const infoButton = renderInfoButton(info);
@@ -530,14 +498,14 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
       head.append(infoButton);
     }
     head.append(renderBadge(info), renderExpandButton(info, open));
-    // Поповер — последним ребёнком головы: позиционируется абсолютно, порядок не важен.
+
     if (infoPopover) head.append(infoPopover);
 
     const body = el("div", "pl-item-body");
     body.id = bodyId(info.id);
 
-    // Порядок тела: критичное выше рутины — fail-notice/state-hint → actions →
-    // consent → settings.
+
+
     const failMessage = statusMessage(info.status);
     if (failMessage) {
       const node = el("div", "pl-notice");
@@ -545,7 +513,7 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
       body.append(node);
     }
 
-    // S12c: подсказка восстановления — рядом с причиной.
+
     const hintText = stateHint(info.status);
     if (hintText) {
       const hint = el("div", "pl-state-hint");
@@ -557,14 +525,14 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     const reload = document.createElement("button");
     reload.type = "button";
     reload.className = "pl-reload";
-    reload.textContent = "Перезагрузить";
+    reload.textContent = "РџРµСЂРµР·Р°РіСЂСѓР·РёС‚СЊ";
     reload.disabled = !info.enabled;
     actions.append(reload);
 
     const remove = document.createElement("button");
     remove.type = "button";
     remove.className = "pl-remove";
-    remove.textContent = "Удалить";
+    remove.textContent = "РЈРґР°Р»РёС‚СЊ";
     actions.append(remove);
 
     for (const command of info.commands) {
@@ -576,7 +544,7 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
       btn.title = command.keybinding
         ? `${command.title} (${command.keybinding})`
         : command.title;
-      btn.setAttribute("aria-label", `Выполнить: ${command.title}`);
+      btn.setAttribute("aria-label", `Р’С‹РїРѕР»РЅРёС‚СЊ: ${command.title}`);
       actions.append(btn);
     }
     body.append(actions);
@@ -587,15 +555,15 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     const settings = renderSettings(info);
     if (settings) body.append(settings);
 
-    // Тело всегда в DOM (скрывается CSS `.pl-item:not(.open)`) — иначе e2e не
-    // найдёт контролы свёрнутой карточки до её раскрытия.
+
+
     item.classList.toggle("open", open);
     item.append(head, body);
     return item;
   }
 
-  // Открывает поповер кнопки; повторный клик или открытие другого закрывает
-  // предыдущий.
+
+
   function toggleInfoPopover(button: HTMLButtonElement): void {
     const popover = infoPopovers.get(button);
     if (!popover) return;
@@ -608,7 +576,7 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     openInfoButton = button;
   }
 
-  // Закрывает открытый поповер (он один) и возвращает кнопку — для фокуса.
+
   function closeAllInfoPopovers(): HTMLButtonElement | null {
     const button = openInfoButton;
     if (!button) return null;
@@ -622,10 +590,8 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     return button;
   }
 
-  /**
-   * Раскрывает/сворачивает карточку на месте — без `refresh` и IPC: узлы не
-   * пересоздаются, фокус остаётся на шевроне, лишних гонок и перерисовок нет.
-   */
+
+
   function toggleExpand(btn: HTMLButtonElement): void {
     const id = btn.dataset.expand;
     const item = btn.closest<HTMLElement>(".pl-item");
@@ -635,13 +601,13 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     else expanded.delete(id);
     item.classList.toggle("open", open);
     btn.setAttribute("aria-expanded", String(open));
-    btn.setAttribute("aria-label", `${open ? "Свернуть" : "Развернуть"} карточку ${id}`);
+    btn.setAttribute("aria-label", `${open ? "РЎРІРµСЂРЅСѓС‚СЊ" : "Р Р°Р·РІРµСЂРЅСѓС‚СЊ"} РєР°СЂС‚РѕС‡РєСѓ ${id}`);
   }
 
   function render(list: PluginInfo[]): void {
-    // `replaceChildren` уничтожит узлы, включая открытый поповер, — сбрасываем ссылку.
+
     closeAllInfoPopovers();
-    // Прунинг: иначе `Set` растёт вечно.
+
     const ids = new Set(list.map((info) => info.id));
     for (const id of expanded) {
       if (!ids.has(id)) expanded.delete(id);
@@ -649,15 +615,15 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     if (list.length === 0) {
       const empty = el("div", "side-empty pl-empty");
       const title = el("div", "pl-empty-title");
-      title.textContent = "Плагины не найдены";
+      title.textContent = "РџР»Р°РіРёРЅС‹ РЅРµ РЅР°Р№РґРµРЅС‹";
       const hint = el("div", "pl-empty-hint");
-      hint.append("Положите плагин в ");
+      hint.append("РџРѕР»РѕР¶РёС‚Рµ РїР»Р°РіРёРЅ РІ ");
       const code = document.createElement("code");
       code.textContent = "%APPDATA%/darmark/plugins/<id>/";
       hint.append(code);
-      // Каталог пересканируется при старте (на лету H2 не подхватывает) — честно
-      // просим перезапуск, а не несуществующую кнопку «Перезагрузить все».
-      hint.append(" (plugin.json + main.lua) и перезапустите ПЕНАЛ.");
+
+
+      hint.append(" (plugin.json + main.lua) Рё РїРµСЂРµР·Р°РїСѓСЃС‚РёС‚Рµ РџР•РќРђР›.");
       empty.append(title, hint);
       root.replaceChildren(empty);
       return;
@@ -671,24 +637,21 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     try {
       list = await listPlugins();
     } catch (e) {
-      if (!disposed && seq === refreshSeq) status(`Плагины: ${errorMessage(e)}`);
+      if (!disposed && seq === refreshSeq) status(`РџР»Р°РіРёРЅС‹: ${errorMessage(e)}`);
       return;
     }
-    // Ответ устарел (пришёл refresh новее) или контроллер уже освобождён.
+
     if (disposed || seq !== refreshSeq) return;
     lastList = list;
     render(list);
     onPlugins?.(list);
   }
 
-  /**
-   * `Ctrl+R`: владелец открытого `.lua` (`<plugins>/<id>/<entry>.lua`) —
-   * перезагружаем только его; иначе — все включённые (fallback). Reload не
-   * разрушителен: карантин и согласие сохраняются.
-   */
+
+
   async function reloadForDocument(path: string | null): Promise<void> {
-    // Пока идёт перезагрузка, повторный вызов переиспользует тот же промис
-    // (иначе child-процессы рестартуют дважды).
+
+
     if (reloading) return reloading;
     reloading = doReload(path).finally(() => {
       reloading = null;
@@ -697,22 +660,22 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
   }
 
   async function doReload(path: string | null): Promise<void> {
-    // Снимок может быть пуст — refresh ещё не прошёл (например, на старте).
+
     const source = lastList.length > 0 ? lastList : await listPlugins();
     const enabled = source.filter((info) => info.enabled);
     if (enabled.length === 0) {
-      status("Плагины: нет включённых");
+      status("РџР»Р°РіРёРЅС‹: РЅРµС‚ РІРєР»СЋС‡С‘РЅРЅС‹С…");
       return;
     }
     const ids = enabled.map((info) => info.id);
     const owner = ownerPluginId(path, ids);
     if (owner) {
       await reloadPlugin(owner);
-      status(`Плагин ${owner}: перезагружен`);
+      status(`РџР»Р°РіРёРЅ ${owner}: РїРµСЂРµР·Р°РіСЂСѓР¶РµРЅ`);
     } else {
-      // Последовательно: не плодим одновременные перезапуски child-процессов.
+
       for (const id of ids) await reloadPlugin(id);
-      status(`Плагины: перезагружено (${ids.length})`);
+      status(`РџР»Р°РіРёРЅС‹: РїРµСЂРµР·Р°РіСЂСѓР¶РµРЅРѕ (${ids.length})`);
     }
     await refresh();
   }
@@ -720,16 +683,16 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
   async function handleToggle(input: HTMLInputElement): Promise<void> {
     const id = input.closest<HTMLElement>(".pl-item")?.dataset.plugin;
     if (!id) return;
-    input.disabled = true; // защита от повторного клика до перерисовки
+    input.disabled = true; // Р·Р°С‰РёС‚Р° РѕС‚ РїРѕРІС‚РѕСЂРЅРѕРіРѕ РєР»РёРєР° РґРѕ РїРµСЂРµСЂРёСЃРѕРІРєРё
     try {
       await setPluginEnabled(id, input.checked);
     } catch (e) {
-      status(`Плагин ${id}: ${errorMessage(e)}`);
+      status(`РџР»Р°РіРёРЅ ${id}: ${errorMessage(e)}`);
     }
     await refresh();
   }
 
-  // Дизейблит контролы согласия плагина на время IPC (защита от повторного клика).
+
   function setConsentBusy(item: HTMLElement, busy: boolean): void {
     for (const cb of item.querySelectorAll<HTMLInputElement>("input.pl-grant")) {
       cb.disabled = busy;
@@ -739,7 +702,7 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     }
   }
 
-  // Собирает **весь** набор отмеченных прав `.pl-item` и фиксирует согласие.
+
   async function handleGrant(input: HTMLInputElement): Promise<void> {
     const item = input.closest<HTMLElement>(".pl-item");
     const id = item?.dataset.plugin;
@@ -752,12 +715,12 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     try {
       await setPluginPermissions(id, granted);
     } catch (e) {
-      status(`Плагин ${id}: ${errorMessage(e)}`);
+      status(`РџР»Р°РіРёРЅ ${id}: ${errorMessage(e)}`);
     }
     await refresh();
   }
 
-  // Групповые кнопки «Выдать все»/«Снять все» для согласия плагина.
+
   async function handleGrantBulk(btn: HTMLButtonElement): Promise<void> {
     const item = btn.closest<HTMLElement>(".pl-item");
     const id = item?.dataset.plugin;
@@ -773,12 +736,12 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     try {
       await setPluginPermissions(id, granted);
     } catch (e) {
-      status(`Плагин ${id}: ${errorMessage(e)}`);
+      status(`РџР»Р°РіРёРЅ ${id}: ${errorMessage(e)}`);
     }
     await refresh();
   }
 
-  // Записывает изменённую настройку плагина и перечитывает снимок (S5b).
+
   async function handleSettingChange(
     control: HTMLInputElement | HTMLSelectElement
   ): Promise<void> {
@@ -787,12 +750,12 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     const key = control.dataset.settingKey;
     if (!item || !id || !key) return;
     const value = readSettingValue(control);
-    if (value === undefined) return; // невалидный ввод — стор не трогаем
+    if (value === undefined) return; // РЅРµРІР°Р»РёРґРЅС‹Р№ РІРІРѕРґ вЂ” СЃС‚РѕСЂ РЅРµ С‚СЂРѕРіР°РµРј
     setSettingsBusy(item, true);
     try {
       await setPluginSetting(id, key, value);
     } catch (e) {
-      status(`Плагин ${id}: ${errorMessage(e)}`);
+      status(`РџР»Р°РіРёРЅ ${id}: ${errorMessage(e)}`);
     }
     await refresh();
   }
@@ -803,31 +766,31 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     btn.disabled = true;
     try {
       await reloadPlugin(id);
-      status(`Плагин ${id}: перезагружен`);
+      status(`РџР»Р°РіРёРЅ ${id}: РїРµСЂРµР·Р°РіСЂСѓР¶РµРЅ`);
     } catch (e) {
-      status(`Плагин ${id}: ${errorMessage(e)}`);
+      status(`РџР»Р°РіРёРЅ ${id}: ${errorMessage(e)}`);
     }
     await refresh();
   }
 
-  // Confirm-диалог удаления плагина через `dialog.ts` (variant «center»);
-  // `true`, если пользователь подтвердил удаление.
+
+
   function confirmRemovePlugin(id: string): Promise<boolean> {
     return new Promise((resolve) => {
       const content = el("div", "pl-confirm-remove");
       const text = el("p", "pl-confirm-text");
-      text.textContent = `Плагин «${id}» будет удалён безвозвратно. Его файлы и настройки будут стёрты.`;
+      text.textContent = `РџР»Р°РіРёРЅ В«${id}В» Р±СѓРґРµС‚ СѓРґР°Р»С‘РЅ Р±РµР·РІРѕР·РІСЂР°С‚РЅРѕ. Р•РіРѕ С„Р°Р№Р»С‹ Рё РЅР°СЃС‚СЂРѕР№РєРё Р±СѓРґСѓС‚ СЃС‚С‘СЂС‚С‹.`;
       content.append(text);
 
       const buttons = el("div", "pl-confirm-buttons");
       const cancelBtn = document.createElement("button");
       cancelBtn.type = "button";
       cancelBtn.className = "pl-confirm-cancel";
-      cancelBtn.textContent = "Отмена";
+      cancelBtn.textContent = "РћС‚РјРµРЅР°";
       const confirmBtn = document.createElement("button");
       confirmBtn.type = "button";
       confirmBtn.className = "pl-confirm-ok";
-      confirmBtn.textContent = "Удалить";
+      confirmBtn.textContent = "РЈРґР°Р»РёС‚СЊ";
       buttons.append(cancelBtn, confirmBtn);
       content.append(buttons);
 
@@ -841,7 +804,7 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
       confirmBtn.addEventListener("click", () => cleanup(true));
 
       dialog = openDialog({
-        title: "Удаление плагина",
+        title: "РЈРґР°Р»РµРЅРёРµ РїР»Р°РіРёРЅР°",
         content,
         variant: "center",
         initialFocus: cancelBtn,
@@ -858,9 +821,9 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     btn.disabled = true;
     try {
       await removePlugin(id);
-      status(`Плагин ${id}: удалён`);
+      status(`РџР»Р°РіРёРЅ ${id}: СѓРґР°Р»С‘РЅ`);
     } catch (e) {
-      status(`Плагин ${id}: ${errorMessage(e)}`);
+      status(`РџР»Р°РіРёРЅ ${id}: ${errorMessage(e)}`);
     }
     await refresh();
   }
@@ -872,7 +835,7 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     try {
       await runPluginCommand(commandId);
     } catch (e) {
-      status(`Команда ${commandId}: ${errorMessage(e)}`);
+      status(`РљРѕРјР°РЅРґР° ${commandId}: ${errorMessage(e)}`);
     }
     await refresh();
   }
@@ -924,7 +887,7 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     if (bulk) void handleGrantBulk(bulk);
   }
 
-  // Клик вне кнопки/поповера закрывает его.
+
   function onDocumentClick(e: MouseEvent): void {
     const button = openInfoButton;
     if (!button) return;
@@ -934,11 +897,11 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
     closeAllInfoPopovers();
   }
 
-  // Escape закрывает поповер и возвращает фокус на кнопку.
+
   function onDocumentKeydown(e: KeyboardEvent): void {
     if (e.key !== "Escape" || !openInfoButton) return;
-    // Поповер — верхний слой: поглощаем Escape, чтобы он не закрыл дровер
-    // (drawer.ts отдаёт событие вложенному слою) и не выключил инспектор.
+
+
     e.preventDefault();
     e.stopPropagation();
     closeAllInfoPopovers()?.focus();
@@ -949,7 +912,7 @@ export function createPluginManager(opts: PluginManagerOptions): PluginManager {
   document.addEventListener("click", onDocumentClick);
   document.addEventListener("keydown", onDocumentKeydown);
 
-  // Ошибку установки слушателя глушим: в обычном (не плагинном) запуске событий не будет.
+
   const unlistenPromise = listen("plugins-changed", () => {
     void refresh();
   }).catch(() => null);

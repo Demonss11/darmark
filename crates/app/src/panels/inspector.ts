@@ -1,12 +1,12 @@
-// inspector.ts — двусторонняя подсветка «блок предпросмотра ↔ фрагмент
-// исходника в редакторе». Блоки размечаются на Rust-стороне
-// (md-core::to_html_mapped) атрибутом data-md="start,end", где start/end —
-// байтовые смещения в исходном markdown.
+﻿// inspector.ts вЂ” РґРІСѓСЃС‚РѕСЂРѕРЅРЅСЏСЏ РїРѕРґСЃРІРµС‚РєР° В«Р±Р»РѕРє РїСЂРµРґРїСЂРѕСЃРјРѕС‚СЂР° в†” С„СЂР°РіРјРµРЅС‚
+// РёСЃС…РѕРґРЅРёРєР° РІ СЂРµРґР°РєС‚РѕСЂРµВ». Р‘Р»РѕРєРё СЂР°Р·РјРµС‡Р°СЋС‚СЃСЏ РЅР° Rust-СЃС‚РѕСЂРѕРЅРµ
+// (md-core::to_html_mapped) Р°С‚СЂРёР±СѓС‚РѕРј data-md="start,end", РіРґРµ start/end вЂ”
+// Р±Р°Р№С‚РѕРІС‹Рµ СЃРјРµС‰РµРЅРёСЏ РІ РёСЃС…РѕРґРЅРѕРј markdown.
 //
-// Главная сложность — единицы измерения: textarea оперирует UTF-16 code units
-// (selectionStart/End), а pulldown-cmark — байтами UTF-8. Карты byte↔UTF-16 и
-// список блоков берутся из общего RenderIndex: индекс строит previewView по
-// тексту рендера, здесь он только читается.
+// Р“Р»Р°РІРЅР°СЏ СЃР»РѕР¶РЅРѕСЃС‚СЊ вЂ” РµРґРёРЅРёС†С‹ РёР·РјРµСЂРµРЅРёСЏ: textarea РѕРїРµСЂРёСЂСѓРµС‚ UTF-16 code units
+// (selectionStart/End), Р° pulldown-cmark вЂ” Р±Р°Р№С‚Р°РјРё UTF-8. РљР°СЂС‚С‹ byteв†”UTF-16 Рё
+// СЃРїРёСЃРѕРє Р±Р»РѕРєРѕРІ Р±РµСЂСѓС‚СЃСЏ РёР· РѕР±С‰РµРіРѕ RenderIndex: РёРЅРґРµРєСЃ СЃС‚СЂРѕРёС‚ previewView РїРѕ
+// С‚РµРєСЃС‚Сѓ СЂРµРЅРґРµСЂР°, Р·РґРµСЃСЊ РѕРЅ С‚РѕР»СЊРєРѕ С‡РёС‚Р°РµС‚СЃСЏ.
 
 import {
   type Block,
@@ -22,12 +22,10 @@ export interface Inspector {
   isActive(): boolean;
   enable(): void;
   disable(): void;
-  /**
-   * Индекс изменился (перестроен после рендера или сброшен при правке):
-   * пересчитываем привязки либо сбрасываем их.
-   */
+
+
   onIndexChanged(): void;
-  /** Синхронизация editor→preview; вызывается из общего хука main.ts (T-11). */
+  /** РЎРёРЅС…СЂРѕРЅРёР·Р°С†РёСЏ editorв†’preview; РІС‹Р·С‹РІР°РµС‚СЃСЏ РёР· РѕР±С‰РµРіРѕ С…СѓРєР° main.ts (T-11). */
   onEditorActivity(): void;
 }
 
@@ -40,12 +38,8 @@ interface InspectTarget {
   mode: InspectMode;
 }
 
-/**
- * Определяет цель подсветки по элементу под курсором и состоянию Shift.
- * Приоритет: `<th>` (столбец) > `Shift+td` (строка) > `td` (ячейка) >
- * строка-промежуток (строка) > `.md-block` (блок). Приоритет `<th>` выше
- * модификатора — столбец не переопределяется Shift (AC-3).
- */
+
+
 function resolveTarget(target: Element | null, shiftKey: boolean): InspectTarget | null {
   if (!target || typeof target.closest !== "function") return null;
   const th = target.closest("th[data-md]") as HTMLElement | null;
@@ -64,46 +58,46 @@ export function createInspector(opts: {
   editor: HTMLTextAreaElement;
   preview: HTMLElement;
   statusEl: HTMLElement;
-  /** Общий индекс рендера: карты byte↔UTF-16 и блоки. */
+  /** РћР±С‰РёР№ РёРЅРґРµРєСЃ СЂРµРЅРґРµСЂР°: РєР°СЂС‚С‹ byteв†”UTF-16 Рё Р±Р»РѕРєРё. */
   index: RenderIndex;
-  /** Вызывается перед программным scrollIntoView (чтобы синхронизация скролла не тянула вторую панель). */
+  /** Р’С‹Р·С‹РІР°РµС‚СЃСЏ РїРµСЂРµРґ РїСЂРѕРіСЂР°РјРјРЅС‹Рј scrollIntoView (С‡С‚РѕР±С‹ СЃРёРЅС…СЂРѕРЅРёР·Р°С†РёСЏ СЃРєСЂРѕР»Р»Р° РЅРµ С‚СЏРЅСѓР»Р° РІС‚РѕСЂСѓСЋ РїР°РЅРµР»СЊ). */
   beforeScrollIntoView?: () => void;
 }): Inspector {
   const { editor, preview, statusEl, index, beforeScrollIntoView } = opts;
 
   let active = false;
-  // Привязки читаются из снимка индекса; здесь — только ссылки на активные
-  // данные (валидны ровно пока индекс не перестроен/не сброшен).
+
+
   let blocks: Block[] | null = null;
   let maps: UnitMaps | null = null;
   let activeBlockEl: HTMLElement | null = null;
-  // Бэнды строки/столбца (транзиентные классы), список — для идемпотентной очистки.
+
   let bandEls: HTMLElement[] = [];
-  // Последняя наведённая цель (для пересчёта уровня при Shift без движения мыши).
+
   let lastHover: Element | null = null;
   let lastHoverShift = false;
-  // Выделение, выставленное инспектором программно. `selectionchange` приходит
-  // асинхронно, поэтому по совпадению значений отличаем своё выделение от
-  // пользовательского: иначе обработчик каретки перебил бы гранулярную
-  // подсветку ячейки блочной (он ищет `.md-block`, а не `tr/th/td`).
+
+
+
+
   let programmaticSel = { start: -1, end: -1 };
 
-  // BUG-003: закрепление выделения. Клик по блоку фиксирует подсветку и
-  // выделение редактора — они переживают уход курсора, наведение и движение
-  // каретки; повторный клик снимает. Сбрасывается при перестройке индекса
-  // (правка/перерендер) и выходе из режима: байтовые смещения блока недействительны.
+
+
+
+
   let pinned = false;
-  // Временная подсветка (click-to-inspect вне режима) — снимается при любом клике.
+
   let transient = false;
 
-  // Состояние textarea и фокуса до включения режима (восстанавливаем на выходе).
+
   let savedSelection = { start: 0, end: 0 };
   let savedScrollTop = 0;
   let savedFocus: HTMLElement | null = null;
 
   let lastScrollAt = 0;
 
-  // ---------- подсветка ----------
+
 
   function clearBands() {
     for (const el of bandEls) el.classList.remove("inspect-col", "inspect-row");
@@ -115,25 +109,25 @@ export function createInspector(opts: {
       activeBlockEl.classList.remove("inspect-active");
       activeBlockEl = null;
     }
-    // Бэнды — часть того же цикла очистки (F-6): disable/onRendered/mouseout
-    // обязаны снимать и подсветку, и подсветку строки/столбца.
+
+
     clearBands();
   }
 
   function scrollIntoViewIfNeeded(el: HTMLElement) {
     const pr = preview.getBoundingClientRect();
     const er = el.getBoundingClientRect();
-    if (er.top >= pr.top && er.bottom <= pr.bottom) return; // уже виден
+    if (er.top >= pr.top && er.bottom <= pr.bottom) return; // СѓР¶Рµ РІРёРґРµРЅ
     const now = performance.now();
-    if (now - lastScrollAt < 100) return; // throttle, чтобы не дёргать скролл
+    if (now - lastScrollAt < 100) return; // throttle, С‡С‚РѕР±С‹ РЅРµ РґС‘СЂРіР°С‚СЊ СЃРєСЂРѕР»Р»
     lastScrollAt = now;
-    // Гасим синхронизацию: программный scrollIntoView не должен тянуть редактор.
+
     beforeScrollIntoView?.();
     el.scrollIntoView({ block: "nearest" });
   }
 
   function applyBlock(el: HTMLElement, focus: boolean, force = false) {
-    if (!force && activeBlockEl === el) return; // гистерезис — не дёргать на том же блоке
+    if (!force && activeBlockEl === el) return; // РіРёСЃС‚РµСЂРµР·РёСЃ вЂ” РЅРµ РґС‘СЂРіР°С‚СЊ РЅР° С‚РѕРј Р¶Рµ Р±Р»РѕРєРµ
     clearBlockHighlight();
     const range = parseRange(el);
     if (!range || !maps) return;
@@ -141,19 +135,16 @@ export function createInspector(opts: {
     const end = bytesToUnits(maps, range.end);
     el.classList.add("inspect-active");
     activeBlockEl = el;
-    // Сначала фокус, потом диапазон: focus() может восстановить сохранённое
-    // выделение textarea и затереть только что выставленный диапазон.
+
+
     if (focus) editor.focus({ preventScroll: true });
     editor.setSelectionRange(start, end);
     programmaticSel = { start, end };
     scrollIntoViewIfNeeded(el);
   }
 
-  /**
-   * Подсвечивает столбец целиком: `.inspect-col` на всех ячейках с тем же
-   * `cellIndex`. Индекс ячейки стабилен после переупорядочивания строк
-   * `tables.ts` (AC-8), поэтому столбец остаётся корректным.
-   */
+
+
   function bandColumn(th: HTMLTableCellElement) {
     const table = th.closest("table") as HTMLTableElement | null;
     if (!table) return;
@@ -168,11 +159,8 @@ export function createInspector(opts: {
     }
   }
 
-  /**
-   * Применяет цель: подсветка источника (через `applyBlock`) + бэнды строки/
-   * столбца. Бэнды всегда пересобираются с нуля — иначе повторный hover по той
-   * же ячейке (когда `applyBlock` сработал по гистерезису) копил бы список.
-   */
+
+
   function applyTarget(target: InspectTarget, focus: boolean, force = false) {
     clearBands();
     applyBlock(target.el, focus, force);
@@ -190,9 +178,9 @@ export function createInspector(opts: {
     }
   }
 
-  // ---------- слушатели ----------
 
-  /** Снимок индекса для click-to-inspect вне активного режима. */
+
+  /** РЎРЅРёРјРѕРє РёРЅРґРµРєСЃР° РґР»СЏ click-to-inspect РІРЅРµ Р°РєС‚РёРІРЅРѕРіРѕ СЂРµР¶РёРјР°. */
   function getIndex(): { blocks: Block[]; maps: UnitMaps } | null {
     const snap = index.current();
     if (!snap) return null;
@@ -200,7 +188,7 @@ export function createInspector(opts: {
   }
 
   function onMouseOver(e: MouseEvent) {
-    if (!active || pinned) return; // закреплённую подсветку наведение не меняет
+    if (!active || pinned) return; // Р·Р°РєСЂРµРїР»С‘РЅРЅСѓСЋ РїРѕРґСЃРІРµС‚РєСѓ РЅР°РІРµРґРµРЅРёРµ РЅРµ РјРµРЅСЏРµС‚
     const el = e.target as Element | null;
     lastHover = el;
     lastHoverShift = e.shiftKey;
@@ -211,19 +199,16 @@ export function createInspector(opts: {
 
   function onMouseOut(e: MouseEvent) {
     if (!active) return;
-    if (pinned) return; // закрепление переживает уход курсора (BUG-003)
+    if (pinned) return; // Р·Р°РєСЂРµРїР»РµРЅРёРµ РїРµСЂРµР¶РёРІР°РµС‚ СѓС…РѕРґ РєСѓСЂСЃРѕСЂР° (BUG-003)
     const rel = e.relatedTarget as Node | null;
-    if (rel && preview.contains(rel)) return; // всё ещё внутри preview
+    if (rel && preview.contains(rel)) return; // РІСЃС‘ РµС‰С‘ РІРЅСѓС‚СЂРё preview
     lastHover = null;
-    clearBlockHighlight(); // снимает и подсветку источника, и бэнды (AC-6)
+    clearBlockHighlight(); // СЃРЅРёРјР°РµС‚ Рё РїРѕРґСЃРІРµС‚РєСѓ РёСЃС‚РѕС‡РЅРёРєР°, Рё Р±СЌРЅРґС‹ (AC-6)
     restoreSavedFocus();
   }
 
-  /**
-   * Клик вне preview снимает подсветку и закрепление: без этого подсветка
-   * оставалась бы после клика в редактор или тулбар. Также снимает временную
-   * подсветку (click-to-inspect вне режима).
-   */
+
+
   function onDocumentClick(e: MouseEvent) {
     if (!active && !transient) return;
     const targetEl = e.target as Element | null;
@@ -232,12 +217,10 @@ export function createInspector(opts: {
     if (active) restoreSavedFocus();
   }
 
-  /**
-   * Click-to-inspect вне режима инспектора (пункт 11.1.3): подсвечивает блок и
-   * выделяет фрагмент в редакторе, но НЕ закрепляет — исчезает на клик.
-   */
+
+
   function onClickPreview(e: MouseEvent) {
-    if (active) return; // в режиме инспектора работает onClickCapture
+    if (active) return; // РІ СЂРµР¶РёРјРµ РёРЅСЃРїРµРєС‚РѕСЂР° СЂР°Р±РѕС‚Р°РµС‚ onClickCapture
     const targetEl = e.target as Element | null;
     const interactive = !!targetEl?.closest?.(INTERACTIVE_SELECTOR);
     if (interactive) return;
@@ -262,16 +245,13 @@ export function createInspector(opts: {
     programmaticSel = { start, end };
   }
 
-  /**
-   * AC-5: Shift нажат/отпущен без движения мыши — пересчитываем уровень для
-   * последней наведённой цели. `e.shiftKey` у модификаторных keydown/keyup
-   * нестабилен, поэтому состояние выводим из типа события.
-   */
+
+
   function onShiftKey(e: KeyboardEvent) {
     if (!active || pinned || e.key !== "Shift") return;
     if (!lastHover || !lastHover.isConnected) return;
     const shift = e.type !== "keyup";
-    if (shift === lastHoverShift) return; // реального переключения не было
+    if (shift === lastHoverShift) return; // СЂРµР°Р»СЊРЅРѕРіРѕ РїРµСЂРµРєР»СЋС‡РµРЅРёСЏ РЅРµ Р±С‹Р»Рѕ
     lastHoverShift = shift;
     const target = resolveTarget(lastHover, shift);
     if (!target) return;
@@ -281,17 +261,17 @@ export function createInspector(opts: {
   function onEditorSelection() {
     if (!active || pinned || !blocks || !maps) return;
     if (document.activeElement !== editor) return;
-    // Асинхронный `selectionchange` от программного выделения инспектора не
-    // должен перебивать гранулярную подсветку ячейки/строки/столбца.
+
+
     if (
       (editor.selectionStart ?? 0) === programmaticSel.start &&
       (editor.selectionEnd ?? 0) === programmaticSel.end
     ) {
       return;
     }
-    // «Каретка» = активный край выделения. При протяжке мышью/Shift+стрелках
-    // selectionStart фиксирован (якорь), а двигается противоположный край,
-    // поэтому ориентируемся на selectionDirection (AC-5).
+
+
+
     const backward = editor.selectionDirection === "backward";
     const caretPos = backward
       ? editor.selectionStart ?? 0
@@ -302,7 +282,7 @@ export function createInspector(opts: {
       return;
     }
     if (activeBlockEl === block.el) return;
-    // Только подсветка в предпросмотре; выделение в textarea не зеркалим (T-11).
+
     clearBlockHighlight();
     block.el.classList.add("inspect-active");
     activeBlockEl = block.el;
@@ -322,15 +302,15 @@ export function createInspector(opts: {
     const targetEl = e.target as Element | null;
     const interactive = !!targetEl?.closest?.(INTERACTIVE_SELECTOR);
     if (interactive) {
-      // Клик по кнопке/ссылке/`th`/меню снимает закрепление, но событие отдаём
-      // дальше (сортировка, переход) — BUG-003.
+
+
       if (pinned) releasePin();
       return;
     }
     const target = resolveTarget(targetEl, e.shiftKey);
     if (pinned) {
-      // Закреплено: клик по ДРУГОМУ блоку переносит закрепление; повторный клик
-      // по тому же блоку или клик по пустой области снимает его (BUG-003).
+
+
       e.preventDefault();
       e.stopPropagation();
       if (!target || target.el === activeBlockEl) {
@@ -344,20 +324,20 @@ export function createInspector(opts: {
       return;
     }
     if (!target) return;
-    if (!blocks || !maps) return; // индекс устарел (правка до рендера) — закреплять нечего
+    if (!blocks || !maps) return; // РёРЅРґРµРєСЃ СѓСЃС‚Р°СЂРµР» (РїСЂР°РІРєР° РґРѕ СЂРµРЅРґРµСЂР°) вЂ” Р·Р°РєСЂРµРїР»СЏС‚СЊ РЅРµС‡РµРіРѕ
     e.preventDefault();
     e.stopPropagation();
-    // force: клик должен вернуть выделение и фокус в редактор, даже если блок
-    // уже подсвечен (иначе focus уходит в предпросмотр, а выделение «гаснет»).
+
+
     applyTarget(target, true, true);
     pinned = true;
-    // Курсор мог «устареть» за время закрепления — пересчёт по Shift после
-    // снятия не должен опираться на блок, который мы запинили.
+
+
     lastHover = null;
     lastHoverShift = false;
   }
 
-  // ---------- API ----------
+
 
   function isActive(): boolean {
     return active;
@@ -370,9 +350,9 @@ export function createInspector(opts: {
     savedScrollTop = editor.scrollTop;
     savedFocus = document.activeElement as HTMLElement | null;
     statusEl.hidden = false;
-    // Live-region объявляет только мутацию содержимого: показываем и заполняем
-    // текст одновременно (M6).
-    statusEl.textContent = "Режим инспектора";
+
+
+    statusEl.textContent = "Р РµР¶РёРј РёРЅСЃРїРµРєС‚РѕСЂР°";
     preview.addEventListener("mouseover", onMouseOver);
     preview.addEventListener("mouseout", onMouseOut);
     preview.addEventListener("click", onClickCapture, true);
@@ -381,7 +361,7 @@ export function createInspector(opts: {
     document.addEventListener("selectionchange", onEditorSelection);
     document.addEventListener("keydown", onShiftKey);
     document.addEventListener("keyup", onShiftKey);
-    // Привязки могли появиться, пока режим был выключен.
+
     onIndexChanged();
   }
 
@@ -397,7 +377,7 @@ export function createInspector(opts: {
     lastHoverShift = false;
     programmaticSel = { start: -1, end: -1 };
     statusEl.hidden = true;
-    statusEl.textContent = ""; // сброс, чтобы следующее включение снова объявилось (M6)
+    statusEl.textContent = ""; // СЃР±СЂРѕСЃ, С‡С‚РѕР±С‹ СЃР»РµРґСѓСЋС‰РµРµ РІРєР»СЋС‡РµРЅРёРµ СЃРЅРѕРІР° РѕР±СЉСЏРІРёР»РѕСЃСЊ (M6)
     preview.removeEventListener("mouseover", onMouseOver);
     preview.removeEventListener("mouseout", onMouseOut);
     preview.removeEventListener("click", onClickCapture, true);
@@ -406,14 +386,14 @@ export function createInspector(opts: {
     document.removeEventListener("selectionchange", onEditorSelection);
     document.removeEventListener("keydown", onShiftKey);
     document.removeEventListener("keyup", onShiftKey);
-    // OQ-3: восстанавливаем состояние редактора и фокус.
+
     editor.setSelectionRange(savedSelection.start, savedSelection.end);
     editor.scrollTop = savedScrollTop;
     restoreSavedFocus();
   }
 
   function onIndexChanged(): void {
-    // Индекс перестроен — все смещения устарели.
+
     pinned = false;
     transient = false;
     clearBlockHighlight();

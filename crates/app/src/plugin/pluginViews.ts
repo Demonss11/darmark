@@ -1,13 +1,13 @@
-// pluginViews.ts — плагинные тир-1 представления как HtmlViewProvider (H2, Фаза 4).
+﻿// pluginViews.ts вЂ” РїР»Р°РіРёРЅРЅС‹Рµ С‚РёСЂ-1 РїСЂРµРґСЃС‚Р°РІР»РµРЅРёСЏ РєР°Рє HtmlViewProvider (H2, Р¤Р°Р·Р° 4).
 //
-// Плагин с `contributes.views[{kind,title,tier:1}]` становится ещё одним
-// `HtmlViewProvider` в общем `viewRegistry` (ADR-0022, IDEA-003): нативный
-// Markdown-предпросмотр остаётся дефолтным провайдером, плагинные вкладки —
-// выбираемыми в `.view-switch`.
+// РџР»Р°РіРёРЅ СЃ `contributes.views[{kind,title,tier:1}]` СЃС‚Р°РЅРѕРІРёС‚СЃСЏ РµС‰С‘ РѕРґРЅРёРј
+// `HtmlViewProvider` РІ РѕР±С‰РµРј `viewRegistry` (ADR-0022, IDEA-003): РЅР°С‚РёРІРЅС‹Р№
+// Markdown-РїСЂРµРґРїСЂРѕСЃРјРѕС‚СЂ РѕСЃС‚Р°С‘С‚СЃСЏ РґРµС„РѕР»С‚РЅС‹Рј РїСЂРѕРІР°Р№РґРµСЂРѕРј, РїР»Р°РіРёРЅРЅС‹Рµ РІРєР»Р°РґРєРё вЂ”
+// РІС‹Р±РёСЂР°РµРјС‹РјРё РІ `.view-switch`.
 //
-// Контент санитизирует хост; контроллер пишет его в контейнер и возвращает
-// клики `data-p-<plugin_id>-action/-payload` в плагин (`plugin_view_action`).
-// Доступа к `window`/`fetch`/ФС из контейнера нет.
+// РљРѕРЅС‚РµРЅС‚ СЃР°РЅРёС‚РёР·РёСЂСѓРµС‚ С…РѕСЃС‚; РєРѕРЅС‚СЂРѕР»Р»РµСЂ РїРёС€РµС‚ РµРіРѕ РІ РєРѕРЅС‚РµР№РЅРµСЂ Рё РІРѕР·РІСЂР°С‰Р°РµС‚
+// РєР»РёРєРё `data-p-<plugin_id>-action/-payload` РІ РїР»Р°РіРёРЅ (`plugin_view_action`).
+// Р”РѕСЃС‚СѓРїР° Рє `window`/`fetch`/Р¤РЎ РёР· РєРѕРЅС‚РµР№РЅРµСЂР° РЅРµС‚.
 
 import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -16,45 +16,43 @@ import type { DocumentSnapshot } from "../core/tauri";
 import type { HtmlView, HtmlViewProvider, Json, ViewContext, ViewRegistry } from "../viewRegistry";
 import { pluginColor } from "../plugin/pluginColor";
 
-/** Публичный фасад контроллера: перестроение из Rust и освобождение ресурсов. */
+/** РџСѓР±Р»РёС‡РЅС‹Р№ С„Р°СЃР°Рґ РєРѕРЅС‚СЂРѕР»Р»РµСЂР°: РїРµСЂРµСЃС‚СЂРѕРµРЅРёРµ РёР· Rust Рё РѕСЃРІРѕР±РѕР¶РґРµРЅРёРµ СЂРµСЃСѓСЂСЃРѕРІ. */
 export interface PluginViews {
-  /** Запросить список представлений и перестроить вкладки/контейнер. */
+  /** Р—Р°РїСЂРѕСЃРёС‚СЊ СЃРїРёСЃРѕРє РїСЂРµРґСЃС‚Р°РІР»РµРЅРёР№ Рё РїРµСЂРµСЃС‚СЂРѕРёС‚СЊ РІРєР»Р°РґРєРё/РєРѕРЅС‚РµР№РЅРµСЂ. */
   refresh(): Promise<void>;
-  /** Показать первое представление плагина; `false` — у него их нет (no-op). */
+  /** РџРѕРєР°Р·Р°С‚СЊ РїРµСЂРІРѕРµ РїСЂРµРґСЃС‚Р°РІР»РµРЅРёРµ РїР»Р°РіРёРЅР°; `false` вЂ” Сѓ РЅРµРіРѕ РёС… РЅРµС‚ (no-op). */
   openPlugin(pluginId: string): boolean;
-  /** Есть ли у плагина зарегистрированное тир-1 представление. */
+  /** Р•СЃС‚СЊ Р»Рё Сѓ РїР»Р°РіРёРЅР° Р·Р°СЂРµРіРёСЃС‚СЂРёСЂРѕРІР°РЅРЅРѕРµ С‚РёСЂ-1 РїСЂРµРґСЃС‚Р°РІР»РµРЅРёРµ. */
   hasView(pluginId: string): boolean;
-  /** Снять слушатели и очистить вкладки/контейнер. */
+  /** РЎРЅСЏС‚СЊ СЃР»СѓС€Р°С‚РµР»Рё Рё РѕС‡РёСЃС‚РёС‚СЊ РІРєР»Р°РґРєРё/РєРѕРЅС‚РµР№РЅРµСЂ. */
   dispose(): void;
 }
 
-/** Расширение `HtmlView`: HTML приходит событием хоста, а не из снапшота документа. */
+/** Р Р°СЃС€РёСЂРµРЅРёРµ `HtmlView`: HTML РїСЂРёС…РѕРґРёС‚ СЃРѕР±С‹С‚РёРµРј С…РѕСЃС‚Р°, Р° РЅРµ РёР· СЃРЅР°РїС€РѕС‚Р° РґРѕРєСѓРјРµРЅС‚Р°. */
 export interface PluginHtmlView extends HtmlView {
-  /** Применить HTML, присланный плагином (уже санитизирован хостом). */
+  /** РџСЂРёРјРµРЅРёС‚СЊ HTML, РїСЂРёСЃР»Р°РЅРЅС‹Р№ РїР»Р°РіРёРЅРѕРј (СѓР¶Рµ СЃР°РЅРёС‚РёР·РёСЂРѕРІР°РЅ С…РѕСЃС‚РѕРј). */
   applyHtml(html: string): void;
-  /** Активна ли вкладка: активный view пишет в контейнер и обрабатывает клики. */
+  /** РђРєС‚РёРІРЅР° Р»Рё РІРєР»Р°РґРєР°: Р°РєС‚РёРІРЅС‹Р№ view РїРёС€РµС‚ РІ РєРѕРЅС‚РµР№РЅРµСЂ Рё РѕР±СЂР°Р±Р°С‚С‹РІР°РµС‚ РєР»РёРєРё. */
   setActive(active: boolean): void;
 }
 
 export interface PluginViewsOptions {
-  /** Общий реестр представлений: плагинные провайдеры живут рядом с preview. */
+  /** РћР±С‰РёР№ СЂРµРµСЃС‚СЂ РїСЂРµРґСЃС‚Р°РІР»РµРЅРёР№: РїР»Р°РіРёРЅРЅС‹Рµ РїСЂРѕРІР°Р№РґРµСЂС‹ Р¶РёРІСѓС‚ СЂСЏРґРѕРј СЃ preview. */
   registry: ViewRegistry;
-  /** Контекст view (`ViewContext`, §5.4); плагинному тир-1 контенту не нужен. */
+  /** РљРѕРЅС‚РµРєСЃС‚ view (`ViewContext`, В§5.4); РїР»Р°РіРёРЅРЅРѕРјСѓ С‚РёСЂ-1 РєРѕРЅС‚РµРЅС‚Сѓ РЅРµ РЅСѓР¶РµРЅ. */
   ctx: ViewContext;
-  /** `.view-switch` панели предпросмотра (core-вкладка уже в разметке). */
+  /** `.view-switch` РїР°РЅРµР»Рё РїСЂРµРґРїСЂРѕСЃРјРѕС‚СЂР° (core-РІРєР»Р°РґРєР° СѓР¶Рµ РІ СЂР°Р·РјРµС‚РєРµ). */
   switchEl: HTMLElement;
-  /** Контейнер плагинного HTML (`#plugin-view`). */
+  /** РљРѕРЅС‚РµР№РЅРµСЂ РїР»Р°РіРёРЅРЅРѕРіРѕ HTML (`#plugin-view`). */
   containerEl: HTMLElement;
-  /** `#preview` — скрывается, пока активна плагинная вкладка. */
+  /** `#preview` вЂ” СЃРєСЂС‹РІР°РµС‚СЃСЏ, РїРѕРєР° Р°РєС‚РёРІРЅР° РїР»Р°РіРёРЅРЅР°СЏ РІРєР»Р°РґРєР°. */
   previewEl: HTMLElement;
-  /**
-   * Кнопка быстрого возврата к предпросмотру (`#btn-back-preview`); её клик
-   * эквивалентен клику по core-вкладке.
-   */
+
+
   backButtonEl: HTMLElement | null;
-  /** Сообщение в статусбар (ошибки IPC/действия). */
+  /** РЎРѕРѕР±С‰РµРЅРёРµ РІ СЃС‚Р°С‚СѓСЃР±Р°СЂ (РѕС€РёР±РєРё IPC/РґРµР№СЃС‚РІРёСЏ). */
   status(msg: string): void;
-  /** Список представлений обновился (после `render`) — для зависимых панелей. */
+  /** РЎРїРёСЃРѕРє РїСЂРµРґСЃС‚Р°РІР»РµРЅРёР№ РѕР±РЅРѕРІРёР»СЃСЏ (РїРѕСЃР»Рµ `render`) вЂ” РґР»СЏ Р·Р°РІРёСЃРёРјС‹С… РїР°РЅРµР»РµР№. */
   onViewsChanged?(): void;
 }
 
@@ -64,22 +62,18 @@ interface PluginViewRuntime {
   view: PluginHtmlView;
 }
 
-/** Разбор payload из `data-p-*-payload`: JSON, иначе строка, иначе `undefined`. */
+/** Р Р°Р·Р±РѕСЂ payload РёР· `data-p-*-payload`: JSON, РёРЅР°С‡Рµ СЃС‚СЂРѕРєР°, РёРЅР°С‡Рµ `undefined`. */
 function parsePayload(raw: string | null): Json | undefined {
   if (raw === null) return undefined;
   try {
     return JSON.parse(raw) as Json;
   } catch {
-    return raw; // не JSON — передаём плагину как есть
+    return raw; // РЅРµ JSON вЂ” РїРµСЂРµРґР°С‘Рј РїР»Р°РіРёРЅСѓ РєР°Рє РµСЃС‚СЊ
   }
 }
 
-/**
- * `HtmlViewProvider` одного плагинного представления (тир-1, ADR-0022).
- * `kind` — `view_id` (`<plugin_id>:<kind>`): уникален для плагинов с одинаковым
- * `kind`. Возвращаемый `PluginHtmlView` владеет контейнером: пишет HTML и
- * маршрутизирует клики обратно в плагин.
- */
+
+
 function createPluginViewProvider(
   info: PluginViewInfo,
   containerEl: HTMLElement,
@@ -96,14 +90,14 @@ function createPluginViewProvider(
       const onClick = (e: MouseEvent): void => {
         if (!active) return;
         const target = e.target as HTMLElement | null;
-        // Внешние ссылки — системным браузером, как в previewView: иначе WebView
-        // навигируется на чужой ресурс (CSP навигацию верхнего уровня не блокирует).
+
+
         const anchor = target?.closest<HTMLAnchorElement>("a");
         if (anchor) {
           const href = anchor.getAttribute("href") ?? "";
           if (/^https?:/i.test(href)) {
             e.preventDefault();
-            void openUrl(href).catch((err) => status(`Ссылка: ${errorMessage(err)}`));
+            void openUrl(href).catch((err) => status(`РЎСЃС‹Р»РєР°: ${errorMessage(err)}`));
             return;
           }
         }
@@ -114,7 +108,7 @@ function createPluginViewProvider(
         e.preventDefault();
         const payload = parsePayload(el.getAttribute(`data-p-${pluginId}-payload`));
         void pluginViewAction(info.view_id, action, payload).catch((err) =>
-          status(`Плагин: ${errorMessage(err)}`)
+          status(`РџР»Р°РіРёРЅ: ${errorMessage(err)}`)
         );
       };
       containerEl.addEventListener("click", onClick);
@@ -128,7 +122,7 @@ function createPluginViewProvider(
           active = value;
           if (value) containerEl.innerHTML = html;
         },
-        // Контент приходит событием `plugin-views-changed`, а не из документа.
+
         async render(_doc: DocumentSnapshot): Promise<void> {},
         dispose(): void {
           containerEl.removeEventListener("click", onClick);
@@ -141,19 +135,19 @@ function createPluginViewProvider(
 export function createPluginViews(opts: PluginViewsOptions): PluginViews {
   const { registry, ctx, switchEl, containerEl, previewEl, backButtonEl, status } = opts;
 
-  // Активный плагинный view; `null` — активна core-вкладка «Предпросмотр».
+
   let activeViewId: string | null = null;
   const runtimes = new Map<string, PluginViewRuntime>();
   let disposed = false;
-  // Защита от гонок: ответ устаревшего `plugin_views` не должен перетирать свежий.
+
   let refreshSeq = 0;
 
-  // Ошибку установки глушим: в обычном (не плагинном) запуске событий не будет.
+
   const unlistenPromise = listen("plugin-views-changed", () => {
     void refresh();
   }).catch(() => null);
 
-  // Подсветить вкладку: `null` — core, иначе плагинная с данным view_id.
+
   function setActiveTab(viewId: string | null): void {
     for (const tab of switchEl.querySelectorAll<HTMLElement>(".vtab")) {
       const isPlugin = tab.classList.contains("plugin");
@@ -164,7 +158,7 @@ export function createPluginViews(opts: PluginViewsOptions): PluginViews {
     }
   }
 
-  // Вернуться к core-вкладке «Предпросмотр» (container остаётся в DOM, скрыт).
+
   function showPreview(): void {
     activeViewId = null;
     for (const runtime of runtimes.values()) runtime.view.setActive(false);
@@ -174,7 +168,7 @@ export function createPluginViews(opts: PluginViewsOptions): PluginViews {
     setActiveTab(null);
   }
 
-  // Показать плагинное представление (HTML пишет его `HtmlView`).
+
   function showPlugin(viewId: string): void {
     const runtime = runtimes.get(viewId);
     if (!runtime) {
@@ -189,14 +183,14 @@ export function createPluginViews(opts: PluginViewsOptions): PluginViews {
     setActiveTab(viewId);
   }
 
-  // Синхронизирует созданные view с пришедшим списком (регистрация/удаление/HTML).
+
   function syncRuntimes(list: PluginViewInfo[]): void {
     const seen = new Set<string>();
     for (const info of list) {
       seen.add(info.view_id);
       let runtime = runtimes.get(info.view_id);
       if (!runtime) {
-        // Провайдер регистрируется в общем реестре (kind = view_id) и создаётся через него.
+
         const provider = createPluginViewProvider(info, containerEl, status);
         registry.registerHtml(provider);
         const view = registry.createHtmlView<PluginHtmlView>(info.view_id, ctx, {});
@@ -207,7 +201,7 @@ export function createPluginViews(opts: PluginViewsOptions): PluginViews {
       }
       runtime.view.applyHtml(info.html);
     }
-    // Представления, исчезнувшие из списка (выключение/перезагрузка плагина).
+
     for (const [id, runtime] of runtimes) {
       if (!seen.has(id)) {
         runtime.view.dispose();
@@ -217,7 +211,7 @@ export function createPluginViews(opts: PluginViewsOptions): PluginViews {
     }
   }
 
-  // Пересобрать только плагинные вкладки (core-вкладка заморожена H1).
+
   function renderTabs(list: PluginViewInfo[]): void {
     for (const old of switchEl.querySelectorAll<HTMLElement>(".vtab.plugin")) old.remove();
     for (const info of list) {
@@ -234,15 +228,15 @@ export function createPluginViews(opts: PluginViewsOptions): PluginViews {
     }
   }
 
-  // Перестроить вкладки и восстановить активное состояние.
+
   function render(list: PluginViewInfo[]): void {
     syncRuntimes(list);
     renderTabs(list);
-    // Активный плагин исчез (перезагрузка/отключение) — возвращаемся к preview.
+
     if (activeViewId !== null && !runtimes.has(activeViewId)) {
       showPreview();
     } else if (activeViewId !== null) {
-      showPlugin(activeViewId); // контент мог обновиться тем же событием
+      showPlugin(activeViewId); // РєРѕРЅС‚РµРЅС‚ РјРѕРі РѕР±РЅРѕРІРёС‚СЊСЃСЏ С‚РµРј Р¶Рµ СЃРѕР±С‹С‚РёРµРј
     } else {
       showPreview();
     }
@@ -255,10 +249,10 @@ export function createPluginViews(opts: PluginViewsOptions): PluginViews {
     try {
       list = await pluginViews();
     } catch (e) {
-      if (!disposed && seq === refreshSeq) status(`Плагины: ${errorMessage(e)}`);
+      if (!disposed && seq === refreshSeq) status(`РџР»Р°РіРёРЅС‹: ${errorMessage(e)}`);
       return;
     }
-    // Ответ устарел (пришёл refresh новее) или контроллер уже освобождён.
+
     if (disposed || seq !== refreshSeq) return;
     render(list);
   }
@@ -273,7 +267,7 @@ export function createPluginViews(opts: PluginViewsOptions): PluginViews {
 
   switchEl.addEventListener("click", onSwitchClick);
 
-  // Слушатель вешаем только если кнопка присутствует в разметке.
+
   const onBackClick = (): void => showPreview();
   backButtonEl?.addEventListener("click", onBackClick);
 

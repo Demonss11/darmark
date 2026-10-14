@@ -1,24 +1,24 @@
-// logPanel.ts — нижний док (S11, ADR-0029/0030): контроллер режимов
-// «Журнал | Мониторинг | AI-ассистент» плюс тело режима «Журнал» — ring buffer
-// событий на 200 записей, подписка на Tauri-события, бейдж непрочитанных.
-// Записи рендерятся только через textContent (CSP/XSS).
+﻿// logPanel.ts вЂ” РЅРёР¶РЅРёР№ РґРѕРє (S11, ADR-0029/0030): РєРѕРЅС‚СЂРѕР»Р»РµСЂ СЂРµР¶РёРјРѕРІ
+// В«Р–СѓСЂРЅР°Р» | РњРѕРЅРёС‚РѕСЂРёРЅРі | AI-Р°СЃСЃРёСЃС‚РµРЅС‚В» РїР»СЋСЃ С‚РµР»Рѕ СЂРµР¶РёРјР° В«Р–СѓСЂРЅР°Р»В» вЂ” ring buffer
+// СЃРѕР±С‹С‚РёР№ РЅР° 200 Р·Р°РїРёСЃРµР№, РїРѕРґРїРёСЃРєР° РЅР° Tauri-СЃРѕР±С‹С‚РёСЏ, Р±РµР№РґР¶ РЅРµРїСЂРѕС‡РёС‚Р°РЅРЅС‹С….
+// Р—Р°РїРёСЃРё СЂРµРЅРґРµСЂСЏС‚СЃСЏ С‚РѕР»СЊРєРѕ С‡РµСЂРµР· textContent (CSP/XSS).
 //
-// Состояния дока: hidden (нет в layout, дефолт) / collapsed (полоса-шапка) /
-// expanded (тело режима видно). Скрытие — кнопка × (#logs-close) и прогрессивный
-// Esc (развёрнут → свернуть, свёрнут → скрыть; обработчик — shell.ts).
+// РЎРѕСЃС‚РѕСЏРЅРёСЏ РґРѕРєР°: hidden (РЅРµС‚ РІ layout, РґРµС„РѕР»С‚) / collapsed (РїРѕР»РѕСЃР°-С€Р°РїРєР°) /
+// expanded (С‚РµР»Рѕ СЂРµР¶РёРјР° РІРёРґРЅРѕ). РЎРєСЂС‹С‚РёРµ вЂ” РєРЅРѕРїРєР° Г— (#logs-close) Рё РїСЂРѕРіСЂРµСЃСЃРёРІРЅС‹Р№
+// Esc (СЂР°Р·РІС‘СЂРЅСѓС‚ в†’ СЃРІРµСЂРЅСѓС‚СЊ, СЃРІС‘СЂРЅСѓС‚ в†’ СЃРєСЂС‹С‚СЊ; РѕР±СЂР°Р±РѕС‚С‡РёРє вЂ” shell.ts).
 //
-// Фаза 3 (§8 ТЗ): фильтр «Все/Ошибки», очистка ленты, группировка по дате,
-// drag-resize высоты и автопрокрутка с заморозкой.
+// Р¤Р°Р·Р° 3 (В§8 РўР—): С„РёР»СЊС‚СЂ В«Р’СЃРµ/РћС€РёР±РєРёВ», РѕС‡РёСЃС‚РєР° Р»РµРЅС‚С‹, РіСЂСѓРїРїРёСЂРѕРІРєР° РїРѕ РґР°С‚Рµ,
+// drag-resize РІС‹СЃРѕС‚С‹ Рё Р°РІС‚РѕРїСЂРѕРєСЂСѓС‚РєР° СЃ Р·Р°РјРѕСЂРѕР·РєРѕР№.
 
 import { listen, type Event, type UnlistenFn } from "@tauri-apps/api/event";
 
-/** Тяжесть записи журнала (§4.2 ТЗ). */
+/** РўСЏР¶РµСЃС‚СЊ Р·Р°РїРёСЃРё Р¶СѓСЂРЅР°Р»Р° (В§4.2 РўР—). */
 export type LogLevel = "info" | "warn" | "error";
 
-/** Категория — цвет точки и приоритет бейджа. */
+/** РљР°С‚РµРіРѕСЂРёСЏ вЂ” С†РІРµС‚ С‚РѕС‡РєРё Рё РїСЂРёРѕСЂРёС‚РµС‚ Р±РµР№РґР¶Р°. */
 export type LogCategory = "plugin" | "document" | "system";
 
-/** Запись журнала. `message` — человекочитаемый текст, не HTML. */
+/** Р—Р°РїРёСЃСЊ Р¶СѓСЂРЅР°Р»Р°. `message` вЂ” С‡РµР»РѕРІРµРєРѕС‡РёС‚Р°РµРјС‹Р№ С‚РµРєСЃС‚, РЅРµ HTML. */
 export interface LogEntry {
   id: number;
   timestamp: number;
@@ -29,86 +29,78 @@ export interface LogEntry {
 }
 
 export interface LogPanel {
-  /** Текущее состояние видимости дока (hidden/collapsed/expanded). */
+  /** РўРµРєСѓС‰РµРµ СЃРѕСЃС‚РѕСЏРЅРёРµ РІРёРґРёРјРѕСЃС‚Рё РґРѕРєР° (hidden/collapsed/expanded). */
   state(): DockState;
-  /** Текущий активный режим дока. */
+  /** РўРµРєСѓС‰РёР№ Р°РєС‚РёРІРЅС‹Р№ СЂРµР¶РёРј РґРѕРєР°. */
   mode(): DockMode;
-  /** Свернуть раскрытый док до полосы-шапки. */
+  /** РЎРІРµСЂРЅСѓС‚СЊ СЂР°СЃРєСЂС‹С‚С‹Р№ РґРѕРє РґРѕ РїРѕР»РѕСЃС‹-С€Р°РїРєРё. */
   collapse(moveFocus?: boolean): void;
-  /** Полностью скрыть док (убрать из layout). */
+  /** РџРѕР»РЅРѕСЃС‚СЊСЋ СЃРєСЂС‹С‚СЊ РґРѕРє (СѓР±СЂР°С‚СЊ РёР· layout). */
   hide(): void;
-  /**
-   * Открыть/переключить/свернуть режим дока — тот же путь, что триггеры
-   * `#sb-logs`/`#sb-mon`/`#sb-ai` (хоткей `Ctrl+Shift+A` в shell.ts).
-   */
+
+
   toggleMode(next: DockMode): void;
-  /**
-   * Единая точка записи в ленту для внешних модулей (шов ресурс-монитора, TZ §6.5):
-   * те не подписываются на `log-entry` повторно, а отдают готовую запись владельцу ленты.
-   */
+
+
   log(level: LogLevel, category: LogCategory, message: string, detail?: string): void;
   dispose(): void;
 }
 
-/** Режим нижнего дока (ADR-0030): `ai` зарезервирован и не активируется. */
+/** Р РµР¶РёРј РЅРёР¶РЅРµРіРѕ РґРѕРєР° (ADR-0030): `ai` Р·Р°СЂРµР·РµСЂРІРёСЂРѕРІР°РЅ Рё РЅРµ Р°РєС‚РёРІРёСЂСѓРµС‚СЃСЏ. */
 export type DockMode = "logs" | "mon" | "ai";
 
-/** Видимость дока: нет в layout / полоса-шапка / тело режима видно. */
+/** Р’РёРґРёРјРѕСЃС‚СЊ РґРѕРєР°: РЅРµС‚ РІ layout / РїРѕР»РѕСЃР°-С€Р°РїРєР° / С‚РµР»Рѕ СЂРµР¶РёРјР° РІРёРґРЅРѕ. */
 export type DockState = "hidden" | "collapsed" | "expanded";
 
 export interface LogPanelOptions {
-  /** Триггер «Журнал» в статусбаре (#sb-logs): получает aria-expanded/.active. */
+  /** РўСЂРёРіРіРµСЂ В«Р–СѓСЂРЅР°Р»В» РІ СЃС‚Р°С‚СѓСЃР±Р°СЂРµ (#sb-logs): РїРѕР»СѓС‡Р°РµС‚ aria-expanded/.active. */
   trigger: HTMLElement;
-  /** Триггер «Мониторинг» в статусбаре (#sb-mon). */
+  /** РўСЂРёРіРіРµСЂ В«РњРѕРЅРёС‚РѕСЂРёРЅРіВ» РІ СЃС‚Р°С‚СѓСЃР±Р°СЂРµ (#sb-mon). */
   monTrigger: HTMLElement;
-  /** Триггер «AI-ассистент» в статусбаре (#sb-ai). */
+  /** РўСЂРёРіРіРµСЂ В«AI-Р°СЃСЃРёСЃС‚РµРЅС‚В» РІ СЃС‚Р°С‚СѓСЃР±Р°СЂРµ (#sb-ai). */
   aiTrigger: HTMLElement;
-  /** Триггер «AI-ассистент» в тулбаре (#tb-ai). */
+  /** РўСЂРёРіРіРµСЂ В«AI-Р°СЃСЃРёСЃС‚РµРЅС‚В» РІ С‚СѓР»Р±Р°СЂРµ (#tb-ai). */
   aiToolbarTrigger: HTMLElement;
-  /** Бейдж непрочитанных (#log-badge). */
+  /** Р‘РµР№РґР¶ РЅРµРїСЂРѕС‡РёС‚Р°РЅРЅС‹С… (#log-badge). */
   badge: HTMLElement;
-  /**
-   * Смена состояния/режима дока: даёт ресурс-монитору догнать отложенный рендер,
-   * когда вкладка «Мониторинг» активна (шов без обратной зависимости модулей).
-   */
+
+
   onLayoutChange?: () => void;
-  /**
-   * Смена режима/состояния дока для AI-панели (шов без обратной зависимости):
-   * фокус в поле ввода при раскрытии режима AI, закрытие поповера при уходе.
-   */
+
+
   onModeChange?: (mode: DockMode, state: DockState) => void;
 }
 
-/** Фильтр ленты (§4.2 ТЗ, AC-8): «Ошибки» — только warn/error. */
+/** Р¤РёР»СЊС‚СЂ Р»РµРЅС‚С‹ (В§4.2 РўР—, AC-8): В«РћС€РёР±РєРёВ» вЂ” С‚РѕР»СЊРєРѕ warn/error. */
 type LogFilter = "all" | "error";
 
-/** Лимит ring buffer (§4.3): переполнение — молчаливое FIFO-удаление старших. */
+/** Р›РёРјРёС‚ ring buffer (В§4.3): РїРµСЂРµРїРѕР»РЅРµРЅРёРµ вЂ” РјРѕР»С‡Р°Р»РёРІРѕРµ FIFO-СѓРґР°Р»РµРЅРёРµ СЃС‚Р°СЂС€РёС…. */
 const MAX_ENTRIES = 200;
 
-/** Границы высоты панели при drag-resize (§6.1, AC-3). */
+/** Р“СЂР°РЅРёС†С‹ РІС‹СЃРѕС‚С‹ РїР°РЅРµР»Рё РїСЂРё drag-resize (В§6.1, AC-3). */
 const MIN_HEIGHT = 28;
 const MAX_HEIGHT = 520;
 
-/** Допуск «лента прижата к низу», px: больше — считаем, что пользователь ушёл выше. */
+/** Р”РѕРїСѓСЃРє В«Р»РµРЅС‚Р° РїСЂРёР¶Р°С‚Р° Рє РЅРёР·СѓВ», px: Р±РѕР»СЊС€Рµ вЂ” СЃС‡РёС‚Р°РµРј, С‡С‚Рѕ РїРѕР»СЊР·РѕРІР°С‚РµР»СЊ СѓС€С‘Р» РІС‹С€Рµ. */
 const STICK_THRESHOLD = 4;
 
-/** «11 октября» — форматтер создаётся один раз: рендер идёт на каждое событие. */
+/** В«11 РѕРєС‚СЏР±СЂСЏВ» вЂ” С„РѕСЂРјР°С‚С‚РµСЂ СЃРѕР·РґР°С‘С‚СЃСЏ РѕРґРёРЅ СЂР°Р·: СЂРµРЅРґРµСЂ РёРґС‘С‚ РЅР° РєР°Р¶РґРѕРµ СЃРѕР±С‹С‚РёРµ. */
 const DAY_FORMATTER = new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long" });
 
-// Разметка панели — контракт: отсутствие элемента валит сразу.
+
 function byId<T extends HTMLElement>(id: string): T {
   const el = document.getElementById(id);
-  if (!el) throw new Error(`logs-panel: не найден элемент #${id}`);
+  if (!el) throw new Error(`logs-panel: РЅРµ РЅР°Р№РґРµРЅ СЌР»РµРјРµРЅС‚ #${id}`);
   return el as T;
 }
 
-/** Ключ календарного дня в локальной зоне — группировка записей по дате (§6.7). */
+/** РљР»СЋС‡ РєР°Р»РµРЅРґР°СЂРЅРѕРіРѕ РґРЅСЏ РІ Р»РѕРєР°Р»СЊРЅРѕР№ Р·РѕРЅРµ вЂ” РіСЂСѓРїРїРёСЂРѕРІРєР° Р·Р°РїРёСЃРµР№ РїРѕ РґР°С‚Рµ (В§6.7). */
 function dayKey(ts: number): string {
   const d = new Date(ts);
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 }
 
-/** Кламп высоты панели (§6.1): 28–520px. */
+/** РљР»Р°РјРї РІС‹СЃРѕС‚С‹ РїР°РЅРµР»Рё (В§6.1): 28вЂ“520px. */
 function clampHeight(value: number): number {
   return Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, Math.round(value)));
 }
@@ -137,29 +129,29 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
   let unread = 0;
   let unreadErrors = 0;
   let unreadWarnings = 0;
-  // `open` = тело активного режима видно (expanded); скрытое/свёрнутое — false.
-  // Признак «дока нет в layout» живёт в атрибуте panel.hidden (единственный владелец).
+
+
   let open = false;
   let mode: DockMode = "logs";
   let filter: LogFilter = "all";
   let renderQueued = false;
-  // Автопрокрутка (AC-10): пока пользователь сам не прокрутил вверх, лента
-  // «прилипает» к низу — новые записи остаются видимыми без чтения назад вверх.
+
+
   let stick = true;
-  // Программный скролл (рендер, открытие) не должен выглядеть ручной прокруткой.
+
   let programmaticScroll = false;
-  // Подписки асинхронны: если dispose() вызван раньше, чем промис listen()
-  // разрешился, отписку забирает dispose — иначе будет утечка слушателя.
+
+
   let disposed = false;
   const unlisteners: UnlistenFn[] = [];
 
-  // --- запись ---
+
 
   function push(level: LogLevel, category: LogCategory, message: string, detail?: string): void {
     entries.push({ id: nextId++, timestamp: Date.now(), level, category, message, detail });
     if (entries.length > MAX_ENTRIES) entries.splice(0, entries.length - MAX_ENTRIES);
-    // Непрочитанные копятся, пока тело «Журнала» не видно: свёрнутый док или
-    // активный другой режим — событие непрочитано.
+
+
     if (!open || mode !== "logs") {
       unread++;
       if (level === "error") unreadErrors++;
@@ -169,13 +161,13 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
     scheduleRender();
   }
 
-  // --- бейдж непрочитанных (§6.5) ---
+
 
   function updateBadge(): void {
     if (unread > 0) {
       badge.hidden = false;
       badge.textContent = String(unread);
-      badge.setAttribute("aria-label", `Непрочитанных событий: ${unread}`);
+      badge.setAttribute("aria-label", `РќРµРїСЂРѕС‡РёС‚Р°РЅРЅС‹С… СЃРѕР±С‹С‚РёР№: ${unread}`);
       badge.className = "badge" + (unreadErrors > 0 ? " error" : unreadWarnings > 0 ? " warning" : "");
     } else {
       badge.hidden = true;
@@ -184,7 +176,7 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
     }
   }
 
-  /** Лента журнала видима — события прочитаны: сбрасываем счётчики и бейдж (§6.5). */
+  /** Р›РµРЅС‚Р° Р¶СѓСЂРЅР°Р»Р° РІРёРґРёРјР° вЂ” СЃРѕР±С‹С‚РёСЏ РїСЂРѕС‡РёС‚Р°РЅС‹: СЃР±СЂР°СЃС‹РІР°РµРј СЃС‡С‘С‚С‡РёРєРё Рё Р±РµР№РґР¶ (В§6.5). */
   function markRead(): void {
     unread = 0;
     unreadErrors = 0;
@@ -192,21 +184,21 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
     updateBadge();
   }
 
-  // --- режимы и состояние дока (§4.5, ADR-0030) ---
 
-  /** Заголовок шапки по режиму — он же accessible-имя региона (aria-labelledby). */
+
+  /** Р—Р°РіРѕР»РѕРІРѕРє С€Р°РїРєРё РїРѕ СЂРµР¶РёРјСѓ вЂ” РѕРЅ Р¶Рµ accessible-РёРјСЏ СЂРµРіРёРѕРЅР° (aria-labelledby). */
   const MODE_TITLE: Record<DockMode, string> = {
-    logs: "Журнал",
-    mon: "Мониторинг",
-    ai: "AI-ассистент",
+    logs: "Р–СѓСЂРЅР°Р»",
+    mon: "РњРѕРЅРёС‚РѕСЂРёРЅРі",
+    ai: "AI-Р°СЃСЃРёСЃС‚РµРЅС‚",
   };
 
-  // Показать/скрыть режимные поля шапки (`.logs-only`/`.mon-only`/`.ai-only`).
+
   function toggleModeFields(selector: string, show: boolean): void {
     for (const el of panel.querySelectorAll<HTMLElement>(selector)) el.hidden = !show;
   }
 
-  // Отразить активный режим: табы, заголовок, тела вкладок и режимные поля шапки.
+
   function applyMode(): void {
     panel.dataset.mode = mode;
     title.textContent = MODE_TITLE[mode];
@@ -227,37 +219,37 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
     toggleModeFields(".ai-only", isAi);
   }
 
-  // Переключить режим дока (без изменения высоты/свёртки, ADR-0030 §2.2 №7).
+
   function setMode(next: DockMode): void {
     if (next === mode) return;
     mode = next;
     applyMode();
-    // Активация «Журнала» при раскрытом доке = прочтение ленты (§6.5).
+
     if (open && next === "logs") markRead();
     syncTriggers();
     notifyLayout();
   }
 
-  // Единственная точка чтения состояния дока для shell.ts.
+
   function state(): DockState {
     if (panel.hidden) return "hidden";
     return open ? "expanded" : "collapsed";
   }
 
-  /** Триггер статусбара активного режима — точка возврата фокуса (§4.5, ADR-0030 №10). */
+  /** РўСЂРёРіРіРµСЂ СЃС‚Р°С‚СѓСЃР±Р°СЂР° Р°РєС‚РёРІРЅРѕРіРѕ СЂРµР¶РёРјР° вЂ” С‚РѕС‡РєР° РІРѕР·РІСЂР°С‚Р° С„РѕРєСѓСЃР° (В§4.5, ADR-0030 в„–10). */
   function activeTrigger(): HTMLElement {
     if (mode === "mon") return monTrigger;
     if (mode === "ai") return aiTrigger;
     return trigger;
   }
 
-  // Догон отложенного рендера монитора + шов AI-панели после смены состояния/режима.
+
   function notifyLayout(): void {
     opts.onLayoutChange?.();
     opts.onModeChange?.(mode, state());
   }
 
-  // `.active`/`aria-expanded` — только у раскрытого режима.
+
   function syncTriggers(): void {
     const st = state();
     const logsActive = st === "expanded" && mode === "logs";
@@ -273,13 +265,13 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
     aiToolbarTrigger.setAttribute("aria-expanded", String(aiActive));
   }
 
-  // Раскрыть док (тело активного режима видно).
+
   function expand(moveFocus = true): void {
     if (!panel.hidden && open) return;
     panel.hidden = false;
-    // Инлайн-высота принадлежит drag-resize: при программной смене состояния
-    // возвращаемся к токенам высоты (иначе после драга до 28px панель
-    // «развернулась» бы высотой полосы-шапки).
+
+
+
     panel.style.height = "";
     panel.classList.remove("collapsed");
     open = true;
@@ -290,29 +282,29 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
     scrollToBottom();
     syncTriggers();
     notifyLayout();
-    // §7: фокус — на вкладку активного режима (при resize его не вырываем: moveFocus=false).
-    // В режиме AI фокус ставит aiPanel (поле ввода) через onModeChange.
+
+
     if (moveFocus) {
       if (mode === "mon") modeMonBtn.focus({ preventScroll: true });
       else if (mode === "logs") modeLogsBtn.focus({ preventScroll: true });
     }
   }
 
-  // Свернуть док до полосы-шапки (тело скрыто, шапка на месте).
+
   function collapse(moveFocus = true): void {
     if (panel.hidden || !open) return;
-    endResize(); // незавершённый drag не должен пережить свёртку
+    endResize(); // РЅРµР·Р°РІРµСЂС€С‘РЅРЅС‹Р№ drag РЅРµ РґРѕР»Р¶РµРЅ РїРµСЂРµР¶РёС‚СЊ СЃРІС‘СЂС‚РєСѓ
     panel.style.height = "";
     panel.classList.add("collapsed");
     open = false;
     caret.setAttribute("aria-expanded", "false");
     syncTriggers();
     notifyLayout();
-    // Единственная предсказуемая точка возврата фокуса — триггер активного режима.
+
     if (moveFocus) activeTrigger().focus({ preventScroll: true });
   }
 
-  // Дока нет в layout; вернуть его могут триггеры статусбара.
+
   function hide(moveFocus = true): void {
     if (panel.hidden) return;
     endResize();
@@ -323,20 +315,18 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
     caret.setAttribute("aria-expanded", "false");
     syncTriggers();
     notifyLayout();
-    // Фокус не должен остаться на скрытом элементе — вернуть на триггер режима.
+
     if (moveFocus) activeTrigger().focus({ preventScroll: true });
   }
 
-  // Открыть док в указанном режиме (раскрыть + переключить вкладку).
+
   function openMode(next: DockMode): void {
     setMode(next);
     expand(true);
   }
 
-  /**
-   * Триггер статусбара (ADR-0030 §2.2 №9): скрыт/свёрнут → открыть в своём режиме;
-   * раскрыт в другом → переключить; раскрыт в том же → свернуть.
-   */
+
+
   function triggerMode(next: DockMode): void {
     const st = state();
     if (st === "hidden" || st === "collapsed") {
@@ -347,14 +337,14 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
     else setMode(next);
   }
 
-  // Шеврон: свернуть ↔ развернуть (в hidden не бывает — шапка не видна).
+
   function toggleCollapse(): void {
     const st = state();
     if (st === "collapsed") expand(true);
     else if (st === "expanded") collapse(true);
   }
 
-  // --- фильтр и очистка (AC-8, AC-9) ---
+
 
   function setFilter(next: LogFilter): void {
     if (filter === next) return;
@@ -364,7 +354,7 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
       btn.classList.toggle("active", isActive);
       btn.setAttribute("aria-pressed", String(isActive));
     }
-    // Фильтр не трогает ring buffer (§4.3): записи скрываются только на рендере.
+
     render();
   }
 
@@ -378,19 +368,19 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
     render();
   }
 
-  // --- автопрокрутка с заморозкой (AC-10) ---
+
 
   function isNearBottom(): boolean {
     return body.scrollHeight - body.scrollTop - body.clientHeight <= STICK_THRESHOLD;
   }
 
   function scrollToBottom(): void {
-    // Прямое присваивание `scrollTop` — мгновенный переход без анимации: при
-    // prefers-reduced-motion движения не возникает, отдельная ветка не нужна.
+
+
     programmaticScroll = true;
     body.scrollTop = body.scrollHeight;
-    // Сбрасываем флаг следующим кадром: scroll-события программного скролла
-    // приходят до rAF и не должны выглядеть ручной прокруткой.
+
+
     requestAnimationFrame(() => {
       programmaticScroll = false;
     });
@@ -398,15 +388,15 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
 
   function onBodyScroll(): void {
     if (programmaticScroll) return;
-    // Пользователь прокрутил вверх — замораживаем автопрокрутку; вернулся к низу —
-    // прилипание включается снова.
+
+
     stick = isNearBottom();
   }
 
-  // --- рендер (§4.3: по requestAnimationFrame; §4.6: только textContent) ---
+
 
   function scheduleRender(): void {
-    // Панель скрыта — DOM ленты не пересоздаём; при раскрытии expand() рендерит.
+
     if (panel.hidden) return;
     if (renderQueued) return;
     renderQueued = true;
@@ -417,10 +407,10 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
   }
 
   function render(): void {
-    // «Ошибки» — только warn/error (§4.2): info отсекается, сам буфер не меняется.
+
     const visible = filter === "all" ? entries : entries.filter((entry) => entry.level !== "info");
-    // Полная пересборка (§6.2/§7 ТЗ): глушим live-регион на время пересборки, чтобы
-    // скринридер не перечитывал всю ленту заново; возвращаем polite после кадра.
+
+
     list.setAttribute("aria-live", "off");
     list.textContent = "";
     if (visible.length === 0) {
@@ -431,18 +421,18 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
         const day = dayKey(entry.timestamp);
         if (day !== currentDay) {
           currentDay = day;
-          // Разделитель даты — перед первой записью каждого дня (§6.7).
+
           list.appendChild(renderDaySeparator(entry.timestamp));
         }
         list.appendChild(renderItem(entry));
       }
     }
-    // Счётчик показывает видимые (отфильтрованные) записи; при активном фильтре —
-    // «N из M», чтобы не терять общее число (§6.4).
+
+
     count.textContent =
       visible.length === entries.length
         ? String(visible.length)
-        : `${visible.length} из ${entries.length}`;
+        : `${visible.length} РёР· ${entries.length}`;
     if (stick) scrollToBottom();
     requestAnimationFrame(() => list.setAttribute("aria-live", "polite"));
   }
@@ -452,13 +442,13 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
     empty.className = "log-empty";
     const title = document.createElement("div");
     title.className = "log-empty-title";
-    title.textContent = filter === "error" ? "Ошибок и предупреждений нет" : "Событий пока нет";
+    title.textContent = filter === "error" ? "РћС€РёР±РѕРє Рё РїСЂРµРґСѓРїСЂРµР¶РґРµРЅРёР№ РЅРµС‚" : "РЎРѕР±С‹С‚РёР№ РїРѕРєР° РЅРµС‚";
     const hint = document.createElement("div");
     hint.className = "log-empty-hint";
     hint.textContent =
       filter === "error"
-        ? "Переключите фильтр на «Все», чтобы увидеть остальные записи"
-        : "События появятся при работе плагинов и документов";
+        ? "РџРµСЂРµРєР»СЋС‡РёС‚Рµ С„РёР»СЊС‚СЂ РЅР° В«Р’СЃРµВ», С‡С‚РѕР±С‹ СѓРІРёРґРµС‚СЊ РѕСЃС‚Р°Р»СЊРЅС‹Рµ Р·Р°РїРёСЃРё"
+        : "РЎРѕР±С‹С‚РёСЏ РїРѕСЏРІСЏС‚СЃСЏ РїСЂРё СЂР°Р±РѕС‚Рµ РїР»Р°РіРёРЅРѕРІ Рё РґРѕРєСѓРјРµРЅС‚РѕРІ";
     empty.append(title, hint);
     return empty;
   }
@@ -474,9 +464,9 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
     const item = document.createElement("div");
     item.className = "log-item";
     item.dataset.category = entry.category;
-    // Стабильный признак уровня для тестов/ассертов (вместо разбора классов точки).
+
     item.dataset.level = entry.level;
-    // Уровень warn/error перекрывает цвет категории (§6.3).
+
     const dot = document.createElement("span");
     dot.className =
       "log-dot " + (entry.level === "error" ? "error" : entry.level === "warn" ? "warning" : entry.category);
@@ -507,13 +497,13 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
 
   function formatDay(ts: number): string {
     const now = new Date();
-    if (dayKey(ts) === dayKey(now.getTime())) return "Сегодня";
+    if (dayKey(ts) === dayKey(now.getTime())) return "РЎРµРіРѕРґРЅСЏ";
     const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-    if (dayKey(ts) === dayKey(yesterday.getTime())) return "Вчера";
+    if (dayKey(ts) === dayKey(yesterday.getTime())) return "Р’С‡РµСЂР°";
     return DAY_FORMATTER.format(new Date(ts));
   }
 
-  // --- drag-resize (§6.1, AC-3): pointer events + pointer capture ---
+
 
   let resizePointer: number | null = null;
   let resizeStartY = 0;
@@ -527,34 +517,34 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
   }
 
   function onResizePointerDown(event: PointerEvent): void {
-    if (event.button !== 0 || !event.isPrimary) return; // основная кнопка, основной указатель
+    if (event.button !== 0 || !event.isPrimary) return; // РѕСЃРЅРѕРІРЅР°СЏ РєРЅРѕРїРєР°, РѕСЃРЅРѕРІРЅРѕР№ СѓРєР°Р·Р°С‚РµР»СЊ
     resizePointer = event.pointerId;
     resizeStartY = event.clientY;
     resizeStartHeight = Math.max(panel.getBoundingClientRect().height, MIN_HEIGHT);
-    // Захват указателя: дальнейшие move/up приходят на handle даже вне его.
+
     resizeBar.setPointerCapture(event.pointerId);
     panel.classList.add("resizing");
-    // Иначе драг выделяет текст рабочей области под курсором.
+
     document.body.classList.add("logs-resizing");
     event.preventDefault();
   }
 
   function onResizePointerMove(event: PointerEvent): void {
     if (resizePointer !== event.pointerId) return;
-    // Тянем верхнюю кромку: движение вверх увеличивает высоту.
+
     const next = clampHeight(resizeStartHeight + (resizeStartY - event.clientY));
-    // Вытянули из полосы-шапки — панель разворачивается (без переноса фокуса).
+
     if (next > MIN_HEIGHT && !open) expand(false);
     panel.style.height = `${next}px`;
   }
 
   function onResizePointerUp(event: PointerEvent): void {
     if (resizePointer !== event.pointerId) return;
-    // Допуск на субпиксель: высоту задаём целым числом px, но замер может округлиться.
+
     const collapsed = panel.getBoundingClientRect().height <= MIN_HEIGHT + 0.5;
     endResize();
-    // «Схлопнули» до минимума — это и есть свёрнутое состояние (§4.5). Фокус не
-    // переносим: симметрично развороту драгом (moveFocus=false).
+
+
     if (collapsed) collapse(false);
   }
 
@@ -563,13 +553,13 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
     endResize();
   }
 
-  // Страховка: если захват указателя потерян без pointerup/cancel (например, окно
-  // потеряло фокус), состояние драга не должно «залипнуть».
+
+
   function onResizeLostCapture(): void {
     endResize();
   }
 
-  // --- обработчики панели ---
+
 
   function onFilterClick(event: MouseEvent): void {
     const btn = event.currentTarget;
@@ -578,14 +568,14 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
     if (value === "all" || value === "error") setFilter(value);
   }
 
-  // Триггеры статусбара (#sb-logs/#sb-mon) — владелец режимов здесь, а не в shell:
-  // логика троицы «открыть в своём режиме / переключить / свернуть» (ADR-0030 №9).
+
+
   const onLogsTriggerClick = (): void => triggerMode("logs");
   const onMonTriggerClick = (): void => triggerMode("mon");
   const onAiTriggerClick = (): void => triggerMode("ai");
   const onAiToolbarClick = (): void => triggerMode("ai");
   const onCaretClick = (): void => toggleCollapse();
-  // × — единственный явный возврат в `hidden` (п.1 бага).
+
   const onCloseClick = (): void => hide();
   const onModeLogsClick = (): void => setMode("logs");
   const onModeMonClick = (): void => setMode("mon");
@@ -609,13 +599,13 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
   body.addEventListener("scroll", onBodyScroll);
   for (const btn of filterButtons) btn.addEventListener("click", onFilterClick);
 
-  // --- события (Фаза 1: существующие, §5.1 ТЗ) ---
 
-  /** Подписка на Tauri-событие с сохранением функции отписки. */
+
+  /** РџРѕРґРїРёСЃРєР° РЅР° Tauri-СЃРѕР±С‹С‚РёРµ СЃ СЃРѕС…СЂР°РЅРµРЅРёРµРј С„СѓРЅРєС†РёРё РѕС‚РїРёСЃРєРё. */
   function subscribe<T>(event: string, handler: (e: Event<T>) => void): void {
     void listen<T>(event, handler)
       .then((un) => {
-        // dispose() уже прошёл — отписываемся немедленно, не копим висячий слушатель.
+
         if (disposed) un();
         else unlisteners.push(un);
       })
@@ -624,21 +614,21 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
 
   subscribe<{ plugin_id: string; text: string }>("plugin-message", (event) => {
     const { plugin_id, text } = event.payload;
-    push("info", "plugin", `Плагин «${plugin_id}»: ${text}`);
+    push("info", "plugin", `РџР»Р°РіРёРЅ В«${plugin_id}В»: ${text}`);
   });
   subscribe<{ doc_id: string; rev: number }>("document-updated", (event) => {
-    push("info", "document", `Документ обновлён (rev=${event.payload.rev})`);
+    push("info", "document", `Р”РѕРєСѓРјРµРЅС‚ РѕР±РЅРѕРІР»С‘РЅ (rev=${event.payload.rev})`);
   });
   subscribe<unknown>("plugins-changed", () => {
-    push("info", "plugin", "Плагины: обновлён список или статус");
+    push("info", "plugin", "РџР»Р°РіРёРЅС‹: РѕР±РЅРѕРІР»С‘РЅ СЃРїРёСЃРѕРє РёР»Рё СЃС‚Р°С‚СѓСЃ");
   });
   subscribe<unknown>("plugin-views-changed", () => {
-    push("info", "system", "Представления обновлены");
+    push("info", "system", "РџСЂРµРґСЃС‚Р°РІР»РµРЅРёСЏ РѕР±РЅРѕРІР»РµРЅС‹");
   });
 
-  // --- новые события (Фаза 2: Rust-события, §5.2 ТЗ, ADR-0029 §2.4) ---
 
-  /** Переход статуса плагина: «плагин X: active → failed» (+ message в detail). */
+
+  /** РџРµСЂРµС…РѕРґ СЃС‚Р°С‚СѓСЃР° РїР»Р°РіРёРЅР°: В«РїР»Р°РіРёРЅ X: active в†’ failedВ» (+ message РІ detail). */
   subscribe<{
     plugin_id: string;
     old_state: string;
@@ -647,36 +637,36 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
   }>("plugin-status-changed", (event) => {
     const { plugin_id, old_state, new_state, message } = event.payload;
     const level = new_state === "failed" ? "error" : new_state === "quarantined" ? "warn" : "info";
-    push(level, "plugin", `Плагин «${plugin_id}»: ${old_state} → ${new_state}`, message);
+    push(level, "plugin", `РџР»Р°РіРёРЅ В«${plugin_id}В»: ${old_state} в†’ ${new_state}`, message);
   });
 
-  /** Действие пользователя над документом: new/open/save/close (§5.2). */
+  /** Р”РµР№СЃС‚РІРёРµ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ РЅР°Рґ РґРѕРєСѓРјРµРЅС‚РѕРј: new/open/save/close (В§5.2). */
   subscribe<{
     type: "new" | "open" | "save" | "close";
     path?: string;
     rev?: number;
   }>("document-event", (event) => {
     const { type, path, rev } = event.payload;
-    const name = path ? ` «${path}»` : "";
+    const name = path ? ` В«${path}В»` : "";
     let message: string;
     switch (type) {
       case "new":
-        message = "Создан новый документ";
+        message = "РЎРѕР·РґР°РЅ РЅРѕРІС‹Р№ РґРѕРєСѓРјРµРЅС‚";
         break;
       case "open":
-        message = `Открыт файл${name}`;
+        message = `РћС‚РєСЂС‹С‚ С„Р°Р№Р»${name}`;
         break;
       case "save":
-        message = `Сохранён файл${name}`;
+        message = `РЎРѕС…СЂР°РЅС‘РЅ С„Р°Р№Р»${name}`;
         break;
       case "close":
-        message = `Закрыт файл${name}`;
+        message = `Р—Р°РєСЂС‹С‚ С„Р°Р№Р»${name}`;
         break;
     }
     push("info", "document", message, rev !== undefined ? `rev=${rev}` : undefined);
   });
 
-  /** Сообщение журнала от Rust (host.log из Lua, ошибки IPC). */
+  /** РЎРѕРѕР±С‰РµРЅРёРµ Р¶СѓСЂРЅР°Р»Р° РѕС‚ Rust (host.log РёР· Lua, РѕС€РёР±РєРё IPC). */
   subscribe<{
     level: "info" | "warn" | "error";
     category: "plugin" | "document" | "system";
@@ -686,7 +676,7 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
     push(level, category, message);
   });
 
-  // Начальное состояние: разметка уже в режиме «Журнал», синхронизируем табы/поля/триггеры.
+
   applyMode();
   syncTriggers();
 
@@ -698,7 +688,7 @@ export function createLogPanel(opts: LogPanelOptions): LogPanel {
     toggleMode: triggerMode,
     log: push,
     dispose(): void {
-      disposed = true; // до очистки: pending-listen увидит флаг и отпишется сам
+      disposed = true; // РґРѕ РѕС‡РёСЃС‚РєРё: pending-listen СѓРІРёРґРёС‚ С„Р»Р°Рі Рё РѕС‚РїРёС€РµС‚СЃСЏ СЃР°Рј
       for (const un of unlisteners) un();
       unlisteners.length = 0;
       caret.removeEventListener("click", onCaretClick);

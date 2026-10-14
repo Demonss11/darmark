@@ -1,27 +1,27 @@
-// tables.ts — Excel-подобное поведение таблиц в предпросмотре:
-// сортировка по клику на заголовок, глобальный поиск и фильтры значений по колонкам.
-// Всё живёт на фронтенде (TS), ядро md-core не трогается.
+﻿// tables.ts вЂ” Excel-РїРѕРґРѕР±РЅРѕРµ РїРѕРІРµРґРµРЅРёРµ С‚Р°Р±Р»РёС† РІ РїСЂРµРґРїСЂРѕСЃРјРѕС‚СЂРµ:
+// СЃРѕСЂС‚РёСЂРѕРІРєР° РїРѕ РєР»РёРєСѓ РЅР° Р·Р°РіРѕР»РѕРІРѕРє, РіР»РѕР±Р°Р»СЊРЅС‹Р№ РїРѕРёСЃРє Рё С„РёР»СЊС‚СЂС‹ Р·РЅР°С‡РµРЅРёР№ РїРѕ РєРѕР»РѕРЅРєР°Рј.
+// Р’СЃС‘ Р¶РёРІС‘С‚ РЅР° С„СЂРѕРЅС‚РµРЅРґРµ (TS), СЏРґСЂРѕ md-core РЅРµ С‚СЂРѕРіР°РµС‚СЃСЏ.
 
 interface TableState {
-  sortCol: number | null;   // индекс сортируемой колонки
-  sortDir: 1 | -1;          // 1 = возрастание, -1 = убывание
-  global: string;           // строка глобального поиска
-  colFilters: Map<number, Set<string>>; // фильтр «разрешённые значения» по колонке
+  sortCol: number | null;   // РёРЅРґРµРєСЃ СЃРѕСЂС‚РёСЂСѓРµРјРѕР№ РєРѕР»РѕРЅРєРё
+  sortDir: 1 | -1;          // 1 = РІРѕР·СЂР°СЃС‚Р°РЅРёРµ, -1 = СѓР±С‹РІР°РЅРёРµ
+  global: string;           // СЃС‚СЂРѕРєР° РіР»РѕР±Р°Р»СЊРЅРѕРіРѕ РїРѕРёСЃРєР°
+  colFilters: Map<number, Set<string>>; // С„РёР»СЊС‚СЂ В«СЂР°Р·СЂРµС€С‘РЅРЅС‹Рµ Р·РЅР°С‡РµРЅРёСЏВ» РїРѕ РєРѕР»РѕРЅРєРµ
 }
 
 interface TableEntry {
-  wrap: HTMLElement;              // .table-enhanced (панель инструментов + обёртка со скроллом)
+  wrap: HTMLElement;              // .table-enhanced (РїР°РЅРµР»СЊ РёРЅСЃС‚СЂСѓРјРµРЅС‚РѕРІ + РѕР±С‘СЂС‚РєР° СЃРѕ СЃРєСЂРѕР»Р»РѕРј)
   table: HTMLTableElement;
   state: TableState;
-  baseOrder: HTMLTableRowElement[]; // исходный порядок строк из markdown — для возврата без сортировки
-  kinds: ("num" | "date" | "str")[]; // типы колонок: считаем один раз при enhance (P2.1)
+  baseOrder: HTMLTableRowElement[]; // РёСЃС…РѕРґРЅС‹Р№ РїРѕСЂСЏРґРѕРє СЃС‚СЂРѕРє РёР· markdown вЂ” РґР»СЏ РІРѕР·РІСЂР°С‚Р° Р±РµР· СЃРѕСЂС‚РёСЂРѕРІРєРё
+  kinds: ("num" | "date" | "str")[]; // С‚РёРїС‹ РєРѕР»РѕРЅРѕРє: СЃС‡РёС‚Р°РµРј РѕРґРёРЅ СЂР°Р· РїСЂРё enhance (P2.1)
 }
 
 const registry = new WeakMap<HTMLTableElement, TableEntry>();
 
-// ---------- эвристика типов данных (как в Excel: число/дата/текст) ----------
 
-const NUM_RE = /^[-+]?\d{1,3}([ \u00A0\u202F]\d{3})*([.,]\d+)?\s*[%€$₽]?$|^[-+]?\d+([.,]\d+)?\s*[%€$₽]?$/;
+
+const NUM_RE = /^[-+]?\d{1,3}([ \u00A0\u202F]\d{3})*([.,]\d+)?\s*[%в‚¬$в‚Ѕ]?$|^[-+]?\d+([.,]\d+)?\s*[%в‚¬$в‚Ѕ]?$/;
 const DATE_RE = /^\d{1,2}[./-]\d{1,2}[./-]\d{2,4}$|^\d{4}-\d{1,2}-\d{1,2}([ T]\d{1,2}[:.]\d{2}([:.]\d{2})?)?$/;
 
 function parseNumber(s: string): number | null {
@@ -30,7 +30,7 @@ function parseNumber(s: string): number | null {
   const cleaned = t
     .replace(/[\s\u00A0\u202F]/g, "")
     .replace(/[%,]/g, ".")
-    .replace(/(\d)\.(\d)(?=.*\.)/g, "$1$2"); // «1.234,56»: разделители тысяч схлопываем
+    .replace(/(\d)\.(\d)(?=.*\.)/g, "$1$2"); // В«1.234,56В»: СЂР°Р·РґРµР»РёС‚РµР»Рё С‚С‹СЃСЏС‡ СЃС…Р»РѕРїС‹РІР°РµРј
   const n = parseFloat(cleaned.replace(",", "."));
   return Number.isFinite(n) ? n : null;
 }
@@ -39,7 +39,7 @@ function parseDate(s: string): number | null {
   const t = s.trim();
   if (!DATE_RE.test(t)) return null;
   let iso = t.replace(" ", "T");
-  // dd.mm.yyyy → yyyy-mm-dd (европейский формат)
+
   const m = /^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/.exec(iso);
   if (m) iso = `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
   else {
@@ -61,12 +61,12 @@ function toCellValue(raw: string): CellValue {
   return { kind: "str", num: 0, str: s.toLowerCase() };
 }
 
-// Тип колонки: если ≥70% непустых значений одного типа — сортируем как числа/даты.
+
 function detectColumnKind(values: string[]): "num" | "date" | "str" {
   let num = 0, date = 0, nonEmpty = 0;
   for (const v of values) {
     const c = toCellValue(v);
-    if (!c.str) continue; // пустая ячейка не учитывается
+    if (!c.str) continue; // РїСѓСЃС‚Р°СЏ СЏС‡РµР№РєР° РЅРµ СѓС‡РёС‚С‹РІР°РµС‚СЃСЏ
     nonEmpty++;
     if (c.kind === "num") num++;
     else if (c.kind === "date") date++;
@@ -77,7 +77,7 @@ function detectColumnKind(values: string[]): "num" | "date" | "str" {
   return "str";
 }
 
-// ---------- доступ к данным таблицы ----------
+
 
 function cellText(td: HTMLElement | undefined): string {
   return td?.textContent ?? "";
@@ -93,7 +93,7 @@ function bodyRows(table: HTMLTableElement): HTMLTableRowElement[] {
   return Array.from(table.tBodies).flatMap((tb) => Array.from(tb.rows));
 }
 
-// ---------- фильтрация ----------
+
 
 function rowMatches(row: HTMLTableRowElement, st: TableState): boolean {
   const gq = st.global.trim().toLowerCase();
@@ -109,7 +109,7 @@ function rowMatches(row: HTMLTableRowElement, st: TableState): boolean {
   return true;
 }
 
-// ---------- сравнение ячеек с учётом типа колонки ----------
+
 
 function compareCells(a: string, b: string, kind: "num" | "date" | "str"): number {
   if (kind === "str") {
@@ -118,14 +118,14 @@ function compareCells(a: string, b: string, kind: "num" | "date" | "str"): numbe
   const ca = toCellValue(a), cb = toCellValue(b);
   const aOk = ca.kind === kind, bOk = cb.kind === kind;
   if (aOk && bOk) return ca.num - cb.num;
-  if (aOk !== bOk) return aOk ? -1 : 1; // распознанные значения идут первыми
+  if (aOk !== bOk) return aOk ? -1 : 1; // СЂР°СЃРїРѕР·РЅР°РЅРЅС‹Рµ Р·РЅР°С‡РµРЅРёСЏ РёРґСѓС‚ РїРµСЂРІС‹РјРё
   if (!ca.str && !cb.str) return 0;
-  if (!ca.str) return 1; // пустые — в конце
+  if (!ca.str) return 1; // РїСѓСЃС‚С‹Рµ вЂ” РІ РєРѕРЅС†Рµ
   if (!cb.str) return -1;
   return ca.str.localeCompare(cb.str, undefined, { numeric: true, sensitivity: "base" });
 }
 
-// ---------- применение состояния к DOM ----------
+
 
 function apply(entry: TableEntry) {
   const { table, state: st } = entry;
@@ -133,10 +133,10 @@ function apply(entry: TableEntry) {
   const rows = bodyRows(table);
   const colCount = headers.length || (rows[0]?.cells.length ?? 0);
 
-  // Типы колонок посчитаны один раз в enhance() — на клик не пересчитываем (P2.1)
+
   const kinds = entry.kinds;
 
-  // 1. видимость строк (поиск + фильтры по колонкам)
+
   let visible = 0;
   for (const r of rows) {
     const show = rowMatches(r, st);
@@ -144,7 +144,7 @@ function apply(entry: TableEntry) {
     if (show) visible++;
   }
 
-  // 2. порядок строк: сортировка либо возврат к исходному порядку из markdown
+
   const tbody = table.tBodies[0] ?? (table as unknown as HTMLElement);
   if (st.sortCol !== null && st.sortCol < colCount) {
     const col = st.sortCol;
@@ -156,11 +156,11 @@ function apply(entry: TableEntry) {
     });
     for (const { r } of idx) tbody.appendChild(r);
   } else {
-    // «без сортировки» = именно исходный порядок, а не инверсия предыдущей сортировки
+
     for (const r of entry.baseOrder) tbody.appendChild(r);
   }
 
-  // 3. индикаторы состояний в заголовках (+ aria-sort для скринридеров, M3)
+
   headers.forEach((th, i) => {
     const dir = st.sortCol === i ? st.sortDir : 0;
     th.classList.toggle("sorted-asc", dir === 1);
@@ -172,22 +172,22 @@ function apply(entry: TableEntry) {
     );
   });
 
-  // 4. счётчик строк в панели инструментов
+
   const counter = entry.wrap.querySelector<HTMLElement>(".table-count");
   if (counter) {
     counter.textContent =
-      visible === rows.length ? `${rows.length} строк` : `${visible} из ${rows.length}`;
+      visible === rows.length ? `${rows.length} СЃС‚СЂРѕРє` : `${visible} РёР· ${rows.length}`;
     counter.classList.toggle("active", visible !== rows.length);
   }
 
-  // 5. кнопка сброса активна только когда что-то применено
+
   const reset = entry.wrap.querySelector<HTMLButtonElement>(".table-reset");
   if (reset) {
     reset.disabled = st.sortCol === null && !st.global && st.colFilters.size === 0;
   }
 }
 
-// ---------- панель инструментов над таблицей ----------
+
 
 function makeTools(entryRef: { current: TableEntry | null }): HTMLElement {
   const bar = document.createElement("div");
@@ -196,10 +196,10 @@ function makeTools(entryRef: { current: TableEntry | null }): HTMLElement {
   const search = document.createElement("input");
   search.type = "search";
   search.className = "table-search";
-  search.placeholder = "Поиск по таблице…";
-  // Доступное имя + отключение автозаполнения: поле вне формы, иначе WebView
-  // может предлагать сохранённые значения (M4).
-  search.setAttribute("aria-label", "Поиск по таблице");
+  search.placeholder = "РџРѕРёСЃРє РїРѕ С‚Р°Р±Р»РёС†РµвЂ¦";
+
+
+  search.setAttribute("aria-label", "РџРѕРёСЃРє РїРѕ С‚Р°Р±Р»РёС†Рµ");
   search.autocomplete = "off";
   search.addEventListener("input", () => {
     const e = entryRef.current!;
@@ -213,8 +213,8 @@ function makeTools(entryRef: { current: TableEntry | null }): HTMLElement {
   const reset = document.createElement("button");
   reset.type = "button";
   reset.className = "table-reset";
-  reset.textContent = "Сбросить";
-  reset.title = "Снять сортировку, поиск и все фильтры";
+  reset.textContent = "РЎР±СЂРѕСЃРёС‚СЊ";
+  reset.title = "РЎРЅСЏС‚СЊ СЃРѕСЂС‚РёСЂРѕРІРєСѓ, РїРѕРёСЃРє Рё РІСЃРµ С„РёР»СЊС‚СЂС‹";
   reset.addEventListener("click", () => {
     const e = entryRef.current!;
     e.state.sortCol = null;
@@ -229,12 +229,12 @@ function makeTools(entryRef: { current: TableEntry | null }): HTMLElement {
   return bar;
 }
 
-// ---------- выпадающий фильтр значений колонки (в духе Excel) ----------
-//
-// Состояние меню (открытый список, mousedown-слушатель, счётчик якорей) живёт
-// в ЭКЗЕМПЛЯРЕ контроллера (Фаза 5), а не в модуле: у каждого preview свой
-// `openMenu`/`outsideHandler`/`anchorSeq`, `dispose()` убирает меню из
-// `document.body` и слушатель скролла (§5.6). Раньше это были модульные синглтоны.
+
+
+
+
+
+
 
 interface MenuController {
   close(): void;
@@ -249,8 +249,8 @@ function createMenuController(): MenuController {
   let escapeHandler: ((e: KeyboardEvent) => void) | null = null;
   let anchorSeq = 0;
 
-  // restoreFocus — только для Escape: клик снаружи/скролл не должны перехватывать
-  // фокус у пользователя, а Escape обязан вернуть его на воронку (M5).
+
+
   function closeMenu(restoreFocus = false) {
     const anchor = openAnchor;
     openMenu?.remove();
@@ -272,7 +272,7 @@ function createMenuController(): MenuController {
     const items = Array.from(menu.querySelectorAll<HTMLElement>(".col-filter-item"));
     const checked = items.filter((el) => (el.querySelector("input") as HTMLInputElement).checked);
     if (items.length === 0 || checked.length === items.length) {
-      entry.state.colFilters.delete(col); // все значения выбраны = фильтр снят
+      entry.state.colFilters.delete(col); // РІСЃРµ Р·РЅР°С‡РµРЅРёСЏ РІС‹Р±СЂР°РЅС‹ = С„РёР»СЊС‚СЂ СЃРЅСЏС‚
     } else {
       entry.state.colFilters.set(col, new Set(checked.map((el) => el.dataset.value ?? "")));
     }
@@ -283,15 +283,15 @@ function createMenuController(): MenuController {
     const wasOpenForSame =
       openMenu?.dataset.anchor === anchor.getAttribute("data-anchor-id");
     closeMenu();
-    if (wasOpenForSame) return; // повторный клик по той же воронке — закрыть
+    if (wasOpenForSame) return; // РїРѕРІС‚РѕСЂРЅС‹Р№ РєР»РёРє РїРѕ С‚РѕР№ Р¶Рµ РІРѕСЂРѕРЅРєРµ вЂ” Р·Р°РєСЂС‹С‚СЊ
 
     const menu = document.createElement("div");
     menu.className = "col-filter-menu";
-    // role=dialog + aria-label: немодальный поповер (клик снаружи закрывает).
-    // aria-modal НЕ ставим — фокус не запирается, фон не инертен; ложная
-    // модальность путала бы скринридеры (M5).
+
+
+
     menu.setAttribute("role", "dialog");
-    menu.setAttribute("aria-label", anchor.getAttribute("aria-label") ?? "Фильтр по столбцу");
+    menu.setAttribute("aria-label", anchor.getAttribute("aria-label") ?? "Р¤РёР»СЊС‚СЂ РїРѕ СЃС‚РѕР»Р±С†Сѓ");
     menu.setAttribute("data-anchor", anchor.getAttribute("data-anchor-id") ?? "");
 
     const uniq = new Map<string, number>();
@@ -307,8 +307,8 @@ function createMenuController(): MenuController {
 
     const mini = document.createElement("input");
     mini.type = "search";
-    mini.setAttribute("aria-label", "Поиск значения");
-    mini.placeholder = "Найти значение…";
+    mini.setAttribute("aria-label", "РџРѕРёСЃРє Р·РЅР°С‡РµРЅРёСЏ");
+    mini.placeholder = "РќР°Р№С‚Рё Р·РЅР°С‡РµРЅРёРµвЂ¦";
     mini.autocomplete = "off";
     mini.addEventListener("input", () => {
       const q = mini.value.toLowerCase();
@@ -337,7 +337,7 @@ function createMenuController(): MenuController {
     if (allValues.length === 0) {
       const empty = document.createElement("div");
       empty.className = "col-filter-empty";
-      empty.textContent = "Нет данных";
+      empty.textContent = "РќРµС‚ РґР°РЅРЅС‹С…";
       list.appendChild(empty);
     }
 
@@ -353,13 +353,13 @@ function createMenuController(): MenuController {
     const setAll = (on: boolean) => {
       for (const cb of menu.querySelectorAll<HTMLInputElement>(".col-filter-item input")) {
         const item = cb.closest(".col-filter-item") as HTMLElement;
-        if (!item.hidden) cb.checked = on; // как в Excel: влияет только на видимые
+        if (!item.hidden) cb.checked = on; // РєР°Рє РІ Excel: РІР»РёСЏРµС‚ С‚РѕР»СЊРєРѕ РЅР° РІРёРґРёРјС‹Рµ
       }
       syncFromCheckboxes(menu, entry, col);
     };
     footer.append(
-      mkBtn("Все", () => setAll(true)),
-      mkBtn("Ничего", () => setAll(false)),
+      mkBtn("Р’СЃРµ", () => setAll(true)),
+      mkBtn("РќРёС‡РµРіРѕ", () => setAll(false)),
     );
 
     menu.append(mini, list, footer);
@@ -369,7 +369,7 @@ function createMenuController(): MenuController {
     const w = 260;
     menu.style.position = "fixed";
     menu.style.left = Math.max(4, Math.min(rect.left, window.innerWidth - w - 8)) + "px";
-    // Флип у нижней границы окна: если поповер не помещается вниз — раскрываем вверх.
+
     const below = rect.bottom + 2;
     menu.style.top =
       (below + menu.offsetHeight > window.innerHeight - 8
@@ -385,8 +385,8 @@ function createMenuController(): MenuController {
     };
     document.addEventListener("mousedown", outsideHandler, true);
 
-    // Слушаем в capture и гасим событие, иначе Escape заодно переключил бы
-    // режим инспектора.
+
+
     escapeHandler = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       e.preventDefault();
@@ -399,13 +399,13 @@ function createMenuController(): MenuController {
   return { close: closeMenu, open: openFilterMenu, nextAnchorId: () => ++anchorSeq };
 }
 
-// ---------- украшение одной таблицы ----------
+
 
 function enhance(table: HTMLTableElement, menu: MenuController) {
   if (registry.has(table)) return;
 
   const headers = headerCells(table);
-  // Без thead сортировать и фильтровать нечего
+
   if (headers.length === 0) return;
 
   const entryRef: { current: TableEntry | null } = { current: null };
@@ -437,33 +437,33 @@ function enhance(table: HTMLTableElement, menu: MenuController) {
   entryRef.current = entry;
   registry.set(table, entry);
 
-  // клик по заголовку: без сортировки → ↑ → ↓ → без сортировки
+
   headers.forEach((th, i) => {
-    // th сохраняет нативную роль columnheader: роль не подменяем, а сортировку
-    // вешаем на вложенную кнопку — интерактив обязан быть настоящей кнопкой
-    // (Enter/Space и доступное имя «из коробки», M3).
+
+
+
     const thLabel = th.textContent?.trim() ?? "";
     const sortBtn = document.createElement("button");
     sortBtn.type = "button";
     sortBtn.className = "col-sort-btn";
     if (th.querySelector("a, button, input, select, textarea, label")) {
-      // Заголовок со ссылкой/контролом: не вкладываем интерактив в <button> —
-      // это невалидный DOM и делает ссылку недостижимой с клавиатуры. Ставим
-      // кнопку сортировки рядом с содержимым отдельным значком.
-      sortBtn.textContent = "↕";
+
+
+
+      sortBtn.textContent = "в†•";
       th.appendChild(sortBtn);
     } else {
-      while (th.firstChild) sortBtn.appendChild(th.firstChild); // сохраняем inline-разметку
+      while (th.firstChild) sortBtn.appendChild(th.firstChild); // СЃРѕС…СЂР°РЅСЏРµРј inline-СЂР°Р·РјРµС‚РєСѓ
       th.appendChild(sortBtn);
     }
-    sortBtn.setAttribute("aria-label", `Сортировать по столбцу «${thLabel}»`);
+    sortBtn.setAttribute("aria-label", `РЎРѕСЂС‚РёСЂРѕРІР°С‚СЊ РїРѕ СЃС‚РѕР»Р±С†Сѓ В«${thLabel}В»`);
 
     const funnel = document.createElement("button");
     funnel.type = "button";
     funnel.className = "col-filter-btn";
-    funnel.textContent = "▾";
-    funnel.title = "Фильтр по столбцу";
-    funnel.setAttribute("aria-label", `Фильтр по столбцу «${thLabel}»`);
+    funnel.textContent = "в–ѕ";
+    funnel.title = "Р¤РёР»СЊС‚СЂ РїРѕ СЃС‚РѕР»Р±С†Сѓ";
+    funnel.setAttribute("aria-label", `Р¤РёР»СЊС‚СЂ РїРѕ СЃС‚РѕР»Р±С†Сѓ В«${thLabel}В»`);
     funnel.setAttribute("aria-expanded", "false");
     funnel.setAttribute("data-anchor-id", String(menu.nextAnchorId()));
     funnel.addEventListener("click", (ev) => {
@@ -484,29 +484,29 @@ function enhance(table: HTMLTableElement, menu: MenuController) {
   apply(entry);
 }
 
-// ---------- публичный API: экземпляр-контроллер (§5.6) ----------
+
 
 export interface TablesController {
-  /** Украсить все таблицы под корнем (идемпотентно: registry по элементу). */
+  /** РЈРєСЂР°СЃРёС‚СЊ РІСЃРµ С‚Р°Р±Р»РёС†С‹ РїРѕРґ РєРѕСЂРЅРµРј (РёРґРµРјРїРѕС‚РµРЅС‚РЅРѕ: registry РїРѕ СЌР»РµРјРµРЅС‚Сѓ). */
   enhance(): void;
-  /** Закрыть меню фильтра и снять слушатель скролла — без висячих узлов в body. */
+  /** Р—Р°РєСЂС‹С‚СЊ РјРµРЅСЋ С„РёР»СЊС‚СЂР° Рё СЃРЅСЏС‚СЊ СЃР»СѓС€Р°С‚РµР»СЊ СЃРєСЂРѕР»Р»Р° вЂ” Р±РµР· РІРёСЃСЏС‡РёС… СѓР·Р»РѕРІ РІ body. */
   dispose(): void;
 }
 
 export function createTablesController(root: HTMLElement): TablesController {
   const menu = createMenuController();
-  // Меню фильтра — position:fixed; при прокрутке предпросмотра «отъезжает»,
-  // поэтому закрываем его на scroll (один слушатель на контроллер).
+
+
   const onScroll = () => menu.close();
   root.addEventListener("scroll", onScroll, { passive: true });
   return {
     enhance() {
-      // Перерисовка предпросмотра заменяет DOM таблиц целиком — открытый поповер
-      // фильтра привязан к прежней воронке, поэтому закрываем его (M5).
+
+
       menu.close();
-      // YAML-шапка (md-core::frontmatter) — это метаданные, а не датасет:
-      // сортировка/поиск/фильтры там неуместны, поэтому таблицы с классом
-      // `md-frontmatter` (включая вложенные) не украшаем.
+
+
+
       for (const table of root.querySelectorAll<HTMLTableElement>(
         "table:not(.md-frontmatter)",
       )) {
@@ -519,4 +519,3 @@ export function createTablesController(root: HTMLElement): TablesController {
     },
   };
 }
-
