@@ -283,11 +283,11 @@ mod tests {
     /// `<script` и `javascript:`, сохранив безопасную разметку.
     #[test]
     fn render_markdown_sanitizes_ai_answer() {
-        // Отступы-пустые строки в payload — не украшение: строка с сырым HTML открывает
-        // общий CommonMark HTML-блок, который поглощает всё до первой пустой строки, и
-        // следующая за ним разметка Markdown непарсилась бы (ADR-0038 §2.5 приводит
-        // блоки слитно). С разделителями `[клик](javascript:…)` действительно становится
-        // ссылкой — её `href` срезает allowlist, а не остаётся текстом.
+        // Пустые строки в payload обязательны (ADR-0038 §2.5): строка с сырым HTML открывает
+        // общий HTML-блок CommonMark, который поглощает всё до первой пустой строки — разметка
+        // после него осталась бы текстом. Проверено на pulldown-cmark 0.13: без разделителей
+        // `[клик](javascript:…)` не становится ссылкой, а `**жирный**`/`код`` не парсятся.
+        // С разделителями `href` ссылки режется allowlist-санитайзером, а не остаётся текстом.
         let payload = r##"# Заголовок
 <img src=x onerror="window.__pwned=1">
 <script>window.__pwned=1</script>
@@ -295,12 +295,14 @@ mod tests {
 [клик](javascript:window.__pwned=1)
 <a href="data:text/html,<script>1</script>">ссылка</a>
 
-**жирный** и `код`"##;
+**жирный** и `код`
+- пункт списка"##;
 
         let html = ai_render_markdown(payload.to_string());
 
         assert!(html.contains("<strong>"), "ожидался <strong>: {html}");
         assert!(html.contains("<code>"), "ожидался <code>: {html}");
+        assert!(html.contains("<li>"), "ожидался <li>: {html}");
         assert!(!html.contains("onerror"), "остался onerror: {html}");
         assert!(!html.contains("<script"), "остался <script: {html}");
         assert!(

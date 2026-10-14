@@ -161,13 +161,23 @@ AC-P3-4, нужна вторая точка `innerHTML`, а инвариант �
 # Заголовок
 <img src=x onerror="window.__pwned=1">
 <script>window.__pwned=1</script>
+
 [клик](javascript:window.__pwned=1)
 <a href="data:text/html,<script>1</script>">ссылка</a>
+
 **жирный** и `код`
+- пункт списка
 ```
 
-Ожидание: в DOM остаются `**жирный**`-рендер (`<strong>`), `<code>` и текст payload; отсутствуют
-`onerror`, `<script>`, `javascript:`.
+Ожидание: в DOM остаются `<strong>`, `<code>`, `<li>` и текст payload; отсутствуют `onerror`,
+`<script>`, `javascript:`.
+
+> **Пустые строки в payload обязательны.** Строка с сырым HTML открывает общий HTML-блок
+> CommonMark, который поглощает всё до первой пустой строки: без разделителей разметка после
+> `<script>` остаётся текстом (`[клик](javascript:…)` не становится ссылкой, `**жирный**` и
+> `` `код` `` не парсятся) и тест проверял бы инертный текст вместо санитайзера. Проверено на
+> pulldown-cmark 0.13 и зафиксировано тестом `ai::commands::tests::render_markdown_sanitizes_ai_answer`
+> (`crates/app/src-tauri/src/ai/commands.rs`). Э2E-мок (§2.4 п. 12) обязан отдавать **тот же** текст.
 
 ### 2.6. Что не меняется
 
