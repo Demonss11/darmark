@@ -1,11 +1,28 @@
 //! Тесты IPC-команд [`super::super::commands`].
+//!
+//! `ai_chat` принимает `AppHandle`, которого без Tauri-runtime не создать, поэтому тест
+//! жизненного цикла вызова идёт через внутренний `run_chat` с подставным
+//! [`AiEmitter`](crate::ai::commands::AiEmitter) (образец шва — `mcp::LogEmitter`). Двойники
+//! (эмиттер, MCP-сервер, транспорт, исполнитель фьючеров) лежат в [`super::support`]: проверяется
+//! поведение команды — последовательность событий, объявление `tools`, деградация без реестра.
+
+use std::sync::Arc;
+
+use serde_json::json;
 
 use crate::ai::commands::{
     ai_done_payload, ai_history_clear, ai_history_load, ai_history_save, ai_list_skills,
-    ai_render_markdown, error_code_str, next_message_id,
+    ai_render_markdown, error_code_str, next_message_id, run_chat,
 };
+use crate::ai::state::AiState;
+use crate::ai::transport::AiTransport;
 use crate::ai::types::{AiMessage, AiUsage};
 use crate::error::ErrorCode;
+
+use super::support::{
+    block_on, empty_server, fake_server, final_outcome, outcome_with_tool_call, ready_settings,
+    MockEmitter, ScriptedTransport,
+};
 
 #[test]
 fn error_codes_serialize_to_contract_strings() {
@@ -152,5 +169,142 @@ fn render_markdown_sanitizes_ai_answer() {
     assert!(
         !html.contains("javascript:"),
         "осталась схема javascript:: {html}"
+    );
+}
+
+/// AC-MCP-4/5/11/13: вызов инструмента даёт жизненный цикл `ai:tool-call` → `ai:tool-result`
+/// → `ai:done` с коррелированными `call_id`/`message_id`, длительностью и безопасным `summary`.
+#[test]
+fn chat_emits_tool_lifecycle_events() {
+    let transport = Arc::new(ScriptedTransport::new(
+        vec![outcome_with_tool_call(), final_outcome("готовый ответ")],
+        final_outcome("готовый ответ"),
+    ));
+    let backend: Arc<dyn AiTransport> = transport.clone();
+    let state = AiState::with_config_path(ready_settings(), backend, None);
+    let emitter = MockEmitter::default();
+
+    let response = block_on(run_chat(
+        &emitter,
+        &state,
+        &fake_server(),
+        vec![AiMessage {
+            role: "user".to_string(),
+            content: "привет".to_string(),
+            ..AiMessage::default()
+        }],
+    ))
+    .expect("чат завершается финальным ответом");
+
+    assert_eq!(response.message.content, "готовый ответ");
+
+    let entries = emitter.entries();
+    let lifecycle: Vec<&str> = entries
+        .iter()
+        .map(|(event, _)| event.as_str())
+        .filter(|event| *event != "ai:chunk")
+        .collect();
+    assert_eq!(
+        lifecycle,
+        vec!["ai:tool-call", "ai:tool-result", "ai:done"],
+        "порядок событий жизненного цикла: {entries:?}"
+    );
+
+    let deltas: String = entries
+        .iter()
+        .filter(|(event, _)| event == "ai:chunk")
+        .map(|(_, payload)| payload["delta"].as_str().unwrap_or_default())
+        .collect();
+    assert_eq!(deltas, "готовый ответ", "дельты не задваиваются через цикл");
+
+    let call = emitter.payload("ai:tool-call");
+    let result = emitter.payload("ai:tool-result");
+    let done = emitter.payload("ai:done");
+
+    assert_eq!(call["call_id"], "call-1", "call_id — id вызова провайдера");
+    assert_eq!(call["tool"], "fake_tool");
+    assert_eq!(
+        call["arguments"]["path"], "plugins",
+        "аргументы вызова доходят до события: {call}"
+    );
+
+    assert_eq!(
+        result["call_id"], call["call_id"],
+        "результат связан с вызовом по id"
+    );
+    assert_eq!(result["tool"], "fake_tool");
+    assert_eq!(result["ok"], true, "успешный вызов: {result}");
+    let duration_ms = result["duration_ms"]
+        .as_u64()
+        .unwrap_or_else(|| panic!("duration_ms — неотрицательное число: {result}"));
+    assert!(
+        duration_ms < 60_000,
+        "длительность вызова в разумных пределах: {duration_ms}"
+    );
+    assert_eq!(
+        result["summary"], "готово",
+        "summary — только статус, без содержимого и путей: {result}"
+    );
+
+    assert_eq!(call["message_id"], result["message_id"]);
+    assert_eq!(
+        call["message_id"], done["message_id"],
+        "один message_id на весь цикл"
+    );
+    assert_eq!(done["finish_reason"], "stop");
+    assert_eq!(done["usage"]["completion_tokens"], 5);
+
+    let requests = transport.requests();
+    assert_eq!(requests.len(), 2, "запрос до вызова инструмента и после");
+    assert_eq!(
+        requests[0]
+            .tools
+            .as_ref()
+            .map(|tools| tools[0]["function"]["name"].clone()),
+        Some(json!("fake_tool")),
+        "провайдеру объявлены инструменты MCP: {:?}",
+        requests[0].tools
+    );
+}
+
+/// Деградация §3.3 ТЗ: при пустом реестре MCP запрос уходит без `tools`, событий вызова нет.
+#[test]
+fn chat_degrades_without_tools_when_registry_empty() {
+    let transport = Arc::new(ScriptedTransport::new(
+        Vec::new(),
+        final_outcome("обычный ответ"),
+    ));
+    let backend: Arc<dyn AiTransport> = transport.clone();
+    let state = AiState::with_config_path(ready_settings(), backend, None);
+    let emitter = MockEmitter::default();
+
+    let response = block_on(run_chat(
+        &emitter,
+        &state,
+        &empty_server(),
+        vec![AiMessage {
+            role: "user".to_string(),
+            content: "привет".to_string(),
+            ..AiMessage::default()
+        }],
+    ))
+    .expect("деградация не ломает чат");
+
+    assert_eq!(response.message.content, "обычный ответ");
+    let requests = transport.requests();
+    assert_eq!(requests.len(), 1, "один запрос без цикла вызовов");
+    assert!(
+        requests[0].tools.is_none(),
+        "без инструментов поле tools не передаётся: {:?}",
+        requests[0].tools
+    );
+    let events: Vec<String> = emitter
+        .entries()
+        .into_iter()
+        .map(|(event, _)| event)
+        .collect();
+    assert!(
+        !events.iter().any(|event| event.starts_with("ai:tool")),
+        "событий вызова инструментов нет: {events:?}"
     );
 }

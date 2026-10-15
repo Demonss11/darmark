@@ -6,6 +6,8 @@
 //! [`MAX_TOOL_ITERATIONS`] шагов, а результат каждого вызова обрезается до
 //! [`MAX_TOOL_RESULT_CHARS`], чтобы недоверенный вывод инструмента не исчерпал контекст модели.
 
+use std::time::{Duration, Instant};
+
 use serde_json::{json, Value};
 
 use mcp_core::protocol::{RpcRequest, RPC_VERSION};
@@ -29,6 +31,21 @@ pub const MAX_TOOL_RESULT_CHARS: usize = 64 * 1024;
 pub struct ToolResult {
     pub ok: bool,
     pub text: String,
+}
+
+/// Один вызов инструмента в цикле: сам вызов, его результат и измеренная длительность.
+///
+/// Длительность измеряется **внутри** [`run`] — единственного места, где известны границы
+/// вызова (`on_tool_call` → `call_mcp_tool` → `on_tool_result`). Наблюдателю (события
+/// `ai:tool-call`/`ai:tool-result`) нужны оба: `call_id` и `duration_ms` (AC-MCP-4).
+#[derive(Debug)]
+pub struct ToolExecution<'a> {
+    /// Вызов, который исполнился.
+    pub call: &'a ToolCall,
+    /// Результат исполнения (сбой инструмента — `ok = false`, а не `Err`).
+    pub result: &'a ToolResult,
+    /// Сколько заняло исполнение вызова.
+    pub duration: Duration,
 }
 
 /// Преобразует результат `tools/list` MCP в OpenAI-массив `tools`.
@@ -131,7 +148,9 @@ pub fn tool_message_content(tool: &str, text: &str) -> String {
 /// [`tool_specs_from_tools_list`]). Каждый ответ с непустыми `tool_calls` добавляет в диалог
 /// assistant-сообщение с вызовами и по `tool`-сообщению на каждый результат; цикл завершается
 /// при пустых `tool_calls` или исчерпании [`MAX_TOOL_ITERATIONS`] — в обоих случаях возвращается
-/// последний ответ ассистента. `on_tool_call`/`on_tool_result` — наблюдаемость (журнал, события).
+/// последний ответ ассистента. `on_tool_call`/`on_tool_result` — наблюдаемость (журнал, события);
+/// длительность вызова измеряется здесь и приходит в [`ToolExecution`], чтобы наблюдателю не
+/// приходилось коррелировать вызовы по времени самому.
 pub async fn run<F, S>(
     transport: &dyn AiTransport,
     mcp: &McpServer,
@@ -142,7 +161,7 @@ pub async fn run<F, S>(
 ) -> Result<AiResponse, CommandError>
 where
     F: FnMut(&ToolCall),
-    S: FnMut(&ToolResult),
+    S: FnMut(&ToolExecution<'_>),
 {
     let mut request = base;
     let mut last = ChatOutcome::default();
@@ -155,8 +174,14 @@ where
         request.messages.push(assistant_tool_call_message(&outcome));
         for call in &outcome.tool_calls {
             on_tool_call(call);
+            let started = Instant::now();
             let result = call_mcp_tool(mcp, &call.name, call.arguments.clone())?;
-            on_tool_result(&result);
+            let duration = started.elapsed();
+            on_tool_result(&ToolExecution {
+                call,
+                result: &result,
+                duration,
+            });
             request.messages.push(tool_result_message(call, &result));
         }
         last = outcome;

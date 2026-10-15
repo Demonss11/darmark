@@ -19,7 +19,7 @@ use mcp_core::{Registry, ToolDefinition, ToolHandler};
 
 use crate::ai::tool_calls::ToolCall;
 use crate::ai::tool_loop::{
-    call_mcp_tool, run, tool_message_content, tool_specs_from_tools_list, ToolResult,
+    call_mcp_tool, run, tool_message_content, tool_specs_from_tools_list, ToolExecution,
     MAX_TOOL_ITERATIONS, MAX_TOOL_RESULT_CHARS,
 };
 use crate::ai::transport::{AiTransport, BoxFuture, ChatOutcome, ChatRequest, TestRequest};
@@ -268,7 +268,7 @@ fn tool_loop_executes_tool_and_returns_final_answer() {
         final_outcome("готовый ответ"),
     );
     let mut called: Vec<String> = Vec::new();
-    let mut results: Vec<bool> = Vec::new();
+    let mut results: Vec<(String, bool)> = Vec::new();
 
     let response = block_on(run(
         &transport,
@@ -276,14 +276,18 @@ fn tool_loop_executes_tool_and_returns_final_answer() {
         base_request(),
         &mut |_delta: String| {},
         &mut |call: &ToolCall| called.push(call.name.clone()),
-        &mut |result: &ToolResult| results.push(result.ok),
+        &mut |exec: &ToolExecution| results.push((exec.call.id.clone(), exec.result.ok)),
     ))
     .expect("tool-loop завершается финальным ответом");
 
     assert_eq!(response.message.role, "assistant");
     assert_eq!(response.message.content, "готовый ответ");
     assert_eq!(called, vec!["fake_tool".to_string()], "инструмент вызван");
-    assert_eq!(results, vec![true], "успешный результат доходит до колбэка");
+    assert_eq!(
+        results,
+        vec![("call-1".to_string(), true)],
+        "колбэк получает id вызова и успешный результат"
+    );
     assert_eq!(
         transport.request_count(),
         2,
@@ -316,7 +320,7 @@ fn tool_loop_stops_at_iteration_limit() {
         base_request(),
         &mut |_delta: String| {},
         &mut |_call: &ToolCall| calls += 1,
-        &mut |_result: &ToolResult| {},
+        &mut |_exec: &ToolExecution| {},
     ))
     .expect("исчерпание лимита не роняет цикл");
 
@@ -350,7 +354,7 @@ fn tool_loop_isolates_tool_failure() {
         base_request(),
         &mut |_delta: String| {},
         &mut |_call: &ToolCall| {},
-        &mut |result: &ToolResult| results.push(result.ok),
+        &mut |exec: &ToolExecution| results.push(exec.result.ok),
     ))
     .expect("сбой инструмента не ломает цикл");
 
