@@ -51,10 +51,7 @@ impl ReqwestBackend {
             .redirect(reqwest::redirect::Policy::none())
             .build()
             .map_err(|e| {
-                CommandError::new(
-                    ErrorCode::AiOffline,
-                    format!("не создать HTTP-клиент: {e}"),
-                )
+                CommandError::new(ErrorCode::AiOffline, format!("не создать HTTP-клиент: {e}"))
             })?;
         Ok(self.client.get_or_init(|| built))
     }
@@ -105,7 +102,7 @@ async fn read_body_limited(response: reqwest::Response, limit: usize) -> String 
 }
 
 /// Собирает тело Chat Completions, вливая пользовательский `extra_body` как **надстройку**:
-/// обязательные поля протокола (`model`/`messages`/…) не переопределяются (ADR-0035 §2.4).
+/// обязательные поля протокола (`model`/`messages`/`stream`/…) не переопределяются (ADR-0035 §2.4).
 pub(in crate::ai) fn build_chat_body(request: &ChatRequest) -> serde_json::Value {
     let mut body = serde_json::Map::new();
     body.insert(
@@ -237,10 +234,7 @@ impl AiTransport for ReqwestBackend {
             let mut stream = response.bytes_stream();
             while let Some(chunk) = stream.next().await {
                 let chunk = chunk.map_err(|e| {
-                    CommandError::new(
-                        ErrorCode::AiOffline,
-                        format!("обрыв потока ответа: {e}"),
-                    )
+                    CommandError::new(ErrorCode::AiOffline, format!("обрыв потока ответа: {e}"))
                 })?;
                 for event in parser.push(&chunk) {
                     match event {
