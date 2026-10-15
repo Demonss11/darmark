@@ -98,10 +98,12 @@ fn history_commands_roundtrip() {
         AiMessage {
             role: "user".to_string(),
             content: "привет".to_string(),
+            ..AiMessage::default()
         },
         AiMessage {
             role: "assistant".to_string(),
             content: "здравствуйте".to_string(),
+            ..AiMessage::default()
         },
     ])
     .expect("сохранение истории");

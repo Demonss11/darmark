@@ -16,6 +16,7 @@ fn chat_request(extra_body: serde_json::Map<String, serde_json::Value>) -> ChatR
         messages: vec![AiMessage {
             role: "user".to_string(),
             content: "hi".to_string(),
+            ..AiMessage::default()
         }],
         max_tokens: 16,
         temperature: 0.0,

@@ -24,6 +24,7 @@ fn make_messages(count: usize) -> Vec<AiMessage> {
                 "assistant".to_string()
             },
             content: format!("сообщение {i}"),
+            ..AiMessage::default()
         })
         .collect()
 }
@@ -140,14 +141,17 @@ fn load_filters_disallowed_roles() {
             AiMessage {
                 role: "user".to_string(),
                 content: "ok".to_string(),
+                ..AiMessage::default()
             },
             AiMessage {
                 role: "evil".to_string(),
                 content: "bad".to_string(),
+                ..AiMessage::default()
             },
             AiMessage {
                 role: "assistant".to_string(),
                 content: "ok2".to_string(),
+                ..AiMessage::default()
             },
         ],
     };
@@ -192,14 +196,17 @@ fn save_fits_within_byte_limit() {
             AiMessage {
                 role: "user".to_string(),
                 content: chunk.clone(),
+                ..AiMessage::default()
             },
             AiMessage {
                 role: "assistant".to_string(),
                 content: chunk.clone(),
+                ..AiMessage::default()
             },
             AiMessage {
                 role: "user".to_string(),
                 content: format!("{chunk}последнее"),
+                ..AiMessage::default()
             },
         ],
     };
@@ -242,10 +249,12 @@ fn save_filters_disallowed_roles() {
             AiMessage {
                 role: "system".to_string(),
                 content: "ok".to_string(),
+                ..AiMessage::default()
             },
             AiMessage {
                 role: "root".to_string(),
                 content: "не должно попасть на диск".to_string(),
+                ..AiMessage::default()
             },
         ],
     };

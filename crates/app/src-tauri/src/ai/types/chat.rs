@@ -3,11 +3,26 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Сообщение чата. `role` — `"system" | "user" | "assistant"`.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+use crate::ai::tool_calls::ToolCall;
+
+/// Сообщение чата. `role` — `"system" | "user" | "assistant" | "tool"`.
+///
+/// `name`/`tool_call_id`/`tool_calls` заполняются только в tool-loop: assistant-сообщение
+/// несёт вызовы инструментов, `tool`-сообщение — их результат и id вызова. `Eq` не выводится:
+/// `tool_calls` содержит `serde_json::Value`, который `Eq` не реализует.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct AiMessage {
     pub role: String,
     pub content: String,
+    /// Имя инструмента для `tool`-сообщения (опционально, по контракту OpenAI).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub name: Option<String>,
+    /// Идентификатор вызова, на который отвечает `tool`-сообщение.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub tool_call_id: Option<String>,
+    /// Вызовы инструментов, которые запросила модель (assistant-сообщение).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub tool_calls: Option<Vec<ToolCall>>,
 }
 
 /// Токены использования ответа (показ расходов, ADR-0032).
@@ -42,7 +57,7 @@ pub struct AiSkill {
 ///
 /// Секретов и абсолютных путей не содержит: только идентификатор сессии,
 /// метка времени, сообщения и опциональное предупреждение о проблеме загрузки.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct HistoryView {
     /// Идентификатор сессии чата.
     pub session_id: String,

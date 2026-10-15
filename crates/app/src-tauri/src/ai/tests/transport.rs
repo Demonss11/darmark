@@ -12,6 +12,7 @@ fn request_with_secret() -> ChatRequest {
         messages: vec![AiMessage {
             role: "user".to_string(),
             content: "hi".to_string(),
+            ..AiMessage::default()
         }],
         max_tokens: 16,
         temperature: 0.0,

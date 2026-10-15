@@ -123,6 +123,7 @@ pub async fn ai_chat(
         message: AiMessage {
             role: "assistant".to_string(),
             content: outcome.content,
+            ..AiMessage::default()
         },
         usage: outcome.usage,
         finish_reason: outcome.finish_reason,

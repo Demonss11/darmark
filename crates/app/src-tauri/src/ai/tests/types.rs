@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 
+use crate::ai::tool_calls::ToolCall;
 use crate::ai::types::{
     resolve_api_key, AiMessage, AiResponse, AiSettings, AiSettingsView, AiUsage, ModelEntry,
     ProviderConfig, ProviderSettings,
@@ -326,6 +327,7 @@ fn ai_response_serializes_finish_reason() {
         message: AiMessage {
             role: "assistant".to_string(),
             content: "обрезано".to_string(),
+            ..AiMessage::default()
         },
         usage: Some(AiUsage {
             prompt_tokens: 10,
@@ -346,6 +348,7 @@ fn ai_response_serializes_none_finish_reason() {
         message: AiMessage {
             role: "assistant".to_string(),
             content: "ok".to_string(),
+            ..AiMessage::default()
         },
         usage: None,
         finish_reason: None,
@@ -355,4 +358,42 @@ fn ai_response_serializes_none_finish_reason() {
         json.contains("\"finish_reason\":null"),
         "отсутствующий finish_reason сериализуется как null: {json}"
     );
+}
+
+/// Пустые tool-поля не попадают в JSON: история чата не должна разрастаться `null`-ами.
+#[test]
+fn ai_message_omits_absent_tool_fields() {
+    let message = AiMessage {
+        role: "user".to_string(),
+        content: "hi".to_string(),
+        ..AiMessage::default()
+    };
+    let json = serde_json::to_string(&message).expect("AiMessage сериализуется");
+    assert_eq!(
+        json, r#"{"role":"user","content":"hi"}"#,
+        "нет null-полей без вызовов инструментов: {json}"
+    );
+}
+
+/// Поля tool-loop переживают сериализацию/десериализацию (история грузит сообщения обратно).
+#[test]
+fn ai_message_roundtrips_tool_call_fields() {
+    let message = AiMessage {
+        role: "assistant".to_string(),
+        content: String::new(),
+        tool_calls: Some(vec![ToolCall {
+            id: "call-1".to_string(),
+            name: "fake_tool".to_string(),
+            arguments: serde_json::json!({"a": 1}),
+        }]),
+        ..AiMessage::default()
+    };
+    let json = serde_json::to_string(&message).expect("AiMessage сериализуется");
+    assert!(
+        json.contains("\"tool_calls\""),
+        "вызовы сохраняются: {json}"
+    );
+
+    let restored: AiMessage = serde_json::from_str(&json).expect("AiMessage разбирается");
+    assert_eq!(restored, message, "поля tool-loop переживают round-trip");
 }

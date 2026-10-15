@@ -10,5 +10,6 @@ mod skills;
 mod sse;
 mod state;
 mod tool_calls;
+mod tool_loop;
 mod transport;
 mod types;
