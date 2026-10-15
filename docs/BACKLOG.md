@@ -69,3 +69,12 @@
 - **Затрагивает:** `crates/app/src-tauri/src/mcp/adapters/tools.rs`, `crates/app/src-tauri/src/ai/tool_loop.rs`; ADR-0036; замороженные контракты §13.2 — нет.
 - **Артефакты:** решение (правка адаптера + ADR), тест контракта `mcp`.
 - **Критерий успеха:** карточка и журнал согласованы по статусу для всех исходов валидации.
+
+### IDEA-005 — Красный `npm run lint` (oxlint) пре-существующий
+
+- **Статус:** idea
+- **Зачем:** `npm run lint` (`oxlint --deny-warnings src e2e scripts`) падает на `src/panels/aiPanel/pluginCard.ts:239` — `unicorn(no-useless-spread)`: `for (const card of [...state.pluginCards])`. Правило ложно-положительное: спред делает снимок `Set` перед удалением элементов в цикле (`card.remove()` → `state.pluginCards.delete(...)`); без снимка итерация по мутируемому `Set` пропускала бы элементы. Ошибка пре-существующая (пришла из `de36eec`, эпик MCP файл не трогал), но CI-джоб линта на ветке красный.
+- **Суть:** безопасная правка — `Array.from(state.pluginCards)` вместо спреда (эквивалентно, правило не срабатывает), либо точечный `oxlint-disable` с обоснованием.
+- **Затрагивает:** `crates/app/src/panels/aiPanel/pluginCard.ts`; замороженные контракты §13.2 — нет.
+- **Артефакты:** зелёный `npm run lint`.
+- **Критерий успеха:** `cd crates/app; npm run lint` возвращает exit 0 без изменения поведения очистки карточек.
