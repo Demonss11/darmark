@@ -391,7 +391,6 @@ fn copy_dir_all(src: &Path, dst: &Path) -> Result<(), String> {
 }
 
 /// Junction через `mklink /J` — в отличие от symlink не требует прав администратора.
-#[cfg(windows)]
 fn create_link(source: &Path, target: &Path) -> Result<(), String> {
     let output = std::process::Command::new("cmd")
         .arg("/c")
@@ -412,12 +411,6 @@ fn create_link(source: &Path, target: &Path) -> Result<(), String> {
         ));
     }
     Ok(())
-}
-
-#[cfg(not(windows))]
-fn create_link(source: &Path, target: &Path) -> Result<(), String> {
-    std::os::unix::fs::symlink(source, target)
-        .map_err(|e| format!("{}: не создать symlink: {e}", target.display()))
 }
 
 fn read_manifest(dir: &Path) -> Result<Manifest, String> {

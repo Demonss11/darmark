@@ -165,69 +165,32 @@ pub struct PluginInfo {
 /// платформах — пустую заглушку, чтобы единый `generate_handler!` собирался
 /// (модуль `plugins` включается только под Windows).
 pub struct PluginState {
-    #[cfg(windows)]
     host: plugins::host::PluginHost,
 }
 
 impl PluginState {
-    #[cfg(not(windows))]
-    fn new() -> Self {
-        Self {}
-    }
-
     /// Создаёт/изменяет документ, публикует событие и доставляет его плагинам.
-    ///
-    /// На не-Windows — no-op: плагинной подсистемы нет.
     fn publish_document_changed(&self, doc_id: &str, rev: u64) {
-        #[cfg(windows)]
-        {
-            self.host.publish_document_changed(doc_id, rev);
-            self.host.pump();
-        }
-        #[cfg(not(windows))]
-        {
-            let _ = (doc_id, rev);
-        }
+        self.host.publish_document_changed(doc_id, rev);
+        self.host.pump();
     }
 
     fn publish_opened(&self, doc_id: &str, path: Option<&str>) {
-        #[cfg(windows)]
-        {
-            self.host.publish_opened(doc_id, path);
-            self.host.pump();
-        }
-        #[cfg(not(windows))]
-        {
-            let _ = (doc_id, path);
-        }
+        self.host.publish_opened(doc_id, path);
+        self.host.pump();
     }
 
     fn publish_closed(&self, doc_id: &str) {
-        #[cfg(windows)]
-        {
-            self.host.publish_closed(doc_id);
-            self.host.pump();
-        }
-        #[cfg(not(windows))]
-        {
-            let _ = doc_id;
-        }
+        self.host.publish_closed(doc_id);
+        self.host.pump();
     }
 
     /// Публикует `document-event` (S11) — действие пользователя над документом.
     ///
     /// Событие идёт в журнал фронтенда (`logPanel`): `new`/`open`/`save`/`close`.
     /// Доставку в Tauri-событие `document-event` обеспечивает sink из [`setup_plugins`].
-    /// На не-Windows — no-op: плагинной подсистемы нет.
     fn publish_document_event(&self, kind: &str, path: Option<&str>, rev: Option<u64>) {
-        #[cfg(windows)]
-        {
-            self.host.publish_document_event(kind, path, rev);
-        }
-        #[cfg(not(windows))]
-        {
-            let _ = (kind, path, rev);
-        }
+        self.host.publish_document_event(kind, path, rev);
     }
 }
 
@@ -498,18 +461,10 @@ fn activate_document(
 
 // ---------- команды плагинных представлений (Фаза 4, контракт с фронтендом) ----------
 
-/// Снимок плагинных тир-1 представлений (пусто, если плагинов нет/не-Windows).
+/// Снимок плагинных тир-1 представлений.
 #[tauri::command]
 fn plugin_views(state: tauri::State<'_, PluginState>) -> Vec<PluginViewInfo> {
-    #[cfg(windows)]
-    {
-        state.host.plugin_views()
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = state;
-        Vec::new()
-    }
+    state.host.plugin_views()
 }
 
 /// Обратная маршрутизация из тир-1 view: `{view_id, action, payload}` → `on_action`
@@ -521,37 +476,18 @@ fn plugin_view_action(
     payload: Option<serde_json::Value>,
     state: tauri::State<'_, PluginState>,
 ) -> Result<serde_json::Value, CommandError> {
-    #[cfg(windows)]
-    {
-        state
-            .host
-            .plugin_view_action(&view_id, &action, payload)
-            .map_err(|error| CommandError::new(error::ErrorCode::Plugin, error.message))
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = (view_id, action, payload, state);
-        Err(CommandError::new(
-            error::ErrorCode::Plugin,
-            "плагинная подсистема доступна только на Windows",
-        ))
-    }
+    state
+        .host
+        .plugin_view_action(&view_id, &action, payload)
+        .map_err(|error| CommandError::new(error::ErrorCode::Plugin, error.message))
 }
 
 // ---------- команды менеджера плагинов (Фаза 5, контракт с фронтендом) ----------
 
-/// Снимок реестра плагинов (пусто, если плагинов нет/не-Windows).
+/// Снимок реестра плагинов.
 #[tauri::command]
 fn list_plugins(state: tauri::State<'_, PluginState>) -> Vec<PluginInfo> {
-    #[cfg(windows)]
-    {
-        state.host.list_plugins()
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = state;
-        Vec::new()
-    }
+    state.host.list_plugins()
 }
 
 /// Включает/выключает плагин; включение снимает карантин (§4.7).
@@ -561,53 +497,29 @@ fn set_plugin_enabled(
     enabled: bool,
     state: tauri::State<'_, PluginState>,
 ) -> Result<(), CommandError> {
-    #[cfg(windows)]
-    {
-        state
-            .host
-            .set_enabled(&id, enabled)
-            .map_err(|error| CommandError::new(error::ErrorCode::Plugin, error.message))
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = (id, enabled, state);
-        Err(plugin_unavailable())
-    }
+    state
+        .host
+        .set_enabled(&id, enabled)
+        .map_err(|error| CommandError::new(error::ErrorCode::Plugin, error.message))
 }
 
 /// Перезагружает плагин с диска без рестарта приложения (§4.7).
 #[tauri::command(async)]
 fn reload_plugin(id: String, state: tauri::State<'_, PluginState>) -> Result<(), CommandError> {
-    #[cfg(windows)]
-    {
-        state
-            .host
-            .reload(&id)
-            .map_err(|error| CommandError::new(error::ErrorCode::Plugin, error.message))
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = (id, state);
-        Err(plugin_unavailable())
-    }
+    state
+        .host
+        .reload(&id)
+        .map_err(|error| CommandError::new(error::ErrorCode::Plugin, error.message))
 }
 
 /// Удаляет плагин: останавливает child, снимает views, удаляет настройки и каталог
 /// с диска.
 #[tauri::command(async)]
 fn remove_plugin(id: String, state: tauri::State<'_, PluginState>) -> Result<(), CommandError> {
-    #[cfg(windows)]
-    {
-        state
-            .host
-            .remove(&id)
-            .map_err(|error| CommandError::new(error::ErrorCode::Plugin, error.message))
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = (id, state);
-        Err(plugin_unavailable())
-    }
+    state
+        .host
+        .remove(&id)
+        .map_err(|error| CommandError::new(error::ErrorCode::Plugin, error.message))
 }
 
 /// Фиксирует согласие пользователя на права плагина (consent как реальный гейт, §11.1 п.4).
@@ -620,18 +532,10 @@ fn set_plugin_permissions(
     granted: Vec<String>,
     state: tauri::State<'_, PluginState>,
 ) -> Result<(), CommandError> {
-    #[cfg(windows)]
-    {
-        state
-            .host
-            .set_permissions(&id, granted)
-            .map_err(|error| CommandError::new(error::ErrorCode::Plugin, error.message))
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = (id, granted, state);
-        Err(plugin_unavailable())
-    }
+    state
+        .host
+        .set_permissions(&id, granted)
+        .map_err(|error| CommandError::new(error::ErrorCode::Plugin, error.message))
 }
 
 /// Записывает значение настройки плагина из UI-формы (S5b).
@@ -647,18 +551,10 @@ fn set_plugin_setting(
     value: serde_json::Value,
     state: tauri::State<'_, PluginState>,
 ) -> Result<(), CommandError> {
-    #[cfg(windows)]
-    {
-        state
-            .host
-            .plugin_setting_set(&id, &key, value)
-            .map_err(|error| CommandError::new(error::ErrorCode::Plugin, error.message))
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = (id, key, value, state);
-        Err(plugin_unavailable())
-    }
+    state
+        .host
+        .plugin_setting_set(&id, &key, value)
+        .map_err(|error| CommandError::new(error::ErrorCode::Plugin, error.message))
 }
 
 /// Исполняет команду плагина: публикует `command:invoked{command_id, doc_id}` в шину.
@@ -671,22 +567,14 @@ fn run_plugin_command(
     store: tauri::State<'_, Arc<Mutex<DocumentStore>>>,
     state: tauri::State<'_, PluginState>,
 ) -> Result<(), CommandError> {
-    #[cfg(windows)]
-    {
-        // Guard стора отпущен до pump: доставка события может обслужить host-call к стору.
-        let doc_id = lock_store(&store)
-            .last_id()
-            .map(|id| id.as_str().to_string());
-        state
-            .host
-            .run_plugin_command(&command_id, doc_id.as_deref());
-        Ok(())
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = (command_id, store, state);
-        Err(plugin_unavailable())
-    }
+    // Guard стора отпущен до pump: доставка события может обслужить host-call к стору.
+    let doc_id = lock_store(&store)
+        .last_id()
+        .map(|id| id.as_str().to_string());
+    state
+        .host
+        .run_plugin_command(&command_id, doc_id.as_deref());
+    Ok(())
 }
 
 /// Dev-only: открыть DevTools WebView2 программно.
@@ -705,15 +593,6 @@ fn open_devtools(window: tauri::WebviewWindow) {
     {
         let _ = window;
     }
-}
-
-/// Ошибка «плагинная подсистема доступна только на Windows» (не-Windows заглушки).
-#[cfg(not(windows))]
-fn plugin_unavailable() -> CommandError {
-    CommandError::new(
-        error::ErrorCode::Plugin,
-        "плагинная подсистема доступна только на Windows",
-    )
 }
 
 // ---------- dev-режим `--debug-plugin` (Фаза 6) ----------
@@ -747,7 +626,6 @@ pub fn maybe_run_debug_plugin() -> Option<i32> {
 /// это отладочный прогон плагина без помещения в `%APPDATA%` (§7.1 «Dev»). В отличие от
 /// [`plugins::supervisor::Supervisor`], здесь нет `CREATE_NO_WINDOW` и пайпов — консоль
 /// нужна, чтобы видеть лог child'а.
-#[cfg(windows)]
 fn run_debug_plugin(path: PathBuf) -> i32 {
     use std::process::{Command, Stdio};
 
@@ -775,13 +653,6 @@ fn run_debug_plugin(path: PathBuf) -> i32 {
     }
 }
 
-/// Вне Windows плагинная подсистема недоступна — dev-режим сообщает об этом и падает.
-#[cfg(not(windows))]
-fn run_debug_plugin(_path: PathBuf) -> i32 {
-    eprintln!("darmark: dev-режим --debug-plugin доступен только на Windows");
-    1
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Стор в `Arc`: его же копию получает плагинная подсистема (host-call'ы к документам).
@@ -792,21 +663,14 @@ pub fn run() {
         .manage(store)
         .setup(|app| {
             use tauri::Manager;
-            #[cfg(windows)]
-            {
-                disable_browser_accelerator_keys(app);
-                init_settings_dir();
-                if let Err(e) = setup_plugins(app) {
-                    // Ошибка плагинной подсистемы не роняет GUI (§4.7).
-                    eprintln!("плагинная подсистема не запущена: {e}");
-                    app.manage(PluginState {
-                        host: plugins::host::PluginHost::empty(),
-                    });
-                }
-            }
-            #[cfg(not(windows))]
-            {
-                app.manage(PluginState::new());
+            disable_browser_accelerator_keys(app);
+            init_settings_dir();
+            if let Err(e) = setup_plugins(app) {
+                // Ошибка плагинной подсистемы не роняет GUI (§4.7).
+                eprintln!("плагинная подсистема не запущена: {e}");
+                app.manage(PluginState {
+                    host: plugins::host::PluginHost::empty(),
+                });
             }
             // AI-состояние: настройки из конфига + бэкенд шва (ленивый, ADR-0034 §2.3).
             app.manage(ai::state::AiState::init());

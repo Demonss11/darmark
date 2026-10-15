@@ -3,30 +3,45 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- theme-color синхронизируется с активной темой через JS (theme-init.js
-         и main.ts); color-scheme управляется из CSS по data-theme, поэтому
-         отдельный meta color-scheme не нужен (CSS имеет приоритет над meta). -->
     <meta name="theme-color" content="#0d0e12" />
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
-    <!-- Тема применяется до первого рендера (anti-FOUC): блокирующий скрипт,
-         поэтому data-theme ставится до краска. Внешний файл, а не inline:
-         CSP — script-src 'self' без 'unsafe-inline'. -->
     <script src="/theme-init.js"></script>
     <title>ПЕНАЛ</title>
   </head>
   <body>
+    <svg style="display:none" aria-hidden="true">
+      <symbol id="icon-journal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+        <polyline points="4 17 10 11 4 5" />
+        <line x1="12" y1="19" x2="20" y2="19" />
+      </symbol>
+      <symbol id="icon-clear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+        <polyline points="3 6 5 6 21 6" />
+        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+      </symbol>
+      <symbol id="icon-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+        <line x1="18" y1="6" x2="6" y2="18" />
+        <line x1="6" y1="6" x2="18" y2="18" />
+      </symbol>
+      <symbol id="icon-mon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+        <path d="M3 12h4l3 8 4-16 3 8h4" />
+      </symbol>
+      <symbol id="icon-ai" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+        <path d="M12 3l1.6 4.6L18 9l-4.4 1.4L12 15l-1.6-4.6L6 9l4.4-1.4z" />
+        <path d="M18.5 15.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z" />
+      </symbol>
+      <symbol id="icon-ai-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+        <path d="M12 3l1.6 4.6L18 9l-4.4 1.4L12 15l-1.6-4.6L6 9l4.4-1.4z" />
+      </symbol>
+    </svg>
+
     <a class="skip-link" href="#main-content">Перейти к содержимому</a>
     <div id="app">
-      <!-- ============ ТУЛБАР ============ -->
       <header id="toolbar" class="toolbar">
-        <!-- Бренд: только знак, без wordmark. Два варианта под тему (data-theme на <html>):
-             тёмная — белый logo_w.svg, светлая — тёмный logo.svg. Показом управляет CSS. -->
         <div class="brand">
           <img class="brand-mark brand-mark--dark" src="/logo_w.svg" alt="ПЕНАЛ" width="25" height="20" />
           <img class="brand-mark brand-mark--light" src="/logo.svg" alt="ПЕНАЛ" width="25" height="20" />
         </div>
 
-        <!-- файловые команды (иконки, id заморожены) -->
         <div class="file-actions">
           <button type="button" class="tbtn" id="btn-new" title="Новый файл (Ctrl+N)" aria-label="Новый файл">
             <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
@@ -59,14 +74,12 @@
           </button>
         </div>
 
-        <!-- текущий документ -->
         <div class="file-chip" id="file-chip" title="Текущий документ">
           <span class="fname" id="file-label">безымянный</span>
         </div>
 
         <div class="spacer"></div>
 
-        <!-- форматирование (icon-only) -->
         <div class="format-group" id="format-group">
           <button type="button" class="tbtn" data-action="bold" title="Жирный (Ctrl+B)" aria-label="Жирный">
             <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4">
@@ -102,27 +115,17 @@
 
         <div class="div-v"></div>
 
-        <!-- палитра команд (Ctrl+K) -->
         <button class="palette-trigger" id="palette-trigger" type="button" title="Палитра команд (Ctrl+K)" aria-haspopup="dialog" aria-expanded="false">
-          <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-            <polyline points="4 17 10 11 4 5" />
-            <line x1="12" y1="19" x2="20" y2="19" />
-          </svg>
+          <svg aria-hidden="true" focusable="false"><use href="#icon-journal" /></svg>
           <span>Команды</span>
           <kbd>Ctrl+K</kbd>
         </button>
 
-        <!-- триггер AI-ассистента (#tb-ai): открывает нижний док в режиме AI;
-             точка #ai-dot отражает состояние (выкл/нет ключа/готов/ошибка) -->
         <button class="ipbtn" id="tb-ai" type="button" title="AI-ассистент" aria-label="AI-ассистент" aria-expanded="false" aria-controls="logs-panel">
-          <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-            <path d="M12 3l1.6 4.6L18 9l-4.4 1.4L12 15l-1.6-4.6L6 9l4.4-1.4z" />
-            <path d="M18.5 15.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z" />
-          </svg>
+          <svg aria-hidden="true" focusable="false"><use href="#icon-ai" /></svg>
           <span class="pdot" id="ai-dot" aria-hidden="true"></span>
         </button>
 
-        <!-- триггер дровера плагинов: icon + счётчик активных + точка проблемы -->
         <button class="ipbtn" id="tb-plugins" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="drawer" aria-label="Плагины">
           <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
             <path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z" />
@@ -134,16 +137,8 @@
 
         <div class="div-v"></div>
 
-        <!-- тумблеры (id сохранены: e2e кликает #chk-*) -->
         <label class="tbtn" id="toggle-sync" title="Синхронная прокрутка">
-          <input
-            class="toggle-input"
-            type="checkbox"
-            id="chk-sync"
-            checked
-            role="switch"
-            aria-label="Синхронная прокрутка"
-          />
+          <input class="toggle-input" type="checkbox" id="chk-sync" checked role="switch" aria-label="Синхронная прокрутка" />
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false">
             <polyline points="23 4 23 10 17 10" />
             <polyline points="1 20 1 14 7 14" />
@@ -151,14 +146,7 @@
           </svg>
         </label>
         <label class="tbtn" id="toggle-preview" title="Показать/скрыть предпросмотр (Ctrl+P)">
-          <input
-            class="toggle-input"
-            type="checkbox"
-            id="chk-preview"
-            checked
-            role="switch"
-            aria-label="Предпросмотр"
-          />
+          <input class="toggle-input" type="checkbox" id="chk-preview" checked role="switch" aria-label="Предпросмотр" />
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false">
             <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
             <circle cx="12" cy="12" r="3" />
@@ -167,7 +155,6 @@
 
         <div class="div-v"></div>
 
-        <!-- наш инспектор (не путать с дровером idea5) -->
         <button type="button" class="tbtn" id="btn-inspect" title="Инспектор (Ctrl+I)" aria-label="Инспектор">
           <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
             <circle cx="11" cy="11" r="8" />
@@ -176,20 +163,13 @@
         </button>
       </header>
 
-      <!-- ============ РАБОЧАЯ ОБЛАСТЬ ============ -->
       <div class="workspace">
-        <!-- main -->
         <main class="main" id="main-content" tabindex="-1">
-          <!-- Видимого заголовка в UI нет — даём скринридерам точку входа в main. -->
           <h1 class="visually-hidden">ПЕНАЛ — редактор Markdown</h1>
           <div class="tabrow">
-            <!-- Вкладки создаются динамически из DocStore (renderTabStrip в main.ts).
-                 ARIA-паттерн tabs (ADR-0037): role=tablist, панель — #panes. -->
             <div class="tab-strip" id="tab-strip" role="tablist" aria-label="Открытые документы"></div>
           </div>
 
-          <!-- tabpanel: контент активного документа (редактор + предпросмотр).
-               aria-labelledby выставляется JS по активной вкладке. -->
           <div id="panes" class="panes" role="tabpanel">
             <section class="pane pane-editor" id="pane-a" data-pane="pane-editor" data-view="editor">
               <div class="pane-head">
@@ -201,24 +181,13 @@
               </div>
               <div class="editor-wrap">
                 <div class="line-numbers" id="gutter" aria-hidden="true">1</div>
-                <textarea
-                  id="editor"
-                  spellcheck="false"
-                  wrap="off"
-                  aria-label="Редактор Markdown"
-                  placeholder="# Начните печатать markdown…"
-                ></textarea>
+                <textarea id="editor" spellcheck="false" wrap="off" aria-label="Редактор Markdown" placeholder="# Начните печатать markdown…"></textarea>
               </div>
             </section>
 
             <div class="divider" id="divider"></div>
 
-            <section
-              class="pane pane-preview"
-              id="pane-b"
-              data-pane="pane-preview"
-              data-view="preview"
-            >
+            <section class="pane pane-preview" id="pane-b" data-pane="pane-preview" data-view="preview">
               <div class="pane-head" id="pane-b-head">
                 <div class="view-switch" id="view-switch">
                   <button class="vtab core active" type="button" aria-current="true">
@@ -226,46 +195,24 @@
                   </button>
                 </div>
                 <div class="pane-head-actions">
-                  <!-- Быстрый возврат к предпросмотру, когда активна плагинная вкладка.
-                       Показывается/скрывается из pluginViews.ts (hidden по умолчанию). -->
-                  <button
-                    id="btn-back-preview"
-                    class="tbtn tbtn-sm"
-                    type="button"
-                    title="Вернуться к предпросмотру"
-                    aria-label="Вернуться к предпросмотру"
-                    hidden
-                  >
+                  <button id="btn-back-preview" class="tbtn tbtn-sm" type="button" title="Вернуться к предпросмотру" aria-label="Вернуться к предпросмотру" hidden>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>
                   </button>
-                  <button
-                    id="btn-copy-html"
-                    class="tbtn tbtn-sm"
-                    type="button"
-                    title="Копировать HTML"
-                    aria-label="Копировать HTML предпросмотра"
-                  >
+                  <button id="btn-copy-html" class="tbtn tbtn-sm" type="button" title="Копировать HTML" aria-label="Копировать HTML предпросмотра">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                   </button>
                 </div>
               </div>
               <article id="preview" class="markdown-body"></article>
-              <!-- плагинное тир-1 view (H2): отдельный контейнер, innerHTML пишет pluginViews.ts -->
               <article id="plugin-view" class="markdown-body plugin-view" hidden></article>
             </section>
           </div>
         </main>
       </div>
 
-      <!-- ============ НИЖНИЙ ДОК (S11, ADR-0029/0030) ============
-           Один док на взаимоисключающие режимы «Журнал | Мониторинг | AI-ассистент».
-           Раскрытие сжимает рабочую область (не overlay); свёртка — полоса-шапка;
-           атрибут hidden — дока нет в layout (дефолт, возврат — триггеры статусбара). -->
       <section class="logs-panel" id="logs-panel" role="region" aria-label="Нижняя панель" aria-labelledby="logs-title" data-mode="logs" hidden>
-        <!-- drag-handle изменения высоты (логика — Фаза 3) -->
         <div class="logs-resize" id="logs-resize" role="separator" aria-orientation="horizontal" aria-label="Изменить высоту панели" title="Потяните, чтобы изменить высоту"></div>
 
-        <!-- Шапка панели -->
         <div class="logs-head">
           <button class="logs-caret" id="logs-collapse" type="button" title="Свернуть или развернуть панель" aria-label="Свернуть или развернуть панель" aria-expanded="false" aria-controls="logs-body">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false">
@@ -275,30 +222,21 @@
           <span class="logs-title" id="logs-title">Журнал</span>
           <span class="logs-count logs-only" id="logs-count">0</span>
 
-          <!-- Сегмент режимов дока (ADR-0030): radio-tablist -->
           <div class="logs-modes" id="logs-modes" role="tablist" aria-label="Режим нижней панели">
             <button class="mode-btn active" id="mode-logs-btn" type="button" role="tab" aria-selected="true" aria-controls="logs-body" data-mode="logs" title="Журнал событий">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false">
-                <polyline points="4 17 10 11 4 5" />
-                <line x1="12" y1="19" x2="20" y2="19" />
-              </svg>
+              <svg aria-hidden="true" focusable="false"><use href="#icon-journal" /></svg>
               <span>Журнал</span>
             </button>
             <button class="mode-btn" id="mode-mon-btn" type="button" role="tab" aria-selected="false" aria-controls="mon-body" data-mode="mon" title="Мониторинг ресурсов">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false">
-                <path d="M3 12h4l3 8 4-16 3 8h4" />
-              </svg>
+              <svg aria-hidden="true" focusable="false"><use href="#icon-mon" /></svg>
               <span>Мониторинг</span>
             </button>
             <button class="mode-btn" id="mode-ai-btn" type="button" role="tab" aria-selected="false" aria-controls="ai-mode" data-mode="ai" title="AI-ассистент">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false">
-                <path d="M12 3l1.6 4.6L18 9l-4.4 1.4L12 15l-1.6-4.6L6 9l4.4-1.4z" />
-              </svg>
+              <svg aria-hidden="true" focusable="false"><use href="#icon-ai-sm" /></svg>
               <span>AI-ассистент</span>
             </button>
           </div>
 
-          <!-- Тихий фильтр-сегмент (только режим «Журнал», логика — Фаза 3) -->
           <div class="logs-filter logs-only" role="group" aria-label="Фильтр событий">
             <button class="filter-btn active" data-filter="all" type="button" aria-pressed="true">Все</button>
             <button class="filter-btn" data-filter="error" type="button" aria-pressed="false">Ошибки</button>
@@ -306,19 +244,12 @@
 
           <span class="logs-head-spacer"></span>
 
-          <!-- Тихая сводка мониторинга в шапке (детали — во вкладке) -->
           <span class="mon-summary mon-only" id="mon-summary"></span>
 
-          <!-- Кнопка очистки журнала — только иконка (режим «Журнал», логика — Фаза 3) -->
           <button class="logs-clear logs-only" id="logs-clear" type="button" title="Очистить журнал" aria-label="Очистить журнал">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false">
-              <polyline points="3 6 5 6 21 6" />
-              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-            </svg>
+            <svg aria-hidden="true" focusable="false"><use href="#icon-clear" /></svg>
           </button>
 
-          <!-- Режимные поля «AI-ассистент» (ai-only): строка модели, настройки, очистка чата.
-               Видимостью управляет logPanel (toggleModeFields по data-mode). -->
           <span class="ai-model ai-only" aria-hidden="true" hidden></span>
           <button class="logs-clear ai-only" id="ai-settings" type="button" title="Настройки AI" aria-label="Настройки AI" hidden>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false">
@@ -327,27 +258,18 @@
             </svg>
           </button>
           <button class="logs-clear ai-only" id="ai-clear" type="button" title="Очистить чат" aria-label="Очистить чат" hidden>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false">
-              <polyline points="3 6 5 6 21 6" />
-              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-            </svg>
+            <svg aria-hidden="true" focusable="false"><use href="#icon-clear" /></svg>
           </button>
 
-          <!-- Скрыть док целиком (возврат в hidden; в БЫЛО такого affordance не было) -->
           <button class="logs-close" id="logs-close" type="button" title="Скрыть панель" aria-label="Скрыть панель">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true" focusable="false">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
+            <svg aria-hidden="true" focusable="false"><use href="#icon-close" /></svg>
           </button>
         </div>
 
-        <!-- Тело режима «Журнал»: лента событий -->
         <div class="logs-body" id="logs-body" role="tabpanel" aria-labelledby="mode-logs-btn">
           <div class="logs-list" id="logs-list" role="log" aria-live="polite" aria-relevant="additions"></div>
         </div>
 
-        <!-- Тело режима «Мониторинг» (id/role слота ресурсов сохранены, AC-11) -->
         <div class="mon-tab" id="mon-body" role="tabpanel" aria-labelledby="mode-mon-btn" hidden>
           <div class="mon-list" id="logs-resources" role="note" aria-label="Мониторинг ресурсов">
             <div class="mon-grid mon-head-row" aria-hidden="true">
@@ -358,16 +280,11 @@
               <span class="c-cpu">CPU</span>
               <span class="c-age">Обновлено</span>
             </div>
-            <!-- строки процессов: заполняет resourceMonitor.ts (только textContent) -->
             <div id="mon-rows"></div>
           </div>
         </div>
 
-        <!-- Тело режима «AI-ассистент» (aiPanel.ts): скиллы, чат, поле ввода.
-             Ответ модели рендерится только textContent (MVP; innerHTML для
-             ответа LLM запрещён). Состояния/заглушка — по тумблеру #ai-enabled. -->
         <div class="ai-mode" id="ai-mode" role="tabpanel" aria-labelledby="mode-ai-btn" hidden>
-          <!-- Заглушка при выключенном AI (ai.enabled=false): запросов нет -->
           <div class="ai-off" id="ai-off">
             <span class="ai-off-icon" aria-hidden="true">✦</span>
             <div class="ai-off-title">AI выключен</div>
@@ -375,16 +292,12 @@
             <button class="btn primary" id="ai-enable" type="button">Включить</button>
           </div>
 
-          <!-- Шапка сессии: «сессия от <дата>» (id контракт для aiPanel; скрыта при пустой истории) -->
           <div class="ai-session" id="ai-session" role="status" hidden></div>
 
-          <!-- Сетка скиллов: 2 боевых (explain, create-plugin) + чип «скоро» -->
           <div class="ai-skills" id="ai-skills" role="toolbar" aria-label="Готовые скиллы"></div>
 
-          <!-- Чат: сообщения добавляет aiPanel (только textContent) -->
           <div class="ai-chat" id="ai-chat" role="log" aria-live="polite" aria-relevant="additions"></div>
 
-          <!-- Поле ввода: Enter — отправить, Shift+Enter — перенос строки -->
           <div class="ai-input">
             <div class="ai-input-inner">
               <textarea id="ai-input" rows="1" placeholder="Спросите что-нибудь…" aria-label="Сообщение AI-ассистенту"></textarea>
@@ -394,36 +307,22 @@
         </div>
       </section>
 
-      <!-- ============ СТАТУСБАР ============ -->
       <footer id="statusbar" class="statusbar">
         <span class="stat"><span class="stat-dot" aria-hidden="true"></span><span id="stat-state">Готов</span></span>
         <span class="stat" id="stat-msg" role="status" aria-live="polite"></span>
-        <!-- Журнал: точка входа из статусбара (S11, ADR-0029) -->
         <button class="stat clickable" id="sb-logs" type="button" title="Журнал и события" aria-label="Журнал и события" aria-expanded="false" aria-controls="logs-panel">
-          <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="12" height="12">
-            <polyline points="4 17 10 11 4 5" />
-            <line x1="12" y1="19" x2="20" y2="19" />
-          </svg>
+          <svg aria-hidden="true" focusable="false" width="12" height="12"><use href="#icon-journal" /></svg>
           <span>Журнал</span>
           <span class="badge" id="log-badge" hidden>0</span>
         </button>
-        <!-- Мониторинг ресурсов: точка входа из статусбара (IDEA-012, ADR-0031) -->
         <button class="stat clickable" id="sb-mon" type="button" title="Мониторинг ресурсов" aria-label="Мониторинг ресурсов" aria-expanded="false" aria-controls="logs-panel">
-          <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="12" height="12">
-            <path d="M3 12h4l3 8 4-16 3 8h4" />
-          </svg>
+          <svg aria-hidden="true" focusable="false" width="12" height="12"><use href="#icon-mon" /></svg>
           <span>Мониторинг</span>
         </button>
-        <!-- AI-ассистент: точка входа из статусбара (режим AI нижнего дока) -->
         <button class="stat clickable" id="sb-ai" type="button" title="AI-ассистент" aria-label="AI-ассистент" aria-expanded="false" aria-controls="logs-panel">
-          <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="12" height="12">
-            <path d="M12 3l1.6 4.6L18 9l-4.4 1.4L12 15l-1.6-4.6L6 9l4.4-1.4z" />
-          </svg>
+          <svg aria-hidden="true" focusable="false" width="12" height="12"><use href="#icon-ai-sm" /></svg>
           <span>AI-ассистент</span>
         </button>
-        <!-- Тумблер темы (ADR-0037): ручной, без prefers-color-scheme. Состояние —
-             data-theme на <html>; выбор сохраняется в localStorage (darmark.theme).
-             Иконка отражает текущую тему: луна — тёмная, солнце — светлая. -->
         <button class="stat clickable" id="sb-theme" type="button" title="Переключить тему" aria-label="Тема: тёмная" aria-pressed="false">
           <svg id="sb-theme-icon-moon" aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="12" height="12">
             <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
@@ -443,8 +342,6 @@
         <span class="stat accent" id="stat-inspect" hidden role="status" aria-live="polite"></span>
       </footer>
 
-      <!-- Поповер настроек AI: мастер-тумблер, провайдер/base URL/модель/ключ.
-           Ключ хранится локально в %APPDATA%/darmark/config.json (секция ai). -->
       <div class="ai-settings-pop" id="ai-settings-pop" role="dialog" aria-label="Настройки AI" hidden>
         <div class="pop-head">Настройки AI</div>
         <div class="pop-body">
@@ -460,7 +357,6 @@
             </span>
           </label>
 
-          <!-- Строка состояния компонента: точка зеркалит #ai-dot -->
           <div class="pop-status" id="ai-status" role="status">
             <span class="dot state-off" id="ai-status-dot" aria-hidden="true"></span>
             <span class="pop-status-text" id="ai-status-text">выключен</span>
@@ -504,28 +400,20 @@
         </div>
       </div>
     </div>
-    <!-- Дровер плагинов и его backdrop: прямые дети body, чтобы `inert` на #app
-         не глушил сам дровер (модальность — drawer.ts). -->
     <div class="drawer-backdrop" id="backdrop"></div>
     <aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title" hidden>
       <div class="drawer-head">
         <span class="side-title" id="drawer-title">Плагины</span>
         <span class="side-count" id="side-count"></span>
         <button class="tbtn tbtn-sm" id="drawer-close" type="button" title="Закрыть (Esc)" aria-label="Закрыть">
-          <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-            <line x1="18" y1="6" x2="6" y2="18" />
-            <line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
+          <svg aria-hidden="true" focusable="false"><use href="#icon-close" /></svg>
         </button>
       </div>
       <div class="drawer-body" id="drawer-body">
-        <!-- контейнер менеджера плагинов (H2); заполняет pluginManager.ts -->
         <div id="plugin-manager"></div>
       </div>
     </aside>
 
-    <!-- Модальные диалоги и тост-хост: прямые дети body, чтобы `inert` на #app
-         не глушил их (dialog.ts открывает оверлеи в #modal-root). -->
     <div id="modal-root" class="modal-root"></div>
     <div id="toast-host" class="toast-host" aria-live="polite" aria-atomic="false"></div>
     <script type="module" src="/src/main.ts"></script>

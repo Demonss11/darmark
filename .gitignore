@@ -1,18 +1,19 @@
 # Rust/Tauri build artifacts
 target/
-gen/schemas/
-src-tauri/gen/schemas/    # на случай если путь сгенерированного отличается
-crates/app/src-tauri/gen/ # Tauri CLI generated files
+# ACL-схемы: генерирует tauri-build в build.rs, cargo clean их не удаляет
+crates/app/src-tauri/gen/
 
 # Sidecar-бинарники для tauri build (генерируются scripts/prepare-sidecars.mjs)
 crates/app/src-tauri/binaries/
-*.pdb                    # debug-символы sidecar (Windows)
+# debug-символы sidecar (Windows)
+*.pdb
 
 # Node.js dependencies and build output
 node_modules/
 crates/app/node_modules/
 dist/
-*.tsbuildinfo            # incremental кэш TypeScript
+# incremental кэш TypeScript
+*.tsbuildinfo
 
 # Environment variables
 .env
@@ -24,7 +25,8 @@ dist/
 build/
 *.log
 .idea/
-.vscode/                 # если не храните настройки workspace
+# если не храните настройки workspace
+.vscode/
 .vs/
 .DS_Store
 Thumbs.db

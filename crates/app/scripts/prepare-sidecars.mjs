@@ -19,7 +19,7 @@ import { copyFileSync, existsSync, mkdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const EXT = process.platform === "win32" ? ".exe" : "";
+const EXT = ".exe";
 
 /** Разбирает `--profile <debug|release>` (по умолчанию `release`). */
 function parseProfile(argv) {

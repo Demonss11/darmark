@@ -94,10 +94,6 @@ fn expected_tools() -> Vec<&'static str> {
             "markdown_render",
         ]
     }
-    #[cfg(not(windows))]
-    {
-        vec!["plugin_catalog_list", "markdown_render"]
-    }
 }
 
 /// URI ресурсов, которые приложение обязано зарегистрировать (TZ-MCP §4).

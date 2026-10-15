@@ -175,16 +175,8 @@ fn is_loopback_host(host: &str) -> bool {
     matches!(host, "127.0.0.1" | "localhost" | "::1")
 }
 
-/// Выбор бэкенда по платформе: `reqwest` (Windows) либо заглушка (не-Windows).
 fn default_backend() -> Arc<dyn AiTransport> {
-    #[cfg(windows)]
-    {
-        Arc::new(crate::ai::backend::reqwest::ReqwestBackend::new())
-    }
-    #[cfg(not(windows))]
-    {
-        Arc::new(UnavailableBackend)
-    }
+    Arc::new(crate::ai::backend::reqwest::ReqwestBackend::new())
 }
 
 /// Блокировка мьютекса без паники: под `panic = "abort"` отравление невозможно, но в тестах
@@ -193,39 +185,6 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     mutex
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
-}
-
-/// Заглушка бэкенда для не-Windows: сетевой слой AI не собирается (ADR-0033 §2.1).
-#[cfg(not(windows))]
-struct UnavailableBackend;
-
-#[cfg(not(windows))]
-impl AiTransport for UnavailableBackend {
-    fn chat<'a>(
-        &'a self,
-        _request: crate::ai::transport::ChatRequest,
-        _on_delta: &'a mut (dyn FnMut(String) + Send),
-    ) -> crate::ai::transport::BoxFuture<'a, Result<crate::ai::transport::ChatOutcome, CommandError>>
-    {
-        Box::pin(async {
-            Err(CommandError::new(
-                crate::error::ErrorCode::AiOffline,
-                "AI-ассистент доступен только на Windows",
-            ))
-        })
-    }
-
-    fn test_connection(
-        &self,
-        _request: crate::ai::transport::TestRequest,
-    ) -> crate::ai::transport::BoxFuture<'_, Result<Option<String>, CommandError>> {
-        Box::pin(async {
-            Err(CommandError::new(
-                crate::error::ErrorCode::AiOffline,
-                "AI-ассистент доступен только на Windows",
-            ))
-        })
-    }
 }
 
 #[cfg(test)]

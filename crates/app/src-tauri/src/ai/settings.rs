@@ -14,50 +14,27 @@ use crate::error::CommandError;
 
 /// Путь конфига приложения. `None` — сохранять некуда (нет `APPDATA`/override).
 pub fn config_path() -> Option<PathBuf> {
-    #[cfg(windows)]
-    {
-        crate::plugins::settings::SettingsStore::config_path()
-    }
-    #[cfg(not(windows))]
-    {
-        std::env::var_os("DARMARK_CONFIG_PATH").map(PathBuf::from)
-    }
+    crate::plugins::settings::SettingsStore::config_path()
 }
 
 /// Читает секцию `ai` из конфига по пути (нет пути/файла/секции → дефолты).
 pub fn load_from(path: Option<&Path>) -> AiSettings {
-    #[cfg(windows)]
-    {
-        path.map(|p| crate::plugins::settings::SettingsStore::load(p).ai)
-            .unwrap_or_default()
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = path;
-        AiSettings::default()
-    }
+    path.map(|p| crate::plugins::settings::SettingsStore::load(p).ai)
+        .unwrap_or_default()
 }
 
 /// Пишет секцию `ai`, **не затирая** прочие секции (плагины/недавние файлы). Атомарно.
 ///
-/// Нет пути — no-op (не ошибка команды). На не-Windows — no-op.
+/// Нет пути — no-op (не ошибка команды).
 pub fn persist_to(path: Option<&Path>, settings: &AiSettings) -> Result<(), CommandError> {
-    #[cfg(windows)]
-    {
-        let Some(path) = path else {
-            return Ok(());
-        };
-        let mut store = crate::plugins::settings::SettingsStore::load(path);
-        store.ai = settings.clone();
-        store
-            .save(path)
-            .map_err(|e| CommandError::io(format!("не сохранить настройки AI: {e}")))
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = (path, settings);
-        Ok(())
-    }
+    let Some(path) = path else {
+        return Ok(());
+    };
+    let mut store = crate::plugins::settings::SettingsStore::load(path);
+    store.ai = settings.clone();
+    store
+        .save(path)
+        .map_err(|e| CommandError::io(format!("не сохранить настройки AI: {e}")))
 }
 
 /// Читает настройки из конфига по пути по умолчанию.

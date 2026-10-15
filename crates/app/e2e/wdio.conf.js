@@ -129,7 +129,6 @@ function cleanupEdgeDriverCache() {
 }
 
 function killStrayProcesses() {
-  if (process.platform !== "win32") return;
   for (const image of ["darmark.exe", "msedgedriver.exe", "tauri-driver.exe"]) {
     try {
       execFileSync("taskkill", ["/IM", image, "/F", "/T"], { stdio: "ignore" });

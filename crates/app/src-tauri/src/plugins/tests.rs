@@ -48,7 +48,6 @@ fn suppress_windows_error_dialogs() {
     });
 }
 
-#[cfg(not(windows))]
 fn suppress_windows_error_dialogs() {}
 
 fn fixture(name: &str) -> String {

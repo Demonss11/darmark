@@ -563,18 +563,10 @@ pub fn ai_create_plugin(
     source: String,
     state: tauri::State<'_, crate::PluginState>,
 ) -> Result<crate::PluginInfo, CommandError> {
-    #[cfg(windows)]
-    {
-        let root = plugins_root()?;
-        let info = create_plugin_at(&state.host, &root, &id, &manifest, &source, validate_plugin)?;
-        emit_plugin_event(&app, "ai:plugin_created", &id);
-        Ok(info)
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = (app, id, manifest, source, state);
-        Err(plugin_unavailable())
-    }
+    let root = plugins_root()?;
+    let info = create_plugin_at(&state.host, &root, &id, &manifest, &source, validate_plugin)?;
+    emit_plugin_event(&app, "ai:plugin_created", &id);
+    Ok(info)
 }
 
 /// Обновляет плагин: перезапись → валидация → `reload_plugin`. Эмитит `ai:plugin_updated`.
@@ -586,18 +578,10 @@ pub fn ai_update_plugin(
     source: String,
     state: tauri::State<'_, crate::PluginState>,
 ) -> Result<crate::PluginInfo, CommandError> {
-    #[cfg(windows)]
-    {
-        let root = plugins_root()?;
-        let info = update_plugin_at(&state.host, &root, &id, &manifest, &source, validate_plugin)?;
-        emit_plugin_event(&app, "ai:plugin_updated", &id);
-        Ok(info)
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = (app, id, manifest, source, state);
-        Err(plugin_unavailable())
-    }
+    let root = plugins_root()?;
+    let info = update_plugin_at(&state.host, &root, &id, &manifest, &source, validate_plugin)?;
+    emit_plugin_event(&app, "ai:plugin_updated", &id);
+    Ok(info)
 }
 
 /// Удаляет плагин через существующий `PluginHost::remove`. Эмитит `ai:plugin_deleted`.
@@ -607,17 +591,9 @@ pub fn ai_delete_plugin(
     id: String,
     state: tauri::State<'_, crate::PluginState>,
 ) -> Result<(), CommandError> {
-    #[cfg(windows)]
-    {
-        delete_plugin_at(&state.host, &id)?;
-        emit_plugin_event(&app, "ai:plugin_deleted", &id);
-        Ok(())
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = (app, id, state);
-        Err(plugin_unavailable())
-    }
+    delete_plugin_at(&state.host, &id)?;
+    emit_plugin_event(&app, "ai:plugin_deleted", &id);
+    Ok(())
 }
 
 /// Эмитит событие harness'а `{ plugin_id }` (best-effort: сбой не роняет команду).
@@ -626,14 +602,6 @@ fn emit_plugin_event(app: &tauri::AppHandle, event: &str, id: &str) {
     if let Err(e) = app.emit(event, serde_json::json!({ "plugin_id": id })) {
         eprintln!("не эмитить {event}: {e}");
     }
-}
-
-#[cfg(not(windows))]
-fn plugin_unavailable() -> CommandError {
-    CommandError::new(
-        ErrorCode::Plugin,
-        "плагинная подсистема доступна только на Windows",
-    )
 }
 
 // ---------- ядро CRUD (без Tauri — тестируемо) ----------
