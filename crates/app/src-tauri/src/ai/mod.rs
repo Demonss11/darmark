@@ -18,6 +18,7 @@ pub mod settings;
 pub mod skills;
 pub mod sse;
 pub mod state;
+pub mod tool_calls;
 pub mod transport;
 pub mod types;
 

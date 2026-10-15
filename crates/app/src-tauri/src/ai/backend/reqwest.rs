@@ -244,6 +244,7 @@ impl AiTransport for ReqwestBackend {
                             content.push_str(&delta);
                             on_delta(delta);
                         }
+                        SseEvent::ToolCallDelta { .. } => {}
                         SseEvent::Usage(value) => usage = Some(value),
                         SseEvent::Finish(reason) => finish_reason = Some(reason),
                         SseEvent::Done => {}

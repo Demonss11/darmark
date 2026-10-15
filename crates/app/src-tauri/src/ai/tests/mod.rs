@@ -9,5 +9,6 @@ mod reqwest;
 mod skills;
 mod sse;
 mod state;
+mod tool_calls;
 mod transport;
 mod types;

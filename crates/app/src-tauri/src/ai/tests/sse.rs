@@ -203,3 +203,58 @@ fn finish_reason_alongside_usage_and_done() {
         ]
     );
 }
+
+#[test]
+fn sse_parses_tool_call_delta_fragments() {
+    let mut parser = SseParser::new();
+    let line = br#"data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"plugin_validate","arguments":"{\"path\":"}}]}}]}"#;
+    let mut events = parser.push(line);
+    events.extend(parser.push(b"\n\n"));
+    assert!(events.iter().any(|e| matches!(
+        e,
+        SseEvent::ToolCallDelta { index: 0, id: Some(id), name: Some(name), .. }
+        if id == "call_1" && name == "plugin_validate"
+    )));
+}
+
+#[test]
+fn sse_parses_multiple_tool_call_deltas_in_one_event() {
+    let mut parser = SseParser::new();
+    let line = br#"data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"tool_a","arguments":"{\"a\":"}},{"index":1,"id":"call_2","function":{"name":"tool_b","arguments":"{\"b\":"}}]}}]}"#;
+    let mut events = parser.push(line);
+    events.extend(parser.push(b"\n\n"));
+    let deltas: Vec<_> = events
+        .iter()
+        .filter(|e| matches!(e, SseEvent::ToolCallDelta { .. }))
+        .collect();
+    assert_eq!(deltas.len(), 2);
+}
+
+#[test]
+fn sse_skips_tool_call_delta_with_all_empty_fields() {
+    let mut parser = SseParser::new();
+    let line = br#"data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"","function":{"name":"","arguments":""}}]}}]}"#;
+    let events = parser.push(line);
+    assert!(events
+        .iter()
+        .all(|e| !matches!(e, SseEvent::ToolCallDelta { .. })));
+}
+
+#[test]
+fn sse_tool_call_delta_empty_string_fields_become_none() {
+    let mut parser = SseParser::new();
+    let line = br#"data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"","function":{"name":"","arguments":"{\"k\":1}"}}]}}]}"#;
+    let mut events = parser.push(line);
+    events.extend(parser.push(b"\n\n"));
+    assert_eq!(
+        events
+            .iter()
+            .find(|e| matches!(e, SseEvent::ToolCallDelta { .. })),
+        Some(&SseEvent::ToolCallDelta {
+            index: 0,
+            id: None,
+            name: None,
+            arguments: Some("{\"k\":1}".to_string()),
+        })
+    );
+}

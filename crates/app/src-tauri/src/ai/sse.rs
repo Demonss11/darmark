@@ -21,6 +21,17 @@ pub enum SseEvent {
     Finish(String),
     /// Терминатор `data: [DONE]`.
     Done,
+    /// Инкрементальный фрагмент tool_call из `choices[0].delta.tool_calls[]`.
+    ToolCallDelta {
+        /// Индекс вызова в массиве tool_calls.
+        index: u32,
+        /// Идентификатор вызова (первый непустой фрагмент).
+        id: Option<String>,
+        /// Имя инструмента (первый непустой фрагмент).
+        name: Option<String>,
+        /// Фрагмент аргументов (конкатенируется).
+        arguments: Option<String>,
+    },
 }
 
 /// Инкрементальный построчный парсер SSE.
@@ -109,7 +120,53 @@ fn parse_payload(payload: &str) -> Vec<SseEvent> {
             events.push(SseEvent::Finish(finish_reason.to_string()));
         }
     }
+    if let Some(tool_calls) = value
+        .get("choices")
+        .and_then(|choices| choices.get(0usize))
+        .and_then(|choice| choice.get("delta"))
+        .and_then(|delta| delta.get("tool_calls"))
+        .and_then(|tc| tc.as_array())
+    {
+        for tc in tool_calls {
+            if let Some(event) = parse_tool_call_delta(tc) {
+                events.push(event);
+            }
+        }
+    }
     events
+}
+
+/// Извлекает фрагмент tool_call из `delta.tool_calls[]`.
+///
+/// Пустые строки и отсутствующие поля → `None`; если все поля пустые — `None` (не эмитим).
+fn parse_tool_call_delta(value: &serde_json::Value) -> Option<SseEvent> {
+    let index = u32::try_from(value.get("index")?.as_u64()?).ok()?;
+    let id = value
+        .get("id")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(String::from);
+    let name = value
+        .get("function")
+        .and_then(|f| f.get("name"))
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(String::from);
+    let arguments = value
+        .get("function")
+        .and_then(|f| f.get("arguments"))
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(String::from);
+    if id.is_none() && name.is_none() && arguments.is_none() {
+        return None;
+    }
+    Some(SseEvent::ToolCallDelta {
+        index,
+        id,
+        name,
+        arguments,
+    })
 }
 
 /// Извлекает `usage.{prompt_tokens,completion_tokens}`, если он есть и корректен.
