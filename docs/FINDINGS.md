@@ -146,16 +146,33 @@ Lua в песочнице Rust-тестом не проверяется.
 **F63 — источник каталога плагинов не зависит от CWD** (закрытие оговорки о `catalog_repo()`).
 Гипотеза: `catalog_repo()` разрешался от рабочего каталога процесса, поэтому в упакованном
 приложении tool/resource возвращали ошибку (CWD произволен).
-Изменение (`crates/app/src-tauri/src/mcp/mod.rs`): `catalog_repo(app_data_dir: &Path)`;
-приоритет env `DARMARK_PLUGIN_REPO` → `discover_repo(app_data_dir)` → `app_data_dir/plugins`.
-`build_registry` берёт `app.path().app_data_dir()`; каталог «запекается» в обработчики при
-сборке реестра, на пути чтения CWD не используется. Замер (`mcp/tests.rs`, debug):
+Изменение (`crates/app/src-tauri/src/mcp/mod.rs`): `catalog_repo(data_dir: &Path)`;
+приоритет env `DARMARK_PLUGIN_REPO` → `discover_repo(data_dir)` → `data_dir/plugins`.
+`build_registry` берёт `SettingsStore::data_dir()` — единый каталог данных приложения
+(`%APPDATA%/darmark`, DESIGN_DOC D8); каталог «запекается» в обработчики при
+сборке реестра, на пути чтения CWD не используется.
+
+**Обоснование (Вариант B):** `app.path().app_data_dir()` возвращает `%APPDATA%/dev.darmark.app`
+(по Tauri-identifier) — второй, нигде не используемый корень. `SettingsStore::data_dir()`
+возвращает `%APPDATA%/darmark` — тот же каталог, который сканирует рантайм (`plugins_root()` /
+`plugins_dir()`), куда ставит `--dest` (ADR-0026), и где живут настройки (ADR-0032/0035).
+Вариант B сводит MCP к той же области, что и остальное приложение, и устраняет разрыв:
+`plugin_catalog_list` / `darmark://plugins/*` указывают на каталог, чьи плагины
+`plugin_test` / `plugin_validate` могут протестировать через `ensure_plugin_path_allowed`.
+
+**Dev-следствие:** автопоиск репозиторного `examples/plugins/` через CWD более недоступен —
+`discover_repo` от `%APPDATA%/darmark` репозиторий не находит. Штатный механизм dev —
+env `DARMARK_PLUGIN_REPO` (приоритетнее автопоиска, ADR-0026 §2.4); он уже используется
+тестами (`mcp/tests.rs`, `mcp_contract.rs`).
+
+Замер (`mcp/tests.rs`, debug):
 
 | Проверка | Ожидание | Результат |
 |---|---|---|
-| env задан | env-путь важнее `app_data_dir` | env-путь |
-| env нет, есть `<app_data_dir>/plugins/index.json` | автопоиск находит каталог | `<app_data_dir>/plugins` |
-| env нет, каталога нет, CWD содержит свой `plugins/index.json` | fallback `<app_data_dir>/plugins`, CWD игнорируется | `<app_data_dir>/plugins` |
+| env задан | env-путь важнее `data_dir` | env-путь |
+| env нет, есть `<data_dir>/plugins/index.json` | автопоиск находит каталог | `<data_dir>/plugins` |
+| env нет, каталога нет, CWD содержит свой `plugins/index.json` | fallback `<data_dir>/plugins`, CWD игнорируется | `<data_dir>/plugins` |
 
 Вывод: `catalog_repo()` не зависит от CWD (ни один prod-путь не читает `current_dir`);
-приоритет env > автопоиск > fallback подтверждён тестом, включая смену CWD. → ADR-0036.
+приоритет env > автопоиск > fallback подтверждён тестом, включая смену CWD;
+источник — единый каталог данных приложения, согласованный с рантаймом. → ADR-0026, ADR-0036.
