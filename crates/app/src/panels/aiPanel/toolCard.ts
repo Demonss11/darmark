@@ -73,7 +73,8 @@ export function createToolCard(
     if (!card) return;
     const stateClass = ok ? "is-ok" : "is-error";
     card.classList.remove("is-running");
-    card.classList.add(stateClass);
+    card.classList.toggle("is-ok", ok);
+    card.classList.toggle("is-error", !ok);
     const icon = card.querySelector<HTMLElement>(".ai-tool-icon");
     const badge = card.querySelector<HTMLElement>(".ai-tool-badge");
     const status = card.querySelector<HTMLElement>(".ai-tool-status");

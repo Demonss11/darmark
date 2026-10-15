@@ -20,7 +20,7 @@
 // (DOM на элементах панели и на `document`, Tauri-события) и отвечает за
 // `dispose`. Логика самих кластеров живёт рядом: state.ts (общее состояние и
 // DOM-ссылки), indicator.ts, skillBar.ts, chat.ts, diffCard.ts, pluginCard.ts,
-// history.ts, settingsPane.ts, consent.ts, stream.ts.
+// toolCard.ts, history.ts, settingsPane.ts, consent.ts, stream.ts.
 
 import { listen, type Event } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";

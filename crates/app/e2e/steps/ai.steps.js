@@ -1251,15 +1251,22 @@ Then("манифест плагина AI {string} содержит вид {strin
 // второй — финальный текст. Поэтому мок stateful (счётчик запросов), в отличие от
 // статичных моков выше.
 //
-// Инструмент исполняется реально на реестре MCP (TZ-MCP R3/R4). Аргументом идёт путь к
-// фикстуре `e2e-view` в изолированном каталоге плагинов: он внутри белого списка (путь вне
-// `plugins/`/`temp/` отказывает ДО записи журнала — mcp/adapters/tools.rs), а запись
-// `MCP plugin_validate: e2e-view — ok (N мс)` рождает адаптер MCP.
+// Инструменты исполняются реально на реестре MCP (TZ-MCP R3/R4). Первый ответ просит ДВА вызова
+// `plugin_validate` — этим закрыты оба исхода карточки: успех и ошибка.
+//   * `call_1` — путь к фикстуре `e2e-view` в изолированном каталоге плагинов: внутри белого
+//     списка, валидация проходит → `is-ok` + запись `MCP plugin_validate: e2e-view — ok (N мс)`.
+//   * `call_2` — несуществующий каталог внутри того же `plugins/`: `canonicalize` в
+//     `ensure_plugin_path_allowed` отказывает ДО `log_mcp_call` (mcp/adapters/tools.rs), поэтому
+//     результат приходит как `isError` → карточка `is-error`, а записи журнала НЕ появляется.
 
-/// Аргументы вызова инструмента: путь к фикстуре плагина внутри белого списка (plugins/).
-function aiToolCallArguments() {
-  return JSON.stringify({ path: path.join(pluginsDir(), "e2e-view") });
+/// Аргументы вызова инструмента: путь к каталогу внутри белого списка (`plugins/`).
+/// `dirName` — имя каталога-фикстуры либо несуществующего каталога (исход `isError`).
+function aiToolCallArguments(dirName = "e2e-view") {
+  return JSON.stringify({ path: path.join(pluginsDir(), dirName) });
 }
+
+/// Каталог внутри `plugins/`, которого нет: путь не канонизируется → инструмент отдаёт `isError`.
+const AI_TOOL_MISSING_DIR = "e2e-missing-dir";
 
 /// Stateful SSE-провайдер с вызовом инструмента (однократно за сеанс).
 let toolMockProvider = null;
@@ -1277,7 +1284,7 @@ When("я поднимаю мок-провайдера AI с вызовом ин�
       Connection: "keep-alive",
     });
     if (toolMockRequests === 1) {
-      // Первый ответ: текста нет, модель просит исполнить инструмент.
+      // Первый ответ: текста нет, модель просит исполнить два инструмента (успех и ошибка).
       res.write(
         `data: ${JSON.stringify({
           choices: [
@@ -1291,6 +1298,15 @@ When("я поднимаю мок-провайдера AI с вызовом ин�
                     function: {
                       name: "plugin_validate",
                       arguments: aiToolCallArguments(),
+                    },
+                  },
+                  {
+                    index: 1,
+                    id: "call_2",
+                    type: "function",
+                    function: {
+                      name: "plugin_validate",
+                      arguments: aiToolCallArguments(AI_TOOL_MISSING_DIR),
                     },
                   },
                 ],
@@ -1334,25 +1350,77 @@ When("я направляю AI на мок-провайдера с вызово�
 });
 
 /// Карточка вызова: имя инструмента — в `.ai-tool-name`, идентификатор вызова — в `data-call-id`.
+/// Проверяем не только появление, но и то, что результат ДОШЁЛ: карточка уже не `is-running`,
+/// несёт класс итога и строку статуса `<tool>: <summary> (N мс)` (summary — «готово»/«ошибка»).
 Then("в чате AI есть карточка вызова инструмента {string}", async (tool) => {
   await browser.waitUntil(
     async () =>
       browser.execute((name) => {
         const cards = document.querySelectorAll("#ai-chat .ai-tool-card");
-        return Array.from(cards).some(
-          (card) =>
-            (card.querySelector(".ai-tool-name")?.textContent ?? "") === name &&
-            (card.dataset.callId ?? "") !== ""
-        );
+        return Array.from(cards).some((card) => {
+          if ((card.querySelector(".ai-tool-name")?.textContent ?? "") !== name) return false;
+          if ((card.dataset.callId ?? "") === "") return false;
+          if (card.classList.contains("is-running")) return false;
+          if (!card.classList.contains("is-ok") && !card.classList.contains("is-error")) return false;
+          const status = card.querySelector(".ai-tool-status")?.textContent ?? "";
+          return /(готово|ошибка)/.test(status) && status.includes("мс");
+        });
       }, tool),
-    { timeout: 5000, timeoutMsg: `В чате AI нет карточки вызова инструмента «${tool}»` }
+    {
+      timeout: 5000,
+      timeoutMsg: `В чате AI нет завершённой карточки вызова инструмента «${tool}»`,
+    }
   );
 });
 
-/// Запись журнала MCP: режим «Журнал» + видимая строка `.log-item` с текстом адаптера
-/// (`MCP <tool>: …`). Записи приходят Tauri-событием `log-entry`, поэтому ждём, а не читаем раз.
+/// Итог карточки: `успех` → `is-ok`, `ошибка` → `is-error`. Оба исхода наблюдаемы в одном
+/// сценарии (первый ответ мока просит два вызова `plugin_validate`, см. выше).
+Then(
+  "в чате AI есть карточка вызова инструмента {string} с итогом {string}",
+  async (tool, outcome) => {
+    const expected = outcome === "успех" ? "is-ok" : outcome === "ошибка" ? "is-error" : null;
+    if (!expected) {
+      throw new Error(`Неизвестный итог карточки вызова «${outcome}» (ожидалось «успех»/«ошибка»)`);
+    }
+    await browser.waitUntil(
+      async () =>
+        browser.execute(
+          (name, cls) => {
+            const cards = document.querySelectorAll("#ai-chat .ai-tool-card");
+            return Array.from(cards).some(
+              (card) =>
+                (card.querySelector(".ai-tool-name")?.textContent ?? "") === name &&
+                (card.dataset.callId ?? "") !== "" &&
+                !card.classList.contains("is-running") &&
+                card.classList.contains(cls)
+            );
+          },
+          tool,
+          expected
+        ),
+      { timeout: 5000, timeoutMsg: `В чате AI нет карточки «${tool}» с итогом «${outcome}»` }
+    );
+  }
+);
+
+/// Открывает режим «Журнал» нижнего дока. Явная ошибка вместо молчаливого no-op: без кнопки
+/// проверка ниже искала бы записи в скрытом списке и падала невнятно.
+async function openLogsMode() {
+  const ok = await browser.execute(() => {
+    const btn = document.getElementById("mode-logs-btn");
+    if (!btn) return false;
+    btn.click();
+    return true;
+  });
+  if (!ok) throw new Error("Кнопка режима «Журнал» (#mode-logs-btn) не найдена");
+}
+
+/// Запись журнала MCP: режим «Журнал» + видимая строка `.log-item`, чей `.log-msg` начинается
+/// с `MCP <tool>:` — ровно формат адаптера (`mcp/adapters/journal.rs`). Совпадение по подстроке
+/// «MCP» дало бы ложную зелень: те же буквы есть в тексте ошибки протокола `MCP tools/call …`.
+/// Заодно приватность (AC-MCP-13): в записи не должно быть абсолютного пути/обратного слэша.
 Then("в журнале есть запись о вызове MCP", async () => {
-  await browser.execute(() => document.getElementById("mode-logs-btn")?.click());
+  await openLogsMode();
   await browser.waitUntil(
     async () =>
       browser.execute(() => {
@@ -1360,9 +1428,22 @@ Then("в журнале есть запись о вызове MCP", async () => 
         return Array.from(items).some(
           (item) =>
             item.getClientRects().length > 0 &&
-            (item.querySelector(".log-msg")?.textContent ?? "").includes("MCP")
+            (item.querySelector(".log-msg")?.textContent ?? "").startsWith("MCP plugin_validate:")
         );
       }),
-    { timeout: 5000, timeoutMsg: "В журнале нет записи о вызове MCP" }
+    { timeout: 5000, timeoutMsg: "В журнале нет записи MCP plugin_validate (формат `MCP <tool>: …`)" }
   );
+  const message = await browser.execute(() => {
+    const items = document.querySelectorAll("#logs-list .log-item");
+    const hit = Array.from(items).find(
+      (item) =>
+        item.getClientRects().length > 0 &&
+        (item.querySelector(".log-msg")?.textContent ?? "").startsWith("MCP plugin_validate:")
+    );
+    return hit?.querySelector(".log-msg")?.textContent ?? null;
+  });
+  if (message === null) throw new Error("Запись журнала MCP plugin_validate исчезла между проверками");
+  if (message.includes("\\") || /[A-Za-z]:[\\/]/.test(message)) {
+    throw new Error(`Запись журнала MCP раскрывает путь (AC-MCP-13): ${message}`);
+  }
 });
