@@ -87,6 +87,22 @@ interface AiResponse {
   finish_reason: string | null;
 }
 
+export interface AiToolCallEvent {
+  message_id: string;
+  call_id: string;
+  tool: string;
+  arguments: unknown;
+}
+
+export interface AiToolResultEvent {
+  message_id: string;
+  call_id: string;
+  tool: string;
+  ok: boolean;
+  duration_ms: number;
+  summary: string;
+}
+
 export interface AiSkill {
   id: string;
   title: string;

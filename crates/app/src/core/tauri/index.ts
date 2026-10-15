@@ -59,6 +59,8 @@ export type {
   AiUsage,
   AiSkill,
   AiDiff,
+  AiToolCallEvent,
+  AiToolResultEvent,
   ProviderView,
   ProviderInput,
   ModelInput,

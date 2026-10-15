@@ -1244,3 +1244,125 @@ Then("манифест плагина AI {string} содержит вид {strin
     );
   }
 });
+
+// ---------- Task 5: карточки вызовов инструментов MCP (AC-MCP-5/7/8/13) ----------
+//
+// Tool-loop делает ДВА запроса к одному провайдеру: первый ответ модели несёт tool_calls,
+// второй — финальный текст. Поэтому мок stateful (счётчик запросов), в отличие от
+// статичных моков выше.
+//
+// Инструмент исполняется реально на реестре MCP (TZ-MCP R3/R4). Аргументом идёт путь к
+// фикстуре `e2e-view` в изолированном каталоге плагинов: он внутри белого списка (путь вне
+// `plugins/`/`temp/` отказывает ДО записи журнала — mcp/adapters/tools.rs), а запись
+// `MCP plugin_validate: e2e-view — ok (N мс)` рождает адаптер MCP.
+
+/// Аргументы вызова инструмента: путь к фикстуре плагина внутри белого списка (plugins/).
+function aiToolCallArguments() {
+  return JSON.stringify({ path: path.join(pluginsDir(), "e2e-view") });
+}
+
+/// Stateful SSE-провайдер с вызовом инструмента (однократно за сеанс).
+let toolMockProvider = null;
+let toolMockProviderPort = 0;
+let toolMockRequests = 0;
+
+When("я поднимаю мок-провайдера AI с вызовом инструмента", async () => {
+  if (toolMockProvider) return;
+  toolMockProvider = http.createServer((req, res) => {
+    req.resume(); // тело запроса не нужно
+    toolMockRequests += 1;
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    });
+    if (toolMockRequests === 1) {
+      // Первый ответ: текста нет, модель просит исполнить инструмент.
+      res.write(
+        `data: ${JSON.stringify({
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: "call_1",
+                    type: "function",
+                    function: {
+                      name: "plugin_validate",
+                      arguments: aiToolCallArguments(),
+                    },
+                  },
+                ],
+              },
+              finish_reason: "tool_calls",
+            },
+          ],
+        })}\n\n`
+      );
+    } else {
+      // Второй ответ: результат инструмента ушёл в контекст — модель отвечает текстом.
+      res.write(
+        `data: ${JSON.stringify({
+          choices: [{ delta: { content: "Инструмент проверки плагина вызван." } }],
+        })}\n\n`
+      );
+      res.write(
+        `data: ${JSON.stringify({
+          choices: [{ delta: {}, finish_reason: "stop" }],
+          usage: { prompt_tokens: 9, completion_tokens: 5 },
+        })}\n\n`
+      );
+    }
+    res.write("data: [DONE]\n\n");
+    res.end();
+  });
+  await new Promise((resolve, reject) => {
+    toolMockProvider.once("error", reject);
+    toolMockProvider.listen(0, "127.0.0.1", () => {
+      toolMockProviderPort = toolMockProvider.address().port;
+      resolve();
+    });
+  });
+});
+
+/// Направляет AI на мок-провайдер с вызовом инструмента. Отдельный шаг: адрес статичного
+/// мока выше занят сценарием карточки плагина (свой base_url на провайдера).
+When("я направляю AI на мок-провайдера с вызовом инструмента", async () => {
+  if (!toolMockProvider) throw new Error("Мок-провайдер AI с вызовом инструмента не поднят");
+  await setActiveBaseUrl(`http://127.0.0.1:${toolMockProviderPort}/v1`);
+});
+
+/// Карточка вызова: имя инструмента — в `.ai-tool-name`, идентификатор вызова — в `data-call-id`.
+Then("в чате AI есть карточка вызова инструмента {string}", async (tool) => {
+  await browser.waitUntil(
+    async () =>
+      browser.execute((name) => {
+        const cards = document.querySelectorAll("#ai-chat .ai-tool-card");
+        return Array.from(cards).some(
+          (card) =>
+            (card.querySelector(".ai-tool-name")?.textContent ?? "") === name &&
+            (card.dataset.callId ?? "") !== ""
+        );
+      }, tool),
+    { timeout: 5000, timeoutMsg: `В чате AI нет карточки вызова инструмента «${tool}»` }
+  );
+});
+
+/// Запись журнала MCP: режим «Журнал» + видимая строка `.log-item` с текстом адаптера
+/// (`MCP <tool>: …`). Записи приходят Tauri-событием `log-entry`, поэтому ждём, а не читаем раз.
+Then("в журнале есть запись о вызове MCP", async () => {
+  await browser.execute(() => document.getElementById("mode-logs-btn")?.click());
+  await browser.waitUntil(
+    async () =>
+      browser.execute(() => {
+        const items = document.querySelectorAll("#logs-list .log-item");
+        return Array.from(items).some(
+          (item) =>
+            item.getClientRects().length > 0 &&
+            (item.querySelector(".log-msg")?.textContent ?? "").includes("MCP")
+        );
+      }),
+    { timeout: 5000, timeoutMsg: "В журнале нет записи о вызове MCP" }
+  );
+});
