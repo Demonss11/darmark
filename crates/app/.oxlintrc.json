@@ -1,0 +1,21 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "categories": {
+    "correctness": "deny"
+  },
+  "rules": {
+    "eqeqeq": ["deny", "smart"],
+    "no-empty": ["deny", { "allowEmptyCatch": true }],
+    "no-self-compare": "deny",
+    "no-throw-literal": "deny",
+    "no-unneeded-ternary": "deny",
+    "no-unused-vars": ["deny", { "args": "all", "argsIgnorePattern": "^_" }],
+    "no-useless-concat": "deny",
+    "no-useless-escape": "deny",
+    "prefer-promise-reject-errors": "deny"
+  },
+  "ignorePatterns": [
+    "dist/**",
+    "src-tauri/**"
+  ]
+}

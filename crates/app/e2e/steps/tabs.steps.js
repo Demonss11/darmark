@@ -1,7 +1,7 @@
 // Шаги мультивкладок документов.
 // Вкладки живут в #tab-strip (.tab), каждая имеет data-id, aria-selected,
 // .name (имя), .dirty (индикатор изменений) и .close (кнопка закрытия).
-import { Given, Then, When } from "@wdio/cucumber-framework";
+import { Then, When } from "@wdio/cucumber-framework";
 import { browser } from "@wdio/globals";
 
 /// Количество вкладок в #tab-strip.
