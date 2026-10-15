@@ -44,11 +44,21 @@ jobs:
       - name: tests
         run: cargo test -p md-core -p mcp-core -p plugin-catalog -p darmark
 
+      - name: install frontend deps
+        working-directory: crates/app
+        run: npm ci
+
+      - name: frontend lint (oxlint)
+        working-directory: crates/app
+        run: npm run lint
+
+      - name: frontend knip
+        working-directory: crates/app
+        run: npm run knip
+
       - name: frontend build
         working-directory: crates/app
-        run: |
-          npm ci
-          npm run build
+        run: npm run build
 
       # Dev-режим Фазы 6: `--debug-plugin` прогоняет плагин без %APPDATA% тем же конвертом.
       # child-exe резолвится рядом с debug-бинарником darmark (target/debug).
@@ -120,6 +130,19 @@ jobs:
             throw "mlua просочился в darmark (D6/ADR-0021): GUI-хост обязан оставаться без Lua-рантайма"
           }
           "cargo tree -p darmark не содержит mlua"
+
+  audit:
+    name: audit (RUSTSEC, cargo-audit)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # Advisory DB приходит git-сабмодулем, поэтому нужен токен на чтение.
+      - uses: rustsec/audit-check@v2.0.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
   size-gate:
     name: size-gate (exe ≤ 6 МБ, D6)
