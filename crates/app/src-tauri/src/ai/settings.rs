@@ -62,7 +62,6 @@ mod tests {
         assert_eq!(load_from(None).model, "deepseek/deepseek-v4.1-flash");
     }
 
-    #[cfg(windows)]
     #[test]
     fn roundtrip_keeps_secret_and_other_sections() {
         use crate::plugins::settings::SettingsStore;

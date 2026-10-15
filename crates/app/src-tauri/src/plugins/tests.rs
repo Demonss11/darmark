@@ -32,7 +32,6 @@ fn serial() -> std::sync::MutexGuard<'static, ()> {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
-#[cfg(windows)]
 fn suppress_windows_error_dialogs() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
@@ -47,8 +46,6 @@ fn suppress_windows_error_dialogs() {
         }
     });
 }
-
-fn suppress_windows_error_dialogs() {}
 
 fn fixture(name: &str) -> String {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))

@@ -12,8 +12,7 @@ pub mod manifest;
 pub mod notices;
 pub mod quarantine;
 
-// Job Object (лимиты RSS/CPU/время) — Windows-only, как и целевая платформа darmark.
-#[cfg(windows)]
+// Job Object (лимиты RSS/CPU/время) — изоляция child-процесса плагина.
 pub mod job;
 
 /// Версия контракта host ↔ плагин (§7.2 DESIGN_DOC). Манифест с `api_version > HOST_API_VERSION`

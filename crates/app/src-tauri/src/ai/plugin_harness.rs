@@ -123,7 +123,6 @@ pub fn plugins_root() -> Result<PathBuf, CommandError> {
 /// канонический путь надо с каноническим корнем. Если корень не канонизируется
 /// (не существует) — исходный путь не совпадёт с verbatim-путём, т.е. ничего лишнего
 /// не разрешаем (fail-closed).
-#[cfg(windows)]
 fn canonical_root(root: &Path) -> PathBuf {
     std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf())
 }
@@ -135,7 +134,6 @@ fn canonical_root(root: &Path) -> PathBuf {
 /// ловит. Обходим **исходный** путь от `root` (сам `root` доверенный — не проверяем) до листа.
 /// Если путь лексически не под `root` (относительный/иная раскладка) — пропускаем: containment
 /// по каноническому пути уже проверен вызывающим.
-#[cfg(windows)]
 fn reject_reparse_between(root: &Path, path: &Path) -> Result<(), CommandError> {
     let Ok(relative) = path.strip_prefix(root) else {
         return Ok(());
@@ -158,7 +156,6 @@ fn reject_reparse_between(root: &Path, path: &Path) -> Result<(), CommandError> 
 /// AC-MCP-12: symlink-файл манифеста/entry иначе читался бы вслед за ссылкой (эскейп за
 /// пределы разрешённой области). `symlink_metadata` не следует за ссылкой, поэтому видит
 /// reparse-атрибут самого файла. Отсутствие файла — не ошибка (обработается валидацией).
-#[cfg(windows)]
 fn reject_reparse_plugin_files(dir: &Path) -> Result<(), CommandError> {
     for name in [MANIFEST_FILE, ENTRY_FILE] {
         if is_reparse_point(&dir.join(name)) {
@@ -179,7 +176,6 @@ fn reject_reparse_plugin_files(dir: &Path) -> Result<(), CommandError> {
 /// каноническим корням → повторный обход компонентов пути от корня до листа и проверка файлов
 /// манифеста/entry. Возвращает канонический путь, чтобы дальнейшая работа шла уже с проверенным
 /// значением.
-#[cfg(windows)]
 pub fn ensure_plugin_path_allowed(path: &Path) -> Result<PathBuf, CommandError> {
     // Ссылку/junction отклоняем даже если её цель внутри белого списка: цель может быть
     // переопределена позже (TOCTOU), и запись уйдёт за пределы разрешённой области.
@@ -423,7 +419,6 @@ fn run_with_timeout(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     // Без консольного окна у сайдкара (как Supervisor::start): GUI не должен мелькать окном.
-    #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
@@ -507,7 +502,6 @@ fn io_error(e: std::io::Error) -> CommandError {
 
 /// Каталог — reparse point (symlink/junction)? Defense-in-depth (ADR-0034 §2.4): запись в такой
 /// каталог может увести файлы за пределы `plugins/`. Проверяем атрибут `FILE_ATTRIBUTE_REPARSE_POINT`.
-#[cfg(windows)]
 fn is_reparse_point(path: &Path) -> bool {
     use std::os::windows::fs::MetadataExt;
     const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
@@ -611,7 +605,6 @@ fn emit_plugin_event(app: &tauri::AppHandle, event: &str, id: &str) {
 ///
 /// Невалидный плагин откатывается (каталог удаляется), чтобы не блокировать повторную попытку.
 /// Ошибка регистрации (в т.ч. `no_host`) тоже откатывает каталог — «сиротских» каталогов нет.
-#[cfg(windows)]
 pub fn create_plugin_at(
     host: &crate::plugins::host::PluginHost,
     root: &Path,
@@ -654,7 +647,6 @@ pub fn create_plugin_at(
 /// `reload_plugin`.
 ///
 /// **Рабочий плагин не затирается:** при `!ok` реальные файлы не трогаются (ADR-0034/ADR-0026).
-#[cfg(windows)]
 pub fn update_plugin_at(
     host: &crate::plugins::host::PluginHost,
     root: &Path,
@@ -715,7 +707,6 @@ pub fn update_plugin_at(
 }
 
 /// Удаление через существующий `PluginHost::remove`.
-#[cfg(windows)]
 pub fn delete_plugin_at(
     host: &crate::plugins::host::PluginHost,
     id: &str,
@@ -728,7 +719,6 @@ pub fn delete_plugin_at(
 /// Маппинг ошибки регистрации на коды IPC: «уже существует» → `ai_plugin_exists`,
 /// «нет сайдкара-хоста» → `plugin` (проблема окружения, не контента), «не появился в
 /// реестре» → `ai_plugin_register_failed`, иначе → `ai_plugin_invalid`.
-#[cfg(windows)]
 fn map_register_error(error: plugin_core::envelope::PluginError) -> CommandError {
     let code = match error.code.as_str() {
         "plugin_exists" => ErrorCode::AiPluginExists,
@@ -947,7 +937,6 @@ mod tests {
         );
     }
 
-    #[cfg(windows)]
     mod windows_crud {
         use super::*;
         use crate::plugins::host::PluginHost;
@@ -1170,7 +1159,6 @@ mod tests {
 
     /// «Болтливый» процесс: вывод больше буфера пайпа. Без параллельного чтения процесс
     /// заблокировался бы на записи и таймаут сработал бы ложно.
-    #[cfg(windows)]
     #[test]
     fn run_with_timeout_reads_large_output_without_false_timeout() {
         let mut command = Command::new("cmd");
@@ -1189,7 +1177,6 @@ mod tests {
 
     /// Создаёт junction (`mklink /J`, без прав администратора). `false` — окружение не
     /// позволило; вызывающий тест должен явно сообщить о пропуске.
-    #[cfg(windows)]
     fn try_junction(link: &Path, target: &Path) -> bool {
         let status = Command::new("cmd")
             .args(["/C", "mklink", "/J"])
@@ -1201,7 +1188,6 @@ mod tests {
 
     /// Создаёт symlink-файл (`mklink` без `/J`). Требует прав администратора или Developer
     /// Mode; `false` — недоступно (тест сообщает о пропуске).
-    #[cfg(windows)]
     fn try_symlink_file(link: &Path, target: &Path) -> bool {
         let status = Command::new("cmd")
             .args(["/C", "mklink"])
@@ -1211,7 +1197,6 @@ mod tests {
         matches!(status, Ok(s) if s.success()) && std::fs::symlink_metadata(link).is_ok()
     }
 
-    #[cfg(windows)]
     #[test]
     fn ensure_plugin_path_allowed_rejects_path_outside_whitelist() {
         let err = ensure_plugin_path_allowed(Path::new("C:\\Windows\\System32"))
@@ -1219,7 +1204,6 @@ mod tests {
         assert_eq!(err.code, ErrorCode::AiPluginInvalid);
     }
 
-    #[cfg(windows)]
     #[test]
     fn ensure_plugin_path_allowed_rejects_traversal() {
         // Поднимаемся из temp выше корня и уходим в `C:\Windows` — вне белого списка.
@@ -1233,7 +1217,6 @@ mod tests {
         assert_eq!(err.code, ErrorCode::AiPluginInvalid);
     }
 
-    #[cfg(windows)]
     #[test]
     fn ensure_plugin_path_allowed_accepts_path_inside_temp() {
         let dir = tempfile::tempdir().unwrap();
@@ -1241,7 +1224,6 @@ mod tests {
         assert!(canonical.is_absolute(), "возвращается канонический путь");
     }
 
-    #[cfg(windows)]
     #[test]
     fn ensure_plugin_path_allowed_resolves_traversal_inside_temp() {
         // `inner/..` лексически содержит `..`, но канонизируется в разрешённый `temp`.
@@ -1252,7 +1234,6 @@ mod tests {
         ensure_plugin_path_allowed(&via_parent).expect("`..` внутри temp разрешён");
     }
 
-    #[cfg(windows)]
     #[test]
     fn ensure_plugin_path_allowed_rejects_missing_path() {
         let missing = std::env::temp_dir().join(format!(
@@ -1264,7 +1245,6 @@ mod tests {
         assert_eq!(err.code, ErrorCode::AiPluginInvalid);
     }
 
-    #[cfg(windows)]
     #[test]
     fn ensure_plugin_path_allowed_rejects_junction() {
         let base = tempfile::tempdir().unwrap();
@@ -1283,7 +1263,6 @@ mod tests {
         assert_eq!(err.code, ErrorCode::AiPluginInvalid);
     }
 
-    #[cfg(windows)]
     #[test]
     fn ensure_plugin_path_allowed_rejects_parent_junction_outward() {
         // `allowed\junction\to\outside`: цель внутри temp (containment её пропустит), но
@@ -1307,7 +1286,6 @@ mod tests {
         assert_eq!(err.code, ErrorCode::AiPluginInvalid);
     }
 
-    #[cfg(windows)]
     #[test]
     fn ensure_plugin_path_allowed_rejects_symlinked_manifest_file() {
         let base = tempfile::tempdir().unwrap();
@@ -1327,7 +1305,6 @@ mod tests {
         assert_eq!(err.code, ErrorCode::AiPluginInvalid);
     }
 
-    #[cfg(windows)]
     #[test]
     fn ensure_plugin_path_allowed_rejects_symlinked_entry_file() {
         let base = tempfile::tempdir().unwrap();
@@ -1347,7 +1324,6 @@ mod tests {
         assert_eq!(err.code, ErrorCode::AiPluginInvalid);
     }
 
-    #[cfg(windows)]
     #[test]
     fn ensure_plugin_path_allowed_rejects_reparse_entry_without_symlink_privilege() {
         // Детерминированная проверка finding #2 без прав на symlink: junction с именем
@@ -1369,7 +1345,6 @@ mod tests {
         assert_eq!(err.code, ErrorCode::AiPluginInvalid);
     }
 
-    #[cfg(windows)]
     #[test]
     fn ensure_plugin_path_allowed_accepts_path_inside_plugins_root() {
         // Ветка `plugins_root()` (env-override) иначе не покрыта: temp-тесты её не задевают.
@@ -1388,7 +1363,6 @@ mod tests {
         result.expect("путь внутри plugins_root разрешён");
     }
 
-    #[cfg(windows)]
     #[test]
     fn ensure_plugin_path_allowed_accepts_root_and_normalized_layouts() {
         let temp = std::env::temp_dir();

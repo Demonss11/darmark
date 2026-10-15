@@ -12,7 +12,6 @@
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-#[cfg(windows)]
 use std::path::Path;
 
 use darmark_lib::mcp::adapters::LogSink;
@@ -85,7 +84,6 @@ fn records_of(records: &Arc<Mutex<Vec<String>>>) -> Vec<String> {
 
 /// Имена tools, которые приложение обязано зарегистрировать (TZ-MCP §4).
 fn expected_tools() -> Vec<&'static str> {
-    #[cfg(windows)]
     {
         vec![
             "plugin_validate",
@@ -262,7 +260,6 @@ fn markdown_render_requires_text_per_schema() {
     );
 }
 
-#[cfg(windows)]
 #[test]
 fn plugin_validate_matches_static_validation_and_hides_full_path() {
     let plugin = temp_plugin_dir(
@@ -311,7 +308,6 @@ fn plugin_validate_matches_static_validation_and_hides_full_path() {
 /// правит эти строки). Здесь манифест заведомо невалиден, а его текст ошибки **не содержит**
 /// полного пути (`ManifestError` пути не несёт) — значит паритет с прямым ядром обязан
 /// сохраняться и на непустом `errors`.
-#[cfg(windows)]
 #[test]
 fn plugin_validate_reports_nonempty_errors_matching_static_validation() {
     let plugin = temp_plugin_dir(
@@ -361,7 +357,6 @@ fn plugin_validate_reports_nonempty_errors_matching_static_validation() {
     );
 }
 
-#[cfg(windows)]
 #[test]
 fn plugin_validate_rejects_path_outside_whitelist() {
     let (server, _records) = server();
@@ -376,7 +371,6 @@ fn plugin_validate_rejects_path_outside_whitelist() {
     );
 }
 
-#[cfg(windows)]
 #[test]
 fn plugin_validate_requires_path_per_schema() {
     let (server, _records) = server();
@@ -385,7 +379,6 @@ fn plugin_validate_requires_path_per_schema() {
     assert!(is_error(&envelope), "без path — ошибка вызова: {envelope}");
 }
 
-#[cfg(windows)]
 #[test]
 fn plugin_test_requires_path_per_schema() {
     let (server, _records) = server();
@@ -479,7 +472,6 @@ fn catalog_tool_and_resource_match_plugin_catalog_directly() {
 // (фикстуры валидации плагина нужны только Windows-тестам: там живёт белый список путей)
 
 /// Валидный манифест плагина (совпадает по форме с `examples/plugins`).
-#[cfg(windows)]
 const VALID_MANIFEST: &str = r#"{
   "id": "mcp-contract",
   "name": "MCP contract",
@@ -490,7 +482,6 @@ const VALID_MANIFEST: &str = r#"{
 }"#;
 
 /// Невалидный манифест: пустой `id` (`ManifestError::EmptyField` не несёт пути).
-#[cfg(windows)]
 const INVALID_MANIFEST: &str = r#"{
   "id": "",
   "name": "x",
@@ -500,7 +491,6 @@ const INVALID_MANIFEST: &str = r#"{
 }"#;
 
 /// Каталог плагина в `temp` — он в белом списке `plugin_harness` (AC-MCP-12).
-#[cfg(windows)]
 fn temp_plugin_dir(prefix: &str, manifest: &str, source: &str) -> tempfile::TempDir {
     let dir = tempfile::Builder::new()
         .prefix(prefix)
@@ -512,7 +502,6 @@ fn temp_plugin_dir(prefix: &str, manifest: &str, source: &str) -> tempfile::Temp
 }
 
 /// Последний компонент пути — то, что журнал обязан показать вместо полного пути.
-#[cfg(windows)]
 fn plugin_dir_name(path: &str) -> String {
     Path::new(path)
         .file_name()

@@ -13,7 +13,6 @@ use mcp_core::handlers::{ToolError, ToolHandler};
 use mcp_core::registry::{Registry, ToolDefinition};
 use serde_json::{json, Value};
 
-#[cfg(windows)]
 use crate::ai::types::AiValidationResult;
 
 /// Префикс verbatim-пути Windows (`\\?\`), который возвращает `canonicalize`.
@@ -31,7 +30,6 @@ pub type LogSink = Arc<dyn Fn(&str) + Send + Sync>;
 /// Инструменты плагинов — только Windows (целевая платформа; там же живёт белый список
 /// путей `plugin_harness`). Без него `plugin_validate` читал бы произвольные пути.
 pub fn register_tools(registry: &mut Registry, sink: &LogSink) {
-    #[cfg(windows)]
     registry.register_tool(ToolDefinition {
         name: "plugin_validate".to_string(),
         description: "Валидация манифеста и entry плагина без запуска песочницы".to_string(),
@@ -41,7 +39,6 @@ pub fn register_tools(registry: &mut Registry, sink: &LogSink) {
         }),
     });
 
-    #[cfg(windows)]
     registry.register_tool(ToolDefinition {
         name: "plugin_test".to_string(),
         description: "Полная проверка плагина с прогоном в песочнице".to_string(),
@@ -71,7 +68,6 @@ pub fn register_tools(registry: &mut Registry, sink: &LogSink) {
 }
 
 /// Схема параметров tools, принимающих путь к каталогу плагина (Windows-only).
-#[cfg(windows)]
 fn path_schema() -> Value {
     json!({
         "type": "object",
@@ -96,12 +92,10 @@ fn markdown_schema() -> Value {
 
 // ─── plugin_validate ───────────────────────────────────────────────
 
-#[cfg(windows)]
 struct PluginValidateTool {
     sink: LogSink,
 }
 
-#[cfg(windows)]
 impl ToolHandler for PluginValidateTool {
     fn name(&self) -> &str {
         "plugin_validate"
@@ -150,12 +144,10 @@ impl ToolHandler for PluginValidateTool {
 
 // ─── plugin_test ───────────────────────────────────────────────────
 
-#[cfg(windows)]
 struct PluginTestTool {
     sink: LogSink,
 }
 
-#[cfg(windows)]
 impl ToolHandler for PluginTestTool {
     fn name(&self) -> &str {
         "plugin_test"
@@ -359,7 +351,6 @@ fn sanitize_paths(text: &str, base: &Path) -> String {
 }
 
 /// Убирает полный путь каталога из ошибок валидации.
-#[cfg(windows)]
 fn sanitize_validation(result: &mut AiValidationResult, dir: &Path) {
     let variants = dir_path_variants(dir);
     let name = path_name(dir);
@@ -372,7 +363,6 @@ fn sanitize_validation(result: &mut AiValidationResult, dir: &Path) {
 }
 
 /// Рекурсивно чистит строки JSON-значения (отчёт CLI несёт путь в `path` и `checks[].message`).
-#[cfg(windows)]
 fn sanitize_value(value: &mut Value, variants: &[String], name: &str) {
     match value {
         Value::String(text) => *text = sanitize_text(text, variants, name),
@@ -428,7 +418,6 @@ mod tests {
     use super::*;
     use std::time::Duration;
 
-    #[cfg(windows)]
     #[test]
     fn path_name_returns_last_component() {
         let path = Path::new(r"C:\Users\Demon\AppData\Roaming\darmark\plugins\word-count");
@@ -492,7 +481,6 @@ mod tests {
         assert!(render.contains("120 символов"), "{render}");
     }
 
-    #[cfg(windows)]
     #[test]
     fn path_schema_requires_path() {
         let schema = path_schema();
@@ -502,7 +490,6 @@ mod tests {
 
     /// Critical #1: ошибки CLI несут полный путь (`…\plugin.json: …`) — в журнал/результат
     /// он попадать не должен.
-    #[cfg(windows)]
     #[test]
     fn sanitize_validation_strips_full_path_from_errors_and_report() {
         let dir = Path::new(r"C:\Users\Demon\AppData\Roaming\darmark\plugins\word-count");
@@ -546,7 +533,6 @@ mod tests {
     }
 
     /// `canonicalize` отдаёт verbatim-путь (`\\?\…`); чистка обязана покрыть и его.
-    #[cfg(windows)]
     #[test]
     fn sanitize_paths_handles_verbatim_prefix() {
         let dir = Path::new(r"\\?\C:\Users\Demon\AppData\Roaming\darmark\plugins\word-count");
@@ -561,7 +547,6 @@ mod tests {
     }
 
     /// Ошибка каталога (`index.json`) тоже чистится перед журналом и результатом.
-    #[cfg(windows)]
     #[test]
     fn sanitize_paths_replaces_repo_dir_with_name() {
         let repo = Path::new(r"C:\repo\examples\plugins");

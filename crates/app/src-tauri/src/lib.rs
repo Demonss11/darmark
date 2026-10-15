@@ -12,8 +12,7 @@ pub mod ai;
 // MCP-сервер (ADR-0036): in-memory транспорт в процессе GUI, адаптеры к существующим
 // командам/CLI. Только маршрутизация — проверки остаются в командах (TZ-MCP R3/R4).
 pub mod mcp;
-// Плагинная подсистема — только Windows: Job Object и CREATE_NO_WINDOW (плагинная система).
-#[cfg(windows)]
+// Плагинная подсистема: загрузка плагинов, изоляция через Job Object и CREATE_NO_WINDOW.
 pub mod plugins;
 mod state;
 
@@ -199,12 +198,10 @@ impl PluginState {
 ///
 /// Best-effort: сбой `emit` логируется и не роняет монитор. Сам модуль `resource` про Tauri
 /// не знает — адаптер живёт здесь, в `setup_plugins`.
-#[cfg(windows)]
 struct TauriResourceSink {
     handle: tauri::AppHandle,
 }
 
-#[cfg(windows)]
 impl plugins::resource::ResourceSink for TauriResourceSink {
     fn metrics(&self, snapshot: &plugins::resource::ResourceSnapshot) {
         use tauri::Emitter;
@@ -726,7 +723,6 @@ pub fn run() {
 
 /// Каталог плагинов: `%APPDATA%/darmark/plugins`, с override `DARMARK_PLUGINS_DIR`
 /// для тестов/E2E (изоляция от реального профиля пользователя).
-#[cfg(windows)]
 fn plugins_dir() -> PathBuf {
     if let Some(dir) = std::env::var_os("DARMARK_PLUGINS_DIR") {
         return PathBuf::from(dir);
@@ -741,7 +737,6 @@ fn plugins_dir() -> PathBuf {
 ///
 /// Child-exe резолвится [`plugins::supervisor::Supervisor::resolve_child_exe`]; при
 /// его отсутствии плагины не стартуют, а GUI продолжает работу.
-#[cfg(windows)]
 fn setup_plugins(app: &mut tauri::App) -> Result<(), String> {
     use tauri::{Emitter, Manager};
     use tauri_plugin_dialog::DialogExt;
@@ -966,7 +961,6 @@ fn setup_plugins(app: &mut tauri::App) -> Result<(), String> {
 /// Автозапуск enabled-плагинов и их представлений поднимает [`setup_plugins`] (Фаза 4);
 /// менеджер UI — Фаза 5. Здесь важен лишь факт существования конфига, чтобы
 /// `SettingsStore::load` работал предсказуемо.
-#[cfg(windows)]
 fn init_settings_dir() {
     use plugins::settings::SettingsStore;
     if let Some(path) = SettingsStore::config_path() {
@@ -983,7 +977,6 @@ fn init_settings_dir() {
 /// По умолчанию WebView2 перехватывает их на уровне движка, и JS-обработчик `keydown`
 /// их не получает: `Ctrl+P` открывал печать вместо переключения предпросмотра.
 /// Обычные клавиши редактирования (Ctrl+C/V/X/A/Z) не затронуты.
-#[cfg(windows)]
 fn disable_browser_accelerator_keys(app: &tauri::App) {
     use tauri::Manager;
     use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Settings3;

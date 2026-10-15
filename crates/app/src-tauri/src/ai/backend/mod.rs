@@ -1,7 +1,6 @@
 //! Реализации шва [`crate::ai::transport::AiTransport`].
 //!
-//! В MVP — единственная реализация `reqwest`-бэкенда в процессе GUI (ADR-0034 §2.1). Сетевой
-//! слой собирается **только на Windows** (ADR-0033 §2.1): системный TLS — SChannel, без OpenSSL.
+//! В MVP — единственная реализация `reqwest`-бэкенда в процессе GUI (ADR-0034 §2.1). TLS —
+//! системный, SChannel, без OpenSSL (ADR-0033 §2.1).
 
-#[cfg(windows)]
 pub mod reqwest;

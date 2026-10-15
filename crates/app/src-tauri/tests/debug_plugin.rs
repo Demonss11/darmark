@@ -5,8 +5,6 @@
 //! и завершается с кодом 0. Требует собранного child-бинарника — собираем его здесь же
 //! (как `plugins/tests.rs`, чтобы `cargo test -p darmark` был самодостаточным).
 
-#![cfg(windows)]
-
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 

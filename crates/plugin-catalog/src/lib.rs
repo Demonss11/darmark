@@ -662,7 +662,6 @@ mod tests {
         assert!(err.contains("недопустимый id"), "err: {err}");
     }
 
-    #[cfg(windows)]
     #[test]
     fn link_then_remove_detaches_without_touching_source() {
         let root = tempfile::tempdir().unwrap();
@@ -683,7 +682,6 @@ mod tests {
         );
     }
 
-    #[cfg(windows)]
     #[test]
     fn link_refuses_existing_without_force() {
         let root = tempfile::tempdir().unwrap();
@@ -730,7 +728,6 @@ mod tests {
         assert!(err.contains("не установлен"), "err: {err}");
     }
 
-    #[cfg(windows)]
     #[test]
     fn update_skips_links() {
         let root = tempfile::tempdir().unwrap();
@@ -749,7 +746,6 @@ mod tests {
         assert!(manifest_text(&target).contains("2.0.0"));
     }
 
-    #[cfg(windows)]
     #[test]
     fn update_specific_link_is_skipped() {
         let root = tempfile::tempdir().unwrap();

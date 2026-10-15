@@ -20,7 +20,6 @@ use serde_json::Value;
 use super::HostServices;
 
 /// Флаг Win32: без консольного окна у child (TZ §2: «subsystem console, но с CREATE_NO_WINDOW»).
-#[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 /// Имя child-бинарника рядом с `darmark.exe`.
@@ -103,7 +102,6 @@ impl Supervisor {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null());
-        #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;
             command.creation_flags(CREATE_NO_WINDOW);
