@@ -44,9 +44,18 @@ interface AiDom {
   enabledInput: HTMLInputElement;
   enabledSub: HTMLElement;
   config: HTMLElement;
-  providerInput: HTMLSelectElement;
+  providersSelect: HTMLSelectElement;
+  providerAdd: HTMLButtonElement;
+  providerEdit: HTMLButtonElement;
+  providerRemove: HTMLButtonElement;
+  providerName: HTMLInputElement;
   baseUrlInput: HTMLInputElement;
-  modelInput: HTMLInputElement;
+  providerEnv: HTMLInputElement;
+  providerHeaders: HTMLTextAreaElement;
+  providerBody: HTMLTextAreaElement;
+  providerTimeout: HTMLInputElement;
+  providerModels: HTMLTextAreaElement;
+  modelSelect: HTMLSelectElement;
   keyInput: HTMLInputElement;
   keySave: HTMLButtonElement;
   keyClear: HTMLButtonElement;
@@ -95,6 +104,8 @@ export interface AiPanelState {
   pluginCards: Set<PluginCardState>;
   emptyHint: HTMLElement;
   unlisteners: UnlistenFn[];
+  /** Отрисовка менеджера провайдеров; назначает `settingsPane` (иначе нечего рисовать). */
+  renderConfig: (() => void) | null;
 }
 
 export interface AiStateOptions {
@@ -130,10 +141,19 @@ export function createAiState(opts: AiStateOptions): AiPanelState {
     enabledInput: byId<HTMLInputElement>("ai-enabled"),
     enabledSub: byId<HTMLElement>("ai-enabled-sub"),
     config: byId<HTMLElement>("ai-config"),
-    providerInput: byId<HTMLSelectElement>("ai-provider"),
-    baseUrlInput: byId<HTMLInputElement>("ai-base-url"),
-    modelInput: byId<HTMLInputElement>("ai-model"),
-    keyInput: byId<HTMLInputElement>("ai-key"),
+    providersSelect: byId<HTMLSelectElement>("ai-providers"),
+    providerAdd: byId<HTMLButtonElement>("ai-provider-add"),
+    providerEdit: byId<HTMLButtonElement>("ai-provider-edit"),
+    providerRemove: byId<HTMLButtonElement>("ai-provider-remove"),
+    providerName: byId<HTMLInputElement>("ai-provider-name"),
+    baseUrlInput: byId<HTMLInputElement>("ai-provider-base-url"),
+    providerEnv: byId<HTMLInputElement>("ai-provider-env"),
+    providerHeaders: byId<HTMLTextAreaElement>("ai-provider-headers"),
+    providerBody: byId<HTMLTextAreaElement>("ai-provider-body"),
+    providerTimeout: byId<HTMLInputElement>("ai-provider-timeout"),
+    providerModels: byId<HTMLTextAreaElement>("ai-provider-models"),
+    modelSelect: byId<HTMLSelectElement>("ai-model-select"),
+    keyInput: byId<HTMLInputElement>("ai-provider-key"),
     keySave: byId<HTMLButtonElement>("ai-key-save"),
     keyClear: byId<HTMLButtonElement>("ai-key-clear"),
     keyHint: byId<HTMLElement>("ai-key-hint"),
@@ -169,6 +189,7 @@ export function createAiState(opts: AiStateOptions): AiPanelState {
     pluginCards: new Set<PluginCardState>(),
     emptyHint: document.createElement("div"),
     unlisteners: [],
+    renderConfig: null,
   };
   state.emptyHint.className = "ai-chat-empty";
   state.emptyHint.setAttribute("aria-hidden", "true");

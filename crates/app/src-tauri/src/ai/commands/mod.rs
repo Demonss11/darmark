@@ -1,8 +1,10 @@
 //! IPC-команды AI-ассистента (ADR-0034). Фасад над [`AiState`] и швом
 //! [`crate::ai::transport::AiTransport`].
 //!
-//! Секрет (`api_key`) сюда не возвращается: `ai_get_settings` отдаёт только `has_key`.
+//! Секреты провайдеров сюда не возвращаются: `ai_get_settings` отдаёт только `has_key`.
 //! Сетевые ошибки транслируются в [`CommandError`] и событие `ai:error` — без паник.
+
+use std::time::Duration;
 
 use tauri::{AppHandle, Emitter, State};
 
@@ -10,7 +12,7 @@ use crate::ai::gate;
 use crate::ai::history::{self, HistoryFile, SCHEMA_VERSION};
 use crate::ai::settings;
 use crate::ai::skills;
-use crate::ai::state::AiState;
+use crate::ai::state::{self, AiState};
 use crate::ai::transport::{ChatRequest, TestRequest};
 use crate::ai::types::{
     AiMessage, AiResponse, AiSettingsInput, AiSettingsView, AiSkill, AiTestResult, AiUsage,
@@ -18,13 +20,13 @@ use crate::ai::types::{
 };
 use crate::error::{CommandError, ErrorCode};
 
-/// Возвращает настройки AI для фронтенда (без секрета — только `has_key`).
+/// Возвращает настройки AI для фронтенда (без секретов — только `has_key` на провайдера).
 #[tauri::command]
 pub fn ai_get_settings(state: State<'_, AiState>) -> AiSettingsView {
     AiSettingsView::from(&state.settings())
 }
 
-/// Сохраняет несекретные настройки (провайдер/модель/лимиты/согласие/включаемость).
+/// Сохраняет настройки провайдеров/активной пары/лимитов/согласия/включаемости.
 #[tauri::command]
 pub fn ai_set_settings(
     settings: AiSettingsInput,
@@ -33,10 +35,14 @@ pub fn ai_set_settings(
     state.update_settings(settings)
 }
 
-/// Записывает API-ключ в конфиг (секция `ai`). Ключ не логируется и наружу не отдаётся.
+/// Записывает API-ключ провайдера в конфиг. Ключ не логируется и наружу не отдаётся.
 #[tauri::command]
-pub fn ai_set_api_key(key: String, state: State<'_, AiState>) -> Result<(), CommandError> {
-    state.set_api_key(key)
+pub fn ai_set_api_key(
+    provider_id: String,
+    key: String,
+    state: State<'_, AiState>,
+) -> Result<(), CommandError> {
+    state.set_api_key(provider_id, key)
 }
 
 /// Возвращает встроенную библиотеку скиллов MVP (ровно 2, ADR-0032).
@@ -47,7 +53,7 @@ pub fn ai_list_skills() -> Vec<AiSkill> {
 
 /// Отправляет чат-запрос провайдеру со стримингом дельт событиями `ai:chunk`.
 ///
-/// Гейт до сети: включён → ключ → согласие (иначе [`CommandError`] с кодом и `ai:error`).
+/// Гейт до сети: включён → активная пара → ключ → согласие (иначе [`CommandError`]).
 /// Возвращает склеенный ответ и `usage`; по завершении эмитит `ai:done`.
 #[tauri::command]
 pub async fn ai_chat(
@@ -60,7 +66,14 @@ pub async fn ai_chat(
         emit_error(&app, &err);
         return Err(err);
     }
-    let Some(api_key) = settings.api_key.clone() else {
+    let resolved = match state::resolve_active(&settings) {
+        Ok(resolved) => resolved,
+        Err(err) => {
+            emit_error(&app, &err);
+            return Err(err);
+        }
+    };
+    let Some(api_key) = resolved.api_key.clone() else {
         let err = CommandError::new(ErrorCode::AiNoKey, "API-ключ не задан");
         emit_error(&app, &err);
         return Err(err);
@@ -71,12 +84,15 @@ pub async fn ai_chat(
     let message_id = next_message_id();
     let backend = state.backend();
     let request = ChatRequest {
-        base_url: settings.base_url.clone(),
-        model: settings.model.clone(),
+        base_url: resolved.base_url,
+        model: resolved.model,
         api_key,
         messages,
         max_tokens: settings.max_tokens,
         temperature: settings.temperature,
+        headers: resolved.headers,
+        extra_body: resolved.body,
+        timeout: resolved.timeout.map(Duration::from_millis),
     };
     let chunk_app = app.clone();
     let chunk_id = message_id.clone();
@@ -120,14 +136,18 @@ pub async fn ai_chat(
 #[tauri::command]
 pub async fn ai_test_connection(state: State<'_, AiState>) -> Result<AiTestResult, CommandError> {
     let settings = state.settings();
-    if let Err(err) = gate::check_enabled(&settings).and_then(|()| gate::check_key(&settings)) {
+    if let Err(err) = gate::check_enabled(&settings)
+        .and_then(|()| gate::check_active(&settings))
+        .and_then(|()| gate::check_key(&settings))
+    {
         return Ok(AiTestResult {
             ok: false,
             model: None,
             error: Some(err.message),
         });
     }
-    let Some(api_key) = settings.api_key.clone() else {
+    let resolved = state::resolve_active(&settings)?;
+    let Some(api_key) = resolved.api_key.clone() else {
         return Ok(AiTestResult {
             ok: false,
             model: None,
@@ -136,8 +156,10 @@ pub async fn ai_test_connection(state: State<'_, AiState>) -> Result<AiTestResul
     };
 
     let request = TestRequest {
-        base_url: settings.base_url.clone(),
+        base_url: resolved.base_url,
         api_key,
+        headers: resolved.headers,
+        timeout: resolved.timeout.map(Duration::from_millis),
     };
     Ok(match state.backend().test_connection(request).await {
         Ok(model) => AiTestResult {
@@ -157,7 +179,7 @@ pub async fn ai_test_connection(state: State<'_, AiState>) -> Result<AiTestResul
 ///
 /// `finish_reason` прокидывается явно: фронтенд читает его из этого события, чтобы отличить
 /// нормальное завершение (`"stop"`) от обрыва по лимиту (`"length"`).
-fn ai_done_payload(
+pub(super) fn ai_done_payload(
     message_id: &str,
     usage: Option<AiUsage>,
     finish_reason: Option<String>,
@@ -166,7 +188,7 @@ fn ai_done_payload(
 }
 
 /// Идентификатор сообщения для корреляции `ai:chunk`/`ai:done` (без внешних зависимостей).
-fn next_message_id() -> String {
+pub(super) fn next_message_id() -> String {
     use std::sync::atomic::{AtomicU64, Ordering};
 
     static COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -190,7 +212,7 @@ fn emit_error(app: &AppHandle, err: &CommandError) {
 }
 
 /// Строковое значение кода ошибки (совпадает с serde `snake_case` — контракт с фронтендом).
-fn error_code_str(code: ErrorCode) -> String {
+pub(super) fn error_code_str(code: ErrorCode) -> String {
     serde_json::to_value(code)
         .ok()
         .and_then(|value| value.as_str().map(str::to_string))
@@ -263,6 +285,3 @@ fn now_secs() -> u64 {
         .map(|d| d.as_secs())
         .unwrap_or(0)
 }
-
-#[cfg(test)]
-mod tests;

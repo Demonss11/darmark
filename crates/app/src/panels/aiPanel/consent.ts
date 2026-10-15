@@ -4,6 +4,9 @@
 // `consentDenied`, чтобы диалог не спрашивал заново на каждый ввод. Разрешение
 // сохраняется через `persist` — это обычная настройка, поэтому новый модуль не
 // нужен и состояние согласия живёт в общем.
+//
+// Диалог называет активного провайдера (`name` + хост его `baseURL`, ADR-0035 §2.7):
+// адресат данных определяется конфигом, а не хардкодом.
 
 import { openDialog, type Dialog } from "../../ui/dialog";
 import type { AiSettingsInput } from "../../core/tauri";
@@ -14,17 +17,34 @@ export interface ConsentApi {
   askConsent(onAllowed: () => void): void;
 }
 
+/** Хост URL (`https://example.test/api/v1` → `example.test`); `null`, если разобрать нельзя. */
+function hostOf(url: string | undefined): string | null {
+  if (!url) return null;
+  try {
+    return new URL(url).host || null;
+  } catch {
+    return null;
+  }
+}
+
 export function createConsent(
   state: AiPanelState,
   deps: { persist(patch: Partial<AiSettingsInput>): Promise<void>; indicator: IndicatorApi }
 ): ConsentApi {
   function askConsent(onAllowed: () => void): void {
+    const settings = state.settings;
+    const provider = settings?.providers.find((item) => item.id === settings.active_provider);
+    const name = provider?.name || provider?.id || "провайдер";
+    const host = hostOf(provider?.settings.base_url) ?? "внешний сервер";
+    const model = settings?.active_model ?? "";
+
     let accepted = false;
     const content = document.createElement("div");
     content.className = "ai-consent";
     const p = document.createElement("p");
     p.textContent =
-      "AI-ассистент может отправлять содержимое документа и историю чата в облачный сервис routerai.ru (для запроса к модели deepseek/deepseek-v4.1-flash). Разрешить?";
+      `AI-ассистент может отправлять содержимое документа и историю чата в облачный сервис ` +
+      `${name} (${host})${model ? ` для запроса к модели ${model}` : ""}. Разрешить?`;
     const warn = document.createElement("div");
     warn.className = "ai-consent-warning";
     warn.textContent =
@@ -43,7 +63,7 @@ export function createConsent(
     content.append(p, warn, actions);
 
     const dialog: Dialog = openDialog({
-      title: "Отправка содержимого в routerai.ru",
+      title: `Отправка содержимого в ${host}`,
       content,
       initialFocus: allow,
       onClose: () => {

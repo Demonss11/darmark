@@ -16,7 +16,7 @@ const ERROR_TITLES: Record<ErrorKind, string> = {
 };
 
 export function errorTitle(kind: ErrorKind, code: string): string {
-  if (code === "ai_no_key") return "Ключ routerai.ru не задан";
+  if (code === "ai_no_key") return "API-ключ не задан";
   if (code === "ai_no_consent") return "Нужно согласие на отправку";
   if (code === "ai_disabled") return "AI выключен";
   return ERROR_TITLES[kind];

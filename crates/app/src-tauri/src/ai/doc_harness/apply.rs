@@ -103,7 +103,7 @@ fn apply_failed(op: &AiEditOp) -> CommandError {
 /// Порядок уведомлений после успешного применения правки: сначала изменение документа
 /// (плагины + фронт), затем `ai:edit_applied` (карточка диффа). Выделено отдельно ради
 /// тестируемости порядка (ADR-0034).
-pub(super) fn notify_applied(
+pub(in crate::ai) fn notify_applied(
     doc_id: &str,
     rev: u64,
     mut document_changed: impl FnMut(&str, u64),

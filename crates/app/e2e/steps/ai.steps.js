@@ -50,6 +50,39 @@ function readAiConfig() {
   return parsed.ai ?? {};
 }
 
+// ---------- Провайдеры (ADR-0035): проекции и направление на адрес ----------
+
+/// Активный провайдер из вида настроек (`ai_get_settings`).
+function activeProvider(view) {
+  return view.providers.find((p) => p.id === view.active_provider);
+}
+
+/// Направляет активного провайдера на `base_url` через менеджер провайдеров (UI):
+/// правка `#ai-provider-base-url` + «Применить». UI-путь сохраняет синхронность состояния
+/// фронта (сброс согласия при смене хоста, ADR-0035 §2.7 виден панели) — IPC-правка
+/// оставляла бы `state.settings` устаревшим и глушила диалог согласия.
+async function setActiveBaseUrl(url) {
+  await ensureSettingsOpen();
+  const ok = await browser.execute((value) => {
+    const input = document.getElementById("ai-provider-base-url");
+    const edit = document.getElementById("ai-provider-edit");
+    if (!input || input.disabled || !edit || edit.disabled) return false;
+    input.value = value;
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    edit.click();
+    return true;
+  }, url);
+  if (!ok) throw new Error("Менеджер провайдеров AI недоступен (поле base URL/«Применить»)");
+  await browser.waitUntil(
+    async () => {
+      const view = await invoke("ai_get_settings");
+      return activeProvider(view)?.settings.base_url === url;
+    },
+    { timeout: 5000, timeoutMsg: `base_url AI не стал ${url}` }
+  );
+  await closeAiSettings();
+}
+
 // ---------- Готовность режима ----------
 
 /// Ждёт загрузки настроек AI (createAiPanel читает их асинхронно при старте):
@@ -58,7 +91,7 @@ async function waitAiReady() {
   await browser.waitUntil(
     async () =>
       browser.execute(() => {
-        const el = document.getElementById("ai-base-url");
+        const el = document.getElementById("ai-provider-base-url");
         return !!el && (el.value ?? "").length > 0;
       }),
     { timeout: 5000, timeoutMsg: "Настройки AI не загрузились (base URL пуст)" }
@@ -458,8 +491,8 @@ Then("у индикатора AI состояние {string}", async (state) => 
 When("я задаю API-ключ AI через настройки {string}", async (key) => {
   await ensureSettingsOpen();
   await browser.execute((k) => {
-    const input = document.getElementById("ai-key");
-    if (!input) throw new Error("нет #ai-key");
+    const input = document.getElementById("ai-provider-key");
+    if (!input) throw new Error("нет #ai-provider-key");
     input.value = k;
   }, key);
   await browser.execute(() => document.getElementById("ai-key-save")?.click());
@@ -474,21 +507,7 @@ When("я задаю API-ключ AI через настройки {string}", asy
 });
 
 When("я направляю AI на недоступный адрес {string}", async (url) => {
-  const view = await invoke("ai_get_settings");
-  const settings = {
-    enabled: view.enabled,
-    provider: view.provider,
-    base_url: url,
-    model: view.model,
-    max_tokens: view.max_tokens,
-    temperature: view.temperature,
-    consent_document_send: view.consent_document_send,
-  };
-  await invoke("ai_set_settings", { settings });
-  const after = await invoke("ai_get_settings");
-  if (after.base_url !== url) {
-    throw new Error(`base_url AI не стал ${url} (получено ${after.base_url})`);
-  }
+  await setActiveBaseUrl(url);
 });
 
 // ---------- Хоткей, поповер и удаление ключа (правки Фазы 1) ----------
@@ -559,10 +578,98 @@ Then("у AI нет сохранённого ключа", async () => {
   await browser.waitUntil(
     async () => {
       const view = await invoke("ai_get_settings");
-      return view?.has_key === false;
+      return activeProvider(view)?.settings.has_key === false;
     },
     { timeout: 5000, timeoutMsg: "У AI всё ещё есть сохранённый ключ (has_key ≠ false)" }
   );
+});
+
+// ---------- Менеджер провайдеров (ADR-0035; AC-P3-11) ----------
+
+/// Идентификаторы провайдеров в выпадающем списке `#ai-providers` (значения опций).
+async function providerIds() {
+  return browser.execute(() =>
+    Array.from(document.querySelectorAll("#ai-providers option")).map((o) => o.value)
+  );
+}
+
+When("я добавляю провайдера AI", async () => {
+  await ensureSettingsOpen();
+  await browser.execute(() => document.getElementById("ai-provider-add")?.click());
+  await browser.waitUntil(async () => (await providerIds()).length > 1, {
+    timeout: 5000,
+    timeoutMsg: "Провайдер AI не добавился (в списке по-прежнему один)",
+  });
+  await closeAiSettings();
+});
+
+When("я удаляю активного провайдера AI", async () => {
+  await ensureSettingsOpen();
+  await browser.execute(() => document.getElementById("ai-provider-remove")?.click());
+  await browser.waitUntil(async () => (await providerIds()).length === 1, {
+    timeout: 5000,
+    timeoutMsg: "Активный провайдер AI не удалился (в списке не один)",
+  });
+  await closeAiSettings();
+});
+
+When("я выбираю активного провайдера AI {string}", async (id) => {
+  await ensureSettingsOpen();
+  const ok = await browser.execute((value) => {
+    const select = document.getElementById("ai-providers");
+    if (!select) return false;
+    if (!Array.from(select.options).some((o) => o.value === value)) return false;
+    select.value = value;
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    return true;
+  }, id);
+  if (!ok) throw new Error(`В списке провайдеров AI нет «${id}»`);
+  await browser.waitUntil(
+    async () => {
+      const view = await invoke("ai_get_settings");
+      return view.active_provider === id;
+    },
+    { timeout: 5000, timeoutMsg: `Активный провайдер AI не стал «${id}»` }
+  );
+  await closeAiSettings();
+});
+
+Then("в списке провайдеров AI есть {string}", async (id) => {
+  await ensureSettingsOpen();
+  await browser.waitUntil(async () => (await providerIds()).includes(id), {
+    timeout: 5000,
+    timeoutMsg: `В списке провайдеров AI нет «${id}»`,
+  });
+  await closeAiSettings();
+});
+
+Then("в списке провайдеров AI больше одного", async () => {
+  await ensureSettingsOpen();
+  const ids = await providerIds();
+  await closeAiSettings();
+  if (ids.length <= 1) throw new Error(`В списке провайдеров AI ${ids.length}, ожидалось больше`);
+});
+
+Then("в списке провайдеров AI остался один", async () => {
+  await ensureSettingsOpen();
+  const ids = await providerIds();
+  await closeAiSettings();
+  if (ids.length !== 1) throw new Error(`В списке провайдеров AI ${ids.length}, ожидался один`);
+});
+
+Then("активный провайдер AI равен {string}", async (id) => {
+  await browser.waitUntil(
+    async () => {
+      const view = await invoke("ai_get_settings");
+      return view.active_provider === id;
+    },
+    { timeout: 5000, timeoutMsg: `Активный провайдер AI не «${id}»` }
+  );
+});
+
+Then("активный провайдер AI не {string}", async (id) => {
+  const view = await invoke("ai_get_settings");
+  if (view.active_provider === id) throw new Error(`Активный провайдер AI остался «${id}»`);
 });
 
 // ---------- Фаза 2: harness документа и плагинов (ADR-0034; AC-3/AC-4) ----------
@@ -934,18 +1041,7 @@ When("я поднимаю мок-провайдера AI с предложени
 /// Направляет AI на поднятый мок-провайдер (base_url = loopback, проходит валидацию схемы).
 When("я направляю AI на мок-провайдера", async () => {
   if (!mockProvider) throw new Error("Мок-провайдер AI не поднят");
-  const view = await invoke("ai_get_settings");
-  await invoke("ai_set_settings", {
-    settings: {
-      enabled: view.enabled,
-      provider: view.provider,
-      base_url: `http://127.0.0.1:${mockProviderPort}/v1`,
-      model: view.model,
-      max_tokens: view.max_tokens,
-      temperature: view.temperature,
-      consent_document_send: view.consent_document_send,
-    },
-  });
+  await setActiveBaseUrl(`http://127.0.0.1:${mockProviderPort}/v1`);
 });
 
 // ---------- Фаза 3: санитизированный рендер ответа AI (ADR-0038) ----------
@@ -1043,18 +1139,7 @@ Then("в ответе AI нет опасного HTML", async () => {
 /// Направляет AI на XSS-мок-провайдер (base_url = loopback, проходит валидацию схемы).
 When("я направляю AI на XSS-мок-провайдера", async () => {
   if (!xssMockProvider) throw new Error("XSS-мок-провайдер AI не поднят");
-  const view = await invoke("ai_get_settings");
-  await invoke("ai_set_settings", {
-    settings: {
-      enabled: view.enabled,
-      provider: view.provider,
-      base_url: `http://127.0.0.1:${xssMockProviderPort}/v1`,
-      model: view.model,
-      max_tokens: view.max_tokens,
-      temperature: view.temperature,
-      consent_document_send: view.consent_document_send,
-    },
-  });
+  await setActiveBaseUrl(`http://127.0.0.1:${xssMockProviderPort}/v1`);
 });
 
 // ---------- Персистентность истории на диске (Task 4.3, AC-P3-5) ----------

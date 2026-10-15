@@ -26,6 +26,8 @@ import type { AiPanelState } from "./state";
 
 export interface PluginCardApi {
   appendAssistantActions(col: HTMLElement, content: string): void;
+  /** Удаляет все карточки из DOM и реестра (очистка чата). */
+  clearCards(): void;
 }
 
 export function createPluginCard(
@@ -89,6 +91,10 @@ export function createPluginCard(
       },
       deleted() {
         markDeleted();
+      },
+      remove() {
+        card.remove();
+        state.pluginCards.delete(cardState);
       },
     };
     state.pluginCards.add(cardState);
@@ -229,5 +235,11 @@ export function createPluginCard(
     if (proposal) renderPluginCard(col, proposal);
   }
 
-  return { appendAssistantActions };
+  function clearCards(): void {
+    for (const card of [...state.pluginCards]) {
+      card.remove();
+    }
+  }
+
+  return { appendAssistantActions, clearCards };
 }

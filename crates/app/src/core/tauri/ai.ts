@@ -8,23 +8,67 @@ import type { UndoResult } from "./documents";
 
 export interface AiSettingsView {
   enabled: boolean;
-  provider: string;
-  base_url: string;
-  model: string;
+  active_provider: string;
+  active_model: string;
   max_tokens: number;
   temperature: number;
   consent_document_send: boolean;
+  providers: ProviderView[];
+}
+
+export interface ProviderView {
+  id: string;
+  name: string;
+  env: string[];
+  settings: ProviderSettingsView;
+  headers: Record<string, string>;
+  body: Record<string, unknown>;
+  models: ModelView[];
+}
+
+interface ProviderSettingsView {
+  base_url: string;
+  timeout: number | null;
   has_key: boolean;
+}
+
+interface ModelView {
+  id: string;
+  name: string;
+  model_id: string | null;
+  disabled: boolean | null;
 }
 
 export interface AiSettingsInput {
   enabled: boolean;
-  provider: string;
-  base_url: string;
-  model: string;
+  active_provider: string;
+  active_model: string;
   max_tokens: number;
   temperature: number;
   consent_document_send: boolean;
+  providers: ProviderInput[];
+}
+
+export interface ProviderInput {
+  id: string;
+  name: string;
+  env: string[];
+  settings: ProviderSettingsInput;
+  headers: Record<string, string>;
+  body: Record<string, unknown>;
+  models: ModelInput[];
+}
+
+interface ProviderSettingsInput {
+  base_url: string;
+  timeout: number | null;
+}
+
+export interface ModelInput {
+  id: string;
+  name: string;
+  model_id: string | null;
+  disabled: boolean | null;
 }
 
 export interface AiMessage {
@@ -65,8 +109,8 @@ export function aiSetSettings(settings: AiSettingsInput): Promise<void> {
   return invoke<void>("ai_set_settings", { settings });
 }
 
-export function aiSetApiKey(key: string): Promise<void> {
-  return invoke<void>("ai_set_api_key", { key });
+export function aiSetApiKey(providerId: string, key: string): Promise<void> {
+  return invoke<void>("ai_set_api_key", { providerId, key });
 }
 
 export function aiListSkills(): Promise<AiSkill[]> {

@@ -9,7 +9,7 @@ import { aiChat, aiHistoryClear, errorMessage } from "../../core/tauri";
 import type { AiUsage } from "../../core/tauri";
 import type { ChatApi } from "./chat";
 import type { ConsentApi } from "./consent";
-import { errorKind, errorTitle, type ErrorAction, type ErrorKind } from "./errors";
+import { errorCode, errorKind, errorTitle, type ErrorAction, type ErrorKind } from "./errors";
 import type { HistoryApi } from "./history";
 import type { IndicatorApi } from "./indicator";
 import type { PluginCardApi } from "./pluginCard";
@@ -79,7 +79,7 @@ export function createStream(
       if (state.disposed) return;
       const p = state.pending;
       if (!p || p.token !== token || p.finalized) return;
-      fail(p, "", errorMessage(e));
+      fail(p, errorCode(e) ?? "", errorMessage(e));
     }
   }
 
@@ -165,6 +165,7 @@ export function createStream(
       state.pending = null;
     }
     deps.indicator.setBusy(false);
+    deps.plugin.clearCards();
     dom.chat.textContent = "";
     state.history = [];
     state.lastRequest = null;

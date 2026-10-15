@@ -1,9 +1,10 @@
-//! Гейт `ai_chat`: проверки **до** сети (ADR-0032, ADR-0034).
+//! Гейт `ai_chat`: проверки **до** сети (ADR-0032, ADR-0034, ADR-0035).
 //!
-//! Порядок важен и зафиксирован: `enabled → ключ → согласие`. Каждая проверка даёт свой
-//! код ошибки, чтобы фронт показал правильное состояние (`#ai-dot`). Функции чистые —
-//! тестируются без сети.
+//! Порядок важен и зафиксирован: `enabled → активная пара → ключ → согласие`. Каждая
+//! проверка даёт свой код ошибки, чтобы фронт показал правильное состояние (`#ai-dot`).
+//! Функции чистые по отношению к сети — тестируются без запросов.
 
+use crate::ai::state::resolve_active;
 use crate::ai::types::AiSettings;
 use crate::error::{CommandError, ErrorCode};
 
@@ -19,9 +20,14 @@ pub fn check_enabled(settings: &AiSettings) -> Result<(), CommandError> {
     }
 }
 
-/// Не задан непустой API-ключ.
+/// Активная пара `active_provider`/`active_model` должна резолвиться (ADR-0035 §2.2).
+pub fn check_active(settings: &AiSettings) -> Result<(), CommandError> {
+    resolve_active(settings).map(|_| ())
+}
+
+/// Не задан непустой API-ключ у активного провайдера (`settings.apiKey` или `env`).
 pub fn check_key(settings: &AiSettings) -> Result<(), CommandError> {
-    if settings.has_key() {
+    if resolve_active(settings)?.api_key.is_some() {
         Ok(())
     } else {
         Err(CommandError::new(ErrorCode::AiNoKey, "API-ключ не задан"))
@@ -40,83 +46,10 @@ pub fn check_consent(settings: &AiSettings) -> Result<(), CommandError> {
     }
 }
 
-/// Полный гейт перед `ai_chat`: включён → ключ → согласие.
+/// Полный гейт перед `ai_chat`: включён → активная пара → ключ → согласие.
 pub fn check_chat(settings: &AiSettings) -> Result<(), CommandError> {
     check_enabled(settings)?;
+    check_active(settings)?;
     check_key(settings)?;
     check_consent(settings)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// Настройки, проходящие все проверки.
-    fn ready() -> AiSettings {
-        AiSettings {
-            enabled: true,
-            consent_document_send: true,
-            api_key: Some("sk-test".to_string()),
-            ..AiSettings::default()
-        }
-    }
-
-    #[test]
-    fn disabled_reports_ai_disabled() {
-        let settings = AiSettings::default();
-        assert_eq!(
-            check_chat(&settings).unwrap_err().code,
-            ErrorCode::AiDisabled
-        );
-    }
-
-    #[test]
-    fn missing_key_reports_ai_no_key() {
-        let settings = AiSettings {
-            enabled: true,
-            api_key: None,
-            ..AiSettings::default()
-        };
-        assert_eq!(check_chat(&settings).unwrap_err().code, ErrorCode::AiNoKey);
-    }
-
-    #[test]
-    fn missing_consent_reports_ai_no_consent() {
-        let settings = AiSettings {
-            enabled: true,
-            api_key: Some("sk-test".to_string()),
-            consent_document_send: false,
-            ..AiSettings::default()
-        };
-        assert_eq!(
-            check_chat(&settings).unwrap_err().code,
-            ErrorCode::AiNoConsent
-        );
-    }
-
-    #[test]
-    fn gate_order_is_enabled_key_consent() {
-        let settings = AiSettings {
-            enabled: true,
-            ..AiSettings::default()
-        };
-        assert_eq!(check_chat(&settings).unwrap_err().code, ErrorCode::AiNoKey);
-    }
-
-    #[test]
-    fn fully_configured_passes() {
-        assert!(check_chat(&ready()).is_ok());
-    }
-
-    #[test]
-    fn test_connection_does_not_require_consent() {
-        let settings = AiSettings {
-            enabled: true,
-            api_key: Some("sk-test".to_string()),
-            consent_document_send: false,
-            ..AiSettings::default()
-        };
-        assert!(check_enabled(&settings).is_ok());
-        assert!(check_key(&settings).is_ok());
-    }
 }

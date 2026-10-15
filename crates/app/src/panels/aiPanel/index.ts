@@ -136,8 +136,11 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
       indicator.applyState();
     });
   };
-  const onProviderChange = (): void => void settingsPane.persist({ provider: dom.providerInput.value });
-  const onModelChange = (): void => void settingsPane.persist({ model: dom.modelInput.value.trim() });
+  const onProviderSelect = (): void => void settingsPane.selectProvider(dom.providersSelect.value);
+  const onModelSelect = (): void => void settingsPane.selectModel(dom.modelSelect.value);
+  const onProviderAdd = (): void => void settingsPane.addProvider();
+  const onProviderRemove = (): void => void settingsPane.removeProvider();
+  const onProviderEdit = (): void => void settingsPane.applyProviderEdits();
   const onDocPointerDown = (e: PointerEvent): void => {
     if (!state.popoverOpen) return;
     const t = e.target;
@@ -164,8 +167,11 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
   dom.testBtn.addEventListener("click", onTest);
   dom.enableBtn.addEventListener("click", onEnableClick);
   dom.enabledInput.addEventListener("change", onEnabledChange);
-  dom.providerInput.addEventListener("change", onProviderChange);
-  dom.modelInput.addEventListener("change", onModelChange);
+  dom.providersSelect.addEventListener("change", onProviderSelect);
+  dom.modelSelect.addEventListener("change", onModelSelect);
+  dom.providerAdd.addEventListener("click", onProviderAdd);
+  dom.providerRemove.addEventListener("click", onProviderRemove);
+  dom.providerEdit.addEventListener("click", onProviderEdit);
   document.addEventListener("pointerdown", onDocPointerDown);
   document.addEventListener("keydown", onDocKeyDown, true);
 
@@ -259,8 +265,11 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     dom.testBtn.removeEventListener("click", onTest);
     dom.enableBtn.removeEventListener("click", onEnableClick);
     dom.enabledInput.removeEventListener("change", onEnabledChange);
-    dom.providerInput.removeEventListener("change", onProviderChange);
-    dom.modelInput.removeEventListener("change", onModelChange);
+    dom.providersSelect.removeEventListener("change", onProviderSelect);
+    dom.modelSelect.removeEventListener("change", onModelSelect);
+    dom.providerAdd.removeEventListener("click", onProviderAdd);
+    dom.providerRemove.removeEventListener("click", onProviderRemove);
+    dom.providerEdit.removeEventListener("click", onProviderEdit);
     document.removeEventListener("pointerdown", onDocPointerDown);
     document.removeEventListener("keydown", onDocKeyDown, true);
   }

@@ -7,12 +7,9 @@
 //! защищено проверкой ревизии (rev-guard, ADR-0034): устаревший `base_rev` → `ai_stale_edit`,
 //! правка не применяется.
 
-mod apply;
+pub(in crate::ai) mod apply;
 mod commands;
 mod diff;
-
-#[cfg(test)]
-mod tests;
 
 pub use apply::apply_with_guard;
 pub use commands::{ai_apply_edit, ai_diff};

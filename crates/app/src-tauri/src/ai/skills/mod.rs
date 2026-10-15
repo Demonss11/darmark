@@ -306,6 +306,3 @@ pub fn builtin_skills() -> Vec<AiSkill> {
 pub fn skills() -> Vec<AiSkill> {
     builtin_skills()
 }
-
-#[cfg(test)]
-mod tests;

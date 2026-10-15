@@ -1,6 +1,7 @@
-use super::apply::notify_applied;
-use super::*;
+//! Тесты harness'а документа [`super::super::doc_harness`].
 
+use crate::ai::doc_harness::apply::notify_applied;
+use crate::ai::doc_harness::{apply_with_guard, checked_diff_ops, diff_ops, MAX_DIFF_LINES};
 use crate::ai::types::AiEditOp;
 use crate::error::ErrorCode;
 use crate::state::{DocumentId, DocumentStore};

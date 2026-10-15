@@ -20,6 +20,16 @@ export interface IndicatorApi {
 export function createIndicator(state: AiPanelState): IndicatorApi {
   const { dom } = state;
 
+  /** Задан ли непустой ключ у активного провайдера (для `has_key`/дот-состояния). */
+  function activeHasKey(): boolean {
+    const settings = state.settings;
+    if (!settings) return false;
+    return (
+      settings.providers.find((provider) => provider.id === settings.active_provider)?.settings
+        .has_key ?? false
+    );
+  }
+
   function paintDot(el: HTMLElement | null, st: AiDotState): void {
     if (!el) return;
     for (const s of ["off", "warn", "ready", "error"] as const) {
@@ -32,7 +42,7 @@ export function createIndicator(state: AiPanelState): IndicatorApi {
     if (state.lastError) return "error";
     if (
       state.authError ||
-      !state.settings.has_key ||
+      !activeHasKey() ||
       !state.settings.consent_document_send ||
       state.consentDenied
     ) {
@@ -46,7 +56,7 @@ export function createIndicator(state: AiPanelState): IndicatorApi {
     if (st === "error") return "ошибка · нет соединения";
     if (st === "ready") return "доступен · встроен";
     if (state.authError) return "неверный ключ";
-    if (state.settings && !state.settings.has_key) return "нет ключа";
+    if (state.settings && !activeHasKey()) return "нет ключа";
     return "нет согласия на отправку";
   }
 
@@ -70,20 +80,32 @@ export function createIndicator(state: AiPanelState): IndicatorApi {
     dom.enabledInput.checked = enabled;
     dom.enabledSub.textContent = enabled ? "включён" : "выключен";
     dom.config.classList.toggle("is-disabled", !enabled);
-    dom.providerInput.disabled = !enabled;
-    dom.modelInput.disabled = !enabled;
+
+    const providers = state.settings?.providers ?? [];
+    dom.providersSelect.disabled = !enabled;
+    dom.modelSelect.disabled = !enabled;
+    dom.providerAdd.disabled = !enabled;
+    dom.providerEdit.disabled = !enabled;
+    dom.providerRemove.disabled = !enabled || providers.length <= 1;
+    dom.providerName.disabled = !enabled;
+    dom.baseUrlInput.disabled = !enabled;
+    dom.providerEnv.disabled = !enabled;
+    dom.providerTimeout.disabled = !enabled;
+    dom.providerHeaders.disabled = !enabled;
+    dom.providerBody.disabled = !enabled;
+    dom.providerModels.disabled = !enabled;
     dom.keyInput.disabled = !enabled;
     dom.keySave.disabled = !enabled;
-    dom.keyClear.disabled = !enabled || !(state.settings?.has_key ?? false);
+    dom.keyClear.disabled = !enabled || !activeHasKey();
     dom.testBtn.disabled = !enabled;
 
-    if (state.settings) {
-      if (document.activeElement !== dom.providerInput) dom.providerInput.value = state.settings.provider;
-      dom.baseUrlInput.value = state.settings.base_url;
-      if (document.activeElement !== dom.modelInput) dom.modelInput.value = state.settings.model;
-      if (dom.modelLabel) dom.modelLabel.textContent = `routerai · ${shortModel(state.settings.model)}`;
+    const active = providers.find((provider) => provider.id === state.settings?.active_provider);
+    if (active && dom.modelLabel) {
+      dom.modelLabel.textContent = `${active.name || active.id} · ${shortModel(
+        state.settings?.active_model ?? ""
+      )}`;
     }
-    dom.keyHint.textContent = state.settings?.has_key ? "Ключ сохранён" : "Ключ не задан";
+    dom.keyHint.textContent = active?.settings.has_key ? "Ключ сохранён" : "Ключ не задан";
   }
 
   function updateEmpty(): void {

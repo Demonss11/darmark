@@ -59,4 +59,7 @@ export type {
   AiUsage,
   AiSkill,
   AiDiff,
+  ProviderView,
+  ProviderInput,
+  ModelInput,
 } from "./ai";

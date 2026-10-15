@@ -21,7 +21,11 @@ pub mod state;
 pub mod transport;
 pub mod types;
 
+#[cfg(test)]
+mod tests;
+
 pub use types::{
     AiDiff, AiEditOp, AiMessage, AiResponse, AiSettings, AiSettingsInput, AiSettingsView, AiSkill,
-    AiTestResult, AiUsage, AiValidationResult, HistoryView,
+    AiTestResult, AiUsage, AiValidationResult, HistoryView, ModelView, ProviderSettingsView,
+    ProviderView,
 };

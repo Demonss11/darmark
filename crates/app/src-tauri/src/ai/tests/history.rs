@@ -1,4 +1,11 @@
-use super::*;
+//! Тесты персистентности истории [`super::super::history`].
+
+use crate::ai::history::{
+    env_lock, history_path, load, save, HistoryFile, MAX_HISTORY_BYTES, MAX_HISTORY_MESSAGES,
+    SCHEMA_VERSION,
+};
+use crate::ai::types::AiMessage;
+use std::path::PathBuf;
 
 /// Временный каталог для теста (уникальный на процесс + имя).
 fn temp_dir(name: &str) -> PathBuf {

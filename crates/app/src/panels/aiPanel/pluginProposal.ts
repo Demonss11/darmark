@@ -27,6 +27,8 @@ export interface PluginCardState {
   isInstalled(): boolean;
   installed(label: string, stateClass: string): void;
   deleted(): void;
+  /** Полное удаление карточки: DOM-узел и реестр (очистка чата). */
+  remove(): void;
 }
 
 export function extractPluginProposal(content: string): AiPluginProposal | null {

@@ -363,28 +363,55 @@
           </div>
 
           <div class="pop-config" id="ai-config">
-            <label class="pop-row">
+            <div class="pop-row pop-row-actions">
               <span class="pop-label">Провайдер</span>
-              <select class="pop-input" id="ai-provider" aria-label="Провайдер">
-                <option value="openai-compatible">routerai.ru (OpenAI-совместимый)</option>
-              </select>
+              <select class="pop-input" id="ai-providers" aria-label="Активный провайдер"></select>
+              <button class="btn ghost" id="ai-provider-add" type="button" title="Добавить провайдера">Добавить</button>
+              <button class="btn ghost" id="ai-provider-remove" type="button" title="Удалить провайдера" aria-label="Удалить провайдера">Удалить</button>
+            </div>
+            <label class="pop-row">
+              <span class="pop-label">Модель</span>
+              <select class="pop-input" id="ai-model-select" aria-label="Активная модель"></select>
+            </label>
+            <label class="pop-row">
+              <span class="pop-label">Имя</span>
+              <input class="pop-input" id="ai-provider-name" type="text" spellcheck="false" aria-label="Имя провайдера" />
             </label>
             <label class="pop-row">
               <span class="pop-label">Base URL</span>
-              <input class="pop-input" id="ai-base-url" type="text" readonly spellcheck="false" aria-label="Base URL" />
+              <input class="pop-input" id="ai-provider-base-url" type="text" spellcheck="false" aria-label="Base URL" placeholder="https://…/v1" />
             </label>
             <label class="pop-row">
-              <span class="pop-label">Модель</span>
-              <input class="pop-input" id="ai-model" type="text" spellcheck="false" aria-label="Модель" />
+              <span class="pop-label">env (ключ)</span>
+              <input class="pop-input" id="ai-provider-env" type="text" spellcheck="false" aria-label="Переменные окружения для ключа" placeholder="ROUTERAI_API_KEY, …" />
             </label>
             <label class="pop-row">
               <span class="pop-label">API-ключ</span>
-              <input class="pop-input" id="ai-key" type="password" autocomplete="off" spellcheck="false" placeholder="sk-… · пусто — удалить" aria-label="API-ключ routerai.ru" />
+              <input class="pop-input" id="ai-provider-key" type="password" autocomplete="off" spellcheck="false" placeholder="sk-… · пусто — удалить" aria-label="API-ключ провайдера" />
             </label>
             <div class="pop-row">
               <button class="btn ghost" id="ai-key-save" type="button">Сохранить ключ</button>
               <button class="btn ghost" id="ai-key-clear" type="button" title="Удалить сохранённый ключ" aria-label="Удалить ключ">Удалить ключ</button>
               <span class="pop-hint" id="ai-key-hint">Ключ не задан</span>
+            </div>
+            <label class="pop-row">
+              <span class="pop-label">Таймаут, мс</span>
+              <input class="pop-input" id="ai-provider-timeout" type="number" min="0" step="1000" aria-label="Таймаут запроса, мс" placeholder="30000" />
+            </label>
+            <label class="pop-row pop-row-stack">
+              <span class="pop-label">headers (JSON)</span>
+              <textarea class="pop-input pop-textarea" id="ai-provider-headers" rows="2" spellcheck="false" aria-label="Дополнительные заголовки (JSON)"></textarea>
+            </label>
+            <label class="pop-row pop-row-stack">
+              <span class="pop-label">body (JSON)</span>
+              <textarea class="pop-input pop-textarea" id="ai-provider-body" rows="2" spellcheck="false" aria-label="Дополнительные поля тела запроса (JSON)"></textarea>
+            </label>
+            <label class="pop-row pop-row-stack">
+              <span class="pop-label">Модели</span>
+              <textarea class="pop-input pop-textarea" id="ai-provider-models" rows="2" spellcheck="false" placeholder="id = Имя (по строке)" aria-label="Модели провайдера"></textarea>
+            </label>
+            <div class="pop-row">
+              <button class="btn ghost" id="ai-provider-edit" type="button">Применить</button>
             </div>
           </div>
 

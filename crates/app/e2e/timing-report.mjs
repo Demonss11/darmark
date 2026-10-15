@@ -108,7 +108,7 @@ p("");
 p("Их перехватывает `ensureActiveWindowFocus()` из `@wdio/tauri-service` и на каждую команду");
 p("запрашивает состояние окна через `browser.tauri.execute`. В приложении darmark нет guest-JS");
 p("`@wdio/tauri-plugin`, поэтому проба готовности плагина крутится полный бюджет (~100×50 мс ≈ 5 с)");
-p("и падает («Failed to get window states»). Общая точка входа была — шаг `приложение darmark запущено`");
+p("и падает («Failed to get window states»). Общая точка входа была — шаг `приложение penal запущено`");
 p('(`smoke.steps.js`) с `$("#editor").waitForExist()` / `$("#preview").waitForExist()`; отсюда до 374 с');
 p("на сессию у дровера, вкладок, smoke и a11y.");
 p("");

@@ -1,4 +1,11 @@
-use super::*;
+//! Тесты IPC-команд [`super::super::commands`].
+
+use crate::ai::commands::{
+    ai_done_payload, ai_history_clear, ai_history_load, ai_history_save, ai_list_skills,
+    ai_render_markdown, error_code_str, next_message_id,
+};
+use crate::ai::types::{AiMessage, AiUsage};
+use crate::error::ErrorCode;
 
 #[test]
 fn error_codes_serialize_to_contract_strings() {

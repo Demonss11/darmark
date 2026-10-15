@@ -175,3 +175,45 @@ fn manual_enable_clears_quarantine() {
         "ручное включение снимает карантин"
     );
 }
+
+#[test]
+fn p3_hog_lua_memory_limit_kills_child() {
+    let _guard = serial();
+    let store = store_with_doc("x");
+    let mut params = SupervisorParams::new(child_exe(), "hog", services(&store));
+    params.progress = Duration::from_millis(500);
+    params.deadline = Duration::from_secs(30);
+    let mut supervisor = Supervisor::start(params, &fixture("hog.lua")).unwrap();
+
+    let err = supervisor.activate().expect_err("hog обязан быть снят");
+    assert!(
+        err.code == "crashed" || err.code == "timeout",
+        "ожидался crashed/timeout, получено {}",
+        err.code
+    );
+}
+
+#[test]
+fn p3_spin_lua_killed_by_watchdog() {
+    let _guard = serial();
+    let store = store_with_doc("x");
+    let mut params = SupervisorParams::new(child_exe(), "spin", services(&store));
+    params.progress = Duration::from_millis(300);
+    params.deadline = Duration::from_secs(30);
+    let mut supervisor = Supervisor::start(params, &fixture("spin.lua")).unwrap();
+
+    let err = supervisor.activate().expect_err("spin обязан быть снят");
+    assert_eq!(err.code, "timeout", "снятие по прогресс-таймауту");
+}
+
+#[test]
+fn p3_count_lua_works_in_product_runtime() {
+    let _guard = serial();
+    let store = store_with_doc("# Hello world");
+    let mut supervisor = sup("count", "count.lua", &["document:read"], &store);
+
+    supervisor
+        .activate()
+        .expect("count.lua обязан активироваться");
+    drop(supervisor);
+}

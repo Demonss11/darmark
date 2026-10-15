@@ -9,7 +9,7 @@ import { waitPreviewContains } from "./helpers.js";
 // `browser.tauri.execute`. В darmark нет guest-JS `@wdio/tauri-plugin`, поэтому
 // проба готовности крутится ~100×50 мс и падает — это ~5 с простоя НА КАЖДУЮ
 // команду. Ожидание/чтение DOM делаем через `browser.execute` (проектный паттерн).
-Given("приложение darmark запущено", async () => {
+Given("приложение penal запущено", async () => {
   // Таймаут с запасом: на поздних спеках длинного прогона вебвью стартует
   // медленнее (см. startTimeout в wdio.conf.js).
   await browser.waitUntil(

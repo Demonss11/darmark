@@ -78,12 +78,9 @@ Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like "*wdio*" } |
 
 # релиз + NSIS
 cd crates/app; npx tauri build
-
-# бинарник для E2E — в этом порядке, все три шага обязательны
-cd crates/app; npm run build
-npm run sidecars
-cargo build -p darmark --release
 ```
+
+Бинарник для E2E собирается **только** через `cd crates/app; npm run tauri build` (внутри: фронт → sidecars → Rust-релиз → NSIS). Команду `cargo build -p darmark --release` для сборки приложения использовать нельзя — без шага `tauri build` сайдкары и ассеты не попадают в бинарник, и E2E падает по инфраструктурным причинам, а не функциональным.
 
 Установщик: `target/release/bundle/nsis/`, size-gate ≤6 МБ.
 Отмена `npm run test:e2e` оставляет живое дерево процессов — снимать `taskkill` выше.

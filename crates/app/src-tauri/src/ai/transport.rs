@@ -4,8 +4,10 @@
 //! GUI. Будущий сайдкар `darmark-ai.exe` станет drop-in заменой реализации трейта без правок
 //! UI/IPC: `ai_chat` вызывает трейт, а не `reqwest` напрямую.
 
+use std::collections::BTreeMap;
 use std::future::Future;
 use std::pin::Pin;
+use std::time::Duration;
 
 use crate::ai::types::{AiMessage, AiUsage};
 use crate::error::CommandError;
@@ -13,7 +15,10 @@ use crate::error::CommandError;
 /// Завернутый `Send`-фьючер с лайфтаймом — объектобезопасный async-метод трейта без `async-trait`.
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
-/// Запрос к провайдеру (после гейта: включён, ключ есть, согласие выдано).
+/// Запрос к провайдеру (после гейта: включён, активная пара и ключ есть, согласие выдано).
+///
+/// `headers`/`extra_body` — надстройка запроса из `ai.providers[id]` (ADR-0035 §2.4);
+/// `timeout` — провайдер-wide ограничение запроса (§2.5).
 #[derive(Clone)]
 pub struct ChatRequest {
     pub base_url: String,
@@ -22,9 +27,13 @@ pub struct ChatRequest {
     pub messages: Vec<AiMessage>,
     pub max_tokens: u32,
     pub temperature: f32,
+    pub headers: BTreeMap<String, String>,
+    pub extra_body: serde_json::Map<String, serde_json::Value>,
+    pub timeout: Option<Duration>,
 }
 
-/// Ручной `Debug`: секрет (`api_key`) маскируется и не попадает в `{:?}`/логи (H4).
+/// Ручной `Debug`: секрет (`api_key`) маскируется; заголовки/тело не разворачиваются (H4,
+/// ADR-0035 §2.6) — печатаются только имена, чтобы надстройка не утекала в логи.
 impl std::fmt::Debug for ChatRequest {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ChatRequest")
@@ -34,23 +43,30 @@ impl std::fmt::Debug for ChatRequest {
             .field("messages", &self.messages)
             .field("max_tokens", &self.max_tokens)
             .field("temperature", &self.temperature)
+            .field("headers", &self.headers.keys().collect::<Vec<_>>())
+            .field("extra_body", &self.extra_body.keys().collect::<Vec<_>>())
+            .field("timeout", &self.timeout)
             .finish()
     }
 }
 
-/// Лёгкая проверка соединения (`GET /models`); содержимое не отправляется.
+/// Лёгкая проверка соединения (`GET /models`); содержимое документа не отправляется.
 #[derive(Clone)]
 pub struct TestRequest {
     pub base_url: String,
     pub api_key: String,
+    pub headers: BTreeMap<String, String>,
+    pub timeout: Option<Duration>,
 }
 
-/// Ручной `Debug`: секрет (`api_key`) маскируется и не попадает в `{:?}`/логи (H4).
+/// Ручной `Debug`: секрет (`api_key`) и заголовки не разворачиваются (H4, ADR-0035 §2.6).
 impl std::fmt::Debug for TestRequest {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("TestRequest")
             .field("base_url", &self.base_url)
             .field("api_key", &"<redacted>")
+            .field("headers", &self.headers.keys().collect::<Vec<_>>())
+            .field("timeout", &self.timeout)
             .finish()
     }
 }
@@ -83,44 +99,4 @@ pub trait AiTransport: Send + Sync + 'static {
         &self,
         request: TestRequest,
     ) -> BoxFuture<'_, Result<Option<String>, CommandError>>;
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn chat_request_debug_masks_secret() {
-        let request = ChatRequest {
-            base_url: "https://example.test/v1".to_string(),
-            model: "m".to_string(),
-            api_key: "sk-secret-1234".to_string(),
-            messages: vec![AiMessage {
-                role: "user".to_string(),
-                content: "hi".to_string(),
-            }],
-            max_tokens: 16,
-            temperature: 0.0,
-        };
-        let rendered = format!("{request:?}");
-        assert!(!rendered.contains("sk-secret"), "секрет скрыт: {rendered}");
-        assert!(
-            rendered.contains("<redacted>"),
-            "секрет маскируется: {rendered}"
-        );
-    }
-
-    #[test]
-    fn test_request_debug_masks_secret() {
-        let request = TestRequest {
-            base_url: "https://example.test/v1".to_string(),
-            api_key: "sk-secret-1234".to_string(),
-        };
-        let rendered = format!("{request:?}");
-        assert!(!rendered.contains("sk-secret"), "секрет скрыт: {rendered}");
-        assert!(
-            rendered.contains("<redacted>"),
-            "секрет маскируется: {rendered}"
-        );
-    }
 }

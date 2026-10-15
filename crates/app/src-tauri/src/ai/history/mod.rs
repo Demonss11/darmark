@@ -217,6 +217,3 @@ pub(crate) fn env_lock() -> std::sync::MutexGuard<'static, ()> {
         .lock()
         .unwrap_or_else(|e| e.into_inner())
 }
-
-#[cfg(test)]
-mod tests;

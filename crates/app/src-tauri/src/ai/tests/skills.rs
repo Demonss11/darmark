@@ -1,4 +1,6 @@
-use super::*;
+//! Тесты встроенной библиотеки скиллов [`super::super::skills`].
+
+use crate::ai::skills::{builtin_skills, skills};
 
 #[test]
 fn built_in_skills_have_expected_ids() {
