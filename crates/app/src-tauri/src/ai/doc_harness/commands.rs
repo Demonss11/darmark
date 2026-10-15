@@ -50,6 +50,12 @@ pub fn ai_diff(
 /// не применяется. При успехе уведомляет плагины (`document:changed`, как
 /// `update_document`/`undo_document`) и фронт (`document-updated` → pull-снапшот, AC-4),
 /// затем эмитит `ai:edit_applied { doc_id, rev }`.
+///
+/// **Guard стора обязан быть отпущен до уведомлений:** доставка `document:changed` плагинам
+/// может обслужить host-call к тому же `DocumentStore`, а мьютекс нереентрантен — удержание
+/// лока дало бы дедлок. Поэтому `lock_store` живёт во внутреннем блоке, а `notify_applied`
+/// вызывается после него. Порядок важен: сначала изменение документа (плагины + фронт),
+/// затем `ai:edit_applied`.
 #[tauri::command]
 pub fn ai_apply_edit(
     app: AppHandle,

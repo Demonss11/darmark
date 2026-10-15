@@ -130,6 +130,11 @@ pub(crate) fn close_document(
 ///
 /// Заменяет stateless `render_markdown`: рендер и кэш `(mapped, rev)` — теперь в сторе,
 /// а `RenderResult.changed` избавляет TS от собственного `lastRenderedHtml`.
+///
+/// **Guard стора отпускается до `publish_document_changed`:** доставка события плагинам может
+/// обслужить host-call к тому же `DocumentStore`, а мьютекс нереентрантен. Событие шлётся
+/// только при реальной смене ревизии (эхо-защита, §7 риски): иначе правка из редактора
+/// зациклилась бы через `document:changed`.
 #[tauri::command(async)]
 pub(crate) fn update_document(
     id: DocumentId,

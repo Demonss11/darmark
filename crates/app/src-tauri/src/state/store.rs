@@ -124,6 +124,8 @@ impl DocumentStore {
             doc.text = text;
             doc.rev += 1;
         }
+        // Правка тем же текстом ревизию не двигает (эхо-защита): фронт по неизменной `rev`
+        // не трогает DOM, плагины не получают ложный `document:changed`.
         Some(doc.render(mapped))
     }
 

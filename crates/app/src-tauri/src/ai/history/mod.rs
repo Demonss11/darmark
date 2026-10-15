@@ -89,6 +89,9 @@ pub fn load(base: Option<&Path>) -> (HistoryFile, Option<String>) {
 }
 
 /// Парсит JSON в `HistoryFile`. Битый JSON / неизвестная схема → пустая сессия + предупреждение.
+///
+/// **Приватность:** текст serde-ошибки не пробрасывается наружу — он может содержать фрагмент
+/// содержимого файла, а сообщения чата не должны попадать в логи и предупреждения.
 fn parse_history(bytes: &[u8]) -> (HistoryFile, Option<String>) {
     let file: HistoryFile = match serde_json::from_slice(bytes) {
         Ok(f) => f,

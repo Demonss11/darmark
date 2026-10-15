@@ -43,6 +43,8 @@ impl ReqwestBackend {
         }
         let built = reqwest::Client::builder()
             .timeout(REQUEST_TIMEOUT)
+            // Редиректы запрещены: тело (документ) не должно уходить на хост, не названный
+            // в согласии (H2).
             .redirect(reqwest::redirect::Policy::none())
             .build()
             .map_err(|e| {

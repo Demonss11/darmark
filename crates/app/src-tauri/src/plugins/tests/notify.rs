@@ -14,6 +14,10 @@ use super::common::{child_exe, fixture, push_log, serial, store_with_doc, view_c
 
 /// Хост с одним view-плагином (`view-activate.lua`, наполняет вкладку в `on_activate`) и
 /// журналом раздельных сигналов `plugin-views-changed`/`plugins-changed` (F41/S2).
+///
+/// `DocumentServices` получает только view-сигнал; `plugins-changed` ему недоступен. Это
+/// структурная гарантия того, что `set_view_content` не дёрнет менеджер: если бы сюда
+/// подключили `plugins_notify`, тест «эмитится только `plugin-views-changed`» потерял бы смысл.
 fn host_with_signal_log() -> (PluginHost, Arc<Mutex<Vec<&'static str>>>) {
     let store = store_with_doc("x");
     let views = views();
