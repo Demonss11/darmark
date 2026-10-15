@@ -31,6 +31,7 @@ impl crate::ai::transport::AiTransport for EchoBackend {
                 content: text,
                 usage: None,
                 finish_reason: None,
+                tool_calls: Vec::new(),
             })
         })
     }

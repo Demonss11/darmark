@@ -6,6 +6,8 @@
 
 use std::time::Duration;
 
+use mcp_core::protocol::{RpcRequest, RPC_VERSION};
+use mcp_core::server::McpServer;
 use tauri::{AppHandle, Emitter, State};
 
 use crate::ai::gate;
@@ -13,6 +15,8 @@ use crate::ai::history::{self, HistoryFile, SCHEMA_VERSION};
 use crate::ai::settings;
 use crate::ai::skills;
 use crate::ai::state::{self, AiState};
+use crate::ai::tool_calls::ToolCall;
+use crate::ai::tool_loop::{self, ToolExecution};
 use crate::ai::transport::{ChatRequest, TestRequest};
 use crate::ai::types::{
     AiMessage, AiResponse, AiSettingsInput, AiSettingsView, AiSkill, AiTestResult, AiUsage,
@@ -51,31 +55,65 @@ pub fn ai_list_skills() -> Vec<AiSkill> {
     skills::skills()
 }
 
+/// Эмиттер событий ассистента — граница между командой и транспортом (Tauri-событие в проде).
+///
+/// Инъекция вместо жёсткой зависимости от [`AppHandle`] делает последовательность событий
+/// (`ai:chunk`/`ai:tool-call`/`ai:tool-result`/`ai:done`/`ai:error`) проверяемой Rust-тестом:
+/// прод отдаёт [`AppHandle`], тест — собирающий mock. Образец шва — `mcp::LogEmitter`.
+pub(super) trait AiEmitter: Send + Sync + 'static {
+    /// Отправляет событие `event` с JSON-payload; `Err` — транспорт недоступен.
+    fn emit(&self, event: &str, payload: serde_json::Value) -> Result<(), String>;
+}
+
+impl AiEmitter for AppHandle {
+    fn emit(&self, event: &str, payload: serde_json::Value) -> Result<(), String> {
+        Emitter::emit(self, event, payload).map_err(|e| e.to_string())
+    }
+}
+
 /// Отправляет чат-запрос провайдеру со стримингом дельт событиями `ai:chunk`.
 ///
-/// Гейт до сети: включён → активная пара → ключ → согласие (иначе [`CommandError`]).
-/// Возвращает склеенный ответ и `usage`; по завершении эмитит `ai:done`.
+/// Аддитивные события жизненного цикла вызова инструментов — `ai:tool-call` и
+/// `ai:tool-result` (контракт с фронтендом). Тонкая точка входа: работа — в [`run_chat`],
+/// чтобы эмиссию событий можно было подменить в тестах (см. [`AiEmitter`]). Реестр MCP
+/// приходит из состояния приложения.
 #[tauri::command]
 pub async fn ai_chat(
     app: AppHandle,
     messages: Vec<AiMessage>,
     state: State<'_, AiState>,
+    mcp: State<'_, McpServer>,
+) -> Result<AiResponse, CommandError> {
+    run_chat(&app, &state, &mcp, messages).await
+}
+
+/// Прогоняет чат через tool-loop MCP, эмитя события жизненного цикла вызова инструментов.
+///
+/// Гейт до сети: включён → активная пара → ключ → согласие (иначе [`CommandError`] + `ai:error`).
+/// **Одна** пауза rate limit и один `message_id` на весь цикл: фронт склеивает ответ и карточки
+/// вызовов по нему. Инструменты объявляются провайдеру из реестра MCP ([`provider_tools`]); при
+/// пустом реестре запрос уходит без `tools`, и цикл вырождается в один запрос (деградация §3.3 ТЗ).
+pub(super) async fn run_chat(
+    emitter: &dyn AiEmitter,
+    state: &AiState,
+    mcp: &McpServer,
+    messages: Vec<AiMessage>,
 ) -> Result<AiResponse, CommandError> {
     let settings = state.settings();
     if let Err(err) = gate::check_chat(&settings) {
-        emit_error(&app, &err);
+        emit_error(emitter, &err);
         return Err(err);
     }
     let resolved = match state::resolve_active(&settings) {
         Ok(resolved) => resolved,
         Err(err) => {
-            emit_error(&app, &err);
+            emit_error(emitter, &err);
             return Err(err);
         }
     };
     let Some(api_key) = resolved.api_key.clone() else {
         let err = CommandError::new(ErrorCode::AiNoKey, "API-ключ не задан");
-        emit_error(&app, &err);
+        emit_error(emitter, &err);
         return Err(err);
     };
 
@@ -93,39 +131,109 @@ pub async fn ai_chat(
         headers: resolved.headers,
         extra_body: resolved.body,
         timeout: resolved.timeout.map(Duration::from_millis),
+        tools: provider_tools(mcp),
     };
-    let chunk_app = app.clone();
-    let chunk_id = message_id.clone();
-    let mut on_delta = move |delta: String| {
-        if let Err(e) = chunk_app.emit(
+    let mut on_delta = |delta: String| {
+        emit_event(
+            emitter,
             "ai:chunk",
-            serde_json::json!({ "message_id": chunk_id, "delta": delta }),
-        ) {
-            eprintln!("не эмитить ai:chunk: {e}");
-        }
+            serde_json::json!({ "message_id": message_id, "delta": delta }),
+        );
+    };
+    let mut on_tool_call = |call: &ToolCall| {
+        emit_event(
+            emitter,
+            "ai:tool-call",
+            serde_json::json!({
+                "message_id": message_id,
+                "call_id": call.id,
+                "tool": call.name,
+                "arguments": call.arguments,
+            }),
+        );
+    };
+    let mut on_tool_result = |exec: &ToolExecution<'_>| {
+        emit_event(
+            emitter,
+            "ai:tool-result",
+            serde_json::json!({
+                "message_id": message_id,
+                "call_id": exec.call.id,
+                "tool": exec.call.name,
+                "ok": exec.result.ok,
+                "duration_ms": exec.duration.as_millis() as u64,
+                "summary": tool_summary(exec),
+            }),
+        );
     };
 
-    let outcome = match backend.chat(request, &mut on_delta).await {
-        Ok(outcome) => outcome,
+    let response = match tool_loop::run(
+        &*backend,
+        mcp,
+        request,
+        &mut on_delta,
+        &mut on_tool_call,
+        &mut on_tool_result,
+    )
+    .await
+    {
+        Ok(response) => response,
         Err(err) => {
-            emit_error(&app, &err);
+            emit_error(emitter, &err);
             return Err(err);
         }
     };
 
-    let done_payload = ai_done_payload(&message_id, outcome.usage, outcome.finish_reason.clone());
-    if let Err(e) = app.emit("ai:done", done_payload) {
-        eprintln!("не эмитить ai:done: {e}");
-    }
+    let done_payload = ai_done_payload(&message_id, response.usage, response.finish_reason.clone());
+    emit_event(emitter, "ai:done", done_payload);
 
-    Ok(AiResponse {
-        message: AiMessage {
-            role: "assistant".to_string(),
-            content: outcome.content,
-        },
-        usage: outcome.usage,
-        finish_reason: outcome.finish_reason,
-    })
+    Ok(response)
+}
+
+/// Инструменты провайдеру из реестра MCP; `None` — объявлять нечего.
+///
+/// Реестр читается тем же JSON-RPC путём, что и у любого клиента MCP (`tools/list`, ADR-0036):
+/// команда не заглядывает внутрь сервера. Пустой список даёт `None` — запрос уходит без поля
+/// `tools`, и ассистент деградирует до обычного ответа (деградация §3.3 ТЗ).
+///
+/// Полный сценарий деградации (повтор без `tools` на 400 провайдера, кэш «провайдер не умеет
+/// tools» на сессию) — открытые вопросы §3.3 ТЗ: здесь реализован только минимум «нет реестра —
+/// нет поля». Остальные случаи ждут решения, чтобы не угадывать поведение провайдеров.
+fn provider_tools(mcp: &McpServer) -> Option<serde_json::Value> {
+    let list = mcp
+        .handle(RpcRequest {
+            jsonrpc: RPC_VERSION.to_string(),
+            id: Some(serde_json::json!(1)),
+            method: "tools/list".to_string(),
+            params: None,
+        })
+        .and_then(|response| response.result)
+        .unwrap_or(serde_json::Value::Null);
+    let specs = tool_loop::tool_specs_from_tools_list(&list);
+    if specs.is_empty() {
+        None
+    } else {
+        Some(serde_json::Value::Array(specs))
+    }
+}
+
+/// Короткая разметка результата вызова для `ai:tool-result`.
+///
+/// Только статус: содержимое результата, аргументы и пути в событие не попадают
+/// (AC-MCP-8/13). Карточку вызова фронт строит из имени инструмента, `ok` и `duration_ms`.
+fn tool_summary(exec: &ToolExecution<'_>) -> &'static str {
+    if exec.result.ok {
+        "готово"
+    } else {
+        "ошибка"
+    }
+}
+
+/// Эмитит событие ассистента (best-effort: сбой emit логируется, не паника).
+fn emit_event(emitter: &dyn AiEmitter, event: &str, payload: serde_json::Value) {
+    if let Err(e) = emitter.emit(event, payload) {
+        eprintln!("не эмитить {event}: {e}");
+    }
 }
 
 /// Лёгкая проверка соединения с провайдером (`GET /models`). Без паник: ошибка — в `error`.
@@ -201,14 +309,12 @@ pub(super) fn next_message_id() -> String {
 }
 
 /// Эмитит `ai:error { code, message }` (best-effort: сбой emit логируется, не паника).
-fn emit_error(app: &AppHandle, err: &CommandError) {
+fn emit_error(emitter: &dyn AiEmitter, err: &CommandError) {
     let payload = serde_json::json!({
         "code": error_code_str(err.code),
         "message": err.message,
     });
-    if let Err(e) = app.emit("ai:error", payload) {
-        eprintln!("не эмитить ai:error: {e}");
-    }
+    emit_event(emitter, "ai:error", payload);
 }
 
 /// Строковое значение кода ошибки (совпадает с serde `snake_case` — контракт с фронтендом).

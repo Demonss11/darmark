@@ -12,12 +12,14 @@ fn request_with_secret() -> ChatRequest {
         messages: vec![AiMessage {
             role: "user".to_string(),
             content: "hi".to_string(),
+            ..AiMessage::default()
         }],
         max_tokens: 16,
         temperature: 0.0,
         headers: BTreeMap::from([("X-Tenant".to_string(), "acme".to_string())]),
         extra_body: serde_json::Map::new(),
         timeout: None,
+        tools: None,
     }
 }
 

@@ -20,13 +20,13 @@
 // (DOM на элементах панели и на `document`, Tauri-события) и отвечает за
 // `dispose`. Логика самих кластеров живёт рядом: state.ts (общее состояние и
 // DOM-ссылки), indicator.ts, skillBar.ts, chat.ts, diffCard.ts, pluginCard.ts,
-// history.ts, settingsPane.ts, consent.ts, stream.ts.
+// toolCard.ts, history.ts, settingsPane.ts, consent.ts, stream.ts.
 
 import { listen, type Event } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type { DocumentId } from "../../core/ids";
 import { errorMessage } from "../../core/tauri";
-import type { AiUsage } from "../../core/tauri";
+import type { AiToolCallEvent, AiToolResultEvent, AiUsage } from "../../core/tauri";
 import { isModalOpen } from "../../ui/dialog";
 import type { DockMode, DockState } from "../logPanel";
 import { createChat } from "./chat";
@@ -40,6 +40,7 @@ import { createSettingsPane } from "./settingsPane";
 import { createSkillBar } from "./skillBar";
 import { createAiState, type AiLog } from "./state";
 import { createStream } from "./stream";
+import { createToolCard } from "./toolCard";
 
 interface AiPanelOptions {
   root: HTMLElement;
@@ -70,6 +71,7 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     requestDiff: diffCard.requestDiff,
     scrollToBottom: indicator.scrollToBottom,
   });
+  const toolCard = createToolCard(state, { scrollToBottom: indicator.scrollToBottom });
   const history = createHistory(state, { chat, plugin, scrollToBottom: indicator.scrollToBottom });
   const skillBar = createSkillBar(state, { send: (display, content) => stream.send(display, content) });
   const settingsPane = createSettingsPane(state, {
@@ -214,6 +216,24 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
     const p = state.pending;
     if (!p) return;
     stream.fail(p, event.payload.code, event.payload.message);
+  });
+
+  subscribe<AiToolCallEvent>("ai:tool-call", (event) => {
+    const p = state.pending;
+    if (!p) return;
+    const { message_id, call_id, tool } = event.payload;
+    if (p.messageId !== null && p.messageId !== message_id) return;
+    p.messageId = message_id;
+    toolCard.appendCall(p.col, call_id, tool);
+  });
+
+  subscribe<AiToolResultEvent>("ai:tool-result", (event) => {
+    const p = state.pending;
+    if (!p) return;
+    const { message_id, call_id, ok, duration_ms, summary } = event.payload;
+    if (p.messageId !== null && p.messageId !== message_id) return;
+    p.messageId = message_id;
+    toolCard.finishCall(p.col, call_id, ok, duration_ms, summary);
   });
 
   subscribe<{ plugin_id: string }>("ai:plugin_created", (event) => {

@@ -9,6 +9,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::time::Duration;
 
+use crate::ai::tool_calls::ToolCall;
 use crate::ai::types::{AiMessage, AiUsage};
 use crate::error::CommandError;
 
@@ -30,6 +31,8 @@ pub struct ChatRequest {
     pub headers: BTreeMap<String, String>,
     pub extra_body: serde_json::Map<String, serde_json::Value>,
     pub timeout: Option<Duration>,
+    /// Готовый OpenAI-массив `tools` для запроса; `None` — инструменты не передаются.
+    pub tools: Option<serde_json::Value>,
 }
 
 /// Ручной `Debug`: секрет (`api_key`) маскируется; заголовки/тело не разворачиваются (H4,
@@ -46,6 +49,7 @@ impl std::fmt::Debug for ChatRequest {
             .field("headers", &self.headers.keys().collect::<Vec<_>>())
             .field("extra_body", &self.extra_body.keys().collect::<Vec<_>>())
             .field("timeout", &self.timeout)
+            .field("tools", &self.tools)
             .finish()
     }
 }
@@ -79,6 +83,8 @@ pub struct ChatOutcome {
     /// Последнее непустое `finish_reason` из стрима (`"stop"`, `"length"` и т.д.);
     /// `None`, если провайдер его не прислал.
     pub finish_reason: Option<String>,
+    /// Вызовы инструментов, собранные из SSE-потока через `ToolCallAccumulator`.
+    pub tool_calls: Vec<ToolCall>,
 }
 
 /// Трейт шва: вызов провайдера и передача текста.
