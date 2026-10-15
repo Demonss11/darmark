@@ -6,10 +6,15 @@
 
 use std::collections::BTreeMap;
 
-use serde::{Deserialize, Serialize};
+use serde::ser::SerializeStruct;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// Один вызов инструмента от провайдера.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+///
+/// `Serialize`/`Deserialize` написаны вручную: на проводе OpenAI ждёт
+/// `{id, type:"function", function:{name, arguments}}`, где `arguments` — **строка** JSON.
+/// Автовывод сериализовал бы `arguments` объектом, и второй запрос tool-loop падал бы на 400.
+#[derive(Clone, Debug, PartialEq)]
 pub struct ToolCall {
     /// Идентификатор вызова (для сопоставления результата).
     pub id: String,
@@ -17,6 +22,81 @@ pub struct ToolCall {
     pub name: String,
     /// Аргументы вызова (JSON).
     pub arguments: serde_json::Value,
+}
+
+/// Тело `function` в форме OpenAI: `arguments` — компактная строка JSON.
+#[derive(Serialize)]
+struct FunctionPayload<'a> {
+    name: &'a str,
+    arguments: String,
+}
+
+/// Приводит аргументы к строке-объекту: OpenAI не принимает `null` вместо `{}`.
+fn arguments_wire(arguments: &serde_json::Value) -> String {
+    match arguments {
+        serde_json::Value::Null => "{}".to_string(),
+        value => value.to_string(),
+    }
+}
+
+impl Serialize for ToolCall {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let function = FunctionPayload {
+            name: &self.name,
+            arguments: arguments_wire(&self.arguments),
+        };
+        let mut state = serializer.serialize_struct("ToolCall", 3)?;
+        state.serialize_field("id", &self.id)?;
+        state.serialize_field("type", "function")?;
+        state.serialize_field("function", &function)?;
+        state.end()
+    }
+}
+
+/// Промежуточная форма разбора: держит обе раскладки — форму OpenAI и плоскую запись истории.
+#[derive(Deserialize)]
+struct ToolCallRepr {
+    #[serde(default)]
+    id: String,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    arguments: Option<serde_json::Value>,
+    #[serde(default)]
+    function: Option<FunctionRepr>,
+}
+
+/// Тело `function` при разборе ответа/истории.
+#[derive(Deserialize)]
+struct FunctionRepr {
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    arguments: Option<serde_json::Value>,
+}
+
+/// Разбирает обе раскладки: вложенную (`function`) и плоскую (`name`/`arguments`).
+///
+/// Поле `type` игнорируется: старые записи истории его не несут.
+impl<'de> Deserialize<'de> for ToolCall {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let repr = ToolCallRepr::deserialize(deserializer)?;
+        let (name, arguments) = match repr.function {
+            Some(function) => (function.name, function.arguments),
+            None => (repr.name.unwrap_or_default(), repr.arguments),
+        };
+        Ok(ToolCall {
+            id: repr.id,
+            name,
+            arguments: parse_arguments(arguments.as_ref()),
+        })
+    }
 }
 
 /// Накопитель фрагментов tool_calls из SSE-потока.

@@ -1,6 +1,94 @@
-//! Тесты разбора tool_calls из ответов провайдера.
+//! Тесты разбора tool_calls из ответов провайдера и их формы на проводе.
 
-use crate::ai::tool_calls::{tool_calls_from_payload, ToolCallAccumulator};
+use std::collections::BTreeMap;
+
+use crate::ai::backend::reqwest::build_chat_body;
+use crate::ai::tool_calls::{tool_calls_from_payload, ToolCall, ToolCallAccumulator};
+use crate::ai::transport::ChatRequest;
+use crate::ai::types::AiMessage;
+
+/// Собирает запрос с одним assistant-сообщением, несущим вызов инструмента.
+fn chat_request_with_call(arguments: serde_json::Value) -> ChatRequest {
+    ChatRequest {
+        base_url: "https://example.test/v1".to_string(),
+        model: "provider/model".to_string(),
+        api_key: "sk-test".to_string(),
+        messages: vec![AiMessage {
+            role: "assistant".to_string(),
+            content: String::new(),
+            tool_calls: Some(vec![ToolCall {
+                id: "call-1".to_string(),
+                name: "fake_tool".to_string(),
+                arguments,
+            }]),
+            ..AiMessage::default()
+        }],
+        max_tokens: 16,
+        temperature: 0.0,
+        headers: BTreeMap::new(),
+        extra_body: serde_json::Map::new(),
+        timeout: None,
+        tools: None,
+    }
+}
+
+/// Провайдер ждёт форму OpenAI: `type:"function"` и `arguments` строкой JSON,
+/// иначе второй запрос цикла падает на 400.
+#[test]
+fn tool_call_serializes_as_openai_function_form() {
+    let body = build_chat_body(&chat_request_with_call(serde_json::json!({"a": 1})));
+    let call = &body["messages"][0]["tool_calls"][0];
+    assert_eq!(call["type"], "function");
+    assert_eq!(call["function"]["name"], "fake_tool");
+    let arguments = call["function"]["arguments"]
+        .as_str()
+        .expect("arguments — строка JSON, не объект");
+    let parsed: serde_json::Value =
+        serde_json::from_str(arguments).expect("строка аргументов парсится обратно");
+    assert_eq!(parsed, serde_json::json!({"a": 1}));
+}
+
+/// `null`-аргументы уходят строкой-объектом `{}`: OpenAI не принимает `null`.
+#[test]
+fn tool_call_null_arguments_serialize_as_empty_object_string() {
+    let body = build_chat_body(&chat_request_with_call(serde_json::Value::Null));
+    let call = &body["messages"][0]["tool_calls"][0];
+    assert_eq!(call["function"]["arguments"], "{}");
+}
+
+/// Десериализация принимает форму OpenAI (строка) и легаси-плоскую форму (объект).
+#[test]
+fn tool_call_deserializes_openai_and_legacy_forms() {
+    let openai: ToolCall = serde_json::from_value(serde_json::json!({
+        "id": "call-1",
+        "type": "function",
+        "function": {"name": "fake_tool", "arguments": "{\"a\":1}"}
+    }))
+    .expect("форма OpenAI разбирается");
+    assert_eq!(openai.name, "fake_tool");
+    assert_eq!(openai.arguments, serde_json::json!({"a": 1}));
+
+    let legacy: ToolCall = serde_json::from_value(serde_json::json!({
+        "id": "call-2",
+        "name": "old_tool",
+        "arguments": {"b": 2}
+    }))
+    .expect("плоская запись истории разбирается");
+    assert_eq!(legacy.name, "old_tool");
+    assert_eq!(legacy.arguments, serde_json::json!({"b": 2}));
+}
+
+/// Битый JSON в строке аргументов не роняет разбор: `Value::Null`.
+#[test]
+fn tool_call_broken_arguments_string_becomes_null() {
+    let call: ToolCall = serde_json::from_value(serde_json::json!({
+        "id": "call-1",
+        "type": "function",
+        "function": {"name": "fake_tool", "arguments": "not json"}
+    }))
+    .expect("битый JSON разбирается без паники");
+    assert_eq!(call.arguments, serde_json::Value::Null);
+}
 
 #[test]
 fn accumulator_merges_fragments_by_index() {
