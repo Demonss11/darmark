@@ -1,9 +1,9 @@
-//! `reqwest`-Р±СЌРєРµРЅРґ С€РІР° `AiTransport` (ADR-0033): OpenAI-СЃРѕРІРјРµСЃС‚РёРјС‹Р№ API + SSE-СЃС‚СЂРёРјРёРЅРі.
+//! `reqwest`-бэкенд шва `AiTransport` (ADR-0033): OpenAI-совместимый API + SSE-стриминг.
 //!
-//! HTTP вЂ” `POST {base_url}/chat/completions` СЃ Bearer-РєР»СЋС‡РѕРј Рё `stream: true`; РѕС‚РІРµС‚ С‡РёС‚Р°РµС‚СЃСЏ
-//! РєР°Рє SSE (`bytes_stream`) Рё СЂР°Р·Р±РёСЂР°РµС‚СЃСЏ РїР°СЂСЃРµСЂРѕРј `crate::ai::sse`. TLS вЂ” СЃРёСЃС‚РµРјРЅС‹Р№ SChannel
-//! (`native-tls`, Р±РµР· OpenSSL). РўР°Р№РјР°СѓС‚ вЂ” 30 СЃ РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ (ADR-0032); РїСЂРѕРІР°Р№РґРµСЂ РјРѕР¶РµС‚
-//! РїРµСЂРµРѕРїСЂРµРґРµР»РёС‚СЊ РµРіРѕ С‡РµСЂРµР· `settings.timeout` (ADR-0035 В§2.5).
+//! HTTP — `POST {base_url}/chat/completions` с Bearer-ключом и `stream: true`; ответ читается
+//! как SSE (`bytes_stream`) и разбирается парсером `crate::ai::sse`. TLS — системный SChannel
+//! (`native-tls`, без OpenSSL). Таймаут — 30 с по умолчанию (ADR-0032); провайдер может
+//! переопределить его через `settings.timeout` (ADR-0035 §2.5).
 
 use std::time::Duration;
 
@@ -16,18 +16,18 @@ use crate::ai::tool_calls::ToolCallAccumulator;
 use crate::ai::transport::{AiTransport, BoxFuture, ChatOutcome, ChatRequest, TestRequest};
 use crate::error::{CommandError, ErrorCode};
 
-/// РўР°Р№РјР°СѓС‚ Р·Р°РїСЂРѕСЃР° Рє РїСЂРѕРІР°Р№РґРµСЂСѓ РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ (ADR-0032, ADR-0033 В§2.3 Рї.9).
+/// Таймаут запроса к провайдеру по умолчанию (ADR-0032, ADR-0033 §2.3 п.9).
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
-/// Р§РёСЃР»Рѕ РїРѕРїС‹С‚РѕРє РґР»СЏ С‚СЂР°РЅР·РёРµРЅС‚РЅРѕР№ 5xx (РїРµСЂРІР°СЏ + РѕРґРёРЅ СЂРµС‚СЂР°Р№, ADR-0032 В§2.5 Рї.13).
+/// Число попыток для транзиентной 5xx (первая + один ретрай, ADR-0032 §2.5 п.13).
 const MAX_ATTEMPTS: u32 = 2;
-/// РџР°СѓР·Р° РїРµСЂРµРґ СЂРµС‚СЂР°РµРј РЅР° 5xx.
+/// Пауза перед ретраем на 5xx.
 const RETRY_BACKOFF: Duration = Duration::from_secs(1);
-/// Р›РёРјРёС‚ РЅР°РєРѕРїР»РµРЅРЅРѕРіРѕ С‚РµРєСЃС‚Р° РѕС‚РІРµС‚Р°: РЅРµРґРѕРІРµСЂРµРЅРЅРѕРµ С‚РµР»Рѕ РЅРµ РґРѕР»Р¶РЅРѕ РёСЃС‡РµСЂРїР°С‚СЊ РїР°РјСЏС‚СЊ РїРѕРґ `panic=abort`.
+/// Лимит накопленного текста ответа: недоверенное тело не должно исчерпать память под `panic=abort`.
 pub(in crate::ai) const MAX_RESPONSE_BYTES: usize = 8 * 1024 * 1024;
-/// Р›РёРјРёС‚ С‡С‚РµРЅРёСЏ С‚РµР»Р° РѕС€РёР±РєРё/СЃРїРёСЃРєР° РјРѕРґРµР»РµР№ РїРµСЂРµРґ СЂР°Р·Р±РѕСЂРѕРј (Р·Р°С‰РёС‚Р° РѕС‚ РіРёРіР°РЅС‚СЃРєРѕРіРѕ С‚РµР»Р°).
+/// Лимит чтения тела ошибки/списка моделей перед разбором (защита от гигантского тела).
 const MAX_ERROR_BODY_BYTES: usize = 64 * 1024;
 
-/// HTTP-РєР»РёРµРЅС‚ AI РЅР° `reqwest` + SChannel. `reqwest::Client` СЃС‚СЂРѕРёС‚СЃСЏ Р»РµРЅРёРІРѕ (ADR-0034 В§2.3).
+/// HTTP-клиент AI на `reqwest` + SChannel. `reqwest::Client` строится лениво (ADR-0034 §2.3).
 pub struct ReqwestBackend {
     client: std::sync::OnceLock<reqwest::Client>,
 }
@@ -39,21 +39,21 @@ impl ReqwestBackend {
         }
     }
 
-    /// Р’РѕР·РІСЂР°С‰Р°РµС‚ РѕР±С‰РёР№ РєР»РёРµРЅС‚, СЃРѕР·РґР°РІР°СЏ РµРіРѕ РїСЂРё РїРµСЂРІРѕРј РѕР±СЂР°С‰РµРЅРёРё (Р»РµРЅРёРІР°СЏ РёРЅРёС†РёР°Р»РёР·Р°С†РёСЏ).
+    /// Возвращает общий клиент, создавая его при первом обращении (ленивая инициализация).
     fn client(&self) -> Result<&reqwest::Client, CommandError> {
         if let Some(client) = self.client.get() {
             return Ok(client);
         }
         let built = reqwest::Client::builder()
             .timeout(REQUEST_TIMEOUT)
-            // Р РµРґРёСЂРµРєС‚С‹ Р·Р°РїСЂРµС‰РµРЅС‹: С‚РµР»Рѕ (РґРѕРєСѓРјРµРЅС‚) РЅРµ РґРѕР»Р¶РЅРѕ СѓС…РѕРґРёС‚СЊ РЅР° С…РѕСЃС‚, РЅРµ РЅР°Р·РІР°РЅРЅС‹Р№
-            // РІ СЃРѕРіР»Р°СЃРёРё (H2).
+            // Редиректы запрещены: тело (документ) не должно уходить на хост, не названный
+            // в согласии (H2).
             .redirect(reqwest::redirect::Policy::none())
             .build()
             .map_err(|e| {
                 CommandError::new(
                     ErrorCode::AiOffline,
-                    format!("РЅРµ СЃРѕР·РґР°С‚СЊ HTTP-РєР»РёРµРЅС‚: {e}"),
+                    format!("не создать HTTP-клиент: {e}"),
                 )
             })?;
         Ok(self.client.get_or_init(|| built))
@@ -66,12 +66,12 @@ impl Default for ReqwestBackend {
     }
 }
 
-/// РЎРєР»РµРёРІР°РµС‚ Р±Р°Р·РѕРІСѓСЋ С‚РѕС‡РєСѓ Рё РїСѓС‚СЊ, РЅРµ РґРѕРїСѓСЃРєР°СЏ РґРІРѕР№РЅРѕРіРѕ СЃР»СЌС€Р°.
+/// Склеивает базовую точку и путь, не допуская двойного слэша.
 pub(in crate::ai) fn endpoint(base_url: &str, path: &str) -> String {
     format!("{}/{}", base_url.trim_end_matches('/'), path)
 }
 
-/// РџСЂРѕРІРµСЂСЏРµС‚, С‡С‚Рѕ РЅР°РєРѕРїР»РµРЅРЅС‹Р№ РѕС‚РІРµС‚ РІРјРµСЃС‚Рµ СЃ РЅРѕРІРѕР№ РґРµР»СЊС‚РѕР№ РЅРµ РїСЂРµРІС‹С€Р°РµС‚ Р»РёРјРёС‚ (H1).
+/// Проверяет, что накопленный ответ вместе с новой дельтой не превышает лимит (H1).
 pub(in crate::ai) fn ensure_within_response_limit(
     current: usize,
     incoming: usize,
@@ -79,14 +79,14 @@ pub(in crate::ai) fn ensure_within_response_limit(
     if current.saturating_add(incoming) > MAX_RESPONSE_BYTES {
         Err(CommandError::new(
             ErrorCode::AiBadRequest,
-            "РѕС‚РІРµС‚ РїСЂРѕРІР°Р№РґРµСЂР° РїСЂРµРІС‹СЃРёР» РґРѕРїСѓСЃС‚РёРјС‹Р№ СЂР°Р·РјРµСЂ",
+            "ответ провайдера превысил допустимый размер",
         ))
     } else {
         Ok(())
     }
 }
 
-/// Р§РёС‚Р°РµС‚ С‚РµР»Рѕ РѕС‚РІРµС‚Р°, РЅРѕ РЅРµ Р±РѕР»РµРµ `limit` Р±Р°Р№С‚ (РЅРµРґРѕРІРµСЂРµРЅРЅРѕРµ С‚РµР»Рѕ РЅРµ С‡РёС‚Р°РµС‚СЃСЏ С†РµР»РёРєРѕРј).
+/// Читает тело ответа, но не более `limit` байт (недоверенное тело не читается целиком).
 async fn read_body_limited(response: reqwest::Response, limit: usize) -> String {
     let mut stream = response.bytes_stream();
     let mut buf: Vec<u8> = Vec::new();
@@ -104,8 +104,8 @@ async fn read_body_limited(response: reqwest::Response, limit: usize) -> String 
     String::from_utf8_lossy(&buf).into_owned()
 }
 
-/// РЎРѕР±РёСЂР°РµС‚ С‚РµР»Рѕ Chat Completions, РІР»РёРІР°СЏ РїРѕР»СЊР·РѕРІР°С‚РµР»СЊСЃРєРёР№ `extra_body` РєР°Рє **РЅР°РґСЃС‚СЂРѕР№РєСѓ**:
-/// РѕР±СЏР·Р°С‚РµР»СЊРЅС‹Рµ РїРѕР»СЏ РїСЂРѕС‚РѕРєРѕР»Р° (`model`/`messages`/`stream`/вЂ¦) РЅРµ РїРµСЂРµРѕРїСЂРµРґРµР»СЏСЋС‚СЃСЏ (ADR-0035 В§2.4).
+/// Собирает тело Chat Completions, вливая пользовательский `extra_body` как **надстройку**:
+/// обязательные поля протокола (`model`/`messages`/…) не переопределяются (ADR-0035 §2.4).
 pub(in crate::ai) fn build_chat_body(request: &ChatRequest) -> serde_json::Value {
     let mut body = serde_json::Map::new();
     body.insert(
@@ -138,8 +138,8 @@ pub(in crate::ai) fn build_chat_body(request: &ChatRequest) -> serde_json::Value
     serde_json::Value::Object(body)
 }
 
-/// Р—Р°РіРѕР»РѕРІРєРё, РєРѕС‚РѕСЂС‹Рµ С„РѕСЂРјРёСЂСѓРµС‚ РєР»РёРµРЅС‚: РїРѕР»СЊР·РѕРІР°С‚РµР»СЊСЃРєРёРµ `headers` РёС… РЅРµ РїРµСЂРµРѕРїСЂРµРґРµР»СЏСЋС‚,
-/// РёРЅР°С‡Рµ РёСЃС‚РѕС‡РЅРёРє Р°РІС‚РѕСЂРёР·Р°С†РёРё СЃС‚Р°Р» Р±С‹ РЅРµРѕРґРЅРѕР·РЅР°С‡РЅС‹Рј (ADR-0035 В§2.4 Рї.11).
+/// Заголовки, которые формирует клиент: пользовательские `headers` их не переопределяют,
+/// иначе источник авторизации стал бы неоднозначным (ADR-0035 §2.4 п.11).
 fn is_reserved_header(name: &str) -> bool {
     matches!(
         name.to_ascii_lowercase().as_str(),
@@ -147,7 +147,7 @@ fn is_reserved_header(name: &str) -> bool {
     )
 }
 
-/// РћС‚Р±РёСЂР°РµС‚ РёР· РїРѕР»СЊР·РѕРІР°С‚РµР»СЊСЃРєРёС… `headers` РІР°Р»РёРґРЅС‹Рµ Рё РЅРµ Р·Р°СЂРµР·РµСЂРІРёСЂРѕРІР°РЅРЅС‹Рµ РїР°СЂС‹.
+/// Отбирает из пользовательских `headers` валидные и не зарезервированные пары.
 pub(in crate::ai) fn custom_headers(
     headers: &std::collections::BTreeMap<String, String>,
 ) -> Vec<(HeaderName, HeaderValue)> {
@@ -164,7 +164,7 @@ pub(in crate::ai) fn custom_headers(
         .collect()
 }
 
-/// РќР°РІРµС€РёРІР°РµС‚ РїРѕР»СЊР·РѕРІР°С‚РµР»СЊСЃРєРёРµ Р·Р°РіРѕР»РѕРІРєРё РЅР° Р·Р°РїСЂРѕСЃ (СѓР¶Рµ РѕС‚С„РёР»СЊС‚СЂРѕРІР°РЅРЅС‹Рµ [`custom_headers`]).
+/// Навешивает пользовательские заголовки на запрос (уже отфильтрованные [`custom_headers`]).
 fn apply_custom_headers(
     mut builder: reqwest::RequestBuilder,
     headers: &std::collections::BTreeMap<String, String>,
@@ -208,7 +208,7 @@ impl AiTransport for ReqwestBackend {
                     Err(e) => {
                         return Err(CommandError::new(
                             ErrorCode::AiOffline,
-                            format!("РЅРµС‚ СЃРѕРµРґРёРЅРµРЅРёСЏ СЃ РїСЂРѕРІР°Р№РґРµСЂРѕРј: {e}"),
+                            format!("нет соединения с провайдером: {e}"),
                         ));
                     }
                 }
@@ -239,7 +239,7 @@ impl AiTransport for ReqwestBackend {
                 let chunk = chunk.map_err(|e| {
                     CommandError::new(
                         ErrorCode::AiOffline,
-                        format!("РѕР±СЂС‹РІ РїРѕС‚РѕРєР° РѕС‚РІРµС‚Р°: {e}"),
+                        format!("обрыв потока ответа: {e}"),
                     )
                 })?;
                 for event in parser.push(&chunk) {
@@ -291,7 +291,7 @@ impl AiTransport for ReqwestBackend {
             let response = builder.send().await.map_err(|e| {
                 CommandError::new(
                     ErrorCode::AiOffline,
-                    format!("РЅРµС‚ СЃРѕРµРґРёРЅРµРЅРёСЏ СЃ РїСЂРѕРІР°Р№РґРµСЂРѕРј: {e}"),
+                    format!("нет соединения с провайдером: {e}"),
                 )
             })?;
             let status = response.status();
