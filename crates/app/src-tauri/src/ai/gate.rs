@@ -63,7 +63,7 @@ mod tests {
 
     #[test]
     fn disabled_reports_ai_disabled() {
-        let settings = AiSettings::default(); // enabled = false
+        let settings = AiSettings::default();
         assert_eq!(
             check_chat(&settings).unwrap_err().code,
             ErrorCode::AiDisabled
@@ -96,7 +96,6 @@ mod tests {
 
     #[test]
     fn gate_order_is_enabled_key_consent() {
-        // Ключ отсутствует И согласия нет — первой должна сработать проверка ключа.
         let settings = AiSettings {
             enabled: true,
             ..AiSettings::default()
@@ -111,7 +110,6 @@ mod tests {
 
     #[test]
     fn test_connection_does_not_require_consent() {
-        // Лёгкая проверка соединения не отправляет содержимое документа — согласие не требуется.
         let settings = AiSettings {
             enabled: true,
             api_key: Some("sk-test".to_string()),

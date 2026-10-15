@@ -5,8 +5,8 @@
 //! санитизацию `md-core`, что и предпросмотр (§11.1): плагин не может протолкнуть
 //! сырой HTML в DOM.
 //!
-//! Тип [`PluginViewInfo`] объявлен платформенно-нейтрально в `lib.rs`: его использует
-//! Tauri-команда `plugin_views`, которая должна компилироваться и на не-Windows.
+//! Тип [`PluginViewInfo`] живёт в `crate::contract`, а не здесь: это контракт IPC, а не
+//! внутреннее состояние плагинов.
 
 use std::collections::BTreeMap;
 
@@ -49,8 +49,6 @@ impl PluginViews {
             self.views
                 .entry(view_id.clone())
                 .and_modify(|existing| {
-                    // Повторная регистрация (reload/повторный скан): заголовок и kind из
-                    // свежего манифеста, HTML сохраняем — его перезапишет set_view_content.
                     existing.title = view.title.clone();
                     existing.kind = view.kind.clone();
                 })
@@ -138,7 +136,6 @@ impl PluginViews {
             .any(|permission| permission == VIEW_CREATE_PERMISSION);
         if can_create && contributes.iter().any(|view| view.tier == 1) {
             self.register(plugin_id, contributes);
-            // Владение записью: без `view:modify` старый HTML не должен оставаться видимым.
             let can_modify = effective
                 .iter()
                 .any(|permission| permission == VIEW_MODIFY_PERMISSION);
@@ -202,8 +199,6 @@ mod tests {
             "html: {}",
             snapshot[0].html
         );
-
-        // XSS-вектор срезается тем же санитайзером, что и предпросмотр.
         views
             .set_content("p:main", r#"<img src="x" onerror="alert(1)">"#)
             .unwrap();
@@ -253,20 +248,14 @@ mod tests {
     fn sync_registers_only_with_view_create() {
         let mut views = PluginViews::new();
         let contributes = vec![view("main", "Main", 1)];
-
-        // Без `view:create` в эффективном наборе view не регистрируется (deny-by-default).
         views.sync("p", &contributes, &["view:modify".to_string()]);
         assert!(views.snapshot().is_empty(), "без view:create вкладки нет");
-
-        // Выдача `view:create` → view появляется.
         views.sync(
             "p",
             &contributes,
             &["view:create".to_string(), "view:modify".to_string()],
         );
         assert_eq!(views.snapshot().len(), 1);
-
-        // Отзыв → view исчезает.
         views.sync("p", &contributes, &[]);
         assert!(
             views.snapshot().is_empty(),
@@ -306,8 +295,6 @@ mod tests {
         );
         views.set_content("p:main", "<b>живой</b>").unwrap();
         assert!(!views.snapshot()[0].html.is_empty());
-
-        // Только `view:create`: вкладка на месте, контент вычищен.
         views.sync("p", &contributes, &["view:create".to_string()]);
         let snapshot = views.snapshot();
         assert_eq!(snapshot.len(), 1, "вкладка остаётся при отзыве view:modify");
@@ -327,8 +314,6 @@ mod tests {
 
         views.sync("p", &contributes, &effective);
         views.set_content("p:main", "<b>живой</b>").unwrap();
-
-        // Повторная синхронизация с тем же набором не трогает HTML.
         views.sync("p", &contributes, &effective);
         assert_eq!(
             views.snapshot()[0].html,
@@ -347,12 +332,8 @@ mod tests {
 
         views.sync("p", &contributes, &both);
         views.set_content("p:main", "<b>start</b>").unwrap();
-
-        // Сняли право на запись: контент исчез, вкладка осталась.
         views.sync("p", &contributes, &["view:create".to_string()]);
         assert!(views.snapshot()[0].html.is_empty());
-
-        // Вернули право: вкладка пуста до переиздания, плагин наполняет заново.
         views.sync("p", &contributes, &both);
         assert!(
             views.snapshot()[0].html.is_empty(),
@@ -371,9 +352,6 @@ mod tests {
             &["view:create".to_string()],
         );
         assert_eq!(views.snapshot().len(), 1);
-
-        // Пустой contributes (или только тир-2) при праве → нечего регистрировать,
-        // но старые view плагина снимаются, чтобы не осталось «зомби»-вкладки.
         views.sync("p", &[], &["view:create".to_string()]);
         assert!(views.snapshot().is_empty());
     }

@@ -30,6 +30,4 @@ pub trait HostServices: Send + Sync + 'static {
     fn handle(&self, method: &str, args: Value) -> Result<Value, PluginError>;
 }
 
-// Типы контракта с фронтендом объявлены платформенно-нейтрально в `crate`: команда
-// `list_plugins` должна компилироваться и на не-Windows.
 pub use crate::{CommandInfo, PluginInfo, PluginStatus};

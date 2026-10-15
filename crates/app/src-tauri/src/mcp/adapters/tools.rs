@@ -1,0 +1,208 @@
+use std::path::Path;
+use std::time::Instant;
+
+use mcp_core::handlers::{ToolError, ToolHandler};
+use serde_json::{json, Value};
+
+use super::journal::{log_mcp_call, mcp_log_message};
+use super::privacy::{path_name, sanitize_paths, sanitize_validation};
+use super::{markdown_schema, path_schema, LogSink};
+
+pub(super) struct PluginValidateTool {
+    pub(super) sink: LogSink,
+}
+
+impl ToolHandler for PluginValidateTool {
+    fn name(&self) -> &str {
+        "plugin_validate"
+    }
+
+    fn description(&self) -> &str {
+        "Валидация манифеста и entry плагина без запуска песочницы"
+    }
+
+    fn input_schema(&self) -> Value {
+        path_schema()
+    }
+
+    fn call(&self, params: Value) -> Result<Value, ToolError> {
+        let Some(path_str) = params.get("path").and_then(Value::as_str) else {
+            return Err(ToolError::invalid_params("требуется path"));
+        };
+        let path = Path::new(path_str);
+        let canonical = crate::ai::plugin_harness::ensure_plugin_path_allowed(path)
+            .map_err(|e| ToolError::invalid_params(e.message))?;
+
+        let started = Instant::now();
+        let mut result = crate::ai::plugin_harness::validate_plugin_static(&canonical);
+        let duration = started.elapsed();
+        sanitize_validation(&mut result, &canonical);
+        log_mcp_call(
+            &self.sink,
+            &mcp_log_message(
+                "plugin_validate",
+                &path_name(&canonical),
+                duration,
+                result.ok,
+                &result.errors,
+            ),
+        );
+
+        serde_json::to_value(&result).map_err(|e| ToolError::internal(e.to_string()))
+    }
+}
+
+pub(super) struct PluginTestTool {
+    pub(super) sink: LogSink,
+}
+
+impl ToolHandler for PluginTestTool {
+    fn name(&self) -> &str {
+        "plugin_test"
+    }
+
+    fn description(&self) -> &str {
+        "Полная проверка плагина с прогоном в песочнице"
+    }
+
+    fn input_schema(&self) -> Value {
+        path_schema()
+    }
+
+    fn call(&self, params: Value) -> Result<Value, ToolError> {
+        let Some(path_str) = params.get("path").and_then(Value::as_str) else {
+            return Err(ToolError::invalid_params("требуется path"));
+        };
+        let path = Path::new(path_str);
+        let canonical = crate::ai::plugin_harness::ensure_plugin_path_allowed(path)
+            .map_err(|e| ToolError::invalid_params(e.message))?;
+
+        let started = Instant::now();
+        let mut result = crate::ai::plugin_harness::validate_plugin(&canonical);
+        let duration = started.elapsed();
+        sanitize_validation(&mut result, &canonical);
+        log_mcp_call(
+            &self.sink,
+            &mcp_log_message(
+                "plugin_test",
+                &path_name(&canonical),
+                duration,
+                result.ok,
+                &result.errors,
+            ),
+        );
+
+        serde_json::to_value(&result).map_err(|e| ToolError::internal(e.to_string()))
+    }
+}
+
+pub(super) struct PluginCatalogListTool {
+    pub(super) sink: LogSink,
+}
+
+impl ToolHandler for PluginCatalogListTool {
+    fn name(&self) -> &str {
+        "plugin_catalog_list"
+    }
+
+    fn description(&self) -> &str {
+        "Список плагинов из локального каталога (index.json)"
+    }
+
+    fn input_schema(&self) -> Value {
+        json!({"type": "object", "properties": {}})
+    }
+
+    fn call(&self, _params: Value) -> Result<Value, ToolError> {
+        let started = Instant::now();
+        let repo = crate::mcp::catalog_repo();
+        let catalog = match plugin_catalog::Catalog::load(&repo) {
+            Ok(catalog) => catalog,
+            Err(error) => {
+                let message = sanitize_paths(&error, &repo);
+                log_mcp_call(
+                    &self.sink,
+                    &mcp_log_message(
+                        "plugin_catalog_list",
+                        "-",
+                        started.elapsed(),
+                        false,
+                        std::slice::from_ref(&message),
+                    ),
+                );
+                return Err(ToolError::internal(message));
+            }
+        };
+        let items: Vec<Value> = catalog
+            .list()
+            .iter()
+            .map(|entry| {
+                json!({
+                    "id": entry.id,
+                    "name": entry.name,
+                    "version": entry.version,
+                    "api_version": entry.api_version,
+                    "permissions": entry.permissions,
+                    "description": entry.description,
+                })
+            })
+            .collect();
+        log_mcp_call(
+            &self.sink,
+            &mcp_log_message(
+                "plugin_catalog_list",
+                &format!("{} плагинов", items.len()),
+                started.elapsed(),
+                true,
+                &[],
+            ),
+        );
+        Ok(json!({ "plugins": items }))
+    }
+}
+
+pub(super) struct MarkdownRenderTool {
+    pub(super) sink: LogSink,
+}
+
+impl ToolHandler for MarkdownRenderTool {
+    fn name(&self) -> &str {
+        "markdown_render"
+    }
+
+    fn description(&self) -> &str {
+        "Рендер Markdown в HTML (с опциональным маппингом блоков)"
+    }
+
+    fn input_schema(&self) -> Value {
+        markdown_schema()
+    }
+
+    fn call(&self, params: Value) -> Result<Value, ToolError> {
+        let Some(text) = params.get("text").and_then(Value::as_str) else {
+            return Err(ToolError::invalid_params("требуется text"));
+        };
+        let mapped = params
+            .get("mapped")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+
+        let started = Instant::now();
+        let html = if mapped {
+            md_core::to_html_mapped(text)
+        } else {
+            md_core::to_html(text)
+        };
+        log_mcp_call(
+            &self.sink,
+            &mcp_log_message(
+                "markdown_render",
+                &format!("{} символов", text.chars().count()),
+                started.elapsed(),
+                true,
+                &[],
+            ),
+        );
+        Ok(json!({ "html": html }))
+    }
+}

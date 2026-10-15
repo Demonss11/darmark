@@ -43,7 +43,6 @@ impl EventBus {
             payload: json!({ "doc_id": doc_id, "rev": rev }),
         };
         match self.changed_at.get(doc_id).copied() {
-            // Уже есть событие по этому документу — обновляем ревизию на месте.
             Some(index) => self.pending[index] = event,
             None => {
                 self.changed_at
@@ -118,7 +117,6 @@ mod tests {
 
         let events = bus.drain();
         assert_eq!(events.len(), 2, "по одному событию на документ");
-        // Порядок — по первому появлению: d1, затем d2.
         assert_eq!(events[0].payload["doc_id"], "d1");
         assert_eq!(events[0].payload["rev"], 2);
         assert_eq!(events[1].payload["doc_id"], "d2");
@@ -152,8 +150,6 @@ mod tests {
         bus.publish_document_changed("d1", 1);
         assert_eq!(bus.drain().len(), 1);
         assert!(bus.drain().is_empty(), "повторный drain пуст");
-
-        // После drain коалесинг начинается заново.
         bus.publish_document_changed("d1", 5);
         let events = bus.drain();
         assert_eq!(events.len(), 1);

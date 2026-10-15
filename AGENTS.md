@@ -12,6 +12,33 @@
 - `crates/plugin-cli/` — CLI `darmark-plugin`.
 - `crates/plugin-catalog/` — каталог плагинов (без `mlua`/Tauri).
 
+### Модули шелла (`crates/app/src-tauri/src`)
+
+Карта, на которую отсылает `DESIGN_DOC.md` §5.5. Конвенции — ADR-0039.
+
+| Модуль | Содержимое |
+|---|---|
+| `lib.rs` | только сборка: `mod`-декларации, `pub use` наружу, `run()`, `generate_handler!` |
+| `contract.rs` | контрактные типы IPC: `PluginViewInfo`, `PluginStatus`, `CommandInfo`, `PluginInfo` |
+| `fs.rs` | `MAX_FILE_SIZE`, чтение/запись, asset-scope, имя файла для журнала |
+| `commands/documents.rs` | 11 команд документов + `lock_store` |
+| `commands/plugins.rs` | 9 команд менеджера плагинов + `open_devtools` |
+| `setup/plugins.rs` | `PluginState`, sinks плагинной подсистемы, `setup_plugins` |
+| `setup/env.rs` | каталог настроек, отключение WebView2-акселераторов |
+| `dev_plugin.rs` | dev-режим `--debug-plugin` |
+| `state/` | владение документами: `types` / `store` / `history` / `tests` |
+| `ai/` | ассистент: `commands`, `doc_harness`, `plugin_harness`, `history`, `skills`, `settings`, `backend` |
+| `mcp/` | MCP-сервер: `adapters` (tools/privacy/journal/tests), `resources` |
+| `plugins/` | плагинная подсистема: `manager`, `host`, `supervisor`, `services`, `views`, `scan`, `bus`, настройки |
+
+Правила раскладки:
+
+- **Файл > 400 строк — повод разбить по домену.** Исключения обосновываются в ADR.
+- **Структура с полями объявляется в модуле-родителе, `impl`-блоки — по подмодулям.** Приватность поля не распространяется на соседей, поэтому объявление обязано быть выше всех, кто это поле читает (`PluginHost` → `host/mod.rs`, `DocumentStore` → `state/mod.rs`).
+- **Команда Tauri вне корня крейта обязана быть `pub(crate) fn` или `pub fn`.** На `fn` макрос `#[tauri::command]` не получает `#[macro_export]`, и `generate_handler!` из `lib.rs` падает с `E0603`. При переносе команды реэкспортируй и сами макросы `__cmd__*`, иначе `E0433`.
+- **Тесты домена — отдельным деревом** (`plugins/tests/`, `ai/plugin_harness/tests/`), не внутрь модулей-владельцев. Приватные детали для тестов расширяй до `pub(super)`, не до `pub(crate)`.
+- **Правки файлов с кириллицей — файловыми инструментами или через Python с `encoding="utf-8"`.** PowerShell 5.1 читает/пишет в CP1251 и портит кириллицу необратимо.
+
 ## Платформа
 
 Продукт — **только Windows**. Не-Windows ветки не поддерживаются и не тестируются: CI собирает только `windows-latest`.
@@ -71,7 +98,7 @@ cargo build -p darmark --release
 
 ## Конвенции
 
-- Комментарии на русском, объясняют **зачем**.
+- Комментарии — **только doc-комментарии** `///` (к элементу) и `//!` (к модулю), на русском, объясняют **зачем**. Обычных `//` в коде нет: пересказ кода, подписи фаз и разделители вычищены (ADR-0039 §5). Doc-комментарий не дублирует сигнатуру — он несёт контракт, инвариант или ссылку на ADR.
 - Не коммить/пушить без запроса. Ветку коммитит исполнитель; в `main` не мержи сам.
 
 ## Ссылки
@@ -81,5 +108,6 @@ cargo build -p darmark --release
 | `DESIGN.md` — визуальная идентичность |
 | `docs/DESIGN_DOC.md` — архитектура, контракты, ADR |
 | `docs/adr/` — решения |
+| `docs/adr/0039-shell-module-map-and-test-layout.md` — карта модулей шелла, порог 400 строк, раскладка тестов, видимость Tauri-команд |
 | `docs/BACKLOG.md`, `docs/FINDINGS.md` — бэклог, замеры |
 | `docs/PLUGIN_API.md`, `docs/PLUGIN_GUIDE.md` — API плагинов |

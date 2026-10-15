@@ -69,10 +69,6 @@ impl Default for AiSettings {
             provider: "openai-compatible".to_string(),
             base_url: "https://routerai.ru/api/v1".to_string(),
             model: "deepseek/deepseek-v4.1-flash".to_string(),
-            // Запас на reasoning: модель `deepseek-v4.1-flash` тратит львиную долю бюджета на
-            // внутренние рассуждения (живой замер: view-плагин ≈15.5k reasoning + ≈4.5k ответ).
-            // При 4096/8192 ответ обрекается на `finish_reason: "length"` и приходит пустым
-            // (см. docs/FINDINGS.md §2.3–2.4). Платим только за реально сгенерированные токены.
             max_tokens: 32768,
             temperature: 0.7,
             consent_document_send: false,
@@ -245,8 +241,6 @@ mod tests {
         };
         let view = AiSettingsView::from(&with_key);
         assert!(view.has_key);
-
-        // Секрет не утекает в сериализованную проекцию (контракт с фронтендом).
         let json = serde_json::to_string(&view).expect("view сериализуется");
         assert!(!json.contains("api_key"), "в виде нет поля api_key: {json}");
         assert!(
@@ -261,7 +255,6 @@ mod tests {
 
     #[test]
     fn missing_fields_fall_back_to_defaults() {
-        // Старый конфиг без секции `ai`-полей не должен ронять разбор.
         let settings: AiSettings = serde_json::from_str("{\"enabled\": true}").expect("разбор");
         assert!(settings.enabled);
         assert_eq!(settings.model, "deepseek/deepseek-v4.1-flash");

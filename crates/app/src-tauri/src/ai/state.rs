@@ -153,7 +153,6 @@ fn bad_settings(message: impl Into<String>) -> CommandError {
 
 /// Хост из остатка URL после `://` (без userinfo, порта, пути и query).
 fn host_of(rest: &str) -> &str {
-    // Authority — до первого `/`, `?` или `#`; `@` внутри пути не является userinfo.
     let authority_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
     let authority = &rest[..authority_end];
     let host_port = authority
@@ -161,10 +160,8 @@ fn host_of(rest: &str) -> &str {
         .map(|(_, host)| host)
         .unwrap_or(authority);
     if let Some(stripped) = host_port.strip_prefix('[') {
-        // IPv6 в скобках: `[::1]:8080` → `::1`.
         stripped.split(']').next().unwrap_or(stripped)
     } else {
-        // Отбрасываем порт: `host:8080` → `host`.
         host_port.split(':').next().unwrap_or(host_port)
     }
 }
@@ -298,7 +295,6 @@ mod tests {
     #[test]
     fn rate_limit_does_not_panic_without_config() {
         let state = state_with(AiSettings::default(), None);
-        // Первый слот свободен (wait = 0), второй — уже занят (wait ≥ 0).
         assert!(state.reserve_rate_limit_slot().is_zero());
         let _ = state.reserve_rate_limit_slot();
     }

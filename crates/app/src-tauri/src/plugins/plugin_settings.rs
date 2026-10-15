@@ -90,7 +90,6 @@ impl PluginSettingsStore {
             PluginError::new("internal", format!("настройки не сериализуются: {e}"))
         })?;
         if bytes.len() as u64 > MAX_SETTINGS_FILE_BYTES {
-            // Откат: файл настроек превышать лимит не должен.
             match previous {
                 Some(old) => {
                     map.insert(key.to_string(), old);
@@ -239,13 +238,9 @@ mod tests {
         let (dir, mut store) = temp_store();
         store.set("p", "n", json!(1)).unwrap();
         store.set("p", "o", json!({ "a": [true, null] })).unwrap();
-
-        // Файл на диске — JSON-объект.
         let path = dir.path().join("p.json");
         assert!(path.exists(), "файл настроек создан");
         assert!(!dir.path().join("p.json.tmp").exists(), "temp убран");
-
-        // Новый инстанс из того же пути видит значения (персист).
         let mut fresh = PluginSettingsStore::new(dir.path());
         assert_eq!(fresh.get("p", "n").unwrap(), Some(json!(1)));
         assert_eq!(
@@ -345,7 +340,6 @@ mod tests {
                 "remove {bad:?}"
             );
         }
-        // Traversal не сработал: вне и внутри каталога настроек ничего не создано.
         assert!(!dir.path().parent().unwrap().join("evil.json").exists());
         assert_eq!(
             std::fs::read_dir(dir.path()).unwrap().count(),

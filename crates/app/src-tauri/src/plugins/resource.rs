@@ -132,9 +132,6 @@ impl ResourceSnapshot {
     /// `private_bytes` (commit). Нечитаемые дети пропускаются (не «0»). `mem_limit_bytes` — бюджет
     /// Job Object, только у детей (TZ §4.4).
     ///
-    // TODO(Фаза 3, ADR-0031 §2.5 п.21): `mem_limit_bytes` — скаляр, общий на всех детей.
-    //   При пер-плагинных бюджетах (`super::supervisor::SupervisorParams::with_mem_bytes`)
-    //   лимит нужно брать из `PluginRuntime` каждого плагина, а не передавать одним числом.
     pub fn collect(
         provider: &dyn ProcessMetrics,
         main_pid: u32,
@@ -142,8 +139,6 @@ impl ResourceSnapshot {
         mem_limit_bytes: usize,
         ts: u64,
     ) -> Option<Self> {
-        // Главный процесс — обязательная часть снимка: без его метрики отдаём `None`,
-        // а не подставляем 0 (нечитаемый главный → «нечего показывать», не ложный ноль).
         let main_raw = provider.read(main_pid)?;
         let children: Vec<ChildMetrics> = children
             .iter()
@@ -152,7 +147,6 @@ impl ResourceSnapshot {
                 Some(ChildMetrics {
                     plugin_id: plugin_id.clone(),
                     pid: *pid,
-                    // Child ограничен Job Object по committed-памяти — берём private/commit.
                     mem_bytes: raw.private_bytes,
                     mem_limit_bytes,
                     cpu_percent: raw.cpu_percent,
@@ -294,8 +288,6 @@ impl WinProcessMetrics {
         let cpu = cpu_100ns?;
         let now = Instant::now();
         let mut prev = self.cpu_prev.lock().ok()?;
-        // Чистим записи, не читавшиеся дольше TTL: PID reload'нутого/упавшего плагина
-        // не копится в карте и не даёт ложную дельту при PID-reuse (ADR-0031 §2.5 п.20).
         prev.retain(|_, (_, at)| now.duration_since(*at) < CPU_PREV_TTL);
         let previous = prev.insert(pid, (cpu, now));
         let (prev_cpu, prev_at) = previous?;
@@ -309,20 +301,15 @@ impl WinProcessMetrics {
 
 impl ProcessMetrics for WinProcessMetrics {
     fn read(&self, pid: u32) -> Option<RawMetrics> {
-        // SAFETY и устойчивость: FFI-вызовы WinAPI ниже не разворачивают стек и не паникуют
-        // (профиль `panic = "abort"`); любой отказ прав/доступа → `None`, запись пропускается.
         let access = PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_QUERY_INFORMATION;
         let handle = unsafe { OpenProcess(access, false, pid) }.ok()?;
 
         let memory = unsafe { memory_counter(handle) };
         let cpu = unsafe { cpu_100ns(handle) };
-        // `GetProcessHandleCount` требует `PROCESS_QUERY_INFORMATION` (ADR-0031 §2.7 п.27):
-        // при отказе прав хендлы просто не показываем.
         let mut handles_count = 0u32;
         let handles = unsafe { GetProcessHandleCount(handle, &mut handles_count) }
             .is_ok()
             .then_some(handles_count);
-        // Хэндл закрываем сразу, вне зависимости от исхода замеров.
         unsafe {
             let _ = CloseHandle(handle);
         }

@@ -1,7 +1,7 @@
 //! `reqwest`-бэкенд шва `AiTransport` (ADR-0033): OpenAI-совместимый API + SSE-стриминг.
 //!
 //! HTTP — `POST {base_url}/chat/completions` с Bearer-ключом и `stream: true`; ответ читается
-//! как SSE (`bytes_stream`) и разбирается [`SseParser`](crate::ai::sse::SseParser). TLS —
+//! как SSE (`bytes_stream`) и разбирается парсером `crate::ai::sse`. TLS —
 //! системный SChannel (`native-tls`, без OpenSSL). Таймаут — 30 с (ADR-0032).
 
 use std::time::Duration;
@@ -43,7 +43,6 @@ impl ReqwestBackend {
         }
         let built = reqwest::Client::builder()
             .timeout(REQUEST_TIMEOUT)
-            // Редиректы запрещены: тело (документ) не должно уходить на хост, не названный в согласии (H2).
             .redirect(reqwest::redirect::Policy::none())
             .build()
             .map_err(|e| {
@@ -85,7 +84,7 @@ async fn read_body_limited(response: reqwest::Response, limit: usize) -> String 
             break;
         };
         let Ok(chunk) = chunk else {
-            break; // обрыв чтения тела — вернём то, что успели (без паники)
+            break;
         };
         let remaining = limit - buf.len();
         let take = chunk.len().min(remaining);
@@ -109,12 +108,9 @@ impl AiTransport for ReqwestBackend {
                 "max_tokens": request.max_tokens,
                 "temperature": request.temperature,
                 "stream": true,
-                // Без include_usage провайдер не присылает `usage` в стриме — расход токенов не показать.
                 "stream_options": { "include_usage": true },
             });
             let auth = format!("Bearer {}", request.api_key);
-
-            // Транзиентная 5xx: одна повторная попытка с бэкоффом; сеть/таймаут — сразу офлайн.
             let mut attempt = 0;
             let response = loop {
                 attempt += 1;
@@ -213,7 +209,6 @@ impl AiTransport for ReqwestBackend {
             if !status.is_success() {
                 return Err(map_status(status.as_u16(), &body, None));
             }
-            // Информативно: имя первой модели из `{ data: [{ id }] }`, если ответ распознан.
             let model = serde_json::from_str::<serde_json::Value>(&body)
                 .ok()
                 .and_then(|value| {
@@ -250,7 +245,6 @@ mod tests {
 
     #[test]
     fn response_limit_is_saturating() {
-        // Переполнение usize не должно паниковать (защита под panic=abort).
         let err = ensure_within_response_limit(usize::MAX, 1).unwrap_err();
         assert_eq!(err.code, ErrorCode::AiBadRequest);
     }

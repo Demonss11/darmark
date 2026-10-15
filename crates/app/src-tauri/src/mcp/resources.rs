@@ -14,7 +14,6 @@ use serde_json::{json, Value};
 /// Tauri здесь не нужен: ресурсы read-only и не эмитят события — модуль не зависит
 /// от `AppHandle` (сужено вместе с инъекцией [`super::adapters::LogSink`]).
 pub fn register_resources(registry: &mut Registry) {
-    // Статические контракты (read-only, не меняются в рантайме).
     registry.register_resource(ResourceDefinition {
         uri: "darmark://contracts/plugin-manifest".to_string(),
         name: "plugin.json — манифест плагина".to_string(),
@@ -42,8 +41,6 @@ pub fn register_resources(registry: &mut Registry) {
         description: "Контракт рендера/санитайзера Markdown".to_string(),
         reader: Arc::new(StaticResource::new(markdown_schema())),
     });
-
-    // Динамические ресурсы (читают локальный каталог на момент запроса).
     registry.register_resource(ResourceDefinition {
         uri: "darmark://plugins/catalog".to_string(),
         name: "Каталог плагинов".to_string(),
@@ -58,8 +55,6 @@ pub fn register_resources(registry: &mut Registry) {
         reader: Arc::new(PluginManifestResource),
     });
 }
-
-// ─── Статические ресурсы ──────────────────────────────────────────
 
 /// Статический ресурс: неизменное содержимое, отдаётся как есть.
 struct StaticResource {
@@ -123,8 +118,6 @@ fn markdown_schema() -> Value {
     })
 }
 
-// ─── Динамические ресурсы ──────────────────────────────────────────
-
 /// Индекс локального каталога плагинов.
 struct PluginsCatalogResource;
 
@@ -155,8 +148,6 @@ struct PluginManifestResource;
 
 impl ResourceReader for PluginManifestResource {
     fn read(&self, uri: &str) -> Result<Value, ResourceError> {
-        // URI шаблонный: id извлекаем из самого URI, а не из реестра (у реестра —
-        // единый шаблонный URI на все id).
         let id = uri
             .strip_prefix("darmark://plugins/")
             .and_then(|rest| rest.strip_suffix("/manifest"))

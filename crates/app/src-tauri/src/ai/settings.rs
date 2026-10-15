@@ -1,8 +1,7 @@
 //! Чтение/запись секции `ai` в `%APPDATA%/darmark/config.json` через `SettingsStore` (D11).
 //!
-//! На Windows настройки лежат в существующем `plugins::settings::SettingsStore` (секция `ai`).
-//! На не-Windows сетевой слой AI не собирается (ADR-0033 §2.1) — читаются дефолты, запись
-//! не выполняется (заглушка для сборки).
+//! Настройки лежат в общем `plugins::settings::SettingsStore` (секция `ai`) —
+//! тот же конфиг, что и у плагинов.
 //!
 //! Путь конфига передаётся явно (`_from`/`_to`) — так `AiState` инъектируется в тестах и не
 //! трогает реальный профиль пользователя.
@@ -86,7 +85,6 @@ mod tests {
         assert!(loaded.ai.enabled);
         assert_eq!(loaded.ai.model, "custom/model");
         assert_eq!(loaded.ai.api_key.as_deref(), Some("sk-test-roundtrip"));
-        // Секция плагинов не затёрта — persist меняет только `ai`.
         assert!(!loaded.plugin_enabled("word-count"));
 
         let _ = std::fs::remove_dir_all(&dir);

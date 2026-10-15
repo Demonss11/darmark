@@ -44,13 +44,12 @@ impl SseParser {
         let mut events = Vec::new();
         while let Some(pos) = self.buffer.iter().position(|&b| b == b'\n') {
             let mut line: Vec<u8> = self.buffer.drain(..=pos).collect();
-            line.pop(); // убрать '\n'
+            line.pop();
             if line.last() == Some(&b'\r') {
-                line.pop(); // CRLF: убрать '\r'
+                line.pop();
             }
             events.extend(parse_line(&line));
         }
-        // Неполная строка без `\n` дольше лимита — отбрасываем, чтобы буфер не рос безгранично.
         if self.buffer.len() > MAX_BUFFER_BYTES {
             self.buffer.clear();
         }
@@ -65,15 +64,13 @@ impl SseParser {
 
 /// Разбирает одну строку SSE в ноль или более событий (одна строка может нести и `delta`, и `usage`).
 fn parse_line(line: &[u8]) -> Vec<SseEvent> {
-    // Битый UTF-8 не должен ронять парсер: `from_utf8_lossy` заменяет проблемные байты.
     let text = String::from_utf8_lossy(line);
     let trimmed = text.trim_start();
-    // Пустая строка — граница события; строка с `:` — комментарий (keep-alive).
     if trimmed.is_empty() || trimmed.starts_with(':') {
         return Vec::new();
     }
     let Some(data) = trimmed.strip_prefix("data:") else {
-        return Vec::new(); // прочие поля SSE (`event:`, `id:`, `retry:`) не нужны
+        return Vec::new();
     };
     let payload = data.strip_prefix(' ').unwrap_or(data).trim();
     if payload == "[DONE]" {
@@ -205,7 +202,6 @@ mod tests {
     fn reassembles_multibyte_utf8_split_mid_character() {
         let full = "data: {\"choices\":[{\"delta\":{\"content\":\"Привет\"}}]}\n";
         let bytes = full.as_bytes();
-        // Точка разреза — сразу после ведущего байта кириллицы (внутри многобайтового символа).
         let split = bytes
             .iter()
             .position(|&b| b >= 0x80)
@@ -227,7 +223,6 @@ mod tests {
 
     #[test]
     fn non_streaming_message_content_is_ignored() {
-        // Non-streaming формат (`message.content`) в SSE-потоке не ожидается — парсер не падает.
         let mut parser = SseParser::new();
         let events = parser.push(b"data: {\"choices\":[{\"message\":{\"content\":\"x\"}}]}\n");
         assert!(events.is_empty());
@@ -235,7 +230,6 @@ mod tests {
 
     #[test]
     fn oversized_partial_line_is_dropped() {
-        // Поток без `\n` длиннее лимита не должен расти бесконечно (защита под panic=abort).
         let mut parser = SseParser::new();
         let chunk = vec![b'x'; MAX_BUFFER_BYTES + 1024];
         assert!(parser.push(&chunk).is_empty());
@@ -261,7 +255,6 @@ mod tests {
 
     #[test]
     fn complete_lines_after_overflow_are_still_parsed() {
-        // Сброс неполной строки не мешает разбору последующих корректных событий.
         let mut parser = SseParser::new();
         parser.push(&vec![b'x'; MAX_BUFFER_BYTES + 1024]);
         let events = parser.push(b"data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n");
@@ -289,7 +282,6 @@ mod tests {
 
     #[test]
     fn parses_finish_reason_length_on_truncated_response() {
-        // Сценарий FINDINGS §2.3: пустой content + finish_reason="length" при исчерпании max_tokens.
         let mut parser = SseParser::new();
         let stream = concat!(
             "data: {\"choices\":[{\"delta\":{\"content\":\"\"}}]}\n\n",
@@ -318,7 +310,6 @@ mod tests {
 
     #[test]
     fn finish_reason_alongside_usage_and_done() {
-        // Провайдер может прислать usage и finish_reason в одном чанке перед [DONE].
         let mut parser = SseParser::new();
         let stream = concat!(
             "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"length\"}],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":20}}\n\n",

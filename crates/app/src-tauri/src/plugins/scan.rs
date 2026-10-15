@@ -49,9 +49,6 @@ pub fn scan_plugins(dir: &Path) -> ScanReport {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return report;
     };
-
-    // Детерминированный порядок + пропуск симлинков/junction: `file_type()` не разворачивает
-    // reparse points, поэтому фиктивные «каталоги» не попадают в скан.
     let mut subdirs: Vec<PathBuf> = entries
         .flatten()
         .filter(|entry| entry.file_type().map(|t| t.is_dir()).unwrap_or(false))
@@ -90,8 +87,6 @@ fn load_plugin(dir: &Path) -> Result<DiscoveredPlugin, String> {
     let manifest_bytes = read_capped(&manifest_path, MAX_MANIFEST_BYTES)?;
     let manifest = Manifest::from_json(&manifest_bytes)
         .map_err(|e| format!("{}: {e}", manifest_path.display()))?;
-
-    // `manifest.entry` валидирован как безопасное имя `.lua` (без путей и `..`).
     let entry_path = dir.join(&manifest.entry);
     let source = read_source(&entry_path)?;
 

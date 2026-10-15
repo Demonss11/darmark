@@ -275,8 +275,6 @@ mod tests {
             settings.recent_files[0].path, "file-24.md",
             "новейший — первым"
         );
-
-        // Повторное открытие поднимает файл наверх без дублей.
         let before = settings.recent_files.len();
         settings.push_recent_file("file-10.md");
         assert_eq!(settings.recent_files[0].path, "file-10.md");
@@ -289,8 +287,6 @@ mod tests {
                 .count(),
             1
         );
-
-        // Нормализация из «грязного» файла: дубли и переполнение убираются при load.
         let path = temp_path("normalize");
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         let raw: Vec<RecentFile> = (0..30)
