@@ -22,6 +22,7 @@ fn chat_request(extra_body: serde_json::Map<String, serde_json::Value>) -> ChatR
         headers: BTreeMap::new(),
         extra_body,
         timeout: None,
+        tools: None,
     }
 }
 
@@ -61,6 +62,34 @@ fn chat_body_merges_extra_body_without_overriding_protocol_fields() {
     assert_eq!(body["stream"], true, "stream не переопределён");
     assert_eq!(body["metadata"]["tenant"], "acme", "надстройка влита");
     assert_eq!(body["max_tokens"], 16);
+}
+
+#[test]
+fn chat_body_includes_tools_when_present() {
+    let mut request = chat_request(serde_json::Map::new());
+    request.tools = Some(serde_json::json!([
+        {"type":"function","function":{"name":"plugin_validate","description":"Валидация пути","parameters":{}}}
+    ]));
+    let body = build_chat_body(&request);
+    assert!(
+        body.get("tools").is_some(),
+        "tools должны быть в теле запроса"
+    );
+}
+
+#[test]
+fn chat_body_never_overrides_tools_with_extra_body() {
+    let mut request = chat_request(serde_json::Map::new());
+    request.tools = Some(serde_json::json!([{"type":"function","function":{"name":"real"}}]));
+    request.extra_body.insert(
+        "tools".into(),
+        serde_json::json!([{"type":"function","function":{"name":"evil"}}]),
+    );
+    let body = build_chat_body(&request);
+    assert_eq!(
+        body["tools"][0]["function"]["name"], "real",
+        "extra_body не должен переопределять tools"
+    );
 }
 
 #[test]

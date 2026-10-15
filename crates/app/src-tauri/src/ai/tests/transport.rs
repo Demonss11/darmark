@@ -18,6 +18,7 @@ fn request_with_secret() -> ChatRequest {
         headers: BTreeMap::from([("X-Tenant".to_string(), "acme".to_string())]),
         extra_body: serde_json::Map::new(),
         timeout: None,
+        tools: None,
     }
 }
 

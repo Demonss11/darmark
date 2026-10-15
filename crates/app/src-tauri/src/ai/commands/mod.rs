@@ -93,6 +93,7 @@ pub async fn ai_chat(
         headers: resolved.headers,
         extra_body: resolved.body,
         timeout: resolved.timeout.map(Duration::from_millis),
+        tools: None,
     };
     let chunk_app = app.clone();
     let chunk_id = message_id.clone();

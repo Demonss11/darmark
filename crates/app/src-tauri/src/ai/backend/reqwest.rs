@@ -12,6 +12,7 @@ use reqwest::header::{HeaderName, HeaderValue};
 
 use crate::ai::errors::map_status;
 use crate::ai::sse::{SseEvent, SseParser};
+use crate::ai::tool_calls::ToolCallAccumulator;
 use crate::ai::transport::{AiTransport, BoxFuture, ChatOutcome, ChatRequest, TestRequest};
 use crate::error::{CommandError, ErrorCode};
 
@@ -128,6 +129,9 @@ pub(in crate::ai) fn build_chat_body(request: &ChatRequest) -> serde_json::Value
         "stream_options".to_string(),
         serde_json::json!({ "include_usage": true }),
     );
+    if let Some(tools) = &request.tools {
+        body.insert("tools".to_string(), tools.clone());
+    }
     for (key, value) in &request.extra_body {
         body.entry(key.clone()).or_insert_with(|| value.clone());
     }
@@ -229,6 +233,7 @@ impl AiTransport for ReqwestBackend {
             let mut content = String::new();
             let mut usage = None;
             let mut finish_reason = None;
+            let mut tool_acc = ToolCallAccumulator::default();
             let mut stream = response.bytes_stream();
             while let Some(chunk) = stream.next().await {
                 let chunk = chunk.map_err(|e| {
@@ -244,7 +249,14 @@ impl AiTransport for ReqwestBackend {
                             content.push_str(&delta);
                             on_delta(delta);
                         }
-                        SseEvent::ToolCallDelta { .. } => {}
+                        SseEvent::ToolCallDelta {
+                            index,
+                            id,
+                            name,
+                            arguments,
+                        } => {
+                            tool_acc.push(index, id, name, arguments);
+                        }
                         SseEvent::Usage(value) => usage = Some(value),
                         SseEvent::Finish(reason) => finish_reason = Some(reason),
                         SseEvent::Done => {}
@@ -256,6 +268,7 @@ impl AiTransport for ReqwestBackend {
                 content,
                 usage,
                 finish_reason,
+                tool_calls: tool_acc.finish(),
             })
         })
     }
