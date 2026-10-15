@@ -24,10 +24,11 @@
 | Фронт (tsc strict) | `cd crates/app; npm run build` |
 | GUI | `cd crates/app; npx tauri dev` |
 | Релиз NSIS | `cd crates/app; npx tauri build` (size-gate ≤6 МБ) |
+| Чистка Tauri-артефактов | `cd crates/app; npm run clean:tauri` (удаляет `src-tauri/gen`, `src-tauri/binaries`, `dist`; `target/` не трогает) |
 | E2E | `cd crates/app; npm run test:e2e` |
 | Guard: `mlua` вне GUI | `cargo tree -p darmark \| Select-String mlua` (пусто; ADR-0021) |
 
-Предусловие: сайдкары в `crates/app/src-tauri/binaries/` (иначе `tauri-build` падает).
+Предусловие: сайдкары в `crates/app/src-tauri/binaries/` (иначе `tauri-build` падает). `npm run clean:tauri` их удаляет — после него `cargo check -p darmark` требует `npm run sidecars`.
 
 ## Жёсткие ограничения
 

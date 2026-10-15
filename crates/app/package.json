@@ -12,6 +12,7 @@
     "tauri:build": "tauri build",
     "sidecars": "node scripts/prepare-sidecars.mjs",
     "sidecars:dev": "node scripts/prepare-sidecars.mjs --profile debug",
+    "clean:tauri": "node scripts/clean-tauri.mjs",
     "knip": "knip",
     "test:e2e": "wdio run e2e/wdio.conf.js"
   },
