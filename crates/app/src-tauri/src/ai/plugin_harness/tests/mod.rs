@@ -2,6 +2,7 @@
 //! белый список каталогов, ядро CRUD и запуск сайдкара с таймаутом.
 
 mod crud;
+mod mcp;
 mod paths;
 mod proc;
 mod validate;

@@ -3,6 +3,7 @@
 //! Read-only (TZ-MCP §4.1): статические контракты неизменны в рантайме, динамические
 //! читают локальный каталог плагинов через `plugin-catalog` (без `mlua`, ADR-0021).
 
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use mcp_core::handlers::{ResourceError, ResourceReader};
@@ -11,9 +12,10 @@ use serde_json::{json, Value};
 
 /// Регистрирует все MCP-ресурсы в реестре.
 ///
-/// Tauri здесь не нужен: ресурсы read-only и не эмитят события — модуль не зависит
-/// от `AppHandle` (сужено вместе с инъекцией [`super::adapters::LogSink`]).
-pub fn register_resources(registry: &mut Registry) {
+/// `repo` — уже разрешённый каталог плагинов ([`crate::mcp::catalog_repo`]): динамические
+/// читатели не зависят от CWD. Tauri здесь не нужен: ресурсы read-only и не эмитят события —
+/// модуль не зависит от `AppHandle` (сужено вместе с инъекцией [`super::adapters::LogSink`]).
+pub fn register_resources(registry: &mut Registry, repo: &Path) {
     registry.register_resource(ResourceDefinition {
         uri: "darmark://contracts/plugin-manifest".to_string(),
         name: "plugin.json — манифест плагина".to_string(),
@@ -45,14 +47,18 @@ pub fn register_resources(registry: &mut Registry) {
         uri: "darmark://plugins/catalog".to_string(),
         name: "Каталог плагинов".to_string(),
         description: "Индекс локального каталога плагинов (index.json)".to_string(),
-        reader: Arc::new(PluginsCatalogResource),
+        reader: Arc::new(PluginsCatalogResource {
+            repo: repo.to_path_buf(),
+        }),
     });
 
     registry.register_resource(ResourceDefinition {
         uri: "darmark://plugins/{id}/manifest".to_string(),
         name: "Манифест плагина".to_string(),
         description: "Манифест конкретного плагина из каталога".to_string(),
-        reader: Arc::new(PluginManifestResource),
+        reader: Arc::new(PluginManifestResource {
+            repo: repo.to_path_buf(),
+        }),
     });
 }
 
@@ -119,12 +125,13 @@ fn markdown_schema() -> Value {
 }
 
 /// Индекс локального каталога плагинов.
-struct PluginsCatalogResource;
+struct PluginsCatalogResource {
+    repo: PathBuf,
+}
 
 impl ResourceReader for PluginsCatalogResource {
     fn read(&self, _uri: &str) -> Result<Value, ResourceError> {
-        let catalog = plugin_catalog::Catalog::load(&super::catalog_repo())
-            .map_err(ResourceError::internal)?;
+        let catalog = plugin_catalog::Catalog::load(&self.repo).map_err(ResourceError::internal)?;
         let items: Vec<Value> = catalog
             .list()
             .iter()
@@ -144,7 +151,9 @@ impl ResourceReader for PluginsCatalogResource {
 }
 
 /// Манифест конкретного плагина из каталога (`darmark://plugins/{id}/manifest`).
-struct PluginManifestResource;
+struct PluginManifestResource {
+    repo: PathBuf,
+}
 
 impl ResourceReader for PluginManifestResource {
     fn read(&self, uri: &str) -> Result<Value, ResourceError> {
@@ -154,8 +163,7 @@ impl ResourceReader for PluginManifestResource {
             .filter(|id| !id.is_empty())
             .ok_or_else(|| ResourceError::internal(format!("некорректный URI ресурса: {uri}")))?;
 
-        let catalog = plugin_catalog::Catalog::load(&super::catalog_repo())
-            .map_err(ResourceError::internal)?;
+        let catalog = plugin_catalog::Catalog::load(&self.repo).map_err(ResourceError::internal)?;
         let entry = catalog
             .get(id)
             .ok_or_else(|| ResourceError::internal(format!("плагин не найден: {id}")))?;

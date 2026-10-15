@@ -5,6 +5,7 @@
 //! полные пути из ответа/журнала и пишет итог в журнал (R2) — без содержимого документа.
 //! Журнал идёт через инъецированный [`LogSink`]: адаптеры не знают про Tauri.
 
+use std::path::Path;
 use std::sync::Arc;
 
 use mcp_core::registry::{Registry, ToolDefinition};
@@ -28,9 +29,12 @@ pub type LogSink = Arc<dyn Fn(&str) + Send + Sync>;
 
 /// Регистрирует все MCP tools в реестре.
 ///
+/// `repo` — уже разрешённый каталог плагинов ([`crate::mcp::catalog_repo`]): обработчики
+/// не читают CWD, а работают с запечённым абсолютным путём.
+///
 /// Инструменты плагинов — только Windows (целевая платформа; там же живёт белый список
 /// путей `plugin_harness`). Без него `plugin_validate` читал бы произвольные пути.
-pub fn register_tools(registry: &mut Registry, sink: &LogSink) {
+pub fn register_tools(registry: &mut Registry, sink: &LogSink, repo: &Path) {
     registry.register_tool(ToolDefinition {
         name: "plugin_validate".to_string(),
         description: "Валидация манифеста и entry плагина без запуска песочницы".to_string(),
@@ -55,6 +59,7 @@ pub fn register_tools(registry: &mut Registry, sink: &LogSink) {
         input_schema: json!({"type": "object", "properties": {}}),
         handler: Arc::new(PluginCatalogListTool {
             sink: Arc::clone(sink),
+            repo: repo.to_path_buf(),
         }),
     });
 

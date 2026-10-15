@@ -19,9 +19,24 @@ impl McpServer {
     }
 
     /// Обработка JSON-RPC запроса.
-    pub fn handle(&self, request: RpcRequest) -> RpcResponse {
+    ///
+    /// `None` — валидный notification (запрос без `id`): по JSON-RPC 2.0 ответ на него
+    /// не отправляется. Невалидный `jsonrpc` получает ошибку с `id` из запроса (или `null`),
+    /// поскольку обнаружить в нём notification нельзя.
+    pub fn handle(&self, request: RpcRequest) -> Option<RpcResponse> {
+        if request.jsonrpc != protocol::RPC_VERSION {
+            return Some(RpcResponse::error(
+                request.id.clone(),
+                protocol::RpcError::new(
+                    protocol::INVALID_REQUEST,
+                    format!("jsonrpc must \"{}\"", protocol::RPC_VERSION),
+                ),
+            ));
+        }
+        // Notification — запрос без `id`: ответ не отправляется.
+        request.id.as_ref()?;
         let id = request.id.clone();
-        match request.method.as_str() {
+        Some(match request.method.as_str() {
             "initialize" => RpcResponse::success(id, self.initialize()),
             "tools/list" => RpcResponse::success(id, self.registry.tools_list()),
             "tools/call" => self.handle_tool_call(id, request.params),
@@ -34,7 +49,7 @@ impl McpServer {
                     format!("метод не найден: {other}"),
                 ),
             ),
-        }
+        })
     }
 
     fn initialize(&self) -> Value {
@@ -64,7 +79,17 @@ impl McpServer {
                 protocol::RpcError::new(protocol::INVALID_PARAMS, "tools/call требует params.name"),
             );
         };
-        let arguments = params.get("arguments").cloned().unwrap_or(json!({}));
+        // `"arguments": null` и отсутствие `arguments` эквивалентны пустому объекту:
+        // обработчики получают JSON-объект, а не `Value::Null`.
+        let arguments = params
+            .get("arguments")
+            .cloned()
+            .unwrap_or_else(|| json!({}));
+        let arguments = if arguments.is_null() {
+            json!({})
+        } else {
+            arguments
+        };
         match self.registry.call_tool(name, arguments) {
             Ok(result) => RpcResponse::success(
                 id,

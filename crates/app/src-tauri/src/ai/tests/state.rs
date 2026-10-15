@@ -631,7 +631,11 @@ fn consent_reset_when_active_provider_changes_to_different_host() {
     let mut routerai_input = input(
         "routerai",
         "m",
-        vec![provider_input("routerai", "https://routerai.ru/api/v1", "m")],
+        vec![provider_input(
+            "routerai",
+            "https://routerai.ru/api/v1",
+            "m",
+        )],
     );
     routerai_input.consent_document_send = true;
     state.update_settings(routerai_input).expect("сохранено");

@@ -38,23 +38,17 @@
 
 1. **Tool-loop не реализован (План 2).** AC-MCP-5/14 (ассистент сам вызывает tools; результат —
    «данные, не инструкции») не закрыты: зависят от tools/function-calling провайдера.
-2. **`plugin_test` через MCP покрыт только схемой.** Прогон песочницы через MCP Rust-тестом не
-   проверяется (сайдкар → E2E).
-3. **`app_log_sink` (prod-only) не покрыт.** Конверт `log-entry {level,category,message}` проверяется
-   лишь до границы стока; MCP-записи идут уровнем `info` — наблюдаемость R2 зависит от фильтра журнала.
-4. **Белый список путей: разрешён весь системный temp** (TZ-MCP R3) — сужение до `darmark-ai-validate-*`
+2. **Белый список путей: разрешён весь системный temp** (TZ-MCP R3) — сужение до `darmark-ai-validate-*`
    сломало бы валидацию плагинов из произвольных temp-каталогов. Клиент доверенный, изоляция
    (`canonicalize` + `starts_with` + отказ на reparse) сохранена.
-5. **`catalog_repo()` зависит от CWD.** В упакованном приложении каталога может не быть → tool/resource
-   вернут ошибку.
-6. **JSON-RPC-упрощения:** поле `jsonrpc` не валидируется; notification получает ответ с `id: null`;
+3. **JSON-RPC-упрощения:** поле `jsonrpc` не валидируется; notification получает ответ с `id: null`;
    `"arguments": null` не нормализуется в `{}`. Для внутреннего клиента не критично.
-7. **Шаблонный ресурс `darmark://plugins/{id}/manifest`** читается через `resources/read`; отдельный
+4. **Шаблонный ресурс `darmark://plugins/{id}/manifest`** читается через `resources/read`; отдельный
    `resources/templates/list` (есть в спеке MCP) не вводится.
-8. **Гигиена/мелочи:** `manifest_errors` стало `#[cfg(test)]`; `sanitize_text` — prefix-replace без границ
+5. **Гигиена/мелочи:** `manifest_errors` стало `#[cfg(test)]`; `sanitize_text` — prefix-replace без границ
    пути; тесты мутируют глобальные env без лока; цикл `AppHandle` в managed state (осознан); дублирование
    `ToolError`/`ResourceError`; часть тестов `mcp-core` тавтологичны.
-9. **HIGH — `create_link` (plugin-catalog): небезопасная передача путей в `cmd /c mklink`.**
+6. **HIGH — `create_link` (plugin-catalog): небезопасная передача путей в `cmd /c mklink`.**
    `Command::new("cmd").arg("/c").arg("mklink")…` идёт через `cmd.exe`, который разбирает аргументы
    как командную строку, поэтому `&`, `|`, `^`, `%` в пути к каталогу плагина будут интерпретированы
    как операторы оболочки. `target` безопасен (`is_safe_id`: `[a-z0-9-_]`), но `source` — это
@@ -120,3 +114,48 @@ ADR-0021/0023.
 вместо `set_memory_limit`/`set_hook` прототипа); M6 (оверхед instruction-hook) неактуален —
 hook не переносился (ADR-0021 §2.4), оверхед RPC измерен в F59 (≈1.2×); M7 неактуален —
 модель child-на-плагин. → ADR-0021/0023.
+
+**F61 — прогон песочницы через MCP `plugin_test`** (закрытие оговорки о покрытии песочницы через MCP).
+Гипотеза: `plugin_test` через MCP покрыт только схемой (`tests/mcp_contract.rs`), а исполнение
+Lua в песочнице Rust-тестом не проверяется.
+Замер (`crates/app/src-tauri/src/ai/plugin_harness/tests/mcp.rs`, реальный child-процесс, debug):
+
+| Сценарий | Фикстура | Ожидание | Результат |
+|---|---|---|---|
+| Валидный плагин | `plugin.json` + `main.lua` с `on_activate` → `print("ok")` | Песочница исполняет Lua, `ok: true`, `errors: []` | `plugin_test` → `ok: true`, `errors: []` |
+| Невалидный манифест | `plugin.json` с пустым `id` | Валидация отсекает до песочницы, `ok: false`, непустой `errors` | `plugin_test` → `ok: false`, `errors: ["manifest: …"]` |
+
+Вывод: `plugin_test` через MCP покрыт Rust-тестом с реальным прогоном песочницы (child-хост
+собирается внутри теста, env не мутируется). → ADR-0034/ADR-0036.
+
+**F62 — конверт события `log-entry` прод-стока MCP** (закрытие оговорки о непокрытом `app_log_sink`).
+Гипотеза: конверт `log-entry {level,category,message}` проверяется лишь до границы стока;
+`AppHandle` без Tauri-runtime не создать, поэтому прод-сток не покрыт Rust-тестом.
+Замер (`crates/app/src-tauri/src/mcp/tests.rs`, mock `LogEmitter`, без Tauri):
+
+| Проверка | Ожидание | Результат |
+|---|---|---|
+| Имя события | `log-entry` | `log-entry` |
+| Поле `level` | строка `"info"` | строка `"info"` |
+| Поле `category` | строка `"system"` | строка `"system"` |
+| Поле `message` | строка, дословно равная тексту стока | совпадает |
+
+Вывод: `app_log_sink` параметризован трейтом `LogEmitter` (прод — `AppHandle`, тест — mock);
+конверт `log-entry` покрыт без Tauri-runtime, прод-поведение не изменилось. → ADR-0036.
+
+**F63 — источник каталога плагинов не зависит от CWD** (закрытие оговорки о `catalog_repo()`).
+Гипотеза: `catalog_repo()` разрешался от рабочего каталога процесса, поэтому в упакованном
+приложении tool/resource возвращали ошибку (CWD произволен).
+Изменение (`crates/app/src-tauri/src/mcp/mod.rs`): `catalog_repo(app_data_dir: &Path)`;
+приоритет env `DARMARK_PLUGIN_REPO` → `discover_repo(app_data_dir)` → `app_data_dir/plugins`.
+`build_registry` берёт `app.path().app_data_dir()`; каталог «запекается» в обработчики при
+сборке реестра, на пути чтения CWD не используется. Замер (`mcp/tests.rs`, debug):
+
+| Проверка | Ожидание | Результат |
+|---|---|---|
+| env задан | env-путь важнее `app_data_dir` | env-путь |
+| env нет, есть `<app_data_dir>/plugins/index.json` | автопоиск находит каталог | `<app_data_dir>/plugins` |
+| env нет, каталога нет, CWD содержит свой `plugins/index.json` | fallback `<app_data_dir>/plugins`, CWD игнорируется | `<app_data_dir>/plugins` |
+
+Вывод: `catalog_repo()` не зависит от CWD (ни один prod-путь не читает `current_dir`);
+приоритет env > автопоиск > fallback подтверждён тестом, включая смену CWD. → ADR-0036.

@@ -144,3 +144,55 @@ fn sanitize_paths_replaces_repo_dir_with_name() {
     assert!(sanitized.starts_with(r"plugins\index.json"), "{sanitized}");
     assert!(!sanitized.contains(":\\"), "нет полного пути: {sanitized}");
 }
+
+/// Замена привязана к границам сегмента пути: вариант затирается только целиком.
+#[test]
+fn sanitize_paths_replaces_only_whole_path_segment() {
+    let base = Path::new(r"C:\repo");
+
+    // Границей справа служит разделитель → замена происходит.
+    assert_eq!(
+        sanitize_paths(r"C:\repo\index.json: ошибка", base),
+        r"repo\index.json: ошибка"
+    );
+}
+
+/// Вариант как префикс другого пути не должен затираться (границы сегмента нет).
+#[test]
+fn sanitize_paths_keeps_variant_as_prefix_of_another_path() {
+    let base = Path::new(r"C:\repo");
+    for text in [
+        r"C:\repo2\index.json: ошибка",
+        r"C:\repo.backup\index.json: ошибка",
+    ] {
+        assert_eq!(
+            sanitize_paths(text, base),
+            text,
+            "префикс другого пути не затирается: {text}"
+        );
+    }
+}
+
+/// Вариант как суффикс сегмента (слева символ имени) не затирается.
+#[test]
+fn sanitize_paths_keeps_variant_as_segment_suffix() {
+    let base = Path::new(r"C:\repo");
+    let text = r"backupC:\repo\index.json";
+    assert_eq!(
+        sanitize_paths(text, base),
+        text,
+        "суффикс внутри сегмента не затирается"
+    );
+}
+
+/// Вариант как подстрока внутри сегмента (обе стороны — символы имени) не затирается.
+#[test]
+fn sanitize_paths_keeps_variant_as_substring_inside_segment() {
+    let base = Path::new(r"C:\repo");
+    let text = r"xC:\repoy";
+    assert_eq!(
+        sanitize_paths(text, base),
+        text,
+        "подстрока внутри сегмента не затирается"
+    );
+}

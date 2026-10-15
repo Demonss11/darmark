@@ -118,9 +118,8 @@ pub fn parse_cli_report(stdout: &str) -> Option<AiValidationResult> {
 /// Валидация манифеста и исходника **без** CLI (fallback, ADR-0034/ADR-0026): те же проверки через
 /// `plugin_core::manifest`. Возвращает понятные ошибки (пусто — валидно).
 ///
-/// Только для тестов: продовый путь статической валидации идёт через [`validate_plugin_static`]
-/// (TZ-MCP R4/AC-MCP-6), поэтому в не-тестовой сборке функция не нужна.
-#[cfg(test)]
+/// Продовая точка статической проверки «манифест/entry» (TZ-MCP R4/AC-MCP-6): переиспользуется
+/// [`validate_plugin_static`] и как диагностический fallback, когда отчёт CLI недоступен.
 pub fn manifest_errors(manifest: &Value, source: &str) -> Vec<String> {
     let mut errors = Vec::new();
     let manifest_check = serde_json::to_vec(manifest)
@@ -157,26 +156,43 @@ pub fn validate_plugin(dir: &Path) -> AiValidationResult {
 /// Статическая валидация каталога плагина: манифест + entry **без** песочницы.
 ///
 /// Единая точка проверки «манифест/entry» (TZ-MCP R4/AC-MCP-6): переиспользуется
-/// fallback-валидацией и MCP-адаптером `plugin_validate`, поэтому логика не дублируется.
-/// Без паник: отсутствие/невалидность файлов кодируются в `errors`.
+/// fallback-валидацией и MCP-адаптером `plugin_validate`. Файлы читаются независимо
+/// (ошибка одного не скрывает проверку другого), а содержимое проверяет [`manifest_errors`],
+/// поэтому логика валидации не дублируется. Без паник: отсутствие/невалидность файлов
+/// кодируются в `errors`.
 pub fn validate_plugin_static(dir: &Path) -> AiValidationResult {
     let mut errors = Vec::new();
 
-    match std::fs::read(dir.join(MANIFEST_FILE)) {
-        Ok(bytes) => {
-            if let Err(e) = plugin_core::manifest::Manifest::from_json(&bytes) {
+    let manifest = match std::fs::read(dir.join(MANIFEST_FILE)) {
+        Ok(bytes) => match serde_json::from_slice::<Value>(&bytes) {
+            Ok(value) => Some(value),
+            Err(e) => {
                 errors.push(format!("manifest: {e}"));
+                None
             }
+        },
+        Err(e) => {
+            errors.push(format!("manifest: {e}"));
+            None
         }
-        Err(e) => errors.push(format!("manifest: {e}")),
-    }
-    match std::fs::read_to_string(dir.join(ENTRY_FILE)) {
-        Ok(source) => {
+    };
+    let source = match std::fs::read_to_string(dir.join(ENTRY_FILE)) {
+        Ok(source) => Some(source),
+        Err(e) => {
+            errors.push(format!("entry: {e}"));
+            None
+        }
+    };
+
+    match (manifest, source) {
+        (Some(manifest), Some(source)) => errors.extend(manifest_errors(&manifest, &source)),
+        (Some(manifest), None) => errors.extend(manifest_errors(&manifest, "")),
+        (None, Some(source)) => {
             if let Err(e) = plugin_core::manifest::validate_source_len(source.len() as u64) {
                 errors.push(format!("entry: {e}"));
             }
         }
-        Err(e) => errors.push(format!("entry: {e}")),
+        (None, None) => {}
     }
 
     AiValidationResult {

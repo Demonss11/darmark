@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use mcp_core::handlers::{ToolError, ToolHandler};
@@ -98,6 +98,8 @@ impl ToolHandler for PluginTestTool {
 
 pub(super) struct PluginCatalogListTool {
     pub(super) sink: LogSink,
+    /// Уже разрешённый каталог плагинов (абсолютный, без CWD) — см. `mcp::catalog_repo`.
+    pub(super) repo: PathBuf,
 }
 
 impl ToolHandler for PluginCatalogListTool {
@@ -115,11 +117,11 @@ impl ToolHandler for PluginCatalogListTool {
 
     fn call(&self, _params: Value) -> Result<Value, ToolError> {
         let started = Instant::now();
-        let repo = crate::mcp::catalog_repo();
-        let catalog = match plugin_catalog::Catalog::load(&repo) {
+        let repo = &self.repo;
+        let catalog = match plugin_catalog::Catalog::load(repo) {
             Ok(catalog) => catalog,
             Err(error) => {
-                let message = sanitize_paths(&error, &repo);
+                let message = sanitize_paths(&error, repo);
                 log_mcp_call(
                     &self.sink,
                     &mcp_log_message(

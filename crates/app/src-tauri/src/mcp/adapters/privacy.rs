@@ -29,10 +29,54 @@ fn dir_path_variants(dir: &Path) -> Vec<String> {
     variants
 }
 
-/// Заменяет все вхождения вариантов пути на `name`.
+/// Символ, продолжающий сегмент пути (буква/цифра/`.`/`_`/`-`), а не границу между сегментами.
+///
+/// Разделители (`\`, `/`), кавычки, пробелы и прочие символы границей считаются, поэтому
+/// вариант пути совпадает только целиком, а не как подстрока внутри сегмента.
+fn is_path_name_char(c: char) -> bool {
+    c.is_alphanumeric() || matches!(c, '.' | '_' | '-')
+}
+
+/// Заменяет вариант пути на `name`, только если он совпадает как **целый сегмент**: и слева,
+/// и справа от вхождения стоит граница пути (начало/конец строки или не-имя-сегмента).
+///
+/// Так `C:\a` не затирает `C:\ab` или `C:\a.backup` (префикс другого пути), а также не
+/// срабатывает на варианте внутри более длинного имени.
+fn replace_path_segment(text: &str, variant: &str, name: &str) -> String {
+    if variant.is_empty() {
+        return text.to_string();
+    }
+    let mut result = String::with_capacity(text.len());
+    let mut copied = 0;
+    let mut search_from = 0;
+    while let Some(rel) = text[search_from..].find(variant) {
+        let start = search_from + rel;
+        let end = start + variant.len();
+        let before_ok = text[..start]
+            .chars()
+            .next_back()
+            .is_none_or(|c| !is_path_name_char(c));
+        let after_ok = text[end..]
+            .chars()
+            .next()
+            .is_none_or(|c| !is_path_name_char(c));
+        if before_ok && after_ok {
+            result.push_str(&text[copied..start]);
+            result.push_str(name);
+            copied = end;
+            search_from = end;
+        } else {
+            search_from = start + variant.chars().next().map_or(1, char::len_utf8);
+        }
+    }
+    result.push_str(&text[copied..]);
+    result
+}
+
+/// Заменяет вхождения вариантов пути на `name` с учётом границ сегмента пути.
 fn sanitize_text(text: &str, variants: &[String], name: &str) -> String {
     variants.iter().fold(text.to_string(), |acc, variant| {
-        acc.replace(variant.as_str(), name)
+        replace_path_segment(&acc, variant, name)
     })
 }
 

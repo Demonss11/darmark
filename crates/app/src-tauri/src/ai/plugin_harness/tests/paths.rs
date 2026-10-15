@@ -168,10 +168,15 @@ fn ensure_plugin_path_allowed_rejects_reparse_entry_without_symlink_privilege() 
 
 #[test]
 fn ensure_plugin_path_allowed_accepts_path_inside_plugins_root() {
+    use crate::ai::history::env_lock;
+
     let root = tempfile::tempdir().unwrap();
     let plugin_dir = root.path().join("my-plugin");
     std::fs::create_dir(&plugin_dir).unwrap();
 
+    // Общий env-лок `ai`: `DARMARK_PLUGINS_DIR` — переменная процесса, параллельные тесты
+    // не должны видеть её промежуточное значение.
+    let _guard = env_lock();
     let previous = std::env::var_os("DARMARK_PLUGINS_DIR");
     std::env::set_var("DARMARK_PLUGINS_DIR", root.path());
     let result = ensure_plugin_path_allowed(&plugin_dir);

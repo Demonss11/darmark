@@ -9,5 +9,5 @@ pub mod protocol;
 pub mod registry;
 pub mod server;
 
-pub use handlers::{ResourceError, ResourceReader, ToolError, ToolHandler};
+pub use handlers::{McpError, ResourceError, ResourceReader, ToolError, ToolHandler};
 pub use registry::{CallToolError, Registry, ResourceDefinition, ToolDefinition};

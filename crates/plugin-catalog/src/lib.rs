@@ -7,6 +7,7 @@
 //! тестируемыми; разрешение путей по умолчанию живёт в `main.rs` плагинного CLI.
 
 use std::io::Read;
+use std::os::windows::process::CommandExt;
 use std::path::{Component, Path, PathBuf};
 
 use plugin_core::manifest::Manifest;
@@ -390,14 +391,31 @@ fn copy_dir_all(src: &Path, dst: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// Экранирует метасимволы командной строки `cmd.exe`, чтобы путь с `&`, `|` или `%`
+/// передавался как единый аргумент, а не выполнялся как команда.
+fn escape_for_cmd(s: &str) -> String {
+    s.replace('^', "^^")
+        .replace('&', "^&")
+        .replace('|', "^|")
+        .replace('<', "^<")
+        .replace('>', "^>")
+        .replace('%', "%%")
+}
+
 /// Junction через `mklink /J` — в отличие от symlink не требует прав администратора.
-fn create_link(source: &Path, target: &Path) -> Result<(), String> {
+///
+/// `raw_arg` отключает экранирование аргументов Rust, а `escape_for_cmd` экранирует
+/// метасимволы `cmd.exe` (`&`, `|`, `<`, `>`, `%`, `^`), чтобы путь с `&` в имени
+/// не выполнялся как команда.
+pub fn create_link(source: &Path, target: &Path) -> Result<(), String> {
+    let source_escaped = escape_for_cmd(&source.to_string_lossy());
+    let target_escaped = escape_for_cmd(&target.to_string_lossy());
     let output = std::process::Command::new("cmd")
-        .arg("/c")
-        .arg("mklink")
-        .arg("/J")
-        .arg(target)
-        .arg(source)
+        .raw_arg("/c")
+        .raw_arg("mklink")
+        .raw_arg("/J")
+        .raw_arg(&target_escaped)
+        .raw_arg(&source_escaped)
         .output()
         .map_err(|e| format!("не запустить cmd /c mklink: {e}"))?;
     if !output.status.success() {

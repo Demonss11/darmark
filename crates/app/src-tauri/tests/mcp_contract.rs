@@ -22,9 +22,15 @@ use serde_json::{json, Value};
 
 // ─── Инфраструктура теста ──────────────────────────────────────────
 
+/// Сериализует тесты, меняющие глобальные переменные окружения (переменные процесса общие):
+/// иначе параллельный тест увидел бы промежуточное значение `DARMARK_PLUGIN_REPO`.
+static ENV_LOCK: Mutex<()> = Mutex::new(());
+
 /// Сервер с реальным инвентарём приложения и собирающим журналом.
 ///
 /// Возвращает и сток записей: приватность (AC-MCP-13) проверяется по факту эмиссии.
+/// Базой каталога плагинов служит системный temp: тесты, которым каталог не важен, её
+/// не читают, а тест каталога подменяет источник через `DARMARK_PLUGIN_REPO`.
 fn server() -> (McpServer, Arc<Mutex<Vec<String>>>) {
     let records = Arc::new(Mutex::new(Vec::new()));
     let collected = Arc::clone(&records);
@@ -34,7 +40,10 @@ fn server() -> (McpServer, Arc<Mutex<Vec<String>>>) {
             .expect("журнал теста не отравлен")
             .push(message.to_string());
     });
-    (McpServer::new(build_registry_with_sink(sink)), records)
+    (
+        McpServer::new(build_registry_with_sink(sink, &std::env::temp_dir())),
+        records,
+    )
 }
 
 fn request(method: &str, params: Option<Value>) -> RpcRequest {
@@ -44,6 +53,13 @@ fn request(method: &str, params: Option<Value>) -> RpcRequest {
         method: method.into(),
         params,
     }
+}
+
+/// Ответ на запрос с `id`: сервер обязан ответить, `None` здесь — ошибка.
+fn respond(server: &McpServer, request: RpcRequest) -> RpcResponse {
+    server
+        .handle(request)
+        .expect("запрос с id обязан получить ответ")
 }
 
 /// Успешный `result` ответа — с проверкой, что протокольной ошибки нет.
@@ -58,10 +74,13 @@ fn result_of(response: &RpcResponse) -> Value {
 
 /// Вызов tool через MCP: возвращает конверт `{content, isError?}`.
 fn call_tool(server: &McpServer, name: &str, arguments: Value) -> Value {
-    let response = server.handle(request(
-        "tools/call",
-        Some(json!({ "name": name, "arguments": arguments })),
-    ));
+    let response = respond(
+        server,
+        request(
+            "tools/call",
+            Some(json!({ "name": name, "arguments": arguments })),
+        ),
+    );
     result_of(&response)
 }
 
@@ -112,7 +131,7 @@ fn expected_resources() -> Vec<&'static str> {
 fn initialize_reports_protocol_version_and_capabilities() {
     let (server, _records) = server();
 
-    let result = result_of(&server.handle(request("initialize", None)));
+    let result = result_of(&respond(&server, request("initialize", None)));
     assert_eq!(
         result["protocolVersion"],
         mcp_core::server::MCP_PROTOCOL_VERSION
@@ -126,7 +145,7 @@ fn initialize_reports_protocol_version_and_capabilities() {
 fn tools_list_declares_inventory_with_usable_schemas() {
     let (server, _records) = server();
 
-    let result = result_of(&server.handle(request("tools/list", None)));
+    let result = result_of(&respond(&server, request("tools/list", None)));
     let tools = result["tools"].as_array().expect("tools — массив");
     let names: Vec<&str> = tools
         .iter()
@@ -156,7 +175,7 @@ fn tools_list_declares_inventory_with_usable_schemas() {
 fn resources_list_declares_inventory_with_descriptions() {
     let (server, _records) = server();
 
-    let result = result_of(&server.handle(request("resources/list", None)));
+    let result = result_of(&respond(&server, request("resources/list", None)));
     let resources = result["resources"].as_array().expect("resources — массив");
     let uris: Vec<&str> = resources
         .iter()
@@ -184,10 +203,13 @@ fn resources_list_declares_inventory_with_descriptions() {
 fn static_contract_resource_reads_through_server() {
     let (server, _records) = server();
 
-    let result = result_of(&server.handle(request(
-        "resources/read",
-        Some(json!({ "uri": "darmark://contracts/plugin-manifest" })),
-    )));
+    let result = result_of(&respond(
+        &server,
+        request(
+            "resources/read",
+            Some(json!({ "uri": "darmark://contracts/plugin-manifest" })),
+        ),
+    ));
     let text = result["contents"][0]["text"]
         .as_str()
         .expect("contents[0].text — строка");
@@ -206,10 +228,13 @@ fn static_contract_resource_reads_through_server() {
 fn unknown_tool_is_protocol_error_not_tool_result() {
     let (server, _records) = server();
 
-    let response = server.handle(request(
-        "tools/call",
-        Some(json!({ "name": "ghost", "arguments": {} })),
-    ));
+    let response = respond(
+        &server,
+        request(
+            "tools/call",
+            Some(json!({ "name": "ghost", "arguments": {} })),
+        ),
+    );
     let error = response.error.expect("неизвестный tool — ошибка протокола");
     assert_eq!(error.code, mcp_core::protocol::INVALID_PARAMS);
     assert!(response.result.is_none(), "нет result при ошибке протокола");
@@ -393,6 +418,9 @@ fn plugin_test_requires_path_per_schema() {
 fn catalog_tool_and_resource_match_plugin_catalog_directly() {
     let repo = examples_plugins_repo();
     // Каталог читается из `DARMARK_PLUGIN_REPO` (единственный источник и у tool, и у ресурса).
+    // Переменная процесса: меняем её под общим локом и возвращаем прежнее значение.
+    let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let previous = std::env::var_os("DARMARK_PLUGIN_REPO");
     std::env::set_var("DARMARK_PLUGIN_REPO", &repo);
 
     let (server, records) = server();
@@ -432,10 +460,13 @@ fn catalog_tool_and_resource_match_plugin_catalog_directly() {
     );
 
     // resource: тот же каталог через `resources/read`.
-    let read = result_of(&server.handle(request(
-        "resources/read",
-        Some(json!({ "uri": "darmark://plugins/catalog" })),
-    )));
+    let read = result_of(&respond(
+        &server,
+        request(
+            "resources/read",
+            Some(json!({ "uri": "darmark://plugins/catalog" })),
+        ),
+    ));
     let catalog: Value =
         serde_json::from_str(read["contents"][0]["text"].as_str().expect("text")).expect("JSON");
     let via_resource: Vec<&str> = catalog["plugins"]
@@ -449,10 +480,13 @@ fn catalog_tool_and_resource_match_plugin_catalog_directly() {
 
     // Шаблонный ресурс читает манифест конкретного плагина.
     let first = &expected[0].0;
-    let manifest = result_of(&server.handle(request(
-        "resources/read",
-        Some(json!({ "uri": format!("darmark://plugins/{first}/manifest") })),
-    )));
+    let manifest = result_of(&respond(
+        &server,
+        request(
+            "resources/read",
+            Some(json!({ "uri": format!("darmark://plugins/{first}/manifest") })),
+        ),
+    ));
     let manifest: Value =
         serde_json::from_str(manifest["contents"][0]["text"].as_str().expect("text"))
             .expect("JSON");
@@ -466,6 +500,11 @@ fn catalog_tool_and_resource_match_plugin_catalog_directly() {
     let log = records_of(&records);
     assert_eq!(log.len(), 1, "{log:?}");
     assert!(!log[0].contains(":\\"), "журнал без полного пути: {log:?}");
+
+    match previous {
+        Some(value) => std::env::set_var("DARMARK_PLUGIN_REPO", value),
+        None => std::env::remove_var("DARMARK_PLUGIN_REPO"),
+    }
 }
 
 // ─── Фикстуры ──────────────────────────────────────────────────────

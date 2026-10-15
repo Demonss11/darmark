@@ -8,14 +8,18 @@ use serde_json::Value;
 
 use crate::protocol::{INTERNAL_ERROR, INVALID_PARAMS};
 
-/// Ошибка вызова инструмента.
+/// Ошибка обработчика MCP (инструмент или ресурс): код JSON-RPC и сообщение.
+///
+/// Единая структура вместо двух идентичных: контекст (tool/resource) на результат не влияет —
+/// и [`ToolHandler`], и [`ResourceReader`] несут только `code`/`message`. Имена [`ToolError`]
+/// и [`ResourceError`] сохранены алиасами ради читаемости сигнатур и совместимости вызовов.
 #[derive(Clone, Debug)]
-pub struct ToolError {
+pub struct McpError {
     pub code: i64,
     pub message: String,
 }
 
-impl ToolError {
+impl McpError {
     pub fn new(code: i64, message: impl Into<String>) -> Self {
         Self {
             code,
@@ -32,6 +36,12 @@ impl ToolError {
     }
 }
 
+/// Ошибка вызова инструмента ([`ToolHandler`]).
+pub type ToolError = McpError;
+
+/// Ошибка чтения ресурса ([`ResourceReader`]).
+pub type ResourceError = McpError;
+
 /// Обработчик инструмента (tool).
 pub trait ToolHandler: Send + Sync {
     /// Имя инструмента (уникальное).
@@ -42,26 +52,6 @@ pub trait ToolHandler: Send + Sync {
     fn input_schema(&self) -> Value;
     /// Вызов инструмента с параметрами.
     fn call(&self, params: Value) -> Result<Value, ToolError>;
-}
-
-/// Ошибка чтения ресурса.
-#[derive(Clone, Debug)]
-pub struct ResourceError {
-    pub code: i64,
-    pub message: String,
-}
-
-impl ResourceError {
-    pub fn new(code: i64, message: impl Into<String>) -> Self {
-        Self {
-            code,
-            message: message.into(),
-        }
-    }
-
-    pub fn internal(message: impl Into<String>) -> Self {
-        Self::new(INTERNAL_ERROR, message)
-    }
 }
 
 /// Читатель ресурса.

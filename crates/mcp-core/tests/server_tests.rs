@@ -1,5 +1,7 @@
 use mcp_core::handlers::{ResourceError, ResourceReader, ToolError, ToolHandler};
-use mcp_core::protocol::{RpcRequest, INVALID_PARAMS, RESOURCE_NOT_FOUND};
+use mcp_core::protocol::{
+    RpcRequest, RpcResponse, INVALID_PARAMS, INVALID_REQUEST, RESOURCE_NOT_FOUND,
+};
 use mcp_core::registry::{Registry, ResourceDefinition, ToolDefinition};
 use mcp_core::server::McpServer;
 use serde_json::{json, Value};
@@ -80,10 +82,27 @@ fn request(id: i64, method: &str, params: Option<Value>) -> RpcRequest {
     }
 }
 
+/// Запрос без `id` — JSON-RPC notification.
+fn notification(method: &str, params: Option<Value>) -> RpcRequest {
+    RpcRequest {
+        jsonrpc: "2.0".into(),
+        id: None,
+        method: method.into(),
+        params,
+    }
+}
+
+/// Ответ на запрос с `id`: сервер обязан ответить, `None` здесь — ошибка.
+fn respond(server: &McpServer, request: RpcRequest) -> RpcResponse {
+    server
+        .handle(request)
+        .expect("запрос с id обязан получить ответ")
+}
+
 #[test]
 fn initialize_returns_protocol_version() {
     let server = server();
-    let response = server.handle(request(1, "initialize", None));
+    let response = respond(&server, request(1, "initialize", None));
     let result = response.result.expect("result");
     assert_eq!(
         result["protocolVersion"],
@@ -94,7 +113,7 @@ fn initialize_returns_protocol_version() {
 #[test]
 fn initialize_returns_server_info() {
     let server = server();
-    let response = server.handle(request(1, "initialize", None));
+    let response = respond(&server, request(1, "initialize", None));
     let result = response.result.expect("result");
     assert_eq!(result["serverInfo"]["name"], "darmark");
     assert_eq!(result["serverInfo"]["version"], env!("CARGO_PKG_VERSION"));
@@ -103,7 +122,7 @@ fn initialize_returns_server_info() {
 #[test]
 fn tools_list_returns_registered_tools() {
     let server = server();
-    let response = server.handle(request(2, "tools/list", None));
+    let response = respond(&server, request(2, "tools/list", None));
     let result = response.result.expect("result");
     assert_eq!(result["tools"][0]["name"], "echo");
 }
@@ -111,11 +130,14 @@ fn tools_list_returns_registered_tools() {
 #[test]
 fn tools_call_returns_result() {
     let server = server();
-    let response = server.handle(request(
-        3,
-        "tools/call",
-        Some(json!({"name": "echo", "arguments": {"text": "hi"}})),
-    ));
+    let response = respond(
+        &server,
+        request(
+            3,
+            "tools/call",
+            Some(json!({"name": "echo", "arguments": {"text": "hi"}})),
+        ),
+    );
     let result = response.result.expect("result");
     assert_eq!(result["content"][0]["text"], "{\"text\":\"hi\"}");
 }
@@ -123,7 +145,10 @@ fn tools_call_returns_result() {
 #[test]
 fn tools_call_unknown_tool_returns_invalid_params() {
     let server = server();
-    let response = server.handle(request(4, "tools/call", Some(json!({"name": "ghost"}))));
+    let response = respond(
+        &server,
+        request(4, "tools/call", Some(json!({"name": "ghost"}))),
+    );
     let error = response.error.expect("error");
     assert_eq!(error.code, INVALID_PARAMS);
     assert_eq!(error.message, "Unknown tool: ghost");
@@ -132,11 +157,14 @@ fn tools_call_unknown_tool_returns_invalid_params() {
 #[test]
 fn tools_call_execution_error_returns_is_error_result() {
     let server = server();
-    let response = server.handle(request(
-        5,
-        "tools/call",
-        Some(json!({"name": "failing", "arguments": {}})),
-    ));
+    let response = respond(
+        &server,
+        request(
+            5,
+            "tools/call",
+            Some(json!({"name": "failing", "arguments": {}})),
+        ),
+    );
     assert!(response.error.is_none());
     let result = response.result.expect("result");
     assert_eq!(result["isError"], true);
@@ -147,7 +175,7 @@ fn tools_call_execution_error_returns_is_error_result() {
 #[test]
 fn tools_call_without_params_returns_invalid_params() {
     let server = server();
-    let response = server.handle(request(6, "tools/call", None));
+    let response = respond(&server, request(6, "tools/call", None));
     let error = response.error.expect("error");
     assert_eq!(error.code, INVALID_PARAMS);
 }
@@ -155,7 +183,7 @@ fn tools_call_without_params_returns_invalid_params() {
 #[test]
 fn tools_call_without_name_returns_invalid_params() {
     let server = server();
-    let response = server.handle(request(7, "tools/call", Some(json!({}))));
+    let response = respond(&server, request(7, "tools/call", Some(json!({}))));
     let error = response.error.expect("error");
     assert_eq!(error.code, INVALID_PARAMS);
 }
@@ -163,7 +191,7 @@ fn tools_call_without_name_returns_invalid_params() {
 #[test]
 fn resources_list_returns_registered_resources() {
     let server = server();
-    let response = server.handle(request(8, "resources/list", None));
+    let response = respond(&server, request(8, "resources/list", None));
     let result = response.result.expect("result");
     let resources = result["resources"].as_array().expect("массив resources");
     assert_eq!(resources.len(), 1);
@@ -175,11 +203,10 @@ fn resources_list_returns_registered_resources() {
 #[test]
 fn resources_read_returns_contents() {
     let server = server();
-    let response = server.handle(request(
-        9,
-        "resources/read",
-        Some(json!({"uri": "darmark://test"})),
-    ));
+    let response = respond(
+        &server,
+        request(9, "resources/read", Some(json!({"uri": "darmark://test"}))),
+    );
     let result = response.result.expect("result");
     assert_eq!(result["contents"][0]["uri"], "darmark://test");
     assert_eq!(result["contents"][0]["text"], "{\"ok\":true}");
@@ -188,11 +215,14 @@ fn resources_read_returns_contents() {
 #[test]
 fn resources_read_unknown_uri_returns_resource_not_found() {
     let server = server();
-    let response = server.handle(request(
-        10,
-        "resources/read",
-        Some(json!({"uri": "darmark://ghost"})),
-    ));
+    let response = respond(
+        &server,
+        request(
+            10,
+            "resources/read",
+            Some(json!({"uri": "darmark://ghost"})),
+        ),
+    );
     let error = response.error.expect("error");
     assert_eq!(error.code, RESOURCE_NOT_FOUND);
 }
@@ -200,7 +230,7 @@ fn resources_read_unknown_uri_returns_resource_not_found() {
 #[test]
 fn resources_read_without_params_returns_invalid_params() {
     let server = server();
-    let response = server.handle(request(11, "resources/read", None));
+    let response = respond(&server, request(11, "resources/read", None));
     let error = response.error.expect("error");
     assert_eq!(error.code, INVALID_PARAMS);
 }
@@ -208,7 +238,7 @@ fn resources_read_without_params_returns_invalid_params() {
 #[test]
 fn resources_read_without_uri_returns_invalid_params() {
     let server = server();
-    let response = server.handle(request(12, "resources/read", Some(json!({}))));
+    let response = respond(&server, request(12, "resources/read", Some(json!({}))));
     let error = response.error.expect("error");
     assert_eq!(error.code, INVALID_PARAMS);
 }
@@ -216,7 +246,43 @@ fn resources_read_without_uri_returns_invalid_params() {
 #[test]
 fn unknown_method_returns_error() {
     let server = server();
-    let response = server.handle(request(13, "ghost", None));
+    let response = respond(&server, request(13, "ghost", None));
     let error = response.error.expect("error");
     assert_eq!(error.code, mcp_core::protocol::METHOD_NOT_FOUND);
+}
+
+#[test]
+fn rpc_invalid_jsonrpc_version_rejected() {
+    let server = server();
+    let mut req = request(14, "initialize", None);
+    req.jsonrpc = "1.0".into();
+    let response = respond(&server, req);
+    let error = response.error.expect("невалидный jsonrpc — ошибка");
+    assert_eq!(error.code, INVALID_REQUEST);
+    assert_eq!(error.message, "jsonrpc must \"2.0\"");
+    assert!(response.result.is_none());
+}
+
+#[test]
+fn rpc_notification_does_not_receive_response() {
+    let server = server();
+    assert!(server.handle(notification("initialize", None)).is_none());
+    assert!(server
+        .handle(notification("tools/call", Some(json!({"name": "echo"}))))
+        .is_none());
+}
+
+#[test]
+fn rpc_arguments_null_normalized_to_empty_object() {
+    let server = server();
+    let response = respond(
+        &server,
+        request(
+            15,
+            "tools/call",
+            Some(json!({"name": "echo", "arguments": null})),
+        ),
+    );
+    let result = response.result.expect("result");
+    assert_eq!(result["content"][0]["text"], "{}");
 }
