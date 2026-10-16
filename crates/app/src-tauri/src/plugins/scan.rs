@@ -101,7 +101,10 @@ fn load_plugin(dir: &Path) -> Result<DiscoveredPlugin, String> {
 /// Читает файл, но не более `max` байт: сначала быстрый `metadata().len()`, затем жёсткий
 /// потолок через `Read::take(max + 1)` — даже если файл вырастет между проверкой и чтением,
 /// аллокация ограничена `max + 1` (защита GUI от OOM).
-fn read_capped(path: &Path, max: u64) -> Result<Vec<u8>, String> {
+///
+/// Единственная реализация потолка: ею же ограничено чтение файлов плагина в MCP-адаптере
+/// `plugin_read` — второй копии проверки быть не должно, иначе один из путей чтения отстанет.
+pub(crate) fn read_capped(path: &Path, max: u64) -> Result<Vec<u8>, String> {
     let metadata = std::fs::metadata(path).map_err(|e| format!("{}: {e}", path.display()))?;
     if metadata.len() > max {
         return Err(format!(

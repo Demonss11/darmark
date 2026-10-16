@@ -1,6 +1,16 @@
 //! Тесты встроенной библиотеки скиллов [`super::super::skills`].
 
 use crate::ai::skills::{builtin_skills, skills};
+use crate::ai::types::AiSkill;
+
+/// Скилл по `id`: позиционные обращения (`skills()[1]`) не говорят, какой скилл проверяется,
+/// и молча уезжают на другой при перестановке состава.
+fn skill_by_id(id: &str) -> AiSkill {
+    skills()
+        .into_iter()
+        .find(|skill| skill.id == id)
+        .unwrap_or_else(|| panic!("скилл {id} отсутствует"))
+}
 
 #[test]
 fn built_in_skills_have_expected_ids() {
@@ -68,7 +78,7 @@ fn categories_and_placeholders_match_contract() {
 
 #[test]
 fn create_plugin_prompt_requires_json_contract() {
-    let create = &skills()[1];
+    let create = skill_by_id("create-plugin");
     let prompt = &create.prompt_template;
     assert!(prompt.contains("```json"), "промт просит fenced json-блок");
     for field in [
@@ -91,7 +101,7 @@ fn create_plugin_prompt_requires_json_contract() {
 
 #[test]
 fn create_plugin_prompt_pins_entry_point_and_host_api() {
-    let prompt = &skills()[1].prompt_template;
+    let prompt = &skill_by_id("create-plugin").prompt_template;
     assert!(
         prompt.contains("function on_activate(ctx)"),
         "промт требует глобальную точку входа"
@@ -144,7 +154,7 @@ fn create_plugin_prompt_pins_entry_point_and_host_api() {
 
 #[test]
 fn create_plugin_prompt_covers_host_semantics_and_manifest_limits() {
-    let prompt = &skills()[1].prompt_template;
+    let prompt = &skill_by_id("create-plugin").prompt_template;
 
     assert!(
         prompt.contains("os/io/require/load/loadfile/dofile/coroutine/debug/package"),
@@ -181,7 +191,8 @@ fn create_plugin_prompt_covers_host_semantics_and_manifest_limits() {
 
 #[test]
 fn explain_prompt_has_output_structure() {
-    let prompt = &skills()[0].prompt_template;
+    let explain = skill_by_id("explain");
+    let prompt = &explain.prompt_template;
     for section in ["О чём", "Структура", "Разметка", "На что обратить внимание"]
     {
         assert!(
@@ -197,13 +208,11 @@ fn explain_prompt_has_output_structure() {
 
 /// Промт отладки обязан звать `plugin_read` первым ходом и иметь fallback (TASK-003 §3),
 /// а его чек-лист — покрывать рантайм-классы отказов, а не только загрузку (TASK-003 §4).
+/// Усечение исходника транспортом обязано быть **объявлено** промтом: модель не судит о коде,
+/// которого не видела.
 #[test]
 fn debug_plugin_prompt_reads_source_and_covers_runtime_failures() {
-    let prompt = &skills()
-        .into_iter()
-        .find(|skill| skill.id == "debug-plugin")
-        .expect("скилл debug-plugin")
-        .prompt_template;
+    let prompt = &skill_by_id("debug-plugin").prompt_template;
 
     assert!(
         prompt.contains("Первым ходом") && prompt.contains("`plugin_read`"),
@@ -214,6 +223,10 @@ fn debug_plugin_prompt_reads_source_and_covers_runtime_failures() {
             && prompt.contains("main.lua")
             && prompt.contains("plugin.json"),
         "промт просит вставить main.lua и plugin.json, если исходник не получен: {prompt}"
+    );
+    assert!(
+        prompt.contains("truncated: true") && prompt.contains("НЕПОЛНЫМ"),
+        "промт объявляет усечение исходника (truncated) и запрещает выводы о невидимой части: {prompt}"
     );
     for needle in [
         "ничего не происходит",

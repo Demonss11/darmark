@@ -28,7 +28,7 @@
 | `dev_plugin.rs` | dev-режим `--debug-plugin` |
 | `state/` | владение документами: `types` / `store` / `history` / `tests` |
 | `ai/` | ассистент: `commands`, `doc_harness`, `plugin_harness`, `history`, `skills`, `settings`, `backend` |
-| `mcp/` | MCP-сервер: `adapters` (tools/privacy/journal/tests), `resources` |
+| `mcp/` | MCP-сервер: `adapters` (tools/plugin_read/privacy/journal/tests), `resources` |
 | `plugins/` | плагинная подсистема: `manager`, `host`, `supervisor`, `services`, `views`, `scan`, `bus`, настройки |
 
 Правила раскладки:

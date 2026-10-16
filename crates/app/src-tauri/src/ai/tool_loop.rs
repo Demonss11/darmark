@@ -146,7 +146,10 @@ pub fn call_mcp_tool(
 }
 
 /// Обрезает строку до `max_chars` символов по границе UTF-8 (без паники на многобайтных).
-fn truncate_chars(text: &str, max_chars: usize) -> String {
+///
+/// Единственная реализация обрезки: [`call_mcp_tool`] режет ею текст результата, а инструмент
+/// [`crate::mcp::adapters`] — свой payload, чтобы усечение совпало с тем, что увидит модель.
+pub(crate) fn truncate_chars(text: &str, max_chars: usize) -> String {
     match text.char_indices().nth(max_chars) {
         Some((boundary, _)) => text[..boundary].to_string(),
         None => text.to_string(),

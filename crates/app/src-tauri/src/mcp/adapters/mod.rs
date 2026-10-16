@@ -12,15 +12,15 @@ use mcp_core::registry::{Registry, ToolDefinition};
 use serde_json::{json, Value};
 
 mod journal;
+mod plugin_read;
 mod privacy;
 mod tools;
 
 #[cfg(test)]
 mod tests;
 
-use tools::{
-    MarkdownRenderTool, PluginCatalogListTool, PluginReadTool, PluginTestTool, PluginValidateTool,
-};
+use plugin_read::PluginReadTool;
+use tools::{MarkdownRenderTool, PluginCatalogListTool, PluginTestTool, PluginValidateTool};
 
 /// Сток журнала MCP: текст записи → приёмник (в продакшне — Tauri-событие `log-entry`).
 ///
@@ -57,7 +57,8 @@ pub fn register_tools(registry: &mut Registry, sink: &LogSink, repo: &Path) {
 
     registry.register_tool(ToolDefinition {
         name: "plugin_read".to_string(),
-        description: "Исходник установленного плагина по id: plugin.json и main.lua".to_string(),
+        description: "Исходник установленного плагина по id: plugin.json и entry из манифеста"
+            .to_string(),
         input_schema: id_schema(),
         handler: Arc::new(PluginReadTool {
             sink: Arc::clone(sink),

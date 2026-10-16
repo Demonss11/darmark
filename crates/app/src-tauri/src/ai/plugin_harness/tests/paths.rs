@@ -197,3 +197,59 @@ fn ensure_plugin_path_allowed_accepts_root_and_normalized_layouts() {
     let upper = PathBuf::from(temp.to_string_lossy().to_uppercase());
     ensure_plugin_path_allowed(&upper).expect("регистр нормализуется канонизацией");
 }
+
+/// Объявленный в манифесте `entry` (не `main.lua`) читается после гейта.
+#[test]
+fn ensure_plugin_entry_allowed_accepts_declared_entry() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("init.lua"), b"-- init").unwrap();
+    let canonical = ensure_plugin_path_allowed(dir.path()).expect("temp разрешён");
+
+    let entry = ensure_plugin_entry_allowed(&canonical, "init.lua").expect("объявленный entry");
+
+    assert_eq!(
+        entry,
+        canonical.join("init.lua"),
+        "возвращается канонический путь"
+    );
+}
+
+/// Отсутствующий или выходящий за каталог `entry` — отказ (fail-closed), а не чтение «мимо».
+#[test]
+fn ensure_plugin_entry_allowed_rejects_missing_and_traversal() {
+    let base = tempfile::tempdir().unwrap();
+    let dir = base.path().join("plugin");
+    std::fs::create_dir(&dir).unwrap();
+    std::fs::write(base.path().join("secret.lua"), b"-- secret").unwrap();
+    let canonical = ensure_plugin_path_allowed(&dir).expect("temp разрешён");
+
+    for entry in ["missing.lua", "../secret.lua"] {
+        let err = ensure_plugin_entry_allowed(&canonical, entry)
+            .expect_err("небезопасный entry обязан быть отклонён");
+        assert_eq!(err.code, ErrorCode::AiPluginInvalid, "{entry}: {err:?}");
+    }
+}
+
+/// Symlink на объявленном `entry` отвергается тем же гейтом, что `plugin.json`/`main.lua`
+/// (AC-MCP-12): иначе исходник читался бы вслед за ссылкой за пределы `plugins/`.
+#[test]
+fn ensure_plugin_entry_allowed_rejects_symlinked_entry() {
+    let base = tempfile::tempdir().unwrap();
+    let dir = base.path().join("plugin");
+    std::fs::create_dir(&dir).unwrap();
+    let target = base.path().join("secret.lua");
+    std::fs::write(&target, b"-- secret").unwrap();
+    let link = dir.join("init.lua");
+    if !try_symlink_file(&link, &target) {
+        eprintln!(
+            "SKIP ensure_plugin_entry_allowed_rejects_symlinked_entry: symlink недоступен: {}",
+            link.display()
+        );
+        return;
+    }
+    let canonical = ensure_plugin_path_allowed(&dir).expect("temp разрешён");
+
+    let err = ensure_plugin_entry_allowed(&canonical, "init.lua")
+        .expect_err("symlink объявленного entry отклонён");
+    assert_eq!(err.code, ErrorCode::AiPluginInvalid);
+}

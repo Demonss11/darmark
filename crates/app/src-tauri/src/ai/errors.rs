@@ -27,7 +27,7 @@ const CONTEXT_MARKERS: [&str; 6] = [
 /// отказ провайдера от локальной ошибки с тем же кодом (ADR-0040 §2.1, §2.3). Коды и тексты
 /// от этого поля не зависят.
 pub fn map_status(status: u16, body: &str, retry_after: Option<&str>) -> CommandError {
-    let detail = summarize(body);
+    let detail = error_detail(body);
     match status {
         401 => CommandError::provider(
             status,
@@ -79,7 +79,7 @@ fn append_detail(message: &mut String, detail: &str) {
 }
 
 /// Достаёт читаемый текст ошибки из OpenAI-конверта `{"error":{"message": ...}}` либо из тела.
-fn summarize(body: &str) -> String {
+fn error_detail(body: &str) -> String {
     let trimmed = body.trim();
     if trimmed.is_empty() {
         return String::new();

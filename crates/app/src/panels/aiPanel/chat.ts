@@ -76,6 +76,10 @@ export function createChat(
     row.appendChild(col);
     dom.chat.appendChild(row);
     indicator.updateEmpty();
+    // Прокрутка — как у соседних вставок: предупреждение (в т.ч. отказ пишущего
+    // скилла на усечённом документе) обязано быть видимым, иначе потеря текста
+    // остаётся незамеченной в длинной ленте.
+    if (state.stick) indicator.scrollToBottom();
   }
 
   function appendAssistant(): AssistantRow {

@@ -120,11 +120,12 @@ export function createSkillBar(
       btn.append(icon, title);
       btn.addEventListener("click", () => onSkillClick(skill));
       dom.skillsRow.appendChild(btn);
-    }
-    // Чип цели бессмыслен без «Создать плагин» — при недоступном ряде целей нет
-    // так же, как и кнопок (общий проход отрисовки).
-    if (state.skills.some((skill) => skill.id === CREATE_PLUGIN_SKILL_ID)) {
-      dom.skillsRow.appendChild(renderGoals());
+      // Чип цели относится только к «Создать плагин» (TASK-009 §2/§7): группа стоит
+      // вплотную за своей кнопкой, а не в хвосте ряда. Нет скилла — нет и группы,
+      // поэтому условие проверяется на месте, а не отдельным проходом после цикла.
+      if (skill.id === CREATE_PLUGIN_SKILL_ID) {
+        btn.insertAdjacentElement("afterend", renderGoals());
+      }
     }
   }
 
@@ -180,7 +181,9 @@ export function createSkillBar(
       if (doc.truncated) {
         deps.appendSystemNote(`Документ обрезан до ${DOC_LIMIT_LABEL} — разбор неполный`);
       }
-      deps.send(skill.title, tpl.replace("{{doc}}", doc.text));
+      // Функция-заменитель, а не строка: в тексте документа `$&`, `$'`, `` $` `` и
+      // `$1` — спецпоследовательности replace и молча искажали бы промт.
+      deps.send(skill.title, tpl.replace("{{doc}}", () => doc.text));
       return;
     }
     if (tpl.includes("{{input}}")) {
@@ -199,7 +202,9 @@ export function createSkillBar(
       // то, что пользователь написал сам (C7).
       const goal = PLUGIN_GOALS.find((g) => g.id === selectedGoal);
       const hint = skill.id === CREATE_PLUGIN_SKILL_ID && goal ? `\n\n${goal.hint}` : "";
-      deps.send(desc, tpl.replace("{{input}}", `${desc}${hint}`));
+      // Функция-заменитель, а не шаблонная строка: `$&` и подобные последовательности
+      // в описании пользователя не должны трактоваться правилами replace.
+      deps.send(desc, tpl.replace("{{input}}", () => `${desc}${hint}`));
       return;
     }
     deps.send(skill.title, tpl);

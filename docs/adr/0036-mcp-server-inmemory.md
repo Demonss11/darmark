@@ -72,7 +72,7 @@ TZ-MCP §2 фиксирует пересмотр рамки ADR-0034 §2.5: MCP 
 
 5. **Протокол — по букве:** сервер реализует стандартные методы MCP (см. TZ-MCP §3.1). Ответы —
    по спецификации MCP.
-6. **Первый срез — read-only контракты плагинов** (§3): 6 resources + 4 tools. Мутаций нет.
+6. **Первый срез — read-only контракты плагинов** (§3): 6 resources + 5 tools. Мутаций нет.
 7. **MCP — контракт, не принуждение:** права/rev-guard/безопасность путей остаются в существующих
    командах (permissions, `Manifest::validate`, белый список директорий). MCP не создаёт второго
    источника истины для безопасности.
@@ -93,7 +93,17 @@ TZ-MCP §2 фиксирует пересмотр рамки ADR-0034 §2.5: MCP 
 
 ## 3. Первый срез: инвентарь
 
-**Первый срез:** 6 resources + 4 tools (read-only контракты плагинов). Полный инвентарь — TZ-MCP §4.1–§4.2.
+**Первый срез:** 6 resources + 5 tools (read-only контракты плагинов).
+
+- **Resources (6):** `darmark://contracts/plugin-manifest`, `darmark://contracts/host-api`,
+  `darmark://contracts/events`, `darmark://contracts/markdown`, `darmark://plugins/catalog`,
+  `darmark://plugins/{id}/manifest`.
+- **Tools (5):** `plugin_validate`, `plugin_test`, `plugin_read`, `plugin_catalog_list`,
+  `markdown_render`.
+
+Инвентарь закреплён контракт-тестом `crates/app/src-tauri/tests/mcp_contract.rs` (`expected_resources`,
+`expected_tools`). `plugin_read` добавлен решением TASK-003 (чтение исходника установленного плагина
+по `id`: ровно `plugin.json` + entry, без вердикта — `isError` не несёт, ADR-0041 §2.2 п.15).
 
 ---
 

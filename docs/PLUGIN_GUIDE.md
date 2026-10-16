@@ -124,7 +124,8 @@ end
 
 ## 6. Своё представление
 
-Плагин может добавить вкладку в панель предпросмотра. Нужны разрешения `view:create` и `view:modify`.
+Плагин может добавить вкладку в панель предпросмотра. Нужны разрешения `document:read` (пример
+читает документ), `view:create` и `view:modify`.
 
 `plugin.json`:
 
@@ -135,11 +136,14 @@ end
 ```
 
 ```lua
-local VIEW = "<id>:my-preview"   -- view_id = "<id_плагина>:<kind>"
+local VIEW = host.plugin_id .. ":my-preview"   -- view_id = "<id_плагина>:<kind>"
 
 function on_activate(ctx)
   ctx.subscribe("document:changed", function(name, payload)
-    local text = host.get_document_range(payload.doc_id, 0, host.get_document_len(payload.doc_id))
+    local len, err = host.get_document_len(payload.doc_id)
+    if err then return end
+    local text, err = host.get_document_range(payload.doc_id, 0, len)
+    if err then return end
     local html = "<p>Символов: " .. #text .. "</p>"
       .. '<span data-p-my-preview-action="ping">нажми меня</span>'
     host.set_view_content(VIEW, html)

@@ -59,6 +59,7 @@ fn reject_reparse_between(root: &Path, path: &Path) -> Result<(), CommandError> 
 /// AC-MCP-12: symlink-файл манифеста/entry иначе читался бы вслед за ссылкой (эскейп за
 /// пределы разрешённой области). `symlink_metadata` не следует за ссылкой, поэтому видит
 /// reparse-атрибут самого файла. Отсутствие файла — не ошибка (обработается валидацией).
+/// Объявленный в манифесте `entry` здесь неизвестен — его проверяет [`ensure_plugin_entry_allowed`].
 fn reject_reparse_plugin_files(dir: &Path) -> Result<(), CommandError> {
     for name in [MANIFEST_FILE, ENTRY_FILE] {
         if is_reparse_point(&dir.join(name)) {
@@ -69,6 +70,39 @@ fn reject_reparse_plugin_files(dir: &Path) -> Result<(), CommandError> {
         }
     }
     Ok(())
+}
+
+/// Проверяет объявленный в манифесте `entry`: не reparse point и остаётся внутри каталога.
+///
+/// [`reject_reparse_plugin_files`] знает только `plugin.json`/`main.lua`, а манифест вправе
+/// объявить другое имя (`entry: "init.lua"`). Гейт на объявленном имени обязателен: иначе
+/// symlink-файл читался бы вслед за ссылкой за пределы разрешённой области (AC-MCP-12).
+///
+/// `dir` — **канонический** каталог плагина (как возвращает [`ensure_plugin_path_allowed`]):
+/// containment проверяется по каноническому пути, поэтому `..`/разделители в `entry` не выводят
+/// чтение за каталог даже при небезопасном имени; несуществующий файл — ошибка (fail-closed).
+pub fn ensure_plugin_entry_allowed(dir: &Path, entry: &str) -> Result<PathBuf, CommandError> {
+    let path = dir.join(entry);
+    if is_reparse_point(&path) {
+        return Err(CommandError::new(
+            ErrorCode::AiPluginInvalid,
+            format!("файл {entry} — symlink/junction, чтение запрещено"),
+        ));
+    }
+
+    let canonical = std::fs::canonicalize(&path).map_err(|e| {
+        CommandError::new(
+            ErrorCode::AiPluginInvalid,
+            format!("файл {entry} не читается: {e}"),
+        )
+    })?;
+    if !canonical.starts_with(dir) {
+        return Err(CommandError::new(
+            ErrorCode::AiPluginInvalid,
+            format!("файл {entry} вне каталога плагина"),
+        ));
+    }
+    Ok(canonical)
 }
 
 /// Проверяет, что путь лежит в разрешённом каталоге (`plugins/` или `temp/`).

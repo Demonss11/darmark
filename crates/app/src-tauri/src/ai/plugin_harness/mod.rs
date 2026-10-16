@@ -20,7 +20,7 @@ mod tests;
 
 pub use commands::{ai_create_plugin, ai_delete_plugin, ai_update_plugin, ai_validate_plugin};
 pub use crud::{create_plugin_at, delete_plugin_at, update_plugin_at, write_plugin_files};
-pub use paths::{ensure_plugin_path_allowed, plugins_root};
+pub use paths::{ensure_plugin_entry_allowed, ensure_plugin_path_allowed, plugins_root};
 pub use validate::{
     check_plugin_limits, parse_cli_report, validate_manifest_id, validate_plugin,
     validate_plugin_id, validate_plugin_static,

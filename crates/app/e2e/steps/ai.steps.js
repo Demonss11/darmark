@@ -1152,6 +1152,59 @@ When("я направляю AI на мок-провайдера", async () => {
   await setActiveBaseUrl(`http://127.0.0.1:${mockProviderPort}/v1`);
 });
 
+/// Ответ ассистента: ровно один ```json-блок с `id`, но БЕЗ `source` — неполное предложение
+/// плагина. `extractPluginProposal` требует и `id`, и `source`, поэтому карточка не рождается;
+/// обычный текст вокруг блока обязан доехать до чата.
+const AI_INCOMPLETE_PROPOSAL = [
+  "Разбор плагина без исходника",
+  "",
+  "```json",
+  JSON.stringify({ id: "e2e-ai-nosource", name: "e2e-ai-nosource", version: "1.0.0" }),
+  "```",
+  "",
+  "Плагин неполный: нужен source.",
+].join("\n");
+
+/// Локальный SSE-провайдер с неполным предложением (однократно за сеанс).
+let noSourceMockProvider = null;
+let noSourceMockProviderPort = 0;
+
+When("я поднимаю мок-провайдера AI без полного source плагина", async () => {
+  if (noSourceMockProvider) return;
+  noSourceMockProvider = http.createServer((req, res) => {
+    req.resume();
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    });
+    res.write(
+      `data: ${JSON.stringify({ choices: [{ delta: { content: AI_INCOMPLETE_PROPOSAL } }] })}\n\n`
+    );
+    res.write(
+      `data: ${JSON.stringify({
+        choices: [{ delta: {} }],
+        usage: { prompt_tokens: 5, completion_tokens: 9 },
+      })}\n\n`
+    );
+    res.write("data: [DONE]\n\n");
+    res.end();
+  });
+  await new Promise((resolve, reject) => {
+    noSourceMockProvider.once("error", reject);
+    noSourceMockProvider.listen(0, "127.0.0.1", () => {
+      noSourceMockProviderPort = noSourceMockProvider.address().port;
+      resolve();
+    });
+  });
+});
+
+/// Направляет AI на мок без полного source (base_url = loopback, проходит валидацию схемы).
+When("я направляю AI на мок-провайдера без полного source", async () => {
+  if (!noSourceMockProvider) throw new Error("Мок-провайдер AI без полного source не поднят");
+  await setActiveBaseUrl(`http://127.0.0.1:${noSourceMockProviderPort}/v1`);
+});
+
 /// Текст chat-запроса (тело — JSON: `messages[].content`, строкой либо частями).
 /// Возвращает само тело, если это не chat-запрос: подсказка в ошибке полезнее, чем тишина.
 function chatRequestText(body) {
@@ -1340,6 +1393,38 @@ Then("в чате AI есть карточка плагина {string}", async (
       ),
     { timeout: 5000, timeoutMsg: `В чате AI нет карточки плагина «${name}»` }
   );
+});
+
+/// Текст ответа ассистента виден в последнем пузыре (`.msg.assistant .bubble`).
+Then("в чате AI есть ответ ассистента {string}", async (fragment) => {
+  await browser.waitUntil(
+    async () =>
+      browser.execute((f) => {
+        const bubbles = document.querySelectorAll("#ai-chat .msg.assistant .bubble");
+        const last = bubbles[bubbles.length - 1];
+        return !!last && (last.textContent ?? "").includes(f);
+      }, fragment),
+    { timeout: 5000, timeoutMsg: `В чате AI нет ответа ассистента «${fragment}»` }
+  );
+});
+
+/// Отрицание появления карточки: ответ обязан быть финализирован (`.msg-usage` добавляется
+/// в `complete()` раньше `appendAssistantActions`), иначе проверка прошла бы до решения о
+/// карточке. Пустой результат — единственный ожидаемый: блок без `source` отвергнут.
+Then("в чате AI нет карточки плагина", async () => {
+  await browser.waitUntil(
+    async () =>
+      browser.execute(
+        () => !!document.querySelector("#ai-chat .msg.assistant .msg-usage")
+      ),
+    { timeout: 5000, timeoutMsg: "Ответ AI не финализирован (нет счётчика токенов)" }
+  );
+  const count = await browser.execute(
+    () => document.querySelectorAll("#ai-chat .ai-plugin-card").length
+  );
+  if (count !== 0) {
+    throw new Error(`В чате AI ${count} карточек плагина, ожидалось ни одной`);
+  }
 });
 
 When("я создаю плагин из карточки AI {string}", async (name) => {
@@ -1585,6 +1670,38 @@ Then(
     );
   }
 );
+
+/// Итог карточки ИМЕННО чтения исходника: карточка ищется по `data-call-id` = `AI_TOOL_READ_CALL_ID`
+/// (идентификатор вызова из stateful-мока), а не «любая карточка `plugin_read`». Чат живёт между
+/// сценариями и мок несёт те же вызовы, поэтому поиск по имени ловил бы остатки прошлого прогона
+/// и оставался зелёным даже после удаления `plugin_read` из инвентаря MCP (ложно-зелёный).
+Then("карточка вызова plugin_read имеет итог {string}", async (outcome) => {
+  const expected = outcome === "успех" ? "is-ok" : outcome === "ошибка" ? "is-error" : null;
+  if (!expected) {
+    throw new Error(`Неизвестный итог карточки вызова «${outcome}» (ожидалось «успех»/«ошибка»)`);
+  }
+  await browser.waitUntil(
+    async () =>
+      browser.execute(
+        (callId, cls) => {
+          const cards = document.querySelectorAll("#ai-chat .ai-tool-card");
+          return Array.from(cards).some(
+            (card) =>
+              card.dataset.callId === callId &&
+              (card.querySelector(".ai-tool-name")?.textContent ?? "") === "plugin_read" &&
+              !card.classList.contains("is-running") &&
+              card.classList.contains(cls)
+          );
+        },
+        AI_TOOL_READ_CALL_ID,
+        expected
+      ),
+    {
+      timeout: 8000,
+      timeoutMsg: `Карточка вызова ${AI_TOOL_READ_CALL_ID} (plugin_read) не получила итог «${outcome}»`,
+    }
+  );
+});
 
 /// Открывает режим «Журнал» нижнего дока. Явная ошибка вместо молчаливого no-op: без кнопки
 /// проверка ниже искала бы записи в скрытом списке и падала невнятно.
