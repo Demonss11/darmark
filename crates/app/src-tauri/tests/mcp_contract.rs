@@ -342,11 +342,16 @@ fn plugin_validate_reports_nonempty_errors_matching_static_validation() {
     );
     let (server, records) = server();
 
-    let payload = tool_payload(&call_tool(
+    let envelope = call_tool(
         &server,
         "plugin_validate",
         json!({ "path": plugin.path().to_string_lossy() }),
-    ));
+    );
+    let payload = tool_payload(&envelope);
+
+    // Конверт несёт тот же вердикт, что и журнал: инструмент исполнился, проверка провалилась
+    // (ADR-0041 §2.4 п.14). Раньше `isError` здесь отсутствовал, и карточка рисовала «✓».
+    assert!(is_error(&envelope), "провал проверки — isError: {envelope}");
 
     // Прямой вызов той же проверки ядра (AC-MCP-6: адаптер не дублирует логику).
     let direct = darmark_lib::ai::plugin_harness::validate_plugin_static(plugin.path());

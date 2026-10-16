@@ -1251,13 +1251,15 @@ Then("манифест плагина AI {string} содержит вид {strin
 // второй — финальный текст. Поэтому мок stateful (счётчик запросов), в отличие от
 // статичных моков выше.
 //
-// Инструменты исполняются реально на реестре MCP (TZ-MCP R3/R4). Первый ответ просит ДВА вызова
-// `plugin_validate` — этим закрыты оба исхода карточки: успех и ошибка.
+// Инструменты исполняются реально на реестре MCP (TZ-MCP R3/R4). Первый ответ просит ТРИ вызова
+// `plugin_validate` — этим закрыты все три класса исходов ADR-0041 §2.1.
 //   * `call_1` — путь к фикстуре `e2e-view` в изолированном каталоге плагинов: внутри белого
 //     списка, валидация проходит → `is-ok` + запись `MCP plugin_validate: e2e-view — ok (N мс)`.
 //   * `call_2` — несуществующий каталог внутри того же `plugins/`: `canonicalize` в
 //     `ensure_plugin_path_allowed` отказывает ДО `log_mcp_call` (mcp/adapters/tools.rs), поэтому
 //     результат приходит как `isError` → карточка `is-error`, а записи журнала НЕ появляется.
+//   * `call_3` — существующий, но НЕВАЛИДНЫЙ плагин `e2e-invalid`: инструмент исполнился и
+//     вернул отрицательный вердикт → карточка `is-error` И запись `— ошибка: …` (класс A).
 
 /// Аргументы вызова инструмента: путь к каталогу внутри белого списка (`plugins/`).
 /// `dirName` — имя каталога-фикстуры либо несуществующего каталога (исход `isError`).
@@ -1268,13 +1270,26 @@ function aiToolCallArguments(dirName = "e2e-view") {
 /// Каталог внутри `plugins/`, которого нет: путь не канонизируется → инструмент отдаёт `isError`.
 const AI_TOOL_MISSING_DIR = "e2e-missing-dir";
 
+/// Каталог внутри `plugins/` с заведомо невалидным манифестом: инструмент ВХОДИТ в исполнение
+/// и возвращает отрицательный вердикт (ADR-0041 §2.1, класс A), а не отказ по пути (класс C).
+const AI_TOOL_INVALID_DIR = "e2e-invalid";
+
+/// Идентификатор вызова по невалидному плагину — по нему сценарий ищет ИМЕННО эту карточку:
+/// у `call_2` итог тоже `is-error`, и поиск «какой-нибудь карточки с ошибкой» был бы ложно-зелёным.
+const AI_TOOL_INVALID_CALL_ID = "call_3";
+
 /// Stateful SSE-провайдер с вызовом инструмента (однократно за сеанс).
 let toolMockProvider = null;
 let toolMockProviderPort = 0;
 let toolMockRequests = 0;
 
 When("я поднимаю мок-провайдера AI с вызовом инструмента", async () => {
-  if (toolMockProvider) return;
+  if (toolMockProvider) {
+    // Приложение живёт между сценариями фичи, а провайдер — на сеанс: без сброса счётчика
+    // следующий сценарий получил бы второй ответ (финальный текст) и не увидел бы вызовов.
+    toolMockRequests = 0;
+    return;
+  }
   toolMockProvider = http.createServer((req, res) => {
     req.resume(); // тело запроса не нужно
     toolMockRequests += 1;
@@ -1284,7 +1299,8 @@ When("я поднимаю мок-провайдера AI с вызовом ин�
       Connection: "keep-alive",
     });
     if (toolMockRequests === 1) {
-      // Первый ответ: текста нет, модель просит исполнить два инструмента (успех и ошибка).
+      // Первый ответ: текста нет, модель просит исполнить три инструмента (успех, отказ по
+      // пути и провал проверки). Порядок вызовов совпадает с порядком ответов инструментов.
       res.write(
         `data: ${JSON.stringify({
           choices: [
@@ -1307,6 +1323,15 @@ When("я поднимаю мок-провайдера AI с вызовом ин�
                     function: {
                       name: "plugin_validate",
                       arguments: aiToolCallArguments(AI_TOOL_MISSING_DIR),
+                    },
+                  },
+                  {
+                    index: 2,
+                    id: AI_TOOL_INVALID_CALL_ID,
+                    type: "function",
+                    function: {
+                      name: "plugin_validate",
+                      arguments: aiToolCallArguments(AI_TOOL_INVALID_DIR),
                     },
                   },
                 ],
@@ -1445,5 +1470,84 @@ Then("в журнале есть запись о вызове MCP", async () => 
   if (message === null) throw new Error("Запись журнала MCP plugin_validate исчезла между проверками");
   if (message.includes("\\") || /[A-Za-z]:[\\/]/.test(message)) {
     throw new Error(`Запись журнала MCP раскрывает путь (AC-MCP-13): ${message}`);
+  }
+});
+
+/// Проверка инварианта ADR-0041 §2.4 п.14 для класса A («проверка провалилась»):
+/// инструмент исполнился — значит ЖУРНАЛ и КАРТОЧКА обязаны показывать одно: запись
+/// `— ошибка: …` и карточка `is-error`. Обе проверки в одном шаге и с одним вердиктом:
+/// проверка только одного канала пропустила бы расхождение (журнал пишет «ошибка» по
+/// `result.ok`, а карточка рисует по `isError` — они и разъезжаются в текущем коде).
+///
+/// Карточка ищется по `data-call-id` = `call_3`, а не «любая с ошибкой»: у `call_2`
+/// (отказ по несуществующему пути) итог тоже `is-error`, и такой поиск был бы ложно-зелёным.
+Then("карточка вызова и журнал MCP согласованы по провалу проверки", async () => {
+  // 1) Карточка конкретного вызова должна завершиться ИМЕННО ошибкой (не «готово»).
+  await browser.waitUntil(
+    async () =>
+      browser.execute((callId) => {
+        const cards = document.querySelectorAll("#ai-chat .ai-tool-card");
+        return Array.from(cards).some(
+          (card) => card.dataset.callId === callId && !card.classList.contains("is-running")
+        );
+      }, AI_TOOL_INVALID_CALL_ID),
+    {
+      timeout: 10000,
+      timeoutMsg: `Карточка вызова ${AI_TOOL_INVALID_CALL_ID} не получила итог (всё ещё «выполняется»)`,
+    }
+  );
+  const cardState = await browser.execute((callId) => {
+    const cards = document.querySelectorAll("#ai-chat .ai-tool-card");
+    const card = Array.from(cards).find((c) => c.dataset.callId === callId);
+    if (!card) return null;
+    return {
+      isOk: card.classList.contains("is-ok"),
+      isError: card.classList.contains("is-error"),
+      status: card.querySelector(".ai-tool-status")?.textContent ?? "",
+    };
+  }, AI_TOOL_INVALID_CALL_ID);
+  if (!cardState) throw new Error(`Карточка вызова ${AI_TOOL_INVALID_CALL_ID} исчезла между проверками`);
+
+  // 2) Журнал MCP: запись об ошибке валидации по невалидному плагину обязана быть.
+  //    Именно по имени каталога, а не по префиксу `MCP plugin_validate:` — иначе нашлась бы
+  //    запись про успешную проверку `e2e-view`.
+  await openLogsMode();
+  await browser.waitUntil(
+    async () =>
+      browser.execute((dir) => {
+        const items = document.querySelectorAll("#logs-list .log-item");
+        return Array.from(items).some((item) => {
+          const msg = item.querySelector(".log-msg")?.textContent ?? "";
+          return item.getClientRects().length > 0 && msg.startsWith(`MCP plugin_validate: ${dir} — ошибка:`);
+        });
+      }, AI_TOOL_INVALID_DIR),
+    {
+      timeout: 10000,
+      timeoutMsg: `В журнале нет записи об ошибке валидации \`${AI_TOOL_INVALID_DIR}\` (формат \`MCP plugin_validate: <каталог> — ошибка: …\`)`,
+    }
+  );
+  const message = await browser.execute((dir) => {
+    const items = document.querySelectorAll("#logs-list .log-item");
+    const hit = Array.from(items).find((item) => {
+      const msg = item.querySelector(".log-msg")?.textContent ?? "";
+      return item.getClientRects().length > 0 && msg.startsWith(`MCP plugin_validate: ${dir} — ошибка:`);
+    });
+    return hit?.querySelector(".log-msg")?.textContent ?? null;
+  }, AI_TOOL_INVALID_DIR);
+  if (message === null) {
+    throw new Error(`Запись журнала об ошибке валидации ${AI_TOOL_INVALID_DIR} исчезла между проверками`);
+  }
+  // Приватность журнала (AC-MCP-13) проверяется на той же записи, что и статус.
+  if (message.includes("\\") || /[A-Za-z]:[\\/]/.test(message)) {
+    throw new Error(`Запись журнала MCP раскрывает путь (AC-MCP-13): ${message}`);
+  }
+
+  // 3) Согласованность: каналы обязаны совпасть по статусу.
+  if (!cardState.isError || cardState.isOk) {
+    throw new Error(
+      `Карточка и журнал MCP разошлись по провалу проверки: карточка «${cardState.status}» ` +
+        `(ожидалась ошибка), а журнал уже записал «${message}». ` +
+        "Причина по ADR-0041 §2.1–§2.2: класс A обязан нести isError в конверте tools/call."
+    );
   }
 });

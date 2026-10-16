@@ -42,6 +42,25 @@ impl ToolHandler for FailingTool {
     }
 }
 
+/// Инструмент-верификатор: обработчик возвращает `Ok` с отрицательным вердиктом, объявленным
+/// полем `isError` в payload (ADR-0041 §2.2 п.5).
+struct RejectingTool;
+
+impl ToolHandler for RejectingTool {
+    fn name(&self) -> &str {
+        "rejecting"
+    }
+    fn description(&self) -> &str {
+        "Проверка не прошла: вердикт в payload"
+    }
+    fn input_schema(&self) -> Value {
+        json!({"type": "object"})
+    }
+    fn call(&self, _params: Value) -> Result<Value, ToolError> {
+        Ok(json!({"ok": false, "isError": true, "errors": ["поле id пустое"]}))
+    }
+}
+
 struct StaticResource;
 
 impl ResourceReader for StaticResource {
@@ -63,6 +82,12 @@ fn server() -> McpServer {
         description: "Всегда возвращает ошибку исполнения".to_string(),
         input_schema: json!({"type": "object"}),
         handler: Arc::new(FailingTool),
+    });
+    registry.register_tool(ToolDefinition {
+        name: "rejecting".to_string(),
+        description: "Проверка не прошла: вердикт в payload".to_string(),
+        input_schema: json!({"type": "object"}),
+        handler: Arc::new(RejectingTool),
     });
     registry.register_resource(ResourceDefinition {
         uri: "darmark://test".to_string(),
@@ -170,6 +195,50 @@ fn tools_call_execution_error_returns_is_error_result() {
     assert_eq!(result["isError"], true);
     assert_eq!(result["content"][0]["type"], "text");
     assert_eq!(result["content"][0]["text"], "boom");
+}
+
+/// ADR-0041 §2.2 п.5: `isError` из payload обработчика копируется в конверт.
+#[test]
+fn tools_call_copies_handler_is_error_into_envelope() {
+    let server = server();
+    let response = respond(
+        &server,
+        request(
+            16,
+            "tools/call",
+            Some(json!({"name": "rejecting", "arguments": {}})),
+        ),
+    );
+    assert!(response.error.is_none());
+    let result = response.result.expect("result");
+    assert_eq!(result["isError"], true);
+    // Payload не переписывается (п.6): структурированный вердикт остаётся в тексте.
+    let text = result["content"][0]["text"].as_str().expect("text");
+    let payload: Value = serde_json::from_str(text).expect("payload — JSON");
+    assert_eq!(payload["ok"], false);
+    assert_eq!(payload["isError"], true);
+    assert_eq!(payload["errors"], json!(["поле id пустое"]));
+}
+
+/// ADR-0041 §2.2 п.8: без поля `isError` в payload конверт побайтово прежний — признака нет.
+#[test]
+fn tools_call_without_handler_is_error_has_no_is_error() {
+    let server = server();
+    let response = respond(
+        &server,
+        request(
+            17,
+            "tools/call",
+            Some(json!({"name": "echo", "arguments": {"text": "hi"}})),
+        ),
+    );
+    assert!(response.error.is_none());
+    let result = response.result.expect("result");
+    assert!(
+        result.get("isError").is_none(),
+        "конверт без isError: {result}"
+    );
+    assert_eq!(result["content"][0]["text"], "{\"text\":\"hi\"}");
 }
 
 #[test]

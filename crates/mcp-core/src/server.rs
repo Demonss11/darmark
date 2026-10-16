@@ -66,6 +66,12 @@ impl McpServer {
         })
     }
 
+    /// Вызов инструмента и сборка конверта `tools/call`.
+    ///
+    /// Конверт собирается из двух независимых источников: `content` — всегда текст payload
+    /// обработчика, `isError` — либо из [`CallToolError::Execution`], либо из одноимённого
+    /// булева поля payload, если обработчик его объявил (ADR-0041 §2.2). Payload обработчика
+    /// при этом не переписывается: сервер копирует признак, а не забирает его из данных.
     fn handle_tool_call(&self, id: Option<Value>, params: Option<Value>) -> RpcResponse {
         let Some(params) = params else {
             return RpcResponse::error(
@@ -91,10 +97,19 @@ impl McpServer {
             arguments
         };
         match self.registry.call_tool(name, arguments) {
-            Ok(result) => RpcResponse::success(
-                id,
-                json!({ "content": [{ "type": "text", "text": result.to_string() }] }),
-            ),
+            // Признак вердикта вызова копируется из payload обработчика: инструмент-верификатор
+            // возвращает `isError` рядом со структурированными данными (`ok`, `errors`, `report`),
+            // иначе журнал и карточка показывали бы противоположное (ADR-0041 §2.2 п.5).
+            // Payload не мутируется: поле остаётся и в `content[0].text` (п.6), а без него
+            // конверт собирается ровно как прежде — побайтово (п.8).
+            Ok(result) => {
+                let mut envelope =
+                    json!({ "content": [{ "type": "text", "text": result.to_string() }] });
+                if let Some(is_error) = result.get("isError").and_then(Value::as_bool) {
+                    envelope["isError"] = json!(is_error);
+                }
+                RpcResponse::success(id, envelope)
+            }
             // Неизвестный инструмент — ошибка протокола, а не результат вызова.
             Err(CallToolError::UnknownTool(name)) => RpcResponse::error(
                 id,

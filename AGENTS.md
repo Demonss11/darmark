@@ -58,6 +58,7 @@
 | Аудит зависимостей | `cargo audit` (RUSTSEC; джоб `audit` в CI) |
 | Неиспользуемые зависимости | `cargo machete` |
 | Тесты ядра | `cargo test -p md-core` |
+| Тесты MCP-ядра | `cargo test -p mcp-core` |
 | Тесты плагинных крейтов | `cargo test -p plugin-core -p plugin-catalog -p plugin-host -p plugin-cli` |
 | Шелл: сборка/тесты | `cargo check -p darmark` / `cargo test -p darmark` |
 | Фронт (tsc strict) | `cd crates/app; npm run build` |
