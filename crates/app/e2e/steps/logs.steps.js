@@ -1,4 +1,4 @@
-// Шаги панели «Журнал» (S11, ADR-0029/0030).
+// Шаги панели «Журнал» (S11).
 import { Given, Then, When } from "@wdio/cucumber-framework";
 import { browser } from "@wdio/globals";
 
@@ -26,7 +26,7 @@ Then("панель журнала свёрнута", async () => {
   );
 });
 
-// Скрытое состояние — док убран из layout (panel.hidden, ADR-0030). Возвращают
+// Скрытое состояние — док убран из layout (panel.hidden). Возвращают
 // его только триггеры статусбара (#sb-logs/#sb-mon).
 Then("панель журнала скрыта", async () => {
   await browser.waitUntil(

@@ -65,7 +65,7 @@
   padding: 0 3px;
   border-radius: 7px;
   background: var(--pc);
-  color: #fff;
+  color: var(--on-accent); /* --pc по умолчанию = --accent; белый на нём давал 2.7:1 */
   font-size: 9px;
   font-weight: 700;
   display: inline-flex;
@@ -83,7 +83,7 @@
   background: var(--pc);
 }
 .ipbtn.has-problem .pdot { background: var(--error); animation: drawer-pulse 2s ease-in-out infinite; }
-.ipbtn.has-problem .cnt { background: var(--warning); color: #1a1400; }
+.ipbtn.has-problem .cnt { background: var(--warning); color: var(--on-warning); }
 @keyframes drawer-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
@@ -107,6 +107,7 @@
   font-weight: 600;
 }
 /* Цвет бейджа по уровню непрочитанных (§6.5): ошибки → красный,
-   предупреждения без ошибок → янтарный. */
+   предупреждения без ошибок → янтарный. Текст — через --on-*: значения
+   переопределяются светлой темой (там заливки тёмные, нужен белый текст). */
 .badge.error { background: var(--error); color: var(--on-error); }
-.badge.warning { background: var(--warning); color: #1a1400; }
+.badge.warning { background: var(--warning); color: var(--on-warning); }

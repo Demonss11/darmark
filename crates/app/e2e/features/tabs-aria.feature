@@ -1,6 +1,6 @@
 # language: ru
 #
-# WAI-ARIA паттерн вкладок (ADR-0037 §2.4.4):
+# WAI-ARIA паттерн вкладок:
 #   #tab-strip — role=tablist; вкладка — role=tab с id/aria-controls/
 #   aria-selected и roving tabindex; #panes — role=tabpanel, подписанный
 #   активной вкладкой (syncTabPanel); навигация ←/→/Home/End с активацией

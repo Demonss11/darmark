@@ -1,7 +1,7 @@
 // pluginViews.ts — плагинные тир-1 представления как HtmlViewProvider (H2, Фаза 4).
 //
 // Плагин с `contributes.views[{kind,title,tier:1}]` становится ещё одним
-// `HtmlViewProvider` в общем `viewRegistry` (ADR-0022, IDEA-003): нативный
+// `HtmlViewProvider` в общем `viewRegistry` (IDEA-003): нативный
 // Markdown-предпросмотр остаётся дефолтным провайдером, плагинные вкладки —
 // выбираемыми в `.view-switch`.
 //

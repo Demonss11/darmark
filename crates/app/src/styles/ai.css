@@ -1,4 +1,4 @@
-/* ===================== AI-АССИСТЕНТ (aiPanel.ts, ADR-0030) =====================
+/* ===================== AI-АССИСТЕНТ (aiPanel.ts) =====================
    Тело режима AI нижнего дока: скиллы, чат, поле ввода, поповер настроек и
    состояния индикатора #ai-dot. Ответ модели рендерится только textContent
    (MVP); сеть — на Rust-стороне (CSP default-src 'self'). */
@@ -211,7 +211,7 @@
 .btn:hover { background: var(--bg-3); color: var(--fg); }
 .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .btn.primary { background: var(--accent); color: var(--on-accent); }
-.btn.primary:hover { background: #ab9fff; }
+.btn.primary:hover { background: var(--accent-hover); }
 .btn.ghost { background: transparent; border-color: var(--line); }
 .btn.ghost:hover { background: var(--bg-2); }
 .btn:disabled { opacity: 0.5; cursor: default; }
@@ -258,7 +258,7 @@
   font-size: 14px;
   cursor: pointer;
 }
-.btn-send:hover { background: #ab9fff; }
+.btn-send:hover { background: var(--accent-hover); }
 .btn-send:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .btn-send:disabled { opacity: 0.5; cursor: default; }
 
@@ -427,7 +427,7 @@
 .dialog-actions { display: flex; gap: 8px; margin-top: 12px; }
 .dialog-actions .btn { flex: 1; padding: 7px 12px; font-size: 12px; }
 
-/* ============ AI-АССИСТЕНТ: карточки harness Фазы 2 (aiPanel.ts, ADR-0034) ============
+/* ============ AI-АССИСТЕНТ: карточки harness Фазы 2 (aiPanel.ts) ============
    Карточка диффа и карточка плагина. Строки модели/манифеста — только textContent
    (сырой вывод LLM в innerHTML запрещён). Все стили — на существующих токенах. */
 

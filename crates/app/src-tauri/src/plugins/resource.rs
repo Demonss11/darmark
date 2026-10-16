@@ -1,20 +1,20 @@
-//! Сбор метрик ресурсов (ОЗУ/CPU) главного процесса и child'ов плагинов (ADR-0031).
+//! Сбор метрик ресурсов (ОЗУ/CPU) главного процесса и child'ов плагинов.
 //! Модуль **не знает про Tauri**: наружу отдаёт типы снимка и канал
 //! [`ResourceSink`], который в `setup_plugins` конвертируется в Tauri-события.
 //!
 //! Источник — WinAPI через крейт `windows` (`K32GetProcessMemoryInfo`, `GetProcessTimes`,
 //! `GetProcessHandleCount`) за [`ProcessMetrics`]. Основная метрика ОЗУ зависит от класса
-//! процесса (ADR-0031 §2.1 п.3): у **child'а** — `PrivateUsage` (private/commit, та же
+//! процесса: у **child'а** — `PrivateUsage` (private/commit, та же
 //! величина, что ограничивает Job Object), у **главного** — `PrivateWorkingSetSize`
 //! (`PROCESS_MEMORY_COUNTERS_EX2`, приватный рабочий набор — то, что показывает Диспетчер
 //! задач), с фолбэком на `WorkingSetSize` там, где EX2-хвост не заполнен.
 //!
-//! **Дедлок-безопасность (ADR-0031 §2.3 п.10):** снимок списка `(plugin_id, pid)` берётся
+//! **Дедлок-безопасность:** снимок списка `(plugin_id, pid)` берётся
 //! неблокирующим `try_lock` `PluginManager` в потоке монитора; при занятом локе тик
 //! пропускается (best-effort). WinAPI-замеры и эмит идут уже **вне** блокировок
 //! менеджера/стора. Сам [`ResourceMonitor::tick`] ничего не блокирует.
 //!
-//! **Устойчивость FFI (ADR-0031 §2.3 п.11, F51):** в FFI-пути нет `unwrap`/`expect`/`panic!`
+//! **Устойчивость FFI:** в FFI-пути нет `unwrap`/`expect`/`panic!`
 //! (профиль `panic = "abort"`). Недоступный/мёртвый/невалидный PID → `None`, запись
 //! пропускается. Отсутствующая метрика главного процесса → снимка нет целиком (`None`),
 //! а не лживый ноль: главный процесс практически всегда читаем.
@@ -35,40 +35,24 @@ use windows::Win32::System::Threading::{
     PROCESS_QUERY_LIMITED_INFORMATION,
 };
 
-
 pub const POLL_PERIOD: Duration = Duration::from_secs(2);
-
-
-
 
 const CPU_PREV_TTL: Duration = Duration::from_secs(POLL_PERIOD.as_secs() * 10);
 
-
-
-
-
-
-
 #[derive(Debug, Clone, Copy, Default)]
 pub struct RawMetrics {
-    
     pub working_set_bytes: usize,
-    
+
     pub private_bytes: usize,
-    
-    
-    
+
     pub private_working_set_bytes: usize,
-    
+
     pub cpu_percent: Option<f64>,
-    
+
     pub handles: Option<u32>,
 }
 
 impl RawMetrics {
-    
-    
-    
     pub fn private_working_set(&self) -> usize {
         if self.private_working_set_bytes == 0 {
             self.working_set_bytes
@@ -78,18 +62,12 @@ impl RawMetrics {
     }
 }
 
-
-
-
-
 pub trait ProcessMetrics: Send + Sync {
     fn read(&self, pid: u32) -> Option<RawMetrics>;
 }
 
-
 #[derive(Debug, Clone, Serialize)]
 pub struct MainMetrics {
-    
     pub mem_bytes: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cpu_percent: Option<f64>,
@@ -97,14 +75,13 @@ pub struct MainMetrics {
     pub handles: Option<u32>,
 }
 
-
 #[derive(Debug, Clone, Serialize)]
 pub struct ChildMetrics {
     pub plugin_id: String,
     pub pid: u32,
-    
+
     pub mem_bytes: usize,
-    
+
     pub mem_limit_bytes: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cpu_percent: Option<f64>,
@@ -112,26 +89,14 @@ pub struct ChildMetrics {
     pub handles: Option<u32>,
 }
 
-
 #[derive(Debug, Clone, Serialize)]
 pub struct ResourceSnapshot {
-    
     pub ts: u64,
     pub main: MainMetrics,
     pub children: Vec<ChildMetrics>,
 }
 
 impl ResourceSnapshot {
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
     pub fn collect(
         provider: &dyn ProcessMetrics,
         main_pid: u32,
@@ -164,27 +129,18 @@ impl ResourceSnapshot {
     }
 }
 
-
-
-
-
 pub trait ResourceSink: Send + Sync {
-    
     fn metrics(&self, snapshot: &ResourceSnapshot);
-    
+
     fn process_exited(&self, plugin_id: &str, pid: u32, reason: Option<&str>);
 }
-
-
 
 pub struct ResourceMonitor {
     provider: Arc<dyn ProcessMetrics>,
     sink: Arc<dyn ResourceSink>,
     main_pid: u32,
     mem_limit_bytes: usize,
-    
-    
-    
+
     active: HashMap<String, u32>,
 }
 
@@ -204,8 +160,6 @@ impl ResourceMonitor {
         }
     }
 
-    
-    
     pub fn tick(&mut self, children: &[(String, u32)]) {
         let snapshot = ResourceSnapshot::collect(
             self.provider.as_ref(),
@@ -228,12 +182,6 @@ impl ResourceMonitor {
         }
     }
 
-    
-    
-    
-    
-    
-    
     pub fn spawn<F>(self, children: F, stop: Arc<AtomicBool>) -> JoinHandle<()>
     where
         F: Fn() -> Option<Vec<(String, u32)>> + Send + 'static,
@@ -253,17 +201,12 @@ impl ResourceMonitor {
     }
 }
 
-
 fn now_millis() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0)
 }
-
-
-
-
 
 pub struct WinProcessMetrics {
     cpu_prev: std::sync::Mutex<HashMap<u32, (u64, Instant)>>,
@@ -282,8 +225,6 @@ impl WinProcessMetrics {
         Self::default()
     }
 
-    
-    
     fn cpu_percent(&self, pid: u32, cpu_100ns: Option<u64>) -> Option<f64> {
         let cpu = cpu_100ns?;
         let now = Instant::now();
@@ -326,15 +267,6 @@ impl ProcessMetrics for WinProcessMetrics {
     }
 }
 
-
-
-
-
-
-
-
-
-
 unsafe fn memory_counter(handle: HANDLE) -> Option<(usize, usize, usize)> {
     let mut counters = PROCESS_MEMORY_COUNTERS_EX2::default();
     let ok = K32GetProcessMemoryInfo(
@@ -349,9 +281,6 @@ unsafe fn memory_counter(handle: HANDLE) -> Option<(usize, usize, usize)> {
     ))
 }
 
-
-
-
 unsafe fn cpu_100ns(handle: HANDLE) -> Option<u64> {
     let mut creation = FILETIME::default();
     let mut exit = FILETIME::default();
@@ -361,7 +290,6 @@ unsafe fn cpu_100ns(handle: HANDLE) -> Option<u64> {
         .ok()
         .map(|_| filetime_to_u64(kernel) + filetime_to_u64(user))
 }
-
 
 fn filetime_to_u64(time: FILETIME) -> u64 {
     ((time.dwHighDateTime as u64) << 32) | (time.dwLowDateTime as u64)

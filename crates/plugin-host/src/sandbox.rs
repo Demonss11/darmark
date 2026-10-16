@@ -1,14 +1,13 @@
-//! Песочница: Lua-состояние с allowlist стандартных библиотек (D17/§6.1 DESIGN_DOC).
+//! Песочница: Lua-состояние с allowlist стандартных библиотек (D16/§6.1 DESIGN_DOC).
 //!
 //! Набор задаётся явно: без `OS`/`IO` (нет ФС и времени), без `PACKAGE` (нет `require`),
 //! без `DEBUG` (hook ставится через C API в прототипе) и без `COROUTINE` (корутина обошла бы
-//! watchdog). Базовая библиотека в `mlua` 0.12 грузится **неявно** и флага `BASE` нет (F7),
+//! watchdog). Базовая библиотека в `mlua` 0.12 грузится **неявно** и флага `BASE` нет,
 //! поэтому [`harden_base`] чистит уже загруженную базу.
 //!
-//! Перенесено из прототипа (удалён), дополнено чисткой `rawget`/`rawset` (D17).
+//! Перенесено из прототипа (удалён), дополнено чисткой `rawget`/`rawset` (D16).
 
 use mlua::{Lua, LuaOptions, Result, StdLib, Value};
-
 
 pub fn create() -> Result<Lua> {
     let lua = Lua::new_with(
@@ -18,8 +17,6 @@ pub fn create() -> Result<Lua> {
     harden_base(&lua)?;
     Ok(lua)
 }
-
-
 
 fn harden_base(lua: &Lua) -> Result<()> {
     let globals = lua.globals();

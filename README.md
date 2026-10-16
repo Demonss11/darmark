@@ -1,6 +1,6 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="crates/app/public/penal_text.svg">
-  <img src="crates/app/public/penal_text.svg" alt="ПЕНАЛ" width="360" align="right">
+  <img src="crates/app/public/penal_text.svg" alt="PENAL" width="360" align="right">
 </picture>
 
 Markdown-редактор для Windows (10/11) с расширяемостью на лету: встроенный AI напишет, протестирует и подключит плагин без пересборки и перезапуска.

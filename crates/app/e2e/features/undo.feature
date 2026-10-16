@@ -1,6 +1,6 @@
 # language: ru
 #
-# Undo/redo документа (D5, ADR-0028). Владелец истории — Rust-стор; фронт только
+# Undo/redo документа (D5). Владелец истории — Rust-стор; фронт только
 # шлёт undo_document/redo_document и применяет результат (текст + выделение).
 # Нативная история textarea отключена, поэтому Ctrl+Z/Ctrl+Y проверяем синтетическим
 # keydown на #editor — там их и слушает editorView (шаги в steps/undo.steps.js).

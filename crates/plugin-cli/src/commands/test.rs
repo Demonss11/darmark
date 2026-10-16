@@ -403,7 +403,7 @@ mod tests {
         let json = report_to_json(&report);
         assert_eq!(
             json["schema_version"], 1,
-            "версионированный отчёт (ADR-0034 §2.4)"
+            "версионированный отчёт"
         );
         assert_eq!(json["ok"], true);
         assert!(json["checks"].is_array(), "checks[] присутствует");

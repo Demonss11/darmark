@@ -1,9 +1,9 @@
-//! `reqwest`-бэкенд шва `AiTransport` (ADR-0033): OpenAI-совместимый API + SSE-стриминг.
+//! `reqwest`-бэкенд шва `AiTransport`: OpenAI-совместимый API + SSE-стриминг.
 //!
 //! HTTP — `POST {base_url}/chat/completions` с Bearer-ключом и `stream: true`; ответ читается
 //! как SSE (`bytes_stream`) и разбирается парсером `crate::ai::sse`. TLS — системный SChannel
-//! (`native-tls`, без OpenSSL). Таймаут — 30 с по умолчанию (ADR-0032); провайдер может
-//! переопределить его через `settings.timeout` (ADR-0035 §2.5).
+//! (`native-tls`, без OpenSSL). Таймаут — 30 с по умолчанию; провайдер может
+//! переопределить его через `settings.timeout`.
 
 use std::time::Duration;
 

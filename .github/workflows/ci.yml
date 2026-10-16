@@ -107,7 +107,7 @@ jobs:
         shell: pwsh
         run: |
           $exe = "target/release/darmark-plugin-host.exe"
-          $limit = 1536 * 1024   # 1.5 МиБ (референс F3/F20; фактически ≈0.9 МиБ)
+          $limit = 1536 * 1024   # 1.5 МиБ (фактически ≈0.9 МиБ)
           if (-not (Test-Path $exe)) { throw "не найден $exe — сборка child не дала бинарник" }
           $size = (Get-Item $exe).Length
           "{0} = {1} байт ({2:N2} МиБ); лимит {3} байт ({4:N2} МиБ)" -f $exe, $size, ($size/1MB), $limit, ($limit/1MB)
@@ -119,7 +119,7 @@ jobs:
           name: darmark-plugin-host
           path: target/release/darmark-plugin-host.exe
 
-      # D6/ADR-0021: GUI-хост не должен линковать mlua — Lua живёт только в child-бинарнике.
+      # D6: GUI-хост не должен линковать mlua — Lua живёт только в child-бинарнике.
       - name: mlua must not leak into GUI host
         shell: pwsh
         run: |
@@ -127,7 +127,7 @@ jobs:
           $leak = $tree | Select-String -Pattern 'mlua'
           if ($leak) {
             $leak | ForEach-Object { Write-Host $_ }
-            throw "mlua просочился в darmark (D6/ADR-0021): GUI-хост обязан оставаться без Lua-рантайма"
+            throw "mlua просочился в darmark (D6): GUI-хост обязан оставаться без Lua-рантайма"
           }
           "cargo tree -p darmark не содержит mlua"
 

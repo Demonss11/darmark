@@ -1,4 +1,4 @@
-//! `PluginSettingsStore` — постоянные настройки плагинов (§12 DESIGN_DOC, F43/S5).
+//! `PluginSettingsStore` — постоянные настройки плагинов (§12 DESIGN_DOC, S5).
 //!
 //! Один файл на плагин: `%APPDATA%/darmark/plugin-settings/<plugin_id>.json` с JSON-объектом
 //! `{ "<key>": <json-value> }`. Базовый каталог переопределяется `DARMARK_PLUGIN_SETTINGS_DIR`
@@ -13,29 +13,20 @@ use std::path::{Path, PathBuf};
 use plugin_core::envelope::PluginError;
 use serde_json::{Map, Value};
 
-
 pub const MAX_SETTINGS_FILE_BYTES: u64 = 256 * 1024;
-
 
 pub const MAX_SETTING_KEY_BYTES: usize = 256;
 
-
 pub const MAX_SETTING_VALUE_BYTES: usize = 64 * 1024;
-
-
-
-
 
 #[derive(Debug)]
 pub struct PluginSettingsStore {
     base_dir: PathBuf,
-    
+
     cache: HashMap<String, Map<String, Value>>,
 }
 
 impl PluginSettingsStore {
-    
-    
     pub fn base_dir() -> Option<PathBuf> {
         if let Some(dir) = std::env::var_os("DARMARK_PLUGIN_SETTINGS_DIR") {
             return Some(PathBuf::from(dir));
@@ -44,7 +35,6 @@ impl PluginSettingsStore {
         Some(PathBuf::from(base).join("darmark").join("plugin-settings"))
     }
 
-    
     pub fn new(base_dir: impl Into<PathBuf>) -> Self {
         Self {
             base_dir: base_dir.into(),
@@ -52,24 +42,16 @@ impl PluginSettingsStore {
         }
     }
 
-    
     pub fn path_for(&self, plugin_id: &str) -> PathBuf {
         self.base_dir.join(format!("{plugin_id}.json"))
     }
 
-    
-    
-    
-    
     pub fn get(&mut self, plugin_id: &str, key: &str) -> Result<Option<Value>, PluginError> {
         validate_id(plugin_id)?;
         validate_key(key)?;
         Ok(self.load(plugin_id).get(key).cloned())
     }
 
-    
-    
-    
     pub fn set(&mut self, plugin_id: &str, key: &str, value: Value) -> Result<(), PluginError> {
         validate_id(plugin_id)?;
         validate_key(key)?;
@@ -107,20 +89,11 @@ impl PluginSettingsStore {
         self.write(plugin_id, &bytes)
     }
 
-    
-    
-    
-    
-    
     pub fn all(&mut self, plugin_id: &str) -> Result<Value, PluginError> {
         validate_id(plugin_id)?;
         Ok(Value::Object(self.load(plugin_id).clone()))
     }
 
-    
-    
-    
-    
     pub fn remove_plugin(&mut self, plugin_id: &str) -> Result<(), PluginError> {
         validate_id(plugin_id)?;
         self.cache.remove(plugin_id);
@@ -128,7 +101,6 @@ impl PluginSettingsStore {
         Ok(())
     }
 
-    
     fn load(&mut self, plugin_id: &str) -> &mut Map<String, Value> {
         let path = self.path_for(plugin_id);
         self.cache
@@ -136,7 +108,6 @@ impl PluginSettingsStore {
             .or_insert_with(|| read_map(&path))
     }
 
-    
     fn write(&self, plugin_id: &str, bytes: &[u8]) -> Result<(), PluginError> {
         let path = self.path_for(plugin_id);
         if let Some(parent) = path.parent() {
@@ -152,11 +123,6 @@ impl PluginSettingsStore {
         })
     }
 }
-
-
-
-
-
 
 fn validate_id(plugin_id: &str) -> Result<(), PluginError> {
     if plugin_id.is_empty() {
@@ -176,7 +142,6 @@ fn validate_id(plugin_id: &str) -> Result<(), PluginError> {
     Ok(())
 }
 
-
 fn validate_key(key: &str) -> Result<(), PluginError> {
     if key.is_empty() {
         return Err(PluginError::new("bad_args", "пустой ключ настройки"));
@@ -189,8 +154,6 @@ fn validate_key(key: &str) -> Result<(), PluginError> {
     }
     Ok(())
 }
-
-
 
 fn read_map(path: &Path) -> Map<String, Value> {
     match std::fs::metadata(path) {

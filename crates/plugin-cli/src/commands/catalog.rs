@@ -1,7 +1,7 @@
 //! Команды каталога плагинов: `list`, `install`, `link`, `remove`, `update`.
 //!
 //! Каталог вынесен в чистый крейт `plugin-catalog` (без plugin-host/mlua): его
-//! переиспользуют и CLI, и будущие MCP-адаптеры (guard D6/ADR-0021).
+//! переиспользуют и CLI, и будущие MCP-адаптеры (guard D6).
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};

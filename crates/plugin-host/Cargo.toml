@@ -6,7 +6,7 @@ license.workspace = true
 description = "Child-процесс плагинного хоста darmark: Lua 5.5 в отдельном процессе (содержит mlua)"
 
 # Бинарник кладётся рядом с darmark.exe и спавнится как внешний процесс (Phase 2).
-# GUI-хост НЕ линкует этот крейт — иначе mlua протёк бы в darmark (D6/ADR-0021).
+# GUI-хост НЕ линкует этот крейт — иначе mlua протёк бы в darmark (D6).
 [[bin]]
 name = "darmark-plugin-host"
 path = "src/main.rs"

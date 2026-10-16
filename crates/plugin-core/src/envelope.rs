@@ -1,10 +1,9 @@
 //! serde-конверт хост ↔ child (§4.1 плагинной системы, §7.1 DESIGN_DOC): JSON-in-frame.
 //!
-//! Разбор входящего от child потока — **fallible** (F36): нарушение протокола превращается в
+//! Разбор входящего от child потока — **fallible**: нарушение протокола превращается в
 //! [`PluginError`] с кодом [`codes::PROTOCOL`], а не в панику.
 
 use serde::{Deserialize, Serialize};
-
 
 pub mod codes {
     pub const PERMISSION_DENIED: &str = "permission_denied";
@@ -14,47 +13,43 @@ pub mod codes {
     pub const LUA_ERROR: &str = "lua_error";
 }
 
-
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "msg", rename_all = "snake_case")]
 pub enum ToChild {
-    
     Invoke {
         id: u32,
         method: String,
         #[serde(default)]
         args: serde_json::Value,
     },
-    
+
     Reply {
         id: u32,
         result: Result<serde_json::Value, PluginError>,
     },
 }
 
-
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "msg", rename_all = "snake_case")]
 pub enum ToHost {
-    
     HostCall {
         id: u32,
         method: String,
         #[serde(default)]
         args: serde_json::Value,
     },
-    
+
     Event {
         kind: String,
         #[serde(default)]
         payload: serde_json::Value,
     },
-    
-    
-    Log { level: String, message: String },
+
+    Log {
+        level: String,
+        message: String,
+    },
 }
-
-
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PluginError {
@@ -111,28 +106,23 @@ impl std::fmt::Display for PluginError {
 
 impl std::error::Error for PluginError {}
 
-
 pub fn encode_to_child(msg: &ToChild) -> serde_json::Result<Vec<u8>> {
     serde_json::to_vec(msg)
 }
 
-
 pub fn encode_to_host(msg: &ToHost) -> serde_json::Result<Vec<u8>> {
     serde_json::to_vec(msg)
 }
-
 
 pub fn decode_to_child(payload: &[u8]) -> Result<ToChild, PluginError> {
     serde_json::from_slice(payload)
         .map_err(|e| PluginError::protocol(format!("конверт хост→child: {e}")))
 }
 
-
 pub fn decode_to_host(payload: &[u8]) -> Result<ToHost, PluginError> {
     serde_json::from_slice(payload)
         .map_err(|e| PluginError::protocol(format!("конверт child→host: {e}")))
 }
-
 
 pub fn write_to_child<W: std::io::Write>(w: &mut W, msg: &ToChild) -> std::io::Result<()> {
     let bytes = encode_to_child(msg).map_err(|e| {
@@ -144,13 +134,10 @@ pub fn write_to_child<W: std::io::Write>(w: &mut W, msg: &ToChild) -> std::io::R
     crate::frame::write_frame(w, &bytes)
 }
 
-
-
 pub fn read_to_child<R: std::io::Read>(r: &mut R) -> std::io::Result<Result<ToChild, PluginError>> {
     let payload = crate::frame::read_frame_host(r)?;
     Ok(decode_to_child(&payload))
 }
-
 
 pub fn write_to_host<W: std::io::Write>(w: &mut W, msg: &ToHost) -> std::io::Result<()> {
     let bytes = encode_to_host(msg).map_err(|e| {
@@ -161,8 +148,6 @@ pub fn write_to_host<W: std::io::Write>(w: &mut W, msg: &ToHost) -> std::io::Res
     })?;
     crate::frame::write_frame(w, &bytes)
 }
-
-
 
 pub fn read_to_host<R: std::io::Read>(r: &mut R) -> std::io::Result<Result<ToHost, PluginError>> {
     let payload = crate::frame::read_frame(r)?;
@@ -295,7 +280,6 @@ mod tests {
 
     #[test]
     fn read_to_child_oversized_frame_is_io_error() {
-        
         let mut data = ((crate::frame::MAX_HOST_FRAME_BYTES as u32) + 1)
             .to_le_bytes()
             .to_vec();

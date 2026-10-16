@@ -1,4 +1,4 @@
-//! Job Object (Windows) — лимиты RSS/CPU/время для child-процесса плагина (F28/F29).
+//! Job Object (Windows) — лимиты RSS/CPU/время для child-процесса плагина.
 //!
 //! Без внешних крейтов: нужен минимум API, объявляем FFI на kernel32 вручную. Задача — не
 //! ручной kill по таймауту, а **детерминированное** срабатывание лимита ОС: CPU/время —
@@ -11,8 +11,6 @@ use std::io;
 
 type Handle = *mut c_void;
 type Bool = i32;
-
-
 
 #[link(name = "kernel32")]
 extern "system" {
@@ -34,12 +32,9 @@ extern "system" {
     fn IsProcessInJob(process: Handle, job: Handle, result: *mut Bool) -> Bool;
 }
 
-
-
 pub fn parent_is_in_job() -> bool {
     let mut r: Bool = 0;
-    
-    
+
     unsafe { IsProcessInJob(GetCurrentProcess(), std::ptr::null_mut(), &mut r) };
     r != 0
 }
@@ -70,8 +65,8 @@ struct IoCounters {
 #[repr(C)]
 #[derive(Default, Clone, Copy)]
 struct BasicLimitInformation {
-    per_process_user_time_limit: i64, 
-    per_job_user_time_limit: i64,     
+    per_process_user_time_limit: i64,
+    per_job_user_time_limit: i64,
     limit_flags: u32,
     minimum_working_set_size: usize,
     maximum_working_set_size: usize,
@@ -106,23 +101,17 @@ struct BasicAccountingInformation {
 }
 
 fn last_error() -> io::Error {
-    
     io::Error::from_raw_os_error(unsafe { GetLastError() } as i32)
 }
-
 
 pub struct Job {
     handle: Handle,
 }
 
-
-
 unsafe impl Send for Job {}
 
 impl Job {
     pub fn new() -> io::Result<Self> {
-        
-        
         let handle = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
         if handle.is_null() {
             return Err(last_error());
@@ -130,16 +119,13 @@ impl Job {
         Ok(Self { handle })
     }
 
-    
-    
     pub fn set_limits(&self, cpu_ms: u64, mem_bytes: usize) -> io::Result<()> {
         let mut info = ExtendedLimitInformation::default();
         let mut flags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
 
         if cpu_ms > 0 {
-            
             flags |= JOB_OBJECT_LIMIT_PROCESS_TIME | JOB_OBJECT_LIMIT_JOB_TIME;
-            let ticks = (cpu_ms as i64) * 10_000; 
+            let ticks = (cpu_ms as i64) * 10_000;
             info.basic.per_process_user_time_limit = ticks;
             info.basic.per_job_user_time_limit = ticks;
         }
@@ -150,8 +136,6 @@ impl Job {
         }
         info.basic.limit_flags = flags;
 
-        
-        
         let ok = unsafe {
             SetInformationJobObject(
                 self.handle,
@@ -166,17 +150,15 @@ impl Job {
         Ok(())
     }
 
-    
     pub fn assign_pid(&self, pid: u32) -> io::Result<()> {
-        
         let proc = unsafe { OpenProcess(PROCESS_SET_QUOTA | PROCESS_TERMINATE, 0, pid) };
         if proc.is_null() {
             return Err(last_error());
         }
-        
+
         let ok = unsafe { AssignProcessToJobObject(self.handle, proc) };
         let err = if ok == 0 { Some(last_error()) } else { None };
-        
+
         unsafe { CloseHandle(proc) };
         match err {
             Some(e) => Err(e),
@@ -184,17 +166,13 @@ impl Job {
         }
     }
 
-    
     pub fn terminate(&self, code: u32) {
-        
-        
         unsafe { TerminateJobObject(self.handle, code) };
     }
 
-    
     fn query_extended(&self) -> Option<ExtendedLimitInformation> {
         let mut info = ExtendedLimitInformation::default();
-        
+
         let ok = unsafe {
             QueryInformationJobObject(
                 self.handle,
@@ -207,7 +185,6 @@ impl Job {
         (ok != 0).then_some(info)
     }
 
-    
     pub fn stored_limits(&self) -> (u32, i64, i64) {
         match self.query_extended() {
             Some(info) => (
@@ -219,24 +196,21 @@ impl Job {
         }
     }
 
-    
     pub fn peak_process_memory(&self) -> usize {
         self.query_extended()
             .map(|i| i.peak_process_memory_used)
             .unwrap_or(0)
     }
 
-    
     pub fn peak_job_memory(&self) -> usize {
         self.query_extended()
             .map(|i| i.peak_job_memory_used)
             .unwrap_or(0)
     }
 
-    
     pub fn total_user_time_ms(&self) -> f64 {
         let mut info = BasicAccountingInformation::default();
-        
+
         let ok = unsafe {
             QueryInformationJobObject(
                 self.handle,
@@ -256,7 +230,6 @@ impl Job {
 
 impl Drop for Job {
     fn drop(&mut self) {
-        
         unsafe { CloseHandle(self.handle) };
     }
 }

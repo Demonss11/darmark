@@ -1,5 +1,5 @@
 /* ===================== ПРЕДПРОСМОТР ===================== */
-/* Тело предпросмотра — ролевой стек Inter (ADR-0037 §2.4.2: осознанная плотность
+/* Тело предпросмотра — ролевой стек Inter (осознанная плотность
    «инструмента» — 13px / 1.7 / max-width 860px). */
 .markdown-body {
   max-width: 860px;
@@ -9,8 +9,8 @@
   line-height: 1.7;
   word-wrap: break-word;
 }
-/* Заголовки предпросмотра — ролевой стек Source Serif 4 (засечки, ADR-0037
-   §2.4.6): кегли 30/21/17, line-height 1.22/1.30/1.32, вес 700. :not(.sem-title)
+/* Заголовки предпросмотра — ролевой стек Source Serif 4 (засечки):
+   кегли 30/21/17, line-height 1.22/1.30/1.32, вес 700. :not(.sem-title)
    — как в прототипе: апперкейс-плейблы легенд остаются на системном sans
    (класса в продукте нет — исключение защитное). UI-элементы внутри
    предпросмотра (плагинные view, тулбары таблиц) — не h1–h3, селектор их
@@ -40,7 +40,7 @@
 }
 .markdown-body h3:not(.sem-title) { font-size: 17px; line-height: 1.32; margin: 18px 0 8px; }
 .markdown-body p { margin: 0 0 10px; }
-.markdown-body a { color: var(--link); text-decoration: none; border-bottom: 1px dashed rgba(91, 140, 255, 0.35); }
+.markdown-body a { color: var(--link); text-decoration: none; border-bottom: 1px dashed var(--link-dash); }
 .markdown-body a:hover { color: var(--accent); border-bottom-color: var(--accent); }
 .markdown-body code {
   font-family: var(--font-mono);

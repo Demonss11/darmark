@@ -8,7 +8,7 @@
 
 ### Модули шелла (`crates/app/src-tauri/src`)
 
-Карта, на которую отсылает `DESIGN_DOC.md` §5.5. Конвенции — ADR-0039.
+Карта, на которую отсылает `DESIGN_DOC.md` §5.5.
 
 | Модуль | Содержимое |
 |---|---|
@@ -25,7 +25,7 @@
 | `mcp/` | MCP-сервер: `adapters` (tools/plugin_read/privacy/journal/tests), `resources` |
 | `plugins/` | плагинная подсистема: `manager`, `host`, `supervisor`, `services`, `views`, `scan`, `bus`, настройки |
 
-Правила раскладки, порог 400 строк, видимость Tauri-команд и раскладка тестов — ADR-0039. Правки файлов с кириллицей — файловыми инструментами или Python с `encoding="utf-8"` (PowerShell 5.1 портит кириллицу).
+Правила раскладки, порог 400 строк, видимость Tauri-команд и раскладка тестов. Правки файлов с кириллицей — файловыми инструментами или Python с `encoding="utf-8"` (PowerShell 5.1 портит кириллицу).
 
 ## Платформа
 
@@ -47,7 +47,7 @@ Windows-специфичный код (Job Object, WinAPI, SChannel, WebView2) �
 | Релиз NSIS | `cd crates/app; npx tauri build` (size-gate ≤6 МБ) |
 | Чистка Tauri-артефактов | `cd crates/app; npm run clean:tauri` |
 | E2E | `cd crates/app; npm run test:e2e` |
-| Guard: `mlua` вне GUI | `cargo tree -p darmark \| Select-String mlua` (пусто; ADR-0021) |
+| Guard: `mlua` вне GUI | `cargo tree -p darmark \| Select-String mlua` (пусто) |
 
 Предусловие: сайдкары в `crates/app/src-tauri/binaries/` — после `npm run clean:tauri` требуется `npm run sidecars`.
 
@@ -67,7 +67,7 @@ cd crates/app; npx tauri build
 
 ## Жёсткие ограничения
 
-- `innerHTML` — только через санитизированные хелперы (ADR-0038, DESIGN_DOC §11.1).
+- `innerHTML` — только через санитизированные хелперы (DESIGN_DOC §11.1).
 - Юнит-тестов фронта нет (`vitest` нет) — проверка = `npm run build`.
 - E2E не покрывает нативные диалоги/ОС — помечай сценарий `@manual`.
 - E2E-сценарий > 5 с — подозрительно: либо сценарий тяжёлый, есть проблема.
@@ -75,7 +75,6 @@ cd crates/app; npx tauri build
 
 ## Конвенции
 
-- Комментарии — **только doc-комментарии** `///` (к элементу) и `//!` (к модулю), на русском, объясняют **зачем**. Обычных `//` в коде нет: пересказ кода, подписи фаз и разделители вычищены (ADR-0039 §5). Doc-комментарий не дублирует сигнатуру — он несёт контракт, инвариант или ссылку на ADR.
 - Не коммить/пушить без запроса. Ветку коммитит исполнитель; в `main` не мержи сам.
 
 ## Ссылки
@@ -83,8 +82,4 @@ cd crates/app; npx tauri build
 | Документ |
 | --- |
 | `DESIGN.md` — визуальная идентичность |
-| `docs/DESIGN_DOC.md` — архитектура, контракты, ADR |
-| `docs/adr/` — решения |
-| `docs/adr/0039-shell-module-map-and-test-layout.md` — карта модулей шелла, порог 400 строк, раскладка тестов, видимость Tauri-команд |
-| `docs/FINDINGS.md` — замеры |
-| `docs/adr/0021-plugin-isolation-process.md`, `docs/adr/0023-plugin-runtime.md`, `docs/adr/0026-local-plugin-catalog.md`, `docs/adr/0027-host-api-version-policy.md` — плагинная система: изоляция, runtime, каталог, версии host-API |
+| `docs/DESIGN_DOC.md` — архитектура, контракты |

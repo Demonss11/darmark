@@ -12,11 +12,6 @@ use super::super::HostServices;
 use super::{DocumentServices, MAX_RANGE_BYTES, MAX_TEXT_REPLY_ESCAPED};
 
 impl DocumentServices {
-    
-    
-    
-    
-    
     fn set_view_content(&self, args: &Value) -> Result<Value, PluginError> {
         let view_id = args.get("view_id").and_then(Value::as_str).ok_or_else(|| {
             PluginError::new("bad_args", "set_view_content: нет строкового view_id")
@@ -56,11 +51,6 @@ impl DocumentServices {
         Ok(json!(true))
     }
 
-    
-    
-    
-    
-    
     fn export_html(&self, args: &Value) -> Result<Value, PluginError> {
         let html = args
             .get("html")
@@ -75,9 +65,6 @@ impl DocumentServices {
         }
     }
 
-    
-    
-    
     fn show_message(&self, args: &Value) -> Result<Value, PluginError> {
         let text = args
             .get("text")
@@ -93,12 +80,6 @@ impl DocumentServices {
         Ok(json!(true))
     }
 
-    
-    
-    
-    
-    
-    
     fn log(&self, args: &Value) -> Result<Value, PluginError> {
         let level = args.get("level").and_then(Value::as_str).unwrap_or("info");
         let message = args
@@ -111,11 +92,6 @@ impl DocumentServices {
         Ok(json!(true))
     }
 
-    
-    
-    
-    
-    
     fn get_setting(&self, args: &Value) -> Result<Value, PluginError> {
         let plugin_id = plugin_id_arg(args)?;
         let key = key_arg(args)?;
@@ -131,10 +107,6 @@ impl DocumentServices {
         Ok(store.get(plugin_id, key)?.unwrap_or(Value::Null))
     }
 
-    
-    
-    
-    
     fn set_setting(&self, args: &Value) -> Result<Value, PluginError> {
         let plugin_id = plugin_id_arg(args)?;
         let key = key_arg(args)?;
@@ -254,11 +226,6 @@ impl HostServices for DocumentServices {
     }
 }
 
-
-
-
-
-
 fn json_escaped_len(text: &str) -> usize {
     text.bytes()
         .map(|b| match b {
@@ -277,14 +244,11 @@ fn doc_id(args: &Value) -> Result<DocumentId, PluginError> {
     Ok(DocumentId::new(raw))
 }
 
-
-
 fn plugin_id_arg(args: &Value) -> Result<&str, PluginError> {
     args.get("_plugin_id")
         .and_then(Value::as_str)
         .ok_or_else(|| PluginError::new("bad_args", "нет _plugin_id"))
 }
-
 
 fn key_arg(args: &Value) -> Result<&str, PluginError> {
     args.get("key")

@@ -1,4 +1,4 @@
-// Шаги WAI-ARIA паттерна вкладок (ADR-0037 §2.4.4).
+// Шаги WAI-ARIA паттерна вкладок.
 //
 // Проверяем наблюдаемый контракт паттерна tabs: роли и связи (role=tablist/
 // tab/tabpanel, aria-controls/aria-labelledby/aria-selected), roving tabindex и

@@ -1,4 +1,4 @@
-// Шаги тумблера темы (ADR-0037).
+// Шаги тумблера темы.
 import { Given, Then, When } from "@wdio/cucumber-framework";
 import { browser } from "@wdio/globals";
 import { setInspectorActive } from "./helpers.js";

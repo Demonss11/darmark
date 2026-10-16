@@ -1,4 +1,4 @@
-// drawer.ts — правый модальный дровер (ADR-0024, вариант C).
+// drawer.ts — правый модальный дровер.
 //
 // Маленький интерфейс (open/close/toggle/isOpen/content/dispose) и много
 // скрытого поведения: фокус-трап, Esc (capture + stopPropagation, как в

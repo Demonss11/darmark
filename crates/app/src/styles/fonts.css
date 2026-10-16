@@ -1,4 +1,4 @@
-/* darmark — тёмная тема по умолчанию + ручной тумблер светлой (ADR-0037).
+/* darmark — тёмная тема по умолчанию + ручной тумблер светлой.
    Скроллерами остаются сами #editor/#preview. */
 
 /* JetBrains Mono — встроенный моноширинный шрифт (OFL 1.1, см. public/fonts/OFL.txt).
@@ -19,7 +19,7 @@
   src: url("/fonts/JetBrainsMono-Bold.woff2") format("woff2");
 }
 
-/* Inter — тело предпросмотра (ADR-0037). OFL 1.1, см. public/fonts/OFL.txt.
+/* Inter — тело предпросмотра. OFL 1.1, см. public/fonts/OFL.txt.
    Начертания 400/700, субсеты кириллица+латиница. */
 @font-face {
   font-family: "Inter";
@@ -54,7 +54,7 @@
   unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
 }
 
-/* Source Serif 4 — заголовки предпросмотра (ADR-0037). OFL 1.1.
+/* Source Serif 4 — заголовки предпросмотра. OFL 1.1.
    Переменный шрифт (ось wght 200–900): один .woff2 на субсет покрывает веса
    400–700, поэтому ОДИН @font-face на субсет с font-weight: 400 700. */
 @font-face {

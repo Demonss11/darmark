@@ -1,4 +1,4 @@
-//! Кадрирование транспорта: `u32 LE длина || payload` (F36).
+//! Кадрирование транспорта: `u32 LE длина || payload`.
 //!
 //! Вывод child'а — недоверенный. `read_frame` ограничен [`MAX_EVENT_FRAME_BYTES`], а кадр
 //! сверх лимита отвергается **до** аллокации. Нарушение протокола вызывающий обязан трактовать
@@ -6,11 +6,7 @@
 
 use std::io::{self, Read, Write};
 
-
-
 pub const MAX_EVENT_FRAME_BYTES: usize = 1024 * 1024;
-
-
 
 pub const MAX_HOST_FRAME_BYTES: usize = 16 * 1024 * 1024;
 
@@ -18,18 +14,15 @@ fn protocol_error(msg: impl Into<String>) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, msg.into())
 }
 
-
 pub fn write_frame<W: Write>(w: &mut W, payload: &[u8]) -> io::Result<()> {
     w.write_all(&(payload.len() as u32).to_le_bytes())?;
     w.write_all(payload)?;
     w.flush()
 }
 
-
 pub fn read_frame<R: Read>(r: &mut R) -> io::Result<Vec<u8>> {
     read_frame_capped(r, MAX_EVENT_FRAME_BYTES)
 }
-
 
 pub fn read_frame_host<R: Read>(r: &mut R) -> io::Result<Vec<u8>> {
     read_frame_capped(r, MAX_HOST_FRAME_BYTES)
@@ -73,8 +66,6 @@ mod tests {
 
     #[test]
     fn read_frame_host_allows_large_document_frame() {
-        
-        
         let mut buf = Vec::new();
         write_frame(&mut buf, &vec![7u8; 2 * 1024 * 1024]).unwrap();
         assert!(read_frame(&mut buf.as_slice()).is_err());

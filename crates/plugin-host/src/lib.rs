@@ -3,7 +3,7 @@
 //! Бинарник `darmark-plugin-host` (`src/main.rs`) — тонкая оболочка над этим крейтом:
 //! stdio-цикл конверта, режимы `--self-test` и `--serve-plugin`. Библиотека даёт внешним
 //! инструментам доступ к песочнице (`sandbox`), Lua-биндингам (`bindings`) и самопроверке
-//! (`selftest`) — например, CLI `plugin-cli` (mlua остаётся вне GUI-хоста, D6/ADR-0021).
+//! (`selftest`) — например, CLI `plugin-cli` (mlua остаётся вне GUI-хоста, D6).
 
 pub mod bindings;
 pub mod sandbox;

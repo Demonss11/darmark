@@ -1,5 +1,5 @@
 //! Тир-1 view плагинов: снимок реестра представлений, обратная маршрутизация `on_action`
-//! и состояние view для гейта регистрации (`view:create`, F44/S4).
+//! и состояние view для гейта регистрации (`view:create`, S4).
 
 use plugin_core::envelope::PluginError;
 use plugin_core::manifest::ViewContrib;
@@ -10,16 +10,10 @@ use crate::PluginViewInfo;
 use super::{lock, PluginHost};
 
 impl PluginHost {
-    
     pub fn plugin_views(&self) -> Vec<PluginViewInfo> {
         lock(&self.views).snapshot()
     }
 
-    
-    
-    
-    
-    
     pub fn plugin_view_action(
         &self,
         view_id: &str,
@@ -62,8 +56,6 @@ impl PluginHost {
         result
     }
 
-    
-    
     pub(super) fn runtime_view_state(
         &self,
         id: &str,

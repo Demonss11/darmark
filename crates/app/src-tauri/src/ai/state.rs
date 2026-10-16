@@ -2,7 +2,7 @@
 //!
 //! Хранится в Tauri через `app.manage` (как `PluginState`). Настройки — источник истины в
 //! памяти; мутации пишутся в конфиг через [`crate::ai::settings::persist_to`]. Бэкенд — за
-//! трейтом [`AiTransport`] (ADR-0034 §2.2).
+//! трейтом [`AiTransport`].
 
 use std::collections::{BTreeMap, HashSet};
 use std::path::PathBuf;

@@ -4,7 +4,7 @@
 //! `AppHandle` без Tauri-runtime не создать, а `#[tokio::test]` недоступен (в графе нет фичи
 //! `macros`), поэтому команда проверяется через шов [`AiEmitter`](crate::ai::commands::AiEmitter)
 //! и двойники, завершающиеся за один опрос. Видимость — `pub(super)`: за пределы дерева тестов
-//! `ai` двойники не выходят (ADR-0039 §2.3).
+//! `ai` двойники не выходят.
 
 use std::collections::VecDeque;
 use std::future::Future;

@@ -82,7 +82,7 @@ jobs:
             if ($f.Length -gt $limit) { throw "установщик превышает бюджет 4 МиБ: $($f.Length) > $limit" }
           }
 
-      # Проверка 2 (D6/ADR-0021): GUI-хост не должен линковать mlua — Lua живёт только в child.
+      # Проверка 2 (D6): GUI-хост не должен линковать mlua — Lua живёт только в child.
       - name: "guard: mlua не просочился в darmark"
         shell: pwsh
         run: |
@@ -90,7 +90,7 @@ jobs:
           $leak = $tree | Select-String -Pattern 'mlua'
           if ($leak) {
             $leak | ForEach-Object { Write-Host $_ }
-            throw "mlua просочился в darmark (D6/ADR-0021): GUI-хост обязан оставаться без Lua-рантайма"
+            throw "mlua просочился в darmark (D6): GUI-хост обязан оставаться без Lua-рантайма"
           }
           "cargo tree -p darmark не содержит mlua"
 

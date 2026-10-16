@@ -6,7 +6,7 @@ license.workspace = true
 description = "CLI разработчика плагинов darmark: проверка (test) и создание шаблона (init)"
 
 # Отдельный крейт, а не команда в darmark: GUI-хост не должен линковать mlua
-# (D6/ADR-0021). Песочницу CLI берёт у plugin-host как библиотеку.
+# (D6). Песочницу CLI берёт у plugin-host как библиотеку.
 [[bin]]
 name = "darmark-plugin"
 path = "src/main.rs"

@@ -132,7 +132,7 @@ export function createSkillBar(
   /**
    * Группа переключателей цели плагина (`radiogroup`): выбранный чип помечен
    * `aria-checked` и классом `is-on`. Разметка строится через `createElement` —
-   * в ряду скиллов нет ни одной разрешённой точки вставки HTML (ADR-0038).
+   * в ряду скиллов нет ни одной разрешённой точки вставки HTML.
    */
   function renderGoals(): HTMLElement {
     const group = document.createElement("div");

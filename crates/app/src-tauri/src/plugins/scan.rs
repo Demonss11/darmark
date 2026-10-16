@@ -13,22 +13,18 @@ use std::path::{Path, PathBuf};
 use plugin_core::manifest::Manifest;
 use plugin_core::MAX_PLUGIN_SOURCE_BYTES;
 
-
 pub const MANIFEST_FILE: &str = "plugin.json";
 
-
 pub const MAX_MANIFEST_BYTES: u64 = 256 * 1024;
-
 
 pub struct DiscoveredPlugin {
     pub dir: PathBuf,
     pub manifest: Manifest,
-    
+
     pub source: String,
-    
+
     pub entry_path: PathBuf,
 }
-
 
 #[derive(Debug)]
 pub struct ScanError {
@@ -36,13 +32,11 @@ pub struct ScanError {
     pub message: String,
 }
 
-
 #[derive(Default)]
 pub struct ScanReport {
     pub plugins: Vec<DiscoveredPlugin>,
     pub errors: Vec<ScanError>,
 }
-
 
 pub fn scan_plugins(dir: &Path) -> ScanReport {
     let mut report = ScanReport::default();
@@ -68,19 +62,14 @@ pub fn scan_plugins(dir: &Path) -> ScanReport {
     report
 }
 
-
 pub fn read_source(entry_path: &Path) -> Result<String, String> {
     let bytes = read_capped(entry_path, MAX_PLUGIN_SOURCE_BYTES)?;
     String::from_utf8(bytes).map_err(|e| format!("{}: не UTF-8: {e}", entry_path.display()))
 }
 
-
-
-
 pub fn load_single(dir: &Path) -> Result<DiscoveredPlugin, String> {
     load_plugin(dir)
 }
-
 
 fn load_plugin(dir: &Path) -> Result<DiscoveredPlugin, String> {
     let manifest_path = dir.join(MANIFEST_FILE);
@@ -97,12 +86,6 @@ fn load_plugin(dir: &Path) -> Result<DiscoveredPlugin, String> {
         entry_path,
     })
 }
-
-
-
-
-
-
 
 pub(crate) fn read_capped(path: &Path, max: u64) -> Result<Vec<u8>, String> {
     let metadata = std::fs::metadata(path).map_err(|e| format!("{}: {e}", path.display()))?;

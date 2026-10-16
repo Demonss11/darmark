@@ -14,7 +14,7 @@
 //! `darmark --debug-plugin <path>`): host-call'ы плагина обслуживает разработчик-хост, а не GUI.
 //! Ошибка загрузки/активации → сообщение в stderr и ненулевой код.
 //!
-//! GUI-хост (`src-tauri`) **не** линкует этот крейт: child спавнится как внешний exe (D6/ADR-0021).
+//! GUI-хост (`src-tauri`) **не** линкует этот крейт: child спавнится как внешний exe (D6).
 
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};

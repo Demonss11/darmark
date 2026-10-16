@@ -2,9 +2,9 @@
 
 > **Тип: нормативная спецификация целевого состояния.** Описывает архитектуру, которой обязана следовать кодовая база; не описывает текущее состояние, ход работ и измерения. Продукт — лёгкий Markdown-редактор с плагинным UX «открыл `.lua` — поправил — работает».
 >
-> **Правила чистоты:** трассировка решений и измерений — только §16 и `docs/adr/*` / `docs/FINDINGS.md`; в теле нет номеров фактов FINDINGS, чисел измерений, статусов принятия и процессного нарратива; нумерация §0–§13 **заморожена**; идеи, не дошедшие до ADR, — `tasks/`.
+> **Правила чистоты:** в теле нет чисел измерений, ссылок на отдельные факты, статусов принятия и процессного нарратива; нумерация §0–§13 **заморожена**.
 >
-> **Детали вынесены:** host-API и манифест — `crates/plugin-core`; гайд и примеры — `crates/plugin-cli/templates/plugin/README.md`; обоснования — `docs/adr/*`; механика песочницы — навык `plugin-sandbox`.
+> **Детали вынесены:** host-API и манифест — `crates/plugin-core`; гайд и примеры — `crates/plugin-cli/templates/plugin/README.md`; обоснования — во внешнем ADR-репозитории; механика песочницы — навык `plugin-sandbox`.
 
 ---
 
@@ -18,16 +18,16 @@
 | D4 | `Pane = { views: ViewId[], active: ViewId }` закладывается сразу | иначе вкладки потребуют переделки модели данных |
 | D5 | Владелец текста и undo-стека — Rust `Document` | `apply_edit` требует единой точки правок с ревизиями |
 | D6 | База ≤ 6 МБ; «нулевая база»: ни одного встроенного `.lua`/`.wasm` в дистрибутиве | размер — продуктовая метрика |
-| D7 | Единая точка санитизации на хосте; `data-p-<pluginid>-*` переживают санитизацию | иначе диаграммные/интеракives плагины невозможны (§11.2) |
+| D7 | Единая точка санитизации на хосте; `data-p-<pluginid>-*` переживают санитизацию | иначе диаграммные/интерактивные плагины невозможны (§11.2) |
 | D8 | Имя `darmark`: identifier `dev.darmark.app`, productName `darmark`, каталог `%APPDATA%/darmark/` | имя согласовано во всех артефактах и e2e-фикстурах |
 | D9 | Лимиты памяти плагина — средствами рантайма/ОС; собственные аллокаторы и арены не применяются | см. §10 |
 | D10 | Язык документации — русский; публичный API-референс — русский, en-перевод отложен | — |
-| D11 | Порядок принятия: решения фиксируются документом → проверяются стендом → оформляются как ADR | ADR предшествуют реализации |
+| D11 | Порядок принятия: решения фиксируются документом → проверяются стендом → оформляются как обоснование | обоснование предшествует реализации |
 | D12 | Excel-таблицы не развиваются; функционал `tables.ts` сохраняется рабочим | приоритет — плагинная платформа и Document/View/Pane |
 | D13 | Только Lua 5.5; сравнение с 5.4 не планируется | 5.5 даёт требуемые возможности (§6.1) |
-| D15 | Результаты измерений (размер, память, производительность) — в `docs/FINDINGS.md` | спецификация без чисел |
-| D16 | Изоляция плагинов — отдельный child-процесс; GUI-хост без `mlua` (§10.1) | изоляция отказов (§6, §10, §11.4) |
-| D17 | Опасные входы `BASE` чистятся (§6.1) | не нужны плагину (D7) |
+| D14 | Результаты измерений (размер, память, производительность) — вне спецификации | спецификация без чисел |
+| D15 | Изоляция плагинов — отдельный child-процесс; GUI-хост без `mlua` (§10.1) | изоляция отказов (§6, §10, §11.4) |
+| D16 | Опасные входы `BASE` чистятся (§6.1) | не нужны плагину (D7) |
 
 ---
 
@@ -49,29 +49,29 @@
 | Слой | Содержимое |
 |---|---|
 | TS-оболочка (`crates/app/src`) | композиция, layout/pane/view, редактор, предпросмотр (§5) |
-| Rust-хост (`src-tauri/src`) | `DocumentStore`·`Sanitizer`·`SettingsStore`; `plugins/`: supervisor·manager·bus·scan |
+| Rust-хост (`src-tauri/src`) | `DocumentStore`·`SettingsStore`; `plugins/` (supervisor·manager·host·services·views·bus·scan); `ai/`; `mcp/` |
 | Child-хост плагина (отдельный процесс, stdio) | `PluginHost`(mlua)·Lua 5.5·Job Object |
 
 ---
 
 ## 3. Контракт ядра `md-core`
 
-`to_html`, `to_html_with`, `sanitize_html` + mapped-варианты (`to_html_mapped*`) — обёртка в `<div class="md-block" data-md="...">` для inspector/scrollsync (§13.2).
+`to_html`, `to_html_with`, `sanitize_fragment` + mapped-вариант (`to_html_mapped`) — обёртка в `<div class="md-block" data-md="...">` для inspector/scrollsync (§13.2).
 
 ---
 
 ## 4. DocumentStore (Rust) — владение состоянием
 
 ### 4.1. Структуры
-`Document { id, text, rev, undo, redo }`, `EditOp { start, removed, inserted }`, `UndoResult { text, rev, start, end }`.
+`Document { id, path, text, rev, cached: Option<RenderCache>, undo, redo }`, `EditOp { start, removed, inserted }`, `UndoResult { text, rev, start, end }`.
 
 ### 4.2. Кто чем владеет
 Rust владеет данными (текст, ревизии, кэш, undo/redo) — TS только проекция. Любая правка текста идёт через Rust.
 
 ### 4.3. Команды (IPC)
-`new_document`, `open_document`, `update_document`, `render_document`, `undo_document`, `redo_document`.
+Документы: `new_document`, `open_document`, `save_document`, `close_document`, `list_documents`, `activate_document`, `document_snapshot`, `update_document`, `render_document`, `undo_document`, `redo_document`.
 
-`DocMeta { id, rev, dirty_hint }`, `RenderResult { html, rev, changed }`; `changed: false` при неизменной `rev` — TS не трогает DOM.
+`DocMeta { id, path, rev, dirty_hint }`, `RenderResult { html, rev, changed }`; `changed: false` при неизменной `rev` — TS не трогает DOM.
 
 ---
 
@@ -124,7 +124,7 @@ D5, §11. Карта модулей — §2, `AGENTS.md`.
 
 По образцу Tauri ACL: deny-by-default; эффективный набор = **`manifest ∩ granted`**. Проверка — на хосте, до вызова; `permission_denied` — значением (§6.3).
 
-- Поддержаны: `document:*`, `view:*`, `ui:statusbar`. `filesystem:*`/`network` — нет; `ui:menu`/`ui:sidebar`/`ui:toolbar` — отложены.
+- Поддержаны: `document:read`, `document:write`, `view:create`, `view:modify`, `ui:statusbar`. `filesystem:*`/`network` — нет; `ui:menu`/`ui:sidebar`/`ui:toolbar` — отложены.
 - **Согласие:** `%APPDATA%/darmark/config.json`; смена — перезапуском child'а. Магазин обязан показать (§11.4).
 
 ---
@@ -132,7 +132,7 @@ D5, §11. Карта модулей — §2, `AGENTS.md`.
 ## 9. События
 
 ### 9.1. Каталог событий
-| Ссобытие | Полезная нагрузка |
+| Событие | Полезная нагрузка |
 |---|---|
 | `document:changed` | `doc_id`, `rev` |
 | `document:opened`/`closed` | `doc_id`, `path` |
@@ -171,13 +171,13 @@ D5, §11. Карта модулей — §2, `AGENTS.md`.
 ## 11. Санитайзер и границы безопасности
 
 ### 11.1. Единая точка
-Санитизация — только на хосте, в конце конвейера. `preview.innerHTML` доверяет результату. HTML плагинов — тем же ядром (§11.2). Ответ AI рендерится как Markdown через общий хелпер `setSanitizedHtml` (`crates/app/src/safeHtml.ts`) и `md_core::to_html` как источник HTML ответа. Точки `innerHTML` на фронте исчерпывающе перечислены: `previewView.ts`, `safeHtml.ts` → `setSanitizedHtml()`, `pluginViews.ts`; четвёртая точка запрещена.
+Санитизация — только на хосте, в конце конвейера. `preview.innerHTML` доверяет результату. HTML плагинов — тем же ядром (§11.2). Ответ AI рендерится как Markdown через общий хелпер `setSanitizedHtml` (`crates/app/src/core/safeHtml.ts`) и `md_core::to_html` как источник HTML ответа. Точки `innerHTML` на фронте исчерпывающе перечислены: `previewView.ts`, `safeHtml.ts` → `setSanitizedHtml()`, `pluginViews.ts`; четвёртая точка запрещена.
 
 ### 11.2. Политика санитизации
 Allowlist: безопасные теги/атрибуты/URL. `data-p-<pluginid>-*` — единственная правка. SVG — без событий и внешних ссылок.
 
 ### 11.3. CSP
-`default-src 'self'; style-src 'self' 'unsafe-inline'`. Плагины — только HTML + инлайн-стили; `eval` запрещён.
+`default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: asset: http://asset.localhost`. Плагины — только HTML + инлайн-стили; `eval` запрещён.
 
 ### 11.4. Границы безопасности
 - **Изоляция C-эксплойта:** эксплойт получает память child'а, не GUI-хоста. Полной sandbox-изоляции нет — осознанный отказ. Магазин обязан предупредить: `document`-permission = полный доступ к тексту.

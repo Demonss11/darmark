@@ -3,8 +3,8 @@
 //! Живут в `plugin-core` (единственный крейт, видимый и хосту, и child): константы watchdog
 //! потребляет Supervisor в `src-tauri`, который по правилу границ (§2 плагинной системы) **не** линкует
 //! `plugin-host`. In-process лимиты прототипа (memory-limit +
-//! instruction-hook, F9/F14) не переносятся — в child их роль выполняют Job Object + watchdog
-//! (ADR-0021 §2.4).
+//! instruction-hook) не переносятся — в child их роль выполняют Job Object + watchdog
+.
 
 
 

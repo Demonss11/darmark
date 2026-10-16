@@ -97,7 +97,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 
 ===========================================================
 Inter — встроен в ПЕНАЛ (crates/app/public/fonts/) как шрифт тела
-предпросмотра (ADR-0037). Начертания: Regular (400), Bold (700).
+предпросмотра. Начертания: Regular (400), Bold (700).
 Покрытие: кириллица + латиница (субсеты).
 
 Copyright (c) 2016-2024 The Inter Project Authors (https://github.com/rsms/inter)
@@ -195,7 +195,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 
 ===========================================================
 Source Serif 4 — встроен в ПЕНАЛ (crates/app/public/fonts/) как шрифт
-заголовков предпросмотра (ADR-0037). Переменный шрифт (ось wght
+заголовков предпросмотра. Переменный шрифт (ось wght
 200–900), начертания 400–700. Покрытие: кириллица + латиница (субсеты).
 
 Copyright 2014-2024 Adobe Systems Incorporated. All Rights Reserved.

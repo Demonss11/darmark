@@ -70,7 +70,7 @@
 .pl-badge.quarantined { color: var(--warning); }
 .pl-badge.stopped { color: var(--fg-mute); }
 
-/* ===== Инфо-кнопка плагина: формулировки границы изоляции (F38-notices) ===== */
+/* ===== Инфо-кнопка плагина: формулировки границы изоляции ===== */
 .pl-info {
   position: relative; /* база для hit-area-псевдоэлемента */
   display: inline-flex;
@@ -442,7 +442,7 @@
   background: var(--accent);
 }
 /* Явный фокус-ринг для вкладки (значения — как у глобального :focus-visible,
-   строка ~274): закрепляем намерение для ARIA-паттерна tabs (ADR-0037). */
+   строка ~274): закрепляем намерение для ARIA-паттерна tabs. */
 .tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 4px; }
 .tab .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tab .dirty { width: 6px; height: 6px; border-radius: 50%; background: var(--warning); flex-shrink: 0; }

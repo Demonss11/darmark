@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Светлая тема (ADR-0037): ручной тумблер в статусбаре, без prefers-color-scheme.
+   Светлая тема: ручной тумблер в статусбаре, без prefers-color-scheme.
    Тёмная тема (:root) остаётся значением по умолчанию. Слои разведены,
    границы усилены, gutter темнее рабочей области, все текстовые пары ≥ 4.5:1.
    ========================================================================== */
@@ -22,6 +22,8 @@
   --head: #0f1115;
   --body: #2d3140;
   --accent: #5546d0;
+  /* hover темнее --accent: белый текст на заливке держит 7.7:1 (AA) */
+  --accent-hover: #4a3bc4;
   --accent-2: #1d4ed8;
   --accent-soft: rgba(85, 70, 208, 0.12);
   --accent-rgb: 85, 70, 208;
@@ -32,7 +34,7 @@
   --green: #046c4e;
   --amber: #92400e;
   --red: #b91c1c;
-  --disabled: #5f6575; /* только точки/иконки, НЕ текст (ADR-0037 §2.4) */
+  --disabled: #5f6575; /* только точки/иконки, НЕ текст */
   --sel-bg: rgba(85, 70, 208, 0.20);
   --sel-fg: #1a1d24;
   --link-dash: rgba(29, 78, 216, 0.40);
@@ -41,7 +43,7 @@
   --shadow-sm: 0 6px 18px rgba(0, 0, 0, 0.15);
   --shadow-lg: 0 20px 60px rgba(0, 0, 0, 0.20);
 
-  /* Ролевые гарнитуры — стек не зависит от темы (ADR-0037 §2.3) */
+  /* Ролевые гарнитуры — стек не зависит от темы */
   --font-ui: -apple-system, "Segoe UI", system-ui, Roboto, Arial, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   --font-body: "Inter", -apple-system, "Segoe UI", system-ui, Roboto, Arial, sans-serif;
