@@ -13,6 +13,8 @@
     "sidecars": "node scripts/prepare-sidecars.mjs",
     "sidecars:dev": "node scripts/prepare-sidecars.mjs --profile debug",
     "clean:tauri": "node scripts/clean-tauri.mjs",
+    "processes": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/processes.ps1",
+    "processes:cmdline": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/processes.ps1 -CmdLine",
     "knip": "knip",
     "lint": "oxlint --deny-warnings src e2e scripts",
     "test:e2e": "wdio run e2e/wdio.conf.js"
