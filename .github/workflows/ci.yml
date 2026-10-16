@@ -134,6 +134,8 @@ jobs:
   audit:
     name: audit (RUSTSEC, cargo-audit)
     runs-on: windows-latest
+    permissions:
+      checks: write
     steps:
       - uses: actions/checkout@v4
 
