@@ -56,8 +56,19 @@ function Get-Truncated {
 function Get-Age {
     param($Process)
 
+    # Объекты двух источников несут разное свойство времени старта: WMI — это
+    # CreationDate, а Get-Process — StartTime. Читаем то, что есть, иначе возраст
+    # у всех процессов остаётся '?'.
+    $started = $null
+    if ($Process.PSObject.Properties['CreationDate']) {
+        $started = try { $Process.CreationDate } catch { $null }
+    } elseif ($Process.PSObject.Properties['StartTime']) {
+        $started = try { $Process.StartTime } catch { $null }
+    }
+
+    if (-not $started) { return '?' }
     try {
-        $minutes = [math]::Round(((Get-Date) - $Process.CreationDate).TotalMinutes, 1)
+        $minutes = [math]::Round(((Get-Date) - $started).TotalMinutes, 1)
         return "$minutes мин"
     } catch {
         return '?'
