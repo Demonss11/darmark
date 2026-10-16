@@ -1,12 +1,17 @@
 # ADR-0027. Политика совместимости `HOST_API_VERSION`
 
+> **Частично заменён ADR-0042** (16.10.2026): носитель нормы host-API — ADR, док-комментарии ядра
+> и промты встроенных скиллов; §2.3 п.7, §2.5 п.13–14, §2.6 п.16 отсылают к удалённому референсу,
+> их носитель — ADR-0042 §2. Политика версий не пересматривается.
+
 - **Статус:** **Принят**
 - **Дата:** 10.10.2026
 - **Основание:** gate перед распространением плагинов (S15); веха H3 «экосистема»,
   Фаза 3 «Расширение API — итеративно» (историческая дорожная карта H3 удалена; политика
   версий — этот ADR + `HOST_API_VERSION`); существующий контракт — `crates/plugin-core`
   (`HOST_API_VERSION`, `Manifest::validate`), `docs/DESIGN_DOC.md` §7.2
-- **Связанные:** `docs/DESIGN_DOC.md` §7.2, §8, §16; `docs/PLUGIN_API.md` §1–§4;
+- **Связанные:** `docs/DESIGN_DOC.md` §7.2, §8; `docs/adr/0042-plugin-host-api-norm-carriers.md`
+  (**§2.3 п.7, §2.5 п.13–14, §2.6 п.16 частично заменяются** — носитель нормы);
   `docs/adr/0021-plugin-isolation-process.md`, `docs/adr/0023-plugin-runtime.md`,
   `docs/adr/0026-local-plugin-catalog.md`; `crates/plugin-core`, `crates/plugin-cli`
 
@@ -114,9 +119,9 @@ H2/H3 зафиксировали контракт host ↔ плагин: `HOST_A
 
 ## 5. Ссылки
 
-- `docs/DESIGN_DOC.md` §7.2 (версионирование), §8 (модель разрешений), §16 (реестр ADR).
-- `docs/PLUGIN_API.md` §1 (манифест), §2 (точки входа), §3 (host-функции), §4 (события);
-  `docs/PLUGIN_GUIDE.md`.
+- `docs/DESIGN_DOC.md` §7.2 (версионирование), §8 (модель разрешений); реестр решений —
+  `docs/adr/*` (толкование ссылок на «§16» — ADR-0042 §2.6).
+- `docs/PLUGIN_GUIDE.md` — руководство для автора плагина; носители нормы host-API — ADR-0042 §2.
 - ADR: `docs/adr/0021-plugin-isolation-process.md` (изоляция процесса),
   `docs/adr/0023-plugin-runtime.md` (runtime), `docs/adr/0026-local-plugin-catalog.md` (каталог).
 - Код: `crates/plugin-core` (`HOST_API_VERSION`, `Manifest::validate`), `crates/plugin-cli`.

@@ -21,4 +21,4 @@ darmark-plugin test .
 Скопируйте каталог в `%APPDATA%\darmark\plugins\` — плагин появится в панели «Плагины»
 при следующем запуске ПЕНАЛ.
 
-Подробности — `docs/PLUGIN_GUIDE.md` и `docs/PLUGIN_API.md`.
+Подробности — `docs/PLUGIN_GUIDE.md`.

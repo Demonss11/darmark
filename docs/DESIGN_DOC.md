@@ -4,7 +4,7 @@
 >
 > **Правила чистоты:** трассировка решений и измерений — только §16 и `docs/adr/*` / `docs/FINDINGS.md`; в теле нет номеров фактов FINDINGS, чисел измерений, статусов принятия и процессного нарратива; нумерация §0–§13 **заморожена** (ссылки ADR: §7.1, §10, §11.4); идеи, не дошедшие до ADR, — `tasks/`.
 >
-> **Детали вынесены:** host-API, манифест, CLI — `docs/PLUGIN_API.md`; гайд и примеры — `docs/PLUGIN_GUIDE.md`; обоснования — `docs/adr/*`; механика песочницы — навык `plugin-sandbox`.
+> **Детали вынесены:** host-API и манифест — `crates/plugin-core`, промты встроенных скиллов ассистента и ADR-0021/0022/0023/0027; CLI — ADR-0026; гайд и примеры — `docs/PLUGIN_GUIDE.md`; обоснования — `docs/adr/*`; механика песочницы — навык `plugin-sandbox`.
 
 ---
 
@@ -94,16 +94,16 @@ D5, §11. Карта модулей — §2, `AGENTS.md`.
 ## 6. Плагинная система: Lua
 
 ### 6.1. Рантайм
-`mlua` 0.12 + vendored Lua 5.5; LuaJIT запрещён (D1). Отдельный процесс и Lua-состояние на плагин (§10, §11.4). Обоснование — ADR-0021/0023; детали — `PLUGIN_API.md` §5.
+`mlua` 0.12 + vendored Lua 5.5; LuaJIT запрещён (D1). Отдельный процесс и Lua-состояние на плагин (§10, §11.4). Обоснование — ADR-0021/0023; синтаксис Lua 5.5, доступные библиотеки и перечень host-функций задаёт встроенный скилл `create-plugin` (ADR-0042).
 
 ### 6.2. Модель: плагин = код, инстанс = привязка
 `plugin = манифест + .lua`; `instance = привязка к view/подписке`. Состояние хранит хост — плагины **stateless по коду** (упрощает `dispose()` и перезагрузку).
 
 ### 6.3. API плагина (host-функции)
-Функции с permission возвращают `(value, err)`; `permission_denied` — значением, не исключением (§8). `host.log`, `md.*`, `json.*` без permission. Сигнатуры — `PLUGIN_API.md` §3.
+Функции с permission возвращают `(value, err)`; `permission_denied` — значением, не исключением (§8). `host.log`, `md.*`, `json.*` без permission. Сигнатуры и перечень — `crates/plugin-core` и промт встроенного скилла `create-plugin` (ADR-0042).
 
 ### 6.4. Точки расширения (`contributes`)
-Манифест: `views`, `commands`, `statusbar`, `toolbar`, `settings` (формат — `PLUGIN_API.md` §1–§2). `ui:toolbar` отложен (§8).
+Манифест: `views`, `commands`, `statusbar`, `toolbar`, `settings` (формат — `crates/plugin-core::Manifest`, ADR-0022/0023). `ui:toolbar` отложен (§8).
 
 ### 6.6. Жизненный цикл
 Цикл: `scan → validate → load → on_activate → … → on_deactivate → unload`. Перезагрузка — `unload` → `load` с диска, без перезапуска. Ошибка загрузки → `failed`, приложение работает. Автоперезагрузка — off. Детали — ADR-0023 §2.4.
@@ -124,7 +124,7 @@ D5, §11. Карта модулей — §2, `AGENTS.md`.
 
 По образцу Tauri ACL: deny-by-default; эффективный набор = **`manifest ∩ granted`**. Проверка — на хосте, до вызова; `permission_denied` — значением (§6.3).
 
-- Поддержаны: `document:*`, `view:*`, `ui:statusbar`. `filesystem:*`/`network` — нет; `ui:menu`/`ui:sidebar`/`ui:toolbar` — отложены. Привязка — `PLUGIN_API.md` §1; версии — ADR-0027.
+- Поддержаны: `document:*`, `view:*`, `ui:statusbar`. `filesystem:*`/`network` — нет; `ui:menu`/`ui:sidebar`/`ui:toolbar` — отложены. Привязка — ADR-0023; версии и депрекация — ADR-0027 §2.2–§2.3 (носители нормы — ADR-0042).
 - **Согласие:** `%APPDATA%/darmark/config.json`; смена — перезапуском child'а. Предупреждения — ADR-0021 §3; магазин обязан показать (§11.4).
 
 ---

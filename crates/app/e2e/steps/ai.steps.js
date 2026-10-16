@@ -7,11 +7,12 @@
 //
 // Изоляция профиля — DARMARK_CONFIG_PATH (см. wdio.conf.js preparePlugins): тот же
 // путь, что читает/пишет Rust (plugins::settings::SettingsStore).
-import { Then, When } from "@wdio/cucumber-framework";
+import { Given, Then, When } from "@wdio/cucumber-framework";
 import { browser } from "@wdio/globals";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
+import { setMarkdown } from "./helpers.js";
 
 // ---------- IPC-шов и конфиг ----------
 
@@ -340,6 +341,51 @@ Then("в ряду скиллов AI ровно {int} боевых скилла",
   );
 });
 
+// ---------- Чип цели плагина (C7, TASK-009) ----------
+//
+// Компенсация удаления скилла «Добавить вкладку»: цель выбирается чипом и дописывается
+// строкой-намерением в `{{input}}` скилла «Создать плагин». Проверяются обе половины —
+// вход виден в ряду и выбор доезжает до модели (шаг «последний запрос AI содержит …»).
+
+Then("в ряду скиллов AI виден выбор цели плагина", async () => {
+  await browser.waitUntil(
+    async () =>
+      browser.execute(() => {
+        const group = document.querySelector("#ai-skills .ai-goals");
+        return (
+          !!group &&
+          group.getAttribute("role") === "radiogroup" &&
+          group.querySelectorAll("button.ai-goal[data-goal]").length > 0
+        );
+      }),
+    { timeout: 5000, timeoutMsg: "В ряду скиллов AI нет выбора цели плагина" }
+  );
+});
+
+/// Клик по чипу цели по его метке («вкладка»); после клика чип обязан быть отмечен.
+When("я выбираю цель плагина {string}", async (label) => {
+  const clicked = await browser.execute((l) => {
+    const chip = Array.from(
+      document.querySelectorAll("#ai-skills button.ai-goal[data-goal]")
+    ).find((b) => (b.textContent ?? "").trim() === l);
+    if (!chip) return false;
+    chip.click();
+    return true;
+  }, label);
+  if (!clicked) throw new Error(`В ряду скиллов AI нет чипа цели «${label}»`);
+  await browser.waitUntil(
+    async () =>
+      browser.execute(
+        (l) =>
+          Array.from(document.querySelectorAll("#ai-skills button.ai-goal.is-on")).some(
+            (b) => (b.textContent ?? "").trim() === l && b.getAttribute("aria-checked") === "true"
+          ),
+        label
+      ),
+    { timeout: 3000, timeoutMsg: `Чип цели «${label}» не отмечен выбранным` }
+  );
+});
+
 // ---------- Чат: ввод, отправка, карточки ----------
 
 When("я ввожу в поле AI {string}", async (text) => {
@@ -469,6 +515,60 @@ Then("диалог согласия AI закрыт", async () => {
       ),
     { timeout: 5000, timeoutMsg: "Диалог согласия AI остался открытым" }
   );
+});
+
+// ---------- Усечение документа в скиллах `{{doc}}` (C6, TASK-006) ----------
+//
+// Пишущий скилл на документе больше MAX_DOC_BYTES отправлять запрос не должен: модель не
+// видела хвост, а «Применить как правку» удалит его молча. Проверка целиком офлайн —
+// `@manual` не нужен: усечение и отказ отправки воспроизводятся на живом клике по скиллу.
+
+/// Документ больше MAX_DOC_BYTES (100*1024): кириллица даёт ~49 байт UTF-8 на повторение,
+/// 3000 повторов ≈ 143 КБ. Усечение считает БАЙТЫ, а не символы (skillBar.ts).
+Given("в редактор введён документ больше 100 КБ", async () => {
+  await setMarkdown("Строка-проверка-усечения.\n".repeat(3000));
+});
+
+/// Клик по кнопке скилла по её видимому названию (тот же селектор, что у «боевого скилла»).
+When("я нажимаю скилл AI {string}", async (title) => {
+  const clicked = await browser.execute((t) => {
+    const btn = Array.from(
+      document.querySelectorAll("#ai-skills button.skill:not(.skill-soon)")
+    ).find((b) => !b.disabled && (b.textContent ?? "").trim().includes(t));
+    if (!btn) return false;
+    btn.click();
+    return true;
+  }, title);
+  if (!clicked) throw new Error(`В ряду скиллов AI нет доступной кнопки «${title}»`);
+});
+
+/// Служебная плашка панели в чате (`appendSystemNote`, класс `.msg.system`).
+Then("в чате AI есть системное предупреждение {string}", async (fragment) => {
+  await browser.waitUntil(
+    async () =>
+      browser.execute(
+        (f) =>
+          Array.from(document.querySelectorAll("#ai-chat .msg.system")).some((node) =>
+            (node.textContent ?? "").includes(f)
+          ),
+        fragment
+      ),
+    {
+      timeout: 5000,
+      timeoutMsg: `В чате AI нет системного предупреждения «${fragment}»`,
+    }
+  );
+});
+
+/// «Запрос не ушёл»: `send` дописывает сообщение пользователя синхронно, до сети
+/// (stream.ts), поэтому проверка сразу после клика достаточна — ждать нечего.
+Then("в чате AI нет сообщения пользователя", async () => {
+  const count = await browser.execute(
+    () => document.querySelectorAll("#ai-chat .msg.user").length
+  );
+  if (count !== 0) {
+    throw new Error(`В чате AI ${count} сообщений пользователя, ожидалось ни одного`);
+  }
 });
 
 // ---------- Индикатор #ai-dot (AC-8) ----------
@@ -1007,27 +1107,35 @@ const AI_VIEW_PROPOSAL = [
 /// Локальный SSE-провайдер (однократно за сеанс). Порт — свободный loopback.
 let mockProvider = null;
 let mockProviderPort = 0;
+/// Тело последнего chat-запроса к мок-провайдеру: нужно шагу «последний запрос AI
+/// содержит …» — выбор цели проверяется по тому, доехала ли строка-намерение до модели
+/// (C7), а не по тому, что чип сменил вид.
+let mockLastBody = "";
 
 When("я поднимаю мок-провайдера AI с предложением view-плагина", async () => {
   if (mockProvider) return;
   mockProvider = http.createServer((req, res) => {
-    req.resume(); // тело запроса не нужно
-    res.writeHead(200, {
-      "Content-Type": "text/event-stream; charset=utf-8",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
+    const chunks = [];
+    req.on("data", (chunk) => chunks.push(chunk));
+    req.on("end", () => {
+      mockLastBody = Buffer.concat(chunks).toString("utf8");
+      res.writeHead(200, {
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      });
+      res.write(
+        `data: ${JSON.stringify({ choices: [{ delta: { content: AI_VIEW_PROPOSAL } }] })}\n\n`
+      );
+      res.write(
+        `data: ${JSON.stringify({
+          choices: [{ delta: {} }],
+          usage: { prompt_tokens: 5, completion_tokens: 9 },
+        })}\n\n`
+      );
+      res.write("data: [DONE]\n\n");
+      res.end();
     });
-    res.write(
-      `data: ${JSON.stringify({ choices: [{ delta: { content: AI_VIEW_PROPOSAL } }] })}\n\n`
-    );
-    res.write(
-      `data: ${JSON.stringify({
-        choices: [{ delta: {} }],
-        usage: { prompt_tokens: 5, completion_tokens: 9 },
-      })}\n\n`
-    );
-    res.write("data: [DONE]\n\n");
-    res.end();
   });
   await new Promise((resolve, reject) => {
     mockProvider.once("error", reject);
@@ -1042,6 +1150,36 @@ When("я поднимаю мок-провайдера AI с предложени
 When("я направляю AI на мок-провайдера", async () => {
   if (!mockProvider) throw new Error("Мок-провайдер AI не поднят");
   await setActiveBaseUrl(`http://127.0.0.1:${mockProviderPort}/v1`);
+});
+
+/// Текст chat-запроса (тело — JSON: `messages[].content`, строкой либо частями).
+/// Возвращает само тело, если это не chat-запрос: подсказка в ошибке полезнее, чем тишина.
+function chatRequestText(body) {
+  let parsed;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return body;
+  }
+  if (!Array.isArray(parsed?.messages)) return body;
+  return parsed.messages
+    .map((m) => {
+      const content = m?.content;
+      if (typeof content === "string") return content;
+      if (Array.isArray(content)) return content.map((part) => part?.text ?? "").join(" ");
+      return "";
+    })
+    .join("\n");
+}
+
+Then("последний запрос AI содержит {string}", async (fragment) => {
+  await browser.waitUntil(
+    async () => chatRequestText(mockLastBody).includes(fragment),
+    {
+      timeout: 8000,
+      timeoutMsg: `В последнем запросе к мок-провайдеру нет «${fragment}»`,
+    }
+  );
 });
 
 // ---------- Фаза 3: санитизированный рендер ответа AI (ADR-0038) ----------
@@ -1252,7 +1390,8 @@ Then("манифест плагина AI {string} содержит вид {strin
 // статичных моков выше.
 //
 // Инструменты исполняются реально на реестре MCP (TZ-MCP R3/R4). Первый ответ просит ТРИ вызова
-// `plugin_validate` — этим закрыты все три класса исходов ADR-0041 §2.1.
+// `plugin_validate` — этим закрыты все три класса исходов ADR-0041 §2.1 — и один вызов
+// `plugin_read` (TASK-003): `id`-форма вместо `path` читает исходник установленного плагина.
 //   * `call_1` — путь к фикстуре `e2e-view` в изолированном каталоге плагинов: внутри белого
 //     списка, валидация проходит → `is-ok` + запись `MCP plugin_validate: e2e-view — ok (N мс)`.
 //   * `call_2` — несуществующий каталог внутри того же `plugins/`: `canonicalize` в
@@ -1260,11 +1399,18 @@ Then("манифест плагина AI {string} содержит вид {strin
 //     результат приходит как `isError` → карточка `is-error`, а записи журнала НЕ появляется.
 //   * `call_3` — существующий, но НЕВАЛИДНЫЙ плагин `e2e-invalid`: инструмент исполнился и
 //     вернул отрицательный вердикт → карточка `is-error` И запись `— ошибка: …` (класс A).
+//   * `call_4` — `plugin_read` по `id` фикстуры `e2e-view`: путь строится на стороне Rust из
+//     доверенного корня, ответ несёт исходник → карточка `is-ok` и запись `MCP plugin_read: …`.
 
 /// Аргументы вызова инструмента: путь к каталогу внутри белого списка (`plugins/`).
 /// `dirName` — имя каталога-фикстуры либо несуществующего каталога (исход `isError`).
 function aiToolCallArguments(dirName = "e2e-view") {
   return JSON.stringify({ path: path.join(pluginsDir(), dirName) });
+}
+
+/// Аргументы `plugin_read`: ТОЛЬКО безопасный `id` (схема не принимает `path`).
+function aiReadCallArguments(pluginId = "e2e-view") {
+  return JSON.stringify({ id: pluginId });
 }
 
 /// Каталог внутри `plugins/`, которого нет: путь не канонизируется → инструмент отдаёт `isError`.
@@ -1277,6 +1423,9 @@ const AI_TOOL_INVALID_DIR = "e2e-invalid";
 /// Идентификатор вызова по невалидному плагину — по нему сценарий ищет ИМЕННО эту карточку:
 /// у `call_2` итог тоже `is-error`, и поиск «какой-нибудь карточки с ошибкой» был бы ложно-зелёным.
 const AI_TOOL_INVALID_CALL_ID = "call_3";
+
+/// Идентификатор вызова `plugin_read` — по карточке этого вызова проверяется новый инструмент.
+const AI_TOOL_READ_CALL_ID = "call_4";
 
 /// Stateful SSE-провайдер с вызовом инструмента (однократно за сеанс).
 let toolMockProvider = null;
@@ -1332,6 +1481,15 @@ When("я поднимаю мок-провайдера AI с вызовом ин�
                     function: {
                       name: "plugin_validate",
                       arguments: aiToolCallArguments(AI_TOOL_INVALID_DIR),
+                    },
+                  },
+                  {
+                    index: 3,
+                    id: AI_TOOL_READ_CALL_ID,
+                    type: "function",
+                    function: {
+                      name: "plugin_read",
+                      arguments: aiReadCallArguments(),
                     },
                   },
                 ],
@@ -1468,6 +1626,38 @@ Then("в журнале есть запись о вызове MCP", async () => 
     return hit?.querySelector(".log-msg")?.textContent ?? null;
   });
   if (message === null) throw new Error("Запись журнала MCP plugin_validate исчезла между проверками");
+  if (message.includes("\\") || /[A-Za-z]:[\\/]/.test(message)) {
+    throw new Error(`Запись журнала MCP раскрывает путь (AC-MCP-13): ${message}`);
+  }
+});
+
+/// Запись журнала MCP по конкретному инструменту: префикс ровно `MCP <tool>:` (формат
+/// адаптера). Приватность (AC-MCP-13): в записи нет абсолютного пути/обратного слэша.
+Then("в журнале есть запись о вызове инструмента {string}", async (tool) => {
+  await openLogsMode();
+  const prefix = `MCP ${tool}:`;
+  await browser.waitUntil(
+    async () =>
+      browser.execute((p) => {
+        const items = document.querySelectorAll("#logs-list .log-item");
+        return Array.from(items).some(
+          (item) =>
+            item.getClientRects().length > 0 &&
+            (item.querySelector(".log-msg")?.textContent ?? "").startsWith(p)
+        );
+      }, prefix),
+    { timeout: 5000, timeoutMsg: `В журнале нет записи \`${prefix}\`` }
+  );
+  const message = await browser.execute((p) => {
+    const items = document.querySelectorAll("#logs-list .log-item");
+    const hit = Array.from(items).find(
+      (item) =>
+        item.getClientRects().length > 0 &&
+        (item.querySelector(".log-msg")?.textContent ?? "").startsWith(p)
+    );
+    return hit?.querySelector(".log-msg")?.textContent ?? null;
+  }, prefix);
+  if (message === null) throw new Error(`Запись журнала \`${prefix}\` исчезла между проверками`);
   if (message.includes("\\") || /[A-Za-z]:[\\/]/.test(message)) {
     throw new Error(`Запись журнала MCP раскрывает путь (AC-MCP-13): ${message}`);
   }

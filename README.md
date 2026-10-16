@@ -40,8 +40,8 @@ npx tauri build   # NSIS-установщик
 
 ## Документация
 
-- [API плагинов](docs/PLUGIN_API.md)
 - [Руководство по плагинам](docs/PLUGIN_GUIDE.md)
+- [Плагинная система: контракт и runtime](docs/adr/0023-plugin-runtime.md)
 
 ## Лицензия
 

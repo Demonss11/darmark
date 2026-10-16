@@ -49,7 +49,7 @@ pub fn ai_set_api_key(
     state.set_api_key(provider_id, key)
 }
 
-/// Возвращает встроенную библиотеку скиллов MVP (ровно 2, ADR-0032).
+/// Возвращает встроенную библиотеку скиллов (состав — `skills::builtin_skills`, ADR-0032).
 #[tauri::command]
 pub fn ai_list_skills() -> Vec<AiSkill> {
     skills::skills()

@@ -73,7 +73,10 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
   });
   const toolCard = createToolCard(state, { scrollToBottom: indicator.scrollToBottom });
   const history = createHistory(state, { chat, plugin, scrollToBottom: indicator.scrollToBottom });
-  const skillBar = createSkillBar(state, { send: (display, content) => stream.send(display, content) });
+  const skillBar = createSkillBar(state, {
+    send: (display, content) => stream.send(display, content),
+    appendSystemNote: chat.appendSystemNote,
+  });
   const settingsPane = createSettingsPane(state, {
     ensureSkills: () => skillBar.ensureSkills(),
     indicator,

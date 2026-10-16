@@ -1,4 +1,5 @@
-//! Прогон песочницы через MCP-инструмент `plugin_test` без Tauri-рантайма.
+//! Прогон песочницы через MCP-инструмент `plugin_test` без Tauri-рантайма, а также чтение
+//! исходника установленного плагина `plugin_read` по `id` (TASK-003).
 //!
 //! Закрывает находку FINDINGS §1.5 п.2: `plugin_test` через MCP проверялся только схемой
 //! (`tests/mcp_contract.rs`), а исполнение Lua в песочнице Rust-тестом не покрывалось.
@@ -10,7 +11,8 @@
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use mcp_core::registry::Registry;
+use mcp_core::protocol::INVALID_PARAMS;
+use mcp_core::registry::{CallToolError, Registry};
 use serde_json::{json, Value};
 
 use crate::mcp::adapters::LogSink;
@@ -153,4 +155,96 @@ fn mcp_plugin_test_reports_invalid_manifest() {
     );
     let errors = payload["errors"].as_array().expect("errors — массив");
     assert!(!errors.is_empty(), "ядро вернуло ошибку: {payload}");
+}
+
+/// Исходник для `plugin_read` — не совпадает с манифестом, чтобы ответ нельзя было
+/// спутать с эхом входа.
+const READ_SOURCE: &str = "function on_activate(ctx)\n  print(\"read\")\nend\n";
+
+/// Кладёт плагин `<root>/<id>/{plugin.json,main.lua}` (каталог создаётся).
+fn plugin_fixture(root: &Path, id: &str, manifest: &str, source: &str) {
+    let dir = root.join(id);
+    std::fs::create_dir(&dir).expect("каталог плагина");
+    std::fs::write(dir.join("plugin.json"), manifest).expect("plugin.json");
+    std::fs::write(dir.join("main.lua"), source).expect("main.lua");
+}
+
+/// `plugin_read` строит путь сам из `plugins_root()` и отдаёт **ровно** манифест + entry.
+///
+/// `DARMARK_PLUGINS_DIR` — переменная процесса: ставим под общим env-локом `ai` и возвращаем
+/// прежнее значение (как `paths.rs`), иначе параллельные тесты увидели бы промежуточный корень.
+#[test]
+fn mcp_plugin_read_returns_manifest_and_source_by_id() {
+    use crate::ai::history::env_lock;
+
+    let root = tempfile::tempdir().expect("корень плагинов");
+    plugin_fixture(root.path(), "mcp-plugin-test", VALID_MANIFEST, READ_SOURCE);
+    let (registry, journal) = registry_with_journal();
+
+    let _guard = env_lock();
+    let previous = std::env::var_os("DARMARK_PLUGINS_DIR");
+    std::env::set_var("DARMARK_PLUGINS_DIR", root.path());
+    let call = registry.call_tool("plugin_read", json!({ "id": "mcp-plugin-test" }));
+    match previous {
+        Some(value) => std::env::set_var("DARMARK_PLUGINS_DIR", value),
+        None => std::env::remove_var("DARMARK_PLUGINS_DIR"),
+    }
+
+    let payload = call.expect("plugin_read отдаёт исходник установленного плагина по id");
+    assert_eq!(payload["manifest"], json!(VALID_MANIFEST));
+    assert_eq!(payload["source"], json!(READ_SOURCE));
+
+    // Контракт ответа — ровно `manifest` + `source`: ни настроек, ни документа (TASK-003 §6.3).
+    let object = payload.as_object().expect("payload — объект");
+    assert_eq!(object.len(), 2, "ответ только manifest+source: {payload}");
+    // ADR-0041 §2.2 п.15: `plugin_read` не верификатор — поля `isError` в payload нет.
+    assert!(
+        payload.get("isError").is_none(),
+        "payload без isError: {payload}"
+    );
+
+    // Журнал фиксирует вызов tool и не несёт полного пути (R2/AC-MCP-13).
+    let journal = journal.lock().expect("журнал не отравлен").clone();
+    assert_eq!(journal.len(), 1, "каждый вызов — запись: {journal:?}");
+    assert!(journal[0].contains("plugin_read"), "{journal:?}");
+    let root_path = root.path().to_string_lossy().into_owned();
+    assert!(
+        !journal[0].contains(&root_path),
+        "журнал без полного пути: {journal:?}"
+    );
+    assert!(!journal[0].contains(":\\"), "журнал без диска: {journal:?}");
+}
+
+/// Небезопасный и несуществующий `id` отвергаются **до** чтения файлов и без записи в журнал.
+#[test]
+fn mcp_plugin_read_rejects_unsafe_and_unknown_id() {
+    let (registry, journal) = registry_with_journal();
+
+    let traversal = registry
+        .call_tool("plugin_read", json!({ "id": "../x" }))
+        .expect_err("traversal в id отвергнут до построения пути");
+    let CallToolError::Execution(traversal) = traversal else {
+        panic!("ожидалась ошибка исполнения, а не неизвестный tool");
+    };
+    assert_eq!(
+        traversal.code, INVALID_PARAMS,
+        "небезопасный id — ошибка параметров: {traversal:?}"
+    );
+
+    let unknown = registry
+        .call_tool("plugin_read", json!({ "id": "no-such-plugin-xyz" }))
+        .expect_err("несуществующий id отвергнут");
+    let CallToolError::Execution(unknown) = unknown else {
+        panic!("ожидалась ошибка исполнения, а не неизвестный tool");
+    };
+    assert_eq!(
+        unknown.code, INVALID_PARAMS,
+        "несуществующий плагин — ошибка параметров: {unknown:?}"
+    );
+
+    let journal = journal.lock().expect("журнал не отравлен").clone();
+    assert!(
+        journal.is_empty(),
+        "отказ до чтения файлов журнал не пишет: {journal:?}"
+    );
 }

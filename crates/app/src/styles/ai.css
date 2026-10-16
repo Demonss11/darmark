@@ -69,6 +69,47 @@
   cursor: default;
 }
 .skill-soon:hover { background: transparent; border-color: var(--line-soft); color: var(--fg-mute); }
+/* Подсказка вместо чипов, когда список скиллов не пришёл: приглушённый текст без
+   вида кнопки — намеренно не переиспользует .skill (иначе выглядит кликабельным). */
+.skill-unavailable {
+  color: var(--fg-mute);
+  font-size: 11px;
+  white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
+}
+/* Переключатель цели плагина (C7): визуально мельче кнопок скилла и по умолчанию
+   приглушён — выбранная цель читается как состояние (accent), а не как ещё одна кнопка. */
+.ai-goals {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+  margin-left: 4px;
+  padding-left: 8px;
+  border-left: 1px solid var(--line-soft);
+}
+.ai-goal {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--fg-mute);
+  font: inherit;
+  font-size: 10px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.ai-goal:hover { background: var(--bg-2); color: var(--fg-dim); }
+.ai-goal:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.ai-goal.is-on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
 
 /* Чат. */
 .ai-chat {
@@ -117,6 +158,13 @@
 }
 .msg.user .bubble { background: var(--bg-3); border-bottom-right-radius: 2px; }
 .msg.assistant .bubble { border-bottom-left-radius: 2px; }
+/* Служебная плашка панели (appendSystemNote): тон предупреждения отличает её от реплик. */
+.msg.system .msg-col { align-items: flex-start; }
+.msg.system .bubble {
+  border: 1px solid var(--amber);
+  background: transparent;
+  color: var(--fg);
+}
 .msg-time { font-size: 10px; color: var(--fg-mute); font-variant-numeric: tabular-nums; padding: 0 2px; }
 .msg-usage { font-size: 10px; color: var(--fg-mute); font-variant-numeric: tabular-nums; padding: 0 2px; }
 

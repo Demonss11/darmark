@@ -12,10 +12,8 @@ fn built_in_skills_have_expected_ids() {
             "explain",
             "create-plugin",
             "restructure",
-            "summarize",
             "explain-syntax",
-            "debug-plugin",
-            "add-view"
+            "debug-plugin"
         ]
     );
     for skill in &skills {
@@ -46,15 +44,13 @@ fn built_in_skills_have_expected_ids() {
 #[test]
 fn categories_and_placeholders_match_contract() {
     let skills = builtin_skills();
-    assert_eq!(skills.len(), 7, "встроенных скиллов должно быть 7");
+    assert_eq!(skills.len(), 5, "встроенных скиллов должно быть 5");
     let expected: &[(&str, &str, &str)] = &[
         ("explain", "document", "{{doc}}"),
         ("create-plugin", "plugins", "{{input}}"),
         ("restructure", "document", "{{doc}}"),
-        ("summarize", "document", "{{doc}}"),
         ("explain-syntax", "document", "{{doc}}"),
         ("debug-plugin", "plugins", "{{input}}"),
-        ("add-view", "plugins", "{{input}}"),
     ];
 
     for (id, category, placeholder) in expected {
@@ -134,6 +130,53 @@ fn create_plugin_prompt_pins_entry_point_and_host_api() {
         prompt.contains("<id плагина>:<kind>"),
         "промт задаёт состав view_id = <id плагина>:<kind>"
     );
+    assert!(
+        prompt.contains("data-p-<plugin_id>-action") && prompt.contains("on_action"),
+        "промт описывает роутинг клика view → on_action"
+    );
+    assert!(
+        prompt.contains("HTML санитизируется на хосте")
+            && prompt.contains("javascript:")
+            && prompt.contains("on* вырезаются"),
+        "промт описывает санитизацию HTML вкладки"
+    );
+}
+
+#[test]
+fn create_plugin_prompt_covers_host_semantics_and_manifest_limits() {
+    let prompt = &skills()[1].prompt_template;
+
+    assert!(
+        prompt.contains("os/io/require/load/loadfile/dofile/coroutine/debug/package"),
+        "промт перечисляет полный список запрещённых библиотек Lua 5.5"
+    );
+    assert!(
+        prompt.contains("[start, stop)") && prompt.contains("байты UTF-8"),
+        "промт задаёт полуинтервал apply_edit и байтовые смещения"
+    );
+    assert!(
+        prompt.contains("1 МиБ") && prompt.contains("циклом окон"),
+        "промт называет лимит get_document_range и цикл окон"
+    );
+    assert!(
+        prompt.contains("get_document_text"),
+        "промт оставляет чтение короткого документа допустимым путём"
+    );
+    assert!(
+        prompt.contains("export_html: true"),
+        "промт описывает семантику export_html"
+    );
+
+    assert!(
+        prompt.contains("contributes.commands")
+            && prompt.contains("\"keybinding\"")
+            && prompt.contains("command:invoked {command_id}"),
+        "промт задаёт поля команды и событие command:invoked"
+    );
+    assert!(
+        prompt.contains("contributes.statusbar / toolbar / settings не добавляй"),
+        "промт запрещает contributes.statusbar/toolbar/settings, которых не рендерит GUI"
+    );
 }
 
 #[test]
@@ -150,4 +193,38 @@ fn explain_prompt_has_output_structure() {
         prompt.contains("не выдумывай") && prompt.contains("не перепечатывай"),
         "промт `explain` запрещает выдумывать и перепечатывать документ"
     );
+}
+
+/// Промт отладки обязан звать `plugin_read` первым ходом и иметь fallback (TASK-003 §3),
+/// а его чек-лист — покрывать рантайм-классы отказов, а не только загрузку (TASK-003 §4).
+#[test]
+fn debug_plugin_prompt_reads_source_and_covers_runtime_failures() {
+    let prompt = &skills()
+        .into_iter()
+        .find(|skill| skill.id == "debug-plugin")
+        .expect("скилл debug-plugin")
+        .prompt_template;
+
+    assert!(
+        prompt.contains("Первым ходом") && prompt.contains("`plugin_read`"),
+        "промт зовёт инструмент чтения исходника первым ходом: {prompt}"
+    );
+    assert!(
+        prompt.contains("Fallback")
+            && prompt.contains("main.lua")
+            && prompt.contains("plugin.json"),
+        "промт просит вставить main.lua и plugin.json, если исходник не получен: {prompt}"
+    );
+    for needle in [
+        "ничего не происходит",
+        "400 мс",
+        "1500 мс",
+        "карантин",
+        "permission_denied",
+    ] {
+        assert!(
+            prompt.contains(needle),
+            "чек-лист промта покрывает «{needle}»: {prompt}"
+        );
+    }
 }

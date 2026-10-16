@@ -4,7 +4,8 @@
 - **Дата:** 07.10.2026
 - **Основание:** ADR-0021 (изоляция процесса), ADR-0022 (контракт ViewProvider);
   реализация H2 — плагинная система (Фазы 0–6); факты — `docs/FINDINGS.md` (F16–F42)
-- **Связанные:** `docs/DESIGN_DOC.md` §6–§12; `docs/PLUGIN_API.md`;
+- **Связанные:** `docs/DESIGN_DOC.md` §6–§12; `docs/adr/0042-plugin-host-api-norm-carriers.md`
+  (носители нормы host-API);
   `crates/plugin-core`, `crates/plugin-host`, `crates/app/src-tauri/src/plugins`
 
 ---
@@ -79,7 +80,8 @@ on_deactivate → terminate`. Ошибка загрузки/активации �
 
 Документ (`get_document_*`, `apply_edit`), view (`set_view_content`), UI (`log`, `show_message`,
 `export_html`), настройки (`get_setting`/`set_setting`, F43/S5), нативные в child (`md.to_html`,
-`json.encode/decode`). Полный референс — `docs/PLUGIN_API.md`.
+`json.encode/decode`). Носители нормы host-API — `docs/adr/0042-plugin-host-api-norm-carriers.md` §2
+(код `crates/plugin-core` и промты встроенных скиллов ассистента).
 
 ### 2.7. Dev-режим
 

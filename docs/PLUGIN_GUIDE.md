@@ -1,7 +1,8 @@
 # Как подключить свой Lua-плагин в ПЕНАЛ
 
 Пошаговое руководство: как положить `.lua`-плагин, включить его, править и перезагружать
-без пересборки приложения. Полный референс — `docs/PLUGIN_API.md`.
+без пересборки приложения. Полный перечень host-функций и формат манифеста — в скилле ассистента
+**«Создать плагин»**; контракт и песочница — ADR-0021/0023.
 
 Плагин исполняется в **отдельном процессе**: его сбой или зависание не роняют приложение,
 но доступа к DOM нет — только host-функции и события.
@@ -39,7 +40,7 @@ end
 
 Сохраните файлы, запустите ПЕНАЛ — плагин появится в панели «Плагины» (включён по умолчанию).
 
-> Быстрее всего: `darmark-plugin init hello` — разворачивает шаблон с подстановкой id/имени (см. §5).
+> Быстрее всего: `darmark-plugin init hello` — разворачивает шаблон с подстановкой id/имени (см. §7).
 
 ---
 
@@ -72,22 +73,52 @@ end
 Ключевое: `document:changed` не несёт текст — плагин читает его сам через `get_document_range`.
 `ctx.subscribe` возвращает функцию-отписку; при деактивации отпишитесь.
 
-Полный листинг с чтением больших документов циклом окон — `docs/PLUGIN_API.md` §7.
+Большие документы читают циклом окон: один вызов `get_document_range` отдаёт не больше 1 МиБ, поэтому
+текст собирают по частям.
+
+```lua
+local WINDOW = 65536
+
+local function read_all(id)
+  local len = host.get_document_len(id)
+  if not len then return nil end
+  local parts, pos = {}, 0
+  while pos < len do
+    local chunk = host.get_document_range(id, pos, WINDOW)
+    if not chunk or #chunk == 0 then break end
+    parts[#parts + 1] = chunk
+    pos = pos + #chunk
+  end
+  return table.concat(parts)
+end
+```
+
+Тот же приём целиком — в эталонном примере `crates/plugin-catalog/examples/plugins/word-count`
+репозитория.
 
 ---
 
 ## 5. Разрешения
 
-| Разрешение | Что открывает |
-|---|---|
-| `document:read` | чтение текста |
-| `document:write` | правка документа (`apply_edit`) |
-| `view:create` / `view:modify` | своя вкладка / запись HTML в неё |
-| `ui:statusbar` | сообщения в статусбар |
+Проверка прав — на хосте, **до** вызова функции; набор — deny-by-default, без объявленного
+разрешения функция не сработает. Функции с разрешением возвращают два значения `(value, err)`:
+при отказе `value = nil`, а `err` — таблица `{ code = "permission_denied", message, permission }`,
+то есть отказ приходит **значением**, а не исключением.
 
-Полная таблица — `docs/PLUGIN_API.md` §1.
+| Разрешение | Что открывает | Функции |
+|---|---|---|
+| `document:read` | чтение текста | `get_document_len`, `get_document_range`, `get_document_version`, `get_document_text` |
+| `document:write` | правку документа | `apply_edit` |
+| `view:create` | появление своей вкладки | регистрация `contributes.views` (без согласия вкладка не появляется) |
+| `view:modify` | запись HTML во вкладку | `set_view_content` |
+| `ui:statusbar` | сообщения в статусбар | `show_message` |
 
-`filesystem:*` и `network` не поддерживаются; экспорт HTML — через `host.export_html`.
+Разрешения не нужны: `host.log`, `host.get_setting`, `host.set_setting`, `host.export_html`,
+`md.to_html`, `md.to_html_mapped`, `json.encode`, `json.decode`.
+
+`ui:menu`/`ui:sidebar`/`ui:toolbar` отложены и манифестом сейчас **отвергаются**;
+`filesystem:*` и `network` не предоставляются вовсе. Экспорт HTML — через `host.export_html`
+(нативный диалог сохранения, без прав на файловую систему).
 
 ---
 
@@ -104,7 +135,7 @@ end
 ```
 
 ```lua
-local VIEW = host.plugin_id .. ":my-preview"   -- view_id = "<id_плагина>:<kind>"
+local VIEW = "<id>:my-preview"   -- view_id = "<id_плагина>:<kind>"
 
 function on_activate(ctx)
   ctx.subscribe("document:changed", function(name, payload)
@@ -130,11 +161,17 @@ end
 ## 7. Отладка
 
 ```text
-darmark-plugin test <path>     # проверить плагин (манифест, entry, песочница)
-darmark-plugin init <dir>      # создать шаблон плагина
+darmark-plugin test <path> [--json] [--verbose]                  # манифест, entry и прогон в песочнице
+darmark-plugin init <dir> [--id <id>] [--name <name>] [--force]  # развернуть шаблон плагина
 ```
 
-`test` прогоняет плагин в песочнице; код выхода `0` — успех, `1` — ошибки. Подробности — `docs/PLUGIN_API.md` §6.
+`test` прогоняет плагин в песочнице без открытого документа — host-вызовы при этом отклоняются;
+код выхода `0` — успех, `1` — ошибки; `--json` печатает отчёт машинным форматом, `--verbose` —
+подробности. `init` разворачивает `plugin.json`, `main.lua` и `README.md`, подставляя `--id` и
+`--name`; `--force` перезаписывает существующий каталог.
+
+Каталог доступных плагинов (`plugins/index.json`, команды `list`, `install`, `link`, `remove`,
+`update`, выбор каталогов `--repo`/`--dest`) — ADR-0026 §2.
 
 ---
 
@@ -163,6 +200,8 @@ darmark-plugin init <dir>      # создать шаблон плагина
 
 ## См. также
 
-- `docs/PLUGIN_API.md` — полный референс Lua-плагинов
-- `docs/adr/0023-plugin-runtime.md` — архитектура плагинной системы
+- `docs/adr/0023-plugin-runtime.md` — архитектура плагинной системы (тиры view, sandbox)
+- `docs/adr/0026-local-plugin-catalog.md` — каталог плагинов и CLI `darmark-plugin`
+- `docs/adr/0027-host-api-version-policy.md` — версии host-API и депрекация
 - Эталонные примеры — `crates/plugin-catalog/examples/plugins/` репозитория
+- Навык `plugin-sandbox` — механика песочницы: permissions, лимиты, карантин

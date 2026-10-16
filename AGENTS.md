@@ -108,4 +108,6 @@ cd crates/app; npx tauri build
 | `docs/adr/` — решения |
 | `docs/adr/0039-shell-module-map-and-test-layout.md` — карта модулей шелла, порог 400 строк, раскладка тестов, видимость Tauri-команд |
 | `docs/FINDINGS.md` — замеры |
-| `docs/PLUGIN_API.md`, `docs/PLUGIN_GUIDE.md` — API плагинов |
+| `docs/PLUGIN_GUIDE.md` — гайд по плагинам |
+| `docs/adr/0021-plugin-isolation-process.md`, `docs/adr/0023-plugin-runtime.md`, `docs/adr/0026-local-plugin-catalog.md`, `docs/adr/0027-host-api-version-policy.md` — плагинная система: изоляция, runtime, каталог, версии host-API |
+| `docs/adr/0042-plugin-host-api-norm-carriers.md` — носители нормы host-API (ADR + код + промты скиллов) |

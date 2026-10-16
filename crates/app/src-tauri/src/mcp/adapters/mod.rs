@@ -18,7 +18,9 @@ mod tools;
 #[cfg(test)]
 mod tests;
 
-use tools::{MarkdownRenderTool, PluginCatalogListTool, PluginTestTool, PluginValidateTool};
+use tools::{
+    MarkdownRenderTool, PluginCatalogListTool, PluginReadTool, PluginTestTool, PluginValidateTool,
+};
 
 /// Сток журнала MCP: текст записи → приёмник (в продакшне — Tauri-событие `log-entry`).
 ///
@@ -54,6 +56,15 @@ pub fn register_tools(registry: &mut Registry, sink: &LogSink, repo: &Path) {
     });
 
     registry.register_tool(ToolDefinition {
+        name: "plugin_read".to_string(),
+        description: "Исходник установленного плагина по id: plugin.json и main.lua".to_string(),
+        input_schema: id_schema(),
+        handler: Arc::new(PluginReadTool {
+            sink: Arc::clone(sink),
+        }),
+    });
+
+    registry.register_tool(ToolDefinition {
         name: "plugin_catalog_list".to_string(),
         description: "Список плагинов из локального каталога (index.json)".to_string(),
         input_schema: json!({"type": "object", "properties": {}}),
@@ -81,6 +92,21 @@ pub(super) fn path_schema() -> Value {
             "path": {"type": "string", "description": "Путь к каталогу плагина"}
         },
         "required": ["path"]
+    })
+}
+
+/// Схема параметров `plugin_read`: **только** `id` — произвольный путь не принимается.
+///
+/// Путь к каталогу плагина строится на стороне Rust из доверенного корня
+/// ([`crate::ai::plugin_harness::plugins_root`]) и проходит белый список путей, поэтому
+/// модель оперирует безопасным `id`, а не путём (TASK-003 §2).
+pub(super) fn id_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "id": {"type": "string", "description": "id установленного плагина ([a-z0-9-_])"}
+        },
+        "required": ["id"]
     })
 }
 

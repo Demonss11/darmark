@@ -21,6 +21,7 @@ interface AssistantRow {
 
 export interface ChatApi {
   appendUser(text: string): void;
+  appendSystemNote(text: string): void;
   appendAssistant(): AssistantRow;
   appendUsage(col: HTMLElement, usage: AiUsage): void;
   appendErrorCard(title: string, text: string, actions: ErrorAction[]): void;
@@ -39,6 +40,30 @@ export function createChat(
     row.className = "msg user";
     row.setAttribute("role", "article");
     row.setAttribute("aria-label", "Сообщение пользователя");
+    const col = document.createElement("div");
+    col.className = "msg-col";
+    const bubble = document.createElement("div");
+    bubble.className = "bubble";
+    bubble.textContent = text;
+    const time = document.createElement("span");
+    time.className = "msg-time";
+    time.textContent = nowTime();
+    col.append(bubble, time);
+    row.appendChild(col);
+    dom.chat.appendChild(row);
+    indicator.updateEmpty();
+  }
+
+  /**
+   * Служебная плашка панели в ленте чата: не ответ модели, а сообщение ассистента
+   * пользователю (например, отказ запуска пишущего скилла на усечённом документе).
+   * Лог-панели для этого мало — её пользователь не смотрит, а цена ошибки — потерянный текст.
+   */
+  function appendSystemNote(text: string): void {
+    const row = document.createElement("div");
+    row.className = "msg system";
+    row.setAttribute("role", "article");
+    row.setAttribute("aria-label", "Предупреждение ассистента");
     const col = document.createElement("div");
     col.className = "msg-col";
     const bubble = document.createElement("div");
@@ -151,5 +176,5 @@ export function createChat(
     }
   }
 
-  return { appendUser, appendAssistant, appendUsage, appendErrorCard, appendNotice, renderBubble };
+  return { appendUser, appendSystemNote, appendAssistant, appendUsage, appendErrorCard, appendNotice, renderBubble };
 }

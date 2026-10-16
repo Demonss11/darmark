@@ -11,7 +11,8 @@
   триггеры сохранены), `docs/adr/0035-ai-provider-config.md` (конвенция оформления ADR), `tasks/TZ-MCP.md`
   (ТЗ трека), `docs/adr/0021-plugin-isolation-process.md` (child-per-plugin; `mlua` не в GUI),
   `docs/adr/0023-plugin-runtime.md` (Supervisor/watchdog/Job Object), `docs/adr/0027-host-api-version-policy.md`
-  (`HOST_API_VERSION`; аддитивность), `docs/PLUGIN_API.md` (контракты плагинов),
+  (`HOST_API_VERSION`; аддитивность), `docs/adr/0042-plugin-host-api-norm-carriers.md` (носители нормы
+  host-API плагинов),
   `docs/DESIGN_DOC.md` §5.1 (идентификаторы), §5.5 (модульная карта), §11 (санитайзер/границы),
   §13.2 (замороженные контракты) (бюджет D6) (реестр ADR);
   `crates/app/src-tauri/src/ai/`, `crates/app/src/aiPanel.ts`, `crates/app/src/logPanel.ts`
@@ -150,5 +151,6 @@ TZ-MCP §2 фиксирует пересмотр рамки ADR-0034 §2.5: MCP 
 - `docs/adr/0034-ai-runtime-placement.md` — §2.5 замещается настоящим ADR; §2.6 триггеры сохранены.
 - `docs/adr/0035-ai-provider-config.md` — конвенция оформления ADR.
 - `docs/adr/0021/0023/0027` — плагинная система (child-per-plugin, Supervisor, `HOST_API_VERSION`).
-- `docs/PLUGIN_API.md` — контракты плагинов.
+- Контракты плагинов — `docs/adr/0042-plugin-host-api-norm-carriers.md` §2 (носители нормы),
+  `crates/plugin-core`.
 - `docs/DESIGN_DOC.md` — нормативная спецификация (§0, §5.1, §5.5, §11, §13.2).

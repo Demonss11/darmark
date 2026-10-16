@@ -66,8 +66,8 @@ fn message_ids_are_unique() {
 }
 
 #[test]
-fn list_skills_returns_seven() {
-    assert_eq!(ai_list_skills().len(), 7);
+fn list_skills_returns_five() {
+    assert_eq!(ai_list_skills().len(), 5);
 }
 
 #[test]

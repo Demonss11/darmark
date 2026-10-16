@@ -1,5 +1,5 @@
-// Ряд навыков над полем ввода: ленивая загрузка списка (aiListSkills) с
-// откатом на встроенные `FALLBACK_SKILLS` и подстановка шаблона в запрос.
+// Ряд навыков над полем ввода: ленивая загрузка списка (aiListSkills) и
+// подстановка шаблона в запрос.
 //
 // Зависимость на стриминг намеренно передаётся параметром: `createStream`
 // объявлен в index.ts ниже, но `send` вызывается только из обработчика клика по
@@ -8,10 +8,32 @@
 import { MAX_DOC_BYTES } from "./constants";
 import { aiListSkills, errorMessage } from "../../core/tauri";
 import type { AiSkill } from "../../core/tauri";
-import { FALLBACK_SKILLS } from "./skills";
 import type { AiPanelState } from "./state";
 
-const PLUGIN_SKILL_IDS: readonly string[] = ["create-plugin", "debug-plugin", "add-view"];
+const PLUGIN_SKILL_IDS: readonly string[] = ["create-plugin", "debug-plugin"];
+
+/// Скилл, к запросу которого дописывается выбранная цель плагина.
+const CREATE_PLUGIN_SKILL_ID = "create-plugin";
+
+/** Цель плагина у кнопки «Создать плагин»: строка-намерение дописывается в `{{input}}`.
+ *  Компенсация удаления скилла add-view (TASK-004, C7) — вход в сценарий «вкладка»
+ *  без второго промта, который дублировал бы API-блок. */
+const PLUGIN_GOALS: readonly { id: string; label: string; hint: string }[] = [
+  { id: "view", label: "вкладка", hint: "нужна собственная вкладка (view)" },
+  { id: "statusbar", label: "статусбар", hint: "нужна запись в статусбар (host.show_message)" },
+  { id: "command", label: "команда", hint: "нужна команда (contributes.commands)" },
+];
+
+/** Скиллы, результат которых применяется к документу: при усечении документа запрос не
+ *  отправляем — модель не видела хвост и «перепишет» документ без него (потеря текста). */
+const DOCUMENT_MUTATING_SKILL_IDS: readonly string[] = ["restructure"];
+
+/// Обозначение лимита усечения документа для текстов в чате и журнале.
+const DOC_LIMIT_LABEL = `${Math.round(MAX_DOC_BYTES / 1024)} КБ`;
+
+/// Текст узла-подсказки на месте чипов, когда список скиллов не пришёл.
+/// Неинтерактивный намеренно: чип без обработчика клика выглядит кнопкой и врёт.
+const SKILLS_UNAVAILABLE_TEXT = "Скиллы недоступны — перезапустите ПЕНАЛ";
 
 export interface SkillBarApi {
   ensureSkills(): void;
@@ -20,17 +42,32 @@ export interface SkillBarApi {
 
 export function createSkillBar(
   state: AiPanelState,
-  deps: { send(display: string, content: string): void }
+  deps: {
+    send(display: string, content: string): void;
+    appendSystemNote(text: string): void;
+  }
 ): SkillBarApi {
   const { dom } = state;
 
-  /** Документ уходит в запрос целиком — обрезаем до лимита байт, а не символов. */
-  function truncateDoc(text: string): string {
+  /**
+   * Выбранная цель плагина: дописывается в `{{input}}` скилла «Создать плагин».
+   * Живёт в замыкании, а не в `AiPanelState`, — выбор переживает перерисовку ряда
+   * (`renderSkills` вызывается и при загрузке списка), но не обязан жить между
+   * сессиями: цель — подсказка к конкретному описанию, а не настройка панели.
+   */
+  let selectedGoal: string | null = null;
+
+  /**
+   * Документ уходит в запрос целиком — обрезаем до лимита БАЙТ, а не символов.
+   * Признак усечения возвращается наружу: записи в лог-панели недостаточно, для
+   * пишущих скиллов усечение — повод не отправлять запрос вовсе (см. onSkillClick).
+   */
+  function truncateDoc(text: string): { text: string; truncated: boolean } {
     const bytes = new TextEncoder().encode(text);
-    if (bytes.length <= MAX_DOC_BYTES) return text;
+    if (bytes.length <= MAX_DOC_BYTES) return { text, truncated: false };
     const cut = new TextDecoder().decode(bytes.subarray(0, MAX_DOC_BYTES));
-    state.log("warn", "system", `AI: документ обрезан до ${Math.round(MAX_DOC_BYTES / 1024)} КБ`);
-    return cut.replace(/\uFFFD+$/u, "");
+    state.log("warn", "system", `AI: документ обрезан до ${DOC_LIMIT_LABEL}`);
+    return { text: cut.replace(/\uFFFD+$/u, ""), truncated: true };
   }
 
   function ensureSkills(): void {
@@ -38,14 +75,16 @@ export function createSkillBar(
     state.skillsLoading = true;
     void aiListSkills()
       .then((list) => {
-        state.skills = list.length > 0 ? list : FALLBACK_SKILLS;
+        state.skills = list;
       })
       .catch((e) => {
-        state.skills = FALLBACK_SKILLS;
+        // Источник промтов один — при отказе IPC подставлять нечего: честный пустой
+        // список превращается в подсказку в ряду (renderSkills), а не в чужие чипы.
+        state.skills = [];
         state.log(
-          "warn",
+          "error",
           "system",
-          `AI: скиллы недоступны (${errorMessage(e)}) — используются встроенные`
+          `AI: список скиллов недоступен (${errorMessage(e)}) — перезапустите ПЕНАЛ`
         );
       })
       .finally(() => {
@@ -57,6 +96,15 @@ export function createSkillBar(
 
   function renderSkills(): void {
     dom.skillsRow.textContent = "";
+    // Подсказка — только после завершённой загрузки: до неё пустой список означает
+    // «ещё грузится», а не «недоступно» (index.ts зовёт renderSkills на монтировании).
+    if (state.skills.length === 0 && state.skillsLoaded) {
+      const hint = document.createElement("span");
+      hint.className = "skill-unavailable";
+      hint.textContent = SKILLS_UNAVAILABLE_TEXT;
+      dom.skillsRow.appendChild(hint);
+      return;
+    }
     for (const skill of state.skills) {
       const btn = document.createElement("button");
       btn.type = "button";
@@ -73,13 +121,66 @@ export function createSkillBar(
       btn.addEventListener("click", () => onSkillClick(skill));
       dom.skillsRow.appendChild(btn);
     }
+    // Чип цели бессмыслен без «Создать плагин» — при недоступном ряде целей нет
+    // так же, как и кнопок (общий проход отрисовки).
+    if (state.skills.some((skill) => skill.id === CREATE_PLUGIN_SKILL_ID)) {
+      dom.skillsRow.appendChild(renderGoals());
+    }
+  }
+
+  /**
+   * Группа переключателей цели плагина (`radiogroup`): выбранный чип помечен
+   * `aria-checked` и классом `is-on`. Разметка строится через `createElement` —
+   * в ряду скиллов нет ни одной разрешённой точки вставки HTML (ADR-0038).
+   */
+  function renderGoals(): HTMLElement {
+    const group = document.createElement("div");
+    group.className = "ai-goals";
+    group.setAttribute("role", "radiogroup");
+    group.setAttribute("aria-label", "Цель плагина");
+    for (const goal of PLUGIN_GOALS) {
+      const on = selectedGoal === goal.id;
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = on ? "ai-goal is-on" : "ai-goal";
+      chip.dataset.goal = goal.id;
+      chip.setAttribute("role", "radio");
+      chip.setAttribute("aria-checked", on ? "true" : "false");
+      chip.title = goal.hint;
+      chip.textContent = goal.label;
+      chip.addEventListener("click", () => onGoalClick(goal.id));
+      group.appendChild(chip);
+    }
+    return group;
+  }
+
+  /// Повторный клик по выбранному чипу снимает выбор: цель — уточнение, а не
+  /// обязанность, и пустой выбор оставляет поведение запроса прежним.
+  function onGoalClick(id: string): void {
+    selectedGoal = selectedGoal === id ? null : id;
+    dom.skillsRow.querySelector(".ai-goals")?.replaceWith(renderGoals());
   }
 
   function onSkillClick(skill: AiSkill): void {
     if (!state.settings?.enabled) return;
     const tpl = skill.prompt_template;
     if (tpl.includes("{{doc}}")) {
-      deps.send(skill.title, tpl.replace("{{doc}}", truncateDoc(state.getDocumentText())));
+      const doc = truncateDoc(state.getDocumentText());
+      // Пишущий скилл на усечённом документе опасен: модель «перепишет» только видимую
+      // часть, а «Применить как правку» удалит хвост молча — поэтому запрос не уходит.
+      if (doc.truncated && DOCUMENT_MUTATING_SKILL_IDS.includes(skill.id)) {
+        deps.appendSystemNote(
+          `Документ больше ${DOC_LIMIT_LABEL} — «${skill.title}» не запущен: ассистент ` +
+            `перепишет только видимую часть, и применение правки удалит остальное. ` +
+            `Разбейте документ на части`
+        );
+        dom.input.focus();
+        return;
+      }
+      if (doc.truncated) {
+        deps.appendSystemNote(`Документ обрезан до ${DOC_LIMIT_LABEL} — разбор неполный`);
+      }
+      deps.send(skill.title, tpl.replace("{{doc}}", doc.text));
       return;
     }
     if (tpl.includes("{{input}}")) {
@@ -89,11 +190,16 @@ export function createSkillBar(
         state.log(
           "info",
           "system",
-          "AI: для скилла «Создать плагин» нужно описание в поле ввода"
+          `AI: для скилла «${skill.title}» нужно описание в поле ввода`
         );
         return;
       }
-      deps.send(desc, tpl.replace("{{input}}", desc));
+      // Цель уточняет «что» (намерение), но не заменяет описание плагина: пустой ввод
+      // по-прежнему блокирует запрос. В подстановку уходит дописанный текст, в чат —
+      // то, что пользователь написал сам (C7).
+      const goal = PLUGIN_GOALS.find((g) => g.id === selectedGoal);
+      const hint = skill.id === CREATE_PLUGIN_SKILL_ID && goal ? `\n\n${goal.hint}` : "";
+      deps.send(desc, tpl.replace("{{input}}", `${desc}${hint}`));
       return;
     }
     deps.send(skill.title, tpl);

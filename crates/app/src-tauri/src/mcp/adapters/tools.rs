@@ -6,7 +6,7 @@ use serde_json::{json, Value};
 
 use super::journal::{log_mcp_call, mcp_log_message};
 use super::privacy::{path_name, sanitize_paths, sanitize_validation};
-use super::{markdown_schema, path_schema, LogSink};
+use super::{id_schema, markdown_schema, path_schema, LogSink};
 
 pub(super) struct PluginValidateTool {
     pub(super) sink: LogSink,
@@ -109,6 +109,80 @@ impl ToolHandler for PluginTestTool {
         );
 
         verification_payload(&result)
+    }
+}
+
+/// Имя манифеста в каталоге установленного плагина (контракт `plugin_read`).
+const READ_MANIFEST_FILE: &str = "plugin.json";
+
+/// Имя entry-файла в каталоге установленного плагина (контракт `plugin_read`).
+const READ_ENTRY_FILE: &str = "main.lua";
+
+/// Инструмент чтения исходника **установленного** плагина по `id`.
+///
+/// Принимает только `id`: путь собирается здесь из доверенного [`plugins_root`](crate::ai::plugin_harness::plugins_root)
+/// и проходит тот же белый список [`ensure_plugin_path_allowed`](crate::ai::plugin_harness::ensure_plugin_path_allowed),
+/// что `plugin_validate`/`plugin_test` — произвольный путь от модели не принимается ни прямо,
+/// ни внутри `id`. Отдаёт **ровно** `plugin.json` + `main.lua`: ни настроек, ни документа
+/// (TASK-003 §6.3). Не верификатор: вердикта не несёт, поэтому payload без `isError`
+/// (ADR-0041 §2.2 п.15).
+pub(super) struct PluginReadTool {
+    pub(super) sink: LogSink,
+}
+
+/// Читает файл каталога плагина; ошибка чистится тем же `sanitize_paths`, что у соседей —
+/// полного пути в ответе нет даже если он попадёт в текст ошибки ввода-вывода.
+fn read_plugin_file(dir: &Path, name: &str) -> Result<String, ToolError> {
+    std::fs::read_to_string(dir.join(name))
+        .map_err(|e| ToolError::internal(sanitize_paths(&format!("{name}: {e}"), dir)))
+}
+
+impl ToolHandler for PluginReadTool {
+    fn name(&self) -> &str {
+        "plugin_read"
+    }
+
+    fn description(&self) -> &str {
+        "Исходник установленного плагина по id: plugin.json и main.lua"
+    }
+
+    fn input_schema(&self) -> Value {
+        id_schema()
+    }
+
+    fn call(&self, params: Value) -> Result<Value, ToolError> {
+        let Some(id) = params.get("id").and_then(Value::as_str) else {
+            return Err(ToolError::invalid_params("требуется id"));
+        };
+        crate::ai::plugin_harness::validate_plugin_id(id)
+            .map_err(|e| ToolError::invalid_params(e.message))?;
+        let root = crate::ai::plugin_harness::plugins_root()
+            .map_err(|e| ToolError::internal(e.message))?;
+        let dir = crate::ai::plugin_harness::ensure_plugin_path_allowed(&root.join(id))
+            .map_err(|e| ToolError::invalid_params(e.message))?;
+
+        let started = Instant::now();
+        let manifest = read_plugin_file(&dir, READ_MANIFEST_FILE)?;
+        let source = read_plugin_file(&dir, READ_ENTRY_FILE)?;
+        if let Err(e) = plugin_core::manifest::validate_source_len(source.len() as u64) {
+            let message = format!("{READ_ENTRY_FILE}: {e}");
+            log_mcp_call(
+                &self.sink,
+                &mcp_log_message(
+                    "plugin_read",
+                    id,
+                    started.elapsed(),
+                    false,
+                    std::slice::from_ref(&message),
+                ),
+            );
+            return Err(ToolError::internal(message));
+        }
+        log_mcp_call(
+            &self.sink,
+            &mcp_log_message("plugin_read", id, started.elapsed(), true, &[]),
+        );
+        Ok(json!({ "manifest": manifest, "source": source }))
     }
 }
 

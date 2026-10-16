@@ -108,6 +108,7 @@ fn expected_tools() -> Vec<&'static str> {
         vec![
             "plugin_validate",
             "plugin_test",
+            "plugin_read",
             "plugin_catalog_list",
             "markdown_render",
         ]
@@ -418,6 +419,59 @@ fn plugin_test_requires_path_per_schema() {
     // поэтому тест не зависит от наличия сайдкаров рядом с тестовым бинарником.
     let envelope = call_tool(&server, "plugin_test", json!({}));
     assert!(is_error(&envelope), "без path — ошибка вызова: {envelope}");
+}
+
+#[test]
+fn plugin_read_declares_only_id_schema() {
+    let (server, _records) = server();
+
+    let result = result_of(&respond(&server, request("tools/list", None)));
+    let tool = result["tools"]
+        .as_array()
+        .expect("tools — массив")
+        .iter()
+        .find(|tool| tool["name"] == "plugin_read")
+        .expect("plugin_read в инвентаре");
+
+    assert_eq!(
+        tool["inputSchema"]["required"],
+        json!(["id"]),
+        "обязателен только id: {tool}"
+    );
+    let properties = tool["inputSchema"]["properties"]
+        .as_object()
+        .expect("properties — объект");
+    assert_eq!(
+        properties.len(),
+        1,
+        "схема принимает только id: {properties:?}"
+    );
+    assert!(properties.contains_key("id"), "{properties:?}");
+    assert!(
+        !properties.contains_key("path"),
+        "произвольный путь не принимается: {properties:?}"
+    );
+}
+
+/// `plugin_read` отсекает параметры до чтения файлов: и отсутствие `id`, и небезопасный `id`
+/// (traversal) дают ошибку вызова, а журнал остаётся пустым (TASK-003 §7).
+#[test]
+fn plugin_read_requires_id_and_rejects_unsafe_id_without_log() {
+    let (server, records) = server();
+
+    let missing = call_tool(&server, "plugin_read", json!({}));
+    assert!(is_error(&missing), "без id — ошибка вызова: {missing}");
+
+    let unsafe_id = call_tool(&server, "plugin_read", json!({ "id": "../x" }));
+    assert!(
+        is_error(&unsafe_id),
+        "traversal в id — ошибка вызова: {unsafe_id}"
+    );
+    assert!(
+        records_of(&records).is_empty(),
+        "отказ до журнала: {:?}",
+        records_of(&records)
+    );
 }
 
 #[test]
