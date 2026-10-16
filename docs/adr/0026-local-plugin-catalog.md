@@ -131,7 +131,6 @@ Ed25519-подпись и доверие реестру — вне этого AD
 
 ## 6. Ссылки
 
-- `docs/BACKLOG.md` — веха H3 «экосистема»
 - `docs/PLUGIN_API.md` §6 — CLI `darmark-plugin`
 - `docs/adr/0021-plugin-isolation-process.md`, `docs/adr/0023-plugin-runtime.md`,
   `docs/adr/0024-plugin-drawer-placement.md`

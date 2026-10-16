@@ -107,5 +107,5 @@ cd crates/app; npx tauri build
 | `docs/DESIGN_DOC.md` — архитектура, контракты, ADR |
 | `docs/adr/` — решения |
 | `docs/adr/0039-shell-module-map-and-test-layout.md` — карта модулей шелла, порог 400 строк, раскладка тестов, видимость Tauri-команд |
-| `docs/BACKLOG.md`, `docs/FINDINGS.md` — бэклог, замеры |
+| `docs/FINDINGS.md` — замеры |
 | `docs/PLUGIN_API.md`, `docs/PLUGIN_GUIDE.md` — API плагинов |
