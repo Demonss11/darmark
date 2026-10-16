@@ -1,4 +1,4 @@
-//! Функции, доступные Lua-плагину (Фаза 1 плагинной системы, §6.3 DESIGN_DOC).
+//! Функции, доступные Lua-плагину (скилл `plugin-sandbox`).
 //!
 //! `host.*` документные вызовы идут через [`HostApi`] — в child это RPC к GUI-хосту
 //! (`ToHost::HostCall` ↔ `ToChild::Reply`), в тестах — фейк. `md.*` и `json.*` считаются
@@ -11,18 +11,15 @@ use mlua::{Function, Lua, Result, Table, Value, Variadic};
 use plugin_core::envelope::PluginError;
 use serde_json::json;
 
-
-
 pub trait HostApi: Send + Sync + 'static {
-    
     fn call(
         &self,
         method: &str,
         args: serde_json::Value,
     ) -> std::result::Result<serde_json::Value, PluginError>;
-    
+
     fn log(&self, level: &str, message: &str);
-    
+
     fn emit(&self, kind: &str, payload: serde_json::Value);
 }
 
@@ -50,11 +47,6 @@ fn host_err(e: PluginError) -> mlua::Error {
     mlua::Error::RuntimeError(e.to_string())
 }
 
-
-
-
-
-
 fn defuse(
     lua: &Lua,
     result: std::result::Result<serde_json::Value, PluginError>,
@@ -64,7 +56,6 @@ fn defuse(
         Err(error) => Ok((Value::Nil, error_to_lua(lua, &error)?)),
     }
 }
-
 
 fn error_to_lua(lua: &Lua, error: &PluginError) -> Result<Value> {
     let table = lua.create_table()?;
@@ -78,7 +69,6 @@ fn error_to_lua(lua: &Lua, error: &PluginError) -> Result<Value> {
     }
     Ok(Value::Table(table))
 }
-
 
 pub fn register(lua: &Lua, plugin_id: &str, api: Arc<dyn HostApi>) -> Result<()> {
     register_host(lua, plugin_id, Arc::clone(&api))?;
@@ -113,8 +103,6 @@ fn register_host(lua: &Lua, plugin_id: &str, api: Arc<dyn HostApi>) -> Result<()
         })?,
     )?;
 
-    
-    
     let api_export = Arc::clone(&api);
     host.set(
         "export_html",
@@ -186,8 +174,6 @@ fn register_host(lua: &Lua, plugin_id: &str, api: Arc<dyn HostApi>) -> Result<()
         )?,
     )?;
 
-    
-    
     let api_view = Arc::clone(&api);
     host.set(
         "set_view_content",
@@ -228,7 +214,6 @@ fn register_host(lua: &Lua, plugin_id: &str, api: Arc<dyn HostApi>) -> Result<()
         })?,
     )?;
 
-    
     #[cfg(debug_assertions)]
     host.set(
         "crash",
@@ -237,7 +222,6 @@ fn register_host(lua: &Lua, plugin_id: &str, api: Arc<dyn HostApi>) -> Result<()
 
     lua.globals().set("host", host)?;
 
-    
     let tostring: mlua::Function = lua.globals().get("tostring")?;
     let log_for_print = Arc::clone(&log);
     lua.globals().set(
@@ -294,11 +278,6 @@ fn register_json(lua: &Lua) -> Result<()> {
     Ok(())
 }
 
-
-
-
-
-
 pub fn make_context(lua: &Lua, plugin_id: &str) -> Result<Table> {
     let ctx = lua.create_table()?;
     ctx.set("plugin_id", plugin_id)?;
@@ -334,9 +313,6 @@ pub fn make_context(lua: &Lua, plugin_id: &str) -> Result<Table> {
     Ok(ctx)
 }
 
-
-
-
 pub fn dispatch_event(
     lua: &Lua,
     ctx: Option<&Table>,
@@ -361,18 +337,15 @@ pub fn dispatch_event(
     Ok(())
 }
 
-
 pub fn json_to_lua(lua: &Lua, value: &serde_json::Value) -> Result<Value> {
     json_conv::json_to_lua(lua, value).map_err(host_err)
 }
-
 
 mod json_conv {
     use mlua::{Lua, Table, Value};
     use plugin_core::envelope::PluginError;
     use serde_json::Value as Json;
 
-    
     pub fn lua_to_json(value: &Value) -> std::result::Result<Json, PluginError> {
         Ok(match value {
             Value::Nil => Json::Null,
@@ -393,7 +366,7 @@ mod json_conv {
 
     fn table_to_json(t: &Table) -> std::result::Result<Json, PluginError> {
         let len = t.raw_len();
-        
+
         if len > 0 {
             let mut arr = Vec::with_capacity(len);
             let mut is_array = true;
@@ -429,7 +402,6 @@ mod json_conv {
         Ok(Json::Object(map))
     }
 
-    
     pub fn json_to_lua(lua: &Lua, value: &Json) -> std::result::Result<Value, PluginError> {
         Ok(match value {
             Json::Null => Value::Nil,
@@ -575,7 +547,6 @@ mod tests {
         assert!(calls.iter().any(|(m, _)| m == "apply_edit"));
     }
 
-    
     struct DenyingHost;
 
     impl HostApi for DenyingHost {
@@ -609,7 +580,6 @@ mod tests {
         assert_eq!(code, "permission_denied");
         assert_eq!(permission, "document:write");
 
-        
         let second: String = lua
             .load(r#"local _, e = host.get_document_range("d", 0, 1); return e.code"#)
             .eval()

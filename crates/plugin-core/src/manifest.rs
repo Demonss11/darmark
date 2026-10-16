@@ -1,4 +1,4 @@
-//! Манифест плагина и его валидация (§4.1 плагинной системы, §6.4/§8 DESIGN_DOC).
+//! Манифест плагина и его валидация (скилл `plugin-sandbox`).
 //!
 //! Валидация — первый барьер жизненного цикла (`scan → validate → load → activate`). Она ловит
 //! несовместимый `api_version`, разрешения вне H2 и небезопасные значения `id`/`entry` до запуска
@@ -8,7 +8,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::HOST_API_VERSION;
 
-
 pub const H2_PERMISSIONS: &[&str] = &[
     "document:read",
     "document:write",
@@ -17,10 +16,7 @@ pub const H2_PERMISSIONS: &[&str] = &[
     "ui:statusbar",
 ];
 
-
-
 pub const KNOWN_OUT_OF_H2_PERMISSIONS: &[&str] = &["ui:menu", "ui:sidebar", "ui:toolbar"];
-
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Manifest {
@@ -34,7 +30,6 @@ pub struct Manifest {
     #[serde(default)]
     pub contributes: Contributes,
 }
-
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Contributes {
@@ -83,28 +78,26 @@ fn default_tier() -> u8 {
     1
 }
 
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ManifestError {
-    
     Parse(String),
-    
+
     EmptyField(&'static str),
-    
+
     InvalidId(String),
-    
+
     ApiVersionTooNew { found: u32, host: u32 },
-    
+
     ApiVersionZero,
-    
+
     InvalidEntry(String),
-    
+
     UnknownPermission(String),
-    
+
     PermissionNotInH2(String),
-    
+
     UnsupportedPermission(String),
-    
+
     SourceTooLarge { len: u64, max: u64 },
 }
 
@@ -145,7 +138,6 @@ impl std::fmt::Display for ManifestError {
 impl std::error::Error for ManifestError {}
 
 impl Manifest {
-    
     pub fn from_json(bytes: &[u8]) -> Result<Self, ManifestError> {
         let manifest: Manifest =
             serde_json::from_slice(bytes).map_err(|e| ManifestError::Parse(e.to_string()))?;
@@ -153,7 +145,6 @@ impl Manifest {
         Ok(manifest)
     }
 
-    
     pub fn validate(&self) -> Result<(), ManifestError> {
         if self.id.is_empty() {
             return Err(ManifestError::EmptyField("id"));
@@ -186,19 +177,16 @@ impl Manifest {
     }
 }
 
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PermissionClass {
-    
     Implemented,
-    
+
     KnownOutOfH2,
-    
+
     Unsupported,
-    
+
     Unknown,
 }
-
 
 pub fn permission_class(permission: &str) -> PermissionClass {
     if H2_PERMISSIONS.contains(&permission) {
@@ -211,7 +199,6 @@ pub fn permission_class(permission: &str) -> PermissionClass {
         PermissionClass::Unknown
     }
 }
-
 
 pub fn classify_permission(permission: &str) -> Result<PermissionClass, ManifestError> {
     let class = permission_class(permission);
@@ -227,7 +214,6 @@ pub fn classify_permission(permission: &str) -> Result<PermissionClass, Manifest
     }
 }
 
-
 pub fn validate_source_len(len: u64) -> Result<(), ManifestError> {
     let max = crate::MAX_PLUGIN_SOURCE_BYTES;
     if len > max {
@@ -236,11 +222,9 @@ pub fn validate_source_len(len: u64) -> Result<(), ManifestError> {
     Ok(())
 }
 
-
 fn is_unsupported_permission(permission: &str) -> bool {
     permission == "network" || permission.starts_with("filesystem:")
 }
-
 
 fn is_safe_id(id: &str) -> bool {
     !id.is_empty()
@@ -248,7 +232,6 @@ fn is_safe_id(id: &str) -> bool {
             .bytes()
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_')
 }
-
 
 fn is_safe_entry(entry: &str) -> bool {
     !entry.is_empty()

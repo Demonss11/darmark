@@ -1,8 +1,7 @@
-//! Состояние карантина одного плагина (§10.2 DESIGN_DOC).
+//! Состояние карантина одного плагина (скилл `plugin-sandbox`).
 //!
 //! После `threshold` **подряд** неудач плагин автоотключается до ручного включения. Успешный
 //! запуск сбрасывает серию. Состояние per-plugin живёт в хосте (плагин stateless, §6.2).
-
 
 #[derive(Debug, Clone)]
 pub struct Quarantine {
@@ -32,7 +31,6 @@ impl Quarantine {
         self.consecutive_failures = 0;
     }
 
-    
     pub fn record_failure(&mut self) {
         self.consecutive_failures += 1;
         if self.consecutive_failures >= self.threshold {
@@ -40,7 +38,6 @@ impl Quarantine {
         }
     }
 
-    
     pub fn reset(&mut self) {
         self.consecutive_failures = 0;
         self.disabled = false;

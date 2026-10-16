@@ -1,4 +1,4 @@
-//! Событийная шина GUI-хоста (Фаза 4 плагинной системы, §9 DESIGN_DOC).
+//! Событийная шина GUI-хоста.
 //!
 //! Модель **notify-only + pull**: событие не несёт текст документа, только
 //! `doc_id`/`rev` (или путь/команду). Плагин, которому нужен текст, сам читает
@@ -13,17 +13,11 @@ use std::collections::HashMap;
 
 use serde_json::{json, Value};
 
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct Event {
     pub name: String,
     pub payload: Value,
 }
-
-
-
-
-
 
 #[derive(Default)]
 pub struct EventBus {
@@ -36,7 +30,6 @@ impl EventBus {
         Self::default()
     }
 
-    
     pub fn publish_document_changed(&mut self, doc_id: &str, rev: u64) {
         let event = Event {
             name: "document:changed".to_string(),
@@ -52,12 +45,10 @@ impl EventBus {
         }
     }
 
-    
     pub fn publish_opened(&mut self, doc_id: &str, path: Option<&str>) {
         self.push("document:opened", json!({ "doc_id": doc_id, "path": path }));
     }
 
-    
     pub fn publish_closed(&mut self, doc_id: &str) {
         self.push(
             "document:closed",
@@ -65,10 +56,6 @@ impl EventBus {
         );
     }
 
-    
-    
-    
-    
     pub fn publish_command(&mut self, command_id: &str, doc_id: Option<&str>) {
         self.push(
             "command:invoked",
@@ -83,7 +70,6 @@ impl EventBus {
         });
     }
 
-    
     pub fn drain(&mut self) -> Vec<Event> {
         self.changed_at.clear();
         std::mem::take(&mut self.pending)

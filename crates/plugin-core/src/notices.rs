@@ -1,18 +1,15 @@
-//! Формулировки границы безопасности (§11.4 DESIGN_DOC).
+//! Формулировки границы безопасности (скилл `plugin-sandbox`).
 //!
 //! Единый источник текстов для UI и будущего магазина плагинов: изоляция ограничена
 //! **отказами**, защита данных не обеспечивается.
-
 
 pub const ISOLATION_NOTICE: &str =
     "Плагин исполняется в отдельном процессе: его сбой или зависание не затрагивают редактор. \
      Это изоляция отказов, а не защита данных.";
 
-
 pub const DOCUMENT_ACCESS_NOTICE: &str =
     "Плагин с доступом к документу (document) читает его содержимое полностью, включая \
      конфиденциальный текст.";
-
 
 pub fn permission_notices<P: AsRef<str>>(permissions: &[P]) -> Vec<&'static str> {
     let mut notices = vec![ISOLATION_NOTICE];
@@ -24,7 +21,6 @@ pub fn permission_notices<P: AsRef<str>>(permissions: &[P]) -> Vec<&'static str>
     }
     notices
 }
-
 
 fn is_document_permission(permission: &str) -> bool {
     permission == "document" || permission.starts_with("document:")

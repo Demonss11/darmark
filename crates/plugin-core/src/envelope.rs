@@ -1,4 +1,4 @@
-//! serde-конверт хост ↔ child (§4.1 плагинной системы, §7.1 DESIGN_DOC): JSON-in-frame.
+//! serde-конверт хост ↔ child (скилл `plugin-sandbox`): JSON-in-frame.
 //!
 //! Разбор входящего от child потока — **fallible**: нарушение протокола превращается в
 //! [`PluginError`] с кодом [`codes::PROTOCOL`], а не в панику.

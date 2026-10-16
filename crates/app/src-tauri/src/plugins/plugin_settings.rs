@@ -1,4 +1,4 @@
-//! `PluginSettingsStore` — постоянные настройки плагинов (§12 DESIGN_DOC, S5).
+//! `PluginSettingsStore` — постоянные настройки плагинов.
 //!
 //! Один файл на плагин: `%APPDATA%/darmark/plugin-settings/<plugin_id>.json` с JSON-объектом
 //! `{ "<key>": <json-value> }`. Базовый каталог переопределяется `DARMARK_PLUGIN_SETTINGS_DIR`
