@@ -1,4 +1,4 @@
-// Типы палитры команд.
+
 
 export interface PaletteCommand {
   id: string;

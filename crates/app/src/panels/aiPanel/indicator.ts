@@ -1,10 +1,10 @@
-// Индикатор состояния AI: точка в логе, текст статуса, доступность элементов
-// панели и «липкая» прокрутка чата.
-//
-// Зачем отдельный модуль: `applyState` — единственный читатель всех флагов
-// (`settings`, `authError`, `lastError`, `consentDenied`) для отрисовки, и его
-// вызывают почти все остальные кластеры. Держим его в фабрике без
-// зависимостей от остальных, чтобы не было цикла «состояние → панель → состояние».
+
+
+
+
+
+
+
 
 import type { AiDotState } from "./constants";
 import { shortModel } from "./dom";
@@ -20,7 +20,8 @@ export interface IndicatorApi {
 export function createIndicator(state: AiPanelState): IndicatorApi {
   const { dom } = state;
 
-  /** Задан ли непустой ключ у активного провайдера (для `has_key`/дот-состояния). */
+  
+
   function activeHasKey(): boolean {
     const settings = state.settings;
     if (!settings) return false;

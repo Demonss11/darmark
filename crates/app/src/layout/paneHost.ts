@@ -1,12 +1,12 @@
-// paneHost.ts — монтирование дерева панелей в DOM (DESIGN_DOC §5.2, §5.5).
-//
-// Каркас разметки статичен (`index.html`): слоты `.pane[data-pane]` с
-// `data-view`, разделитель `.divider`, шапка `pane-head`/`view-switch`.
-// paneHost применяет модель layout — показывает присутствующие в дереве панели
-// и скрывает отсутствующие.
-//
-// Инвариант скроллеров: `#editor` и `#preview` — самостоятельные скролл-элементы
-// внутри слотов (e2e читает их `scrollTop`), paneHost их не оборачивает.
+
+
+
+
+
+
+
+
+
 
 import { panes, type LayoutNode } from "./layout";
 import type { PaneId } from "../core/ids";

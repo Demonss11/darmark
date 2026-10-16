@@ -1,4 +1,4 @@
-// Хелперы проекции документа.
+
 
 import type { DocumentSnapshot } from "../../core/tauri";
 import type { Tab } from "./types";

@@ -1,18 +1,18 @@
-// drawer.ts — правый модальный дровер.
-//
-// Маленький интерфейс (open/close/toggle/isOpen/content/dispose) и много
-// скрытого поведения: фокус-трап, Esc (capture + stopPropagation, как в
-// dialog.ts), клик по backdrop, синхронизация `aria-expanded`/`.active` на
-// триггере, возврат фокуса на триггер.
-//
-// Дровер — ПОСТОЯННЫЙ DOM (#drawer + #backdrop — прямые дети body), а не
-// транзитный оверлей openDialog: #plugin-manager и #side-count обязаны
-// существовать постоянно (состояние раскрытия карточек, счётчик).
-//
-// Примитивы из dialog.ts (`inert`, focus-trap) переиспользуются, но не
-// openDialog: там `inert` ставится на ВСЕ прямые дети body кроме
-// #modal-root/#toast-host — для дровера это неверно (сам #drawer стал бы
-// инертным), поэтому глушим только #app.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 export interface Drawer {
   open(): void;

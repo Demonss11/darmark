@@ -1,4 +1,4 @@
-// Метка источника команды.
+
 
 import type { PaletteCommand } from "./types";
 

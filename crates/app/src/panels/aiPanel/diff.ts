@@ -1,4 +1,4 @@
-// Рендер тела диффа и хелперы логических строк.
+
 
 import { buildUnitMaps, bytesToUnits } from "../../core/mapping";
 import type { AiDiff } from "../../core/tauri";

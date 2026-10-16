@@ -1,4 +1,4 @@
-// Метки статусов и разрешений плагинов.
+
 
 import type { PluginInfo, PluginStatus } from "../../core/tauri";
 

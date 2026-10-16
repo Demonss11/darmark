@@ -1,13 +1,13 @@
-// pluginViews.ts — плагинные тир-1 представления как HtmlViewProvider (H2, Фаза 4).
-//
-// Плагин с `contributes.views[{kind,title,tier:1}]` становится ещё одним
-// `HtmlViewProvider` в общем `viewRegistry` (IDEA-003): нативный
-// Markdown-предпросмотр остаётся дефолтным провайдером, плагинные вкладки —
-// выбираемыми в `.view-switch`.
-//
-// Контент санитизирует хост; контроллер пишет его в контейнер и возвращает
-// клики `data-p-<plugin_id>-action/-payload` в плагин (`plugin_view_action`).
-// Доступа к `window`/`fetch`/ФС из контейнера нет.
+
+
+
+
+
+
+
+
+
+
 
 import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";

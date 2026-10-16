@@ -1,8 +1,8 @@
-// editorView — тир-2 представление редактора (textarea). `editor.value` — лишь
-// отображение проекции стора, не источник истины (D5).
-//
-// Нативный undo/redo браузера отключён: владелец undo-стека — Rust
-// (D5), иначе два стека разъедутся.
+
+
+
+
+
 
 import type { DocStore } from "./docStore";
 import { byteToUtf16 } from "../core/mapping";

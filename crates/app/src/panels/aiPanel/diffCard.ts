@@ -1,8 +1,8 @@
-// Карточка предлагаемой правки: расчёт диффа через `aiDiff` и
-// применение через `aiApplyEdit` с откатом `undoDocument`.
-//
-// Гонки: `disposed` проверяется после каждого await — панель могла быть снята
-// пока шёл IPC, и тогда результат не должен трогать уже исчезнувший DOM.
+
+
+
+
+
 
 import type { DocumentId } from "../../core/ids";
 import { aiApplyEdit, aiDiff, errorMessage, undoDocument } from "../../core/tauri";

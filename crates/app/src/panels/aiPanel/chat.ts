@@ -1,9 +1,9 @@
-// Пузыри чата: сообщения пользователя и ассистента, рендер ответа, счётчик
-// токенов, карточки ошибок и служебные плашки.
-//
-// Инвариант: HTML ответа модели рисуется только через
-// `setSanitizedHtml` с результатом `renderAiMarkdown`; всё остальное (текст
-// ошибок, плашки, расход токенов) — `textContent`.
+
+
+
+
+
+
 
 import { renderAiMarkdown, setSanitizedHtml } from "../../core/safeHtml";
 import { errorMessage } from "../../core/tauri";
@@ -54,11 +54,8 @@ export function createChat(
     indicator.updateEmpty();
   }
 
-  /**
-   * Служебная плашка панели в ленте чата: не ответ модели, а сообщение ассистента
-   * пользователю (например, отказ запуска пишущего скилла на усечённом документе).
-   * Лог-панели для этого мало — её пользователь не смотрит, а цена ошибки — потерянный текст.
-   */
+  
+
   function appendSystemNote(text: string): void {
     const row = document.createElement("div");
     row.className = "msg system";
@@ -76,9 +73,9 @@ export function createChat(
     row.appendChild(col);
     dom.chat.appendChild(row);
     indicator.updateEmpty();
-    // Прокрутка — как у соседних вставок: предупреждение (в т.ч. отказ пишущего
-    // скилла на усечённом документе) обязано быть видимым, иначе потеря текста
-    // остаётся незамеченной в длинной ленте.
+    
+    
+    
     if (state.stick) indicator.scrollToBottom();
   }
 
@@ -159,10 +156,8 @@ export function createChat(
     if (state.stick) indicator.scrollToBottom();
   }
 
-  /**
-   * Единственное место, где ответ модели превращается в HTML: санитайзер на
-   * Rust-стороне отдаёт уже безопасную разметку, клиент лишь подставляет её.
-   */
+  
+
   async function renderBubble(bubble: HTMLElement, content: string): Promise<void> {
     try {
       const html = await renderAiMarkdown(content);

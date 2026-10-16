@@ -1,10 +1,10 @@
-// darmark — лёгкий редактор/вьюер Markdown в духе Notepad++.
-//
-// Композиционный корень: собирает домен (docStore, RenderIndex, реестр view,
-// панели) и передаёт его оболочке. Поток данных: редактор (тир-2 view) → docStore
-// (проекция Rust-стора, D5) → RenderIndex → previewView (тир-1 view, единственное
-// `preview.innerHTML`). Панели — дерево layout (MAX_PANES = 2), ядро Markdown —
-// `md-core` (Rust).
+
+
+
+
+
+
+
 
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { listen } from "@tauri-apps/api/event";

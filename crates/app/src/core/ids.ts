@@ -1,6 +1,6 @@
-// Брендированные идентификаторы (DESIGN_DOC §5.1).
-// Строки, а не числа: единый формат с Rust (`#[serde(transparent)]`) и Lua-плагинами
-// (строковые ключи таблиц); генерацию DocumentId контролирует хост.
+
+
+
 
 type Brand<T, K extends string> = T & { readonly __b: K };
 

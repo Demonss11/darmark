@@ -1,10 +1,10 @@
-// pluginStatusBar.ts — per-plugin элементы в статусбаре.
-//
-// Показываем включённые плагины, получившие согласие `ui:statusbar`: точка
-// цвета плагина (`--pc`) + последнее сообщение (`host.show_message`) либо
-// локализованный статус. Клик открывает первое представление плагина; лишние
-// сворачиваются в «+N». Только DOM/`textContent` — сообщения плагинов не
-// проходят через `innerHTML`.
+
+
+
+
+
+
+
 
 import { pluginColor } from "./pluginColor";
 import type { PluginInfo, PluginStatus } from "../core/tauri";

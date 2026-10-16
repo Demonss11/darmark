@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
-"""Удаляет комментарии из TypeScript-файлов, сохраняя JSDoc (`/** ... */`).
+"""Удаляет все комментарии из TypeScript-файлов (включая JSDoc `/** ... */`).
 
-По умолчанию оставляются только JSDoc-комментарии `/** ... */`. Однострочные
-`//` и обычные блочные `/* ... */` комментарии удаляются.
+Однострочные `//`, блочные `/* ... */` и JSDoc `/** ... */` комментарии удаляются.
 
 Обработка корректна для строк ('...', "..."), шаблонных строк (`...`) и
 регулярных выражений (/pattern/flags): `//` и `/*` внутри них комментариями
@@ -27,28 +26,19 @@ _REGEX_PRECEDING_WORDS = {
 
 
 def strip_comments(text: str) -> str:
-    """Возвращает текст без комментариев, кроме JSDoc (`/** ... */`)."""
+    """Возвращает текст без комментариев (включая JSDoc)."""
     out: list[str] = []
     i = 0
     n = len(text)
     prev_significant = ""
     prev_word = ""
+    prev_operand = False
 
     while i < n:
         ch = text[i]
         nxt = text[i + 1] if i + 1 < n else ""
 
-        # --- JSDoc: /** ... */ ---
-        if ch == "/" and nxt == "*" and i + 2 < n and text[i + 2] == "*":
-            end = text.find("*/", i + 3)
-            end = n if end == -1 else end + 2
-            out.append(text[i:end])
-            i = end
-            prev_significant = "/"
-            prev_word = ""
-            continue
-
-        # --- Блочный комментарий: /* ... */ ---
+        # --- Блочный комментарий: /* ... */ (включая JSDoc /** ... */) ---
         if ch == "/" and nxt == "*":
             end = text.find("*/", i + 2)
             end = n if end == -1 else end + 2
@@ -57,6 +47,7 @@ def strip_comments(text: str) -> str:
             i = end
             prev_significant = ""
             prev_word = ""
+            prev_operand = False
             continue
 
         # --- Однострочный комментарий: // ---
@@ -67,7 +58,7 @@ def strip_comments(text: str) -> str:
             continue
 
         # --- Регулярное выражение: /pattern/flags ---
-        if ch == "/" and _is_regex_context(prev_significant, prev_word):
+        if ch == "/" and _is_regex_context(prev_significant, prev_word, prev_operand):
             j = i + 1
             in_class = False
             found_end = False
@@ -94,6 +85,7 @@ def strip_comments(text: str) -> str:
                 i = j
                 prev_significant = "/"
                 prev_word = ""
+                prev_operand = False
                 continue
             # Не нашли закрывающий / до перевода строки — это деление.
 
@@ -118,6 +110,7 @@ def strip_comments(text: str) -> str:
                 i = j
                 prev_significant = quote
                 prev_word = ""
+                prev_operand = True
                 continue
 
         # --- Шаблонная строка: `...` ---
@@ -147,6 +140,7 @@ def strip_comments(text: str) -> str:
                 i = j
                 prev_significant = "`"
                 prev_word = ""
+                prev_operand = True
                 continue
 
         # --- Обычный символ ---
@@ -154,16 +148,27 @@ def strip_comments(text: str) -> str:
         if ch.isalnum() or ch == "_":
             prev_word += ch
         else:
-            if ch not in " \t\r\n":
+            if ch in (")", "]", "}"):
+                prev_operand = True
+            elif ch not in " \t\r\n":
                 prev_significant = ch
+                prev_operand = False
+            else:
+                # Пробел: prev_word был идентификатором — значит предыдущий токен операнд.
+                if prev_word:
+                    prev_operand = True
+                if ch in "\r\n":
+                    prev_significant = ""
             prev_word = ""
         i += 1
 
     return "".join(out)
 
 
-def _is_regex_context(prev_significant: str, prev_word: str) -> bool:
+def _is_regex_context(prev_significant: str, prev_word: str, prev_operand: bool) -> bool:
     """Эвристика: ли `/` началом регулярного выражения."""
+    if prev_operand:
+        return False
     if prev_word in _REGEX_PRECEDING_WORDS:
         return True
     if not prev_significant:
@@ -187,7 +192,7 @@ def process_file(path: Path, in_place: bool) -> tuple[int, int]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Удаляет комментарии из TypeScript-файлов, сохраняя JSDoc."
+        description="Удаляет все комментарии из TypeScript-файлов."
     )
     parser.add_argument("paths", nargs="+", type=Path, help="Файлы или каталоги для обработки.")
     parser.add_argument(

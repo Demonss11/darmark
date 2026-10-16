@@ -1,4 +1,4 @@
-// SVG-иконки карточки плагина.
+
 
 export function infoIcon(): SVGSVGElement {
   const NS = "http://www.w3.org/2000/svg";

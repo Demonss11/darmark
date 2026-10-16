@@ -1,10 +1,10 @@
-// dialog.ts — переиспользуемая модальная инфраструктура.
-//
-// Один стек диалогов: оверлей + панель с `role="dialog"`, focus-trap, Escape
-// (capture + stopPropagation — иначе Escape долетит до shell.ts и выключит
-// режим инспектора), `inert` на прямых детях body (кроме #modal-root/#toast-host)
-// и возврат фокуса инициатору. Слушатели снимаются AbortController'ом при
-// закрытии — висячих хэндлеров не остаётся.
+
+
+
+
+
+
+
 
 type DialogVariant = "center" | "top";
 

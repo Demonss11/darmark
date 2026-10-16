@@ -1,4 +1,4 @@
-// Рендер идентичности плагина и кнопок карточки.
+
 
 import type { PluginInfo } from "../../core/tauri";
 import { bodyId, el, infoPopoverId } from "./dom";

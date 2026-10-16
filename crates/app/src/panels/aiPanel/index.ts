@@ -1,26 +1,26 @@
-// aiPanel/index.ts — тело режима «AI-ассистент» нижнего дока (сеть и
-// провайдер). Модуль-оболочка (как
-// logPanel/resourceMonitor), НЕ view и НЕ pane: монтируется logPanel'ом в
-// контейнер #logs-panel (режим ai).
-//
-// Инварианты: сетевые вызовы — только на Rust-стороне (CSP `default-src 'self'`).
-// Рендер ответа ассистента — только через `safeHtml.setSanitizedHtml`
-// §2.1/§2.2): HTML ответа модели проходит Rust-санитайзер `md-core`, прямых
-// присваиваний `innerHTML` в пакете нет. Всё, что не проходит этот хелпер —
-// стриминг, код плагина, дифф, ошибки — только `textContent`.
-// История чата — в памяти на сессию (без персист.) и хранит ТЕКСТ ответа, не HTML.
-// Стриминг: события ai:chunk/ai:done/ai:error дописывают/финализируют текущий
-// пузырь ассистента; отписки сохраняются и снимаются.
-//
-// Фаза 2 (harness): под ответом ассистента — «Применить как правку»
-// (дифф через ai_apply_edit + undo_document) и карточка плагина из ```json-блока
-// (через ai_*_plugin).
-//
-// Этот файл — композитор: собирает фабрики кластеров, держит ВСЕ подписки
-// (DOM на элементах панели и на `document`, Tauri-события) и отвечает за
-// `dispose`. Логика самих кластеров живёт рядом: state.ts (общее состояние и
-// DOM-ссылки), indicator.ts, skillBar.ts, chat.ts, diffCard.ts, pluginCard.ts,
-// toolCard.ts, history.ts, settingsPane.ts, consent.ts, stream.ts.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 import { listen, type Event } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -58,9 +58,9 @@ export function createAiPanel(opts: AiPanelOptions): AiPanel {
   const state = createAiState(opts);
   const { dom } = state;
 
-  // Кластеры создаются снизу вверх по зависимостям; каждый получает соседние
-  // API параметром — так в пакете нет циклических импортов (см. комментарий
-  // в skillBar.ts про единственную «мягкую» ссылку на stream).
+  
+  
+  
   const indicator = createIndicator(state);
   const chat = createChat(state, indicator);
   const diffCard = createDiffCard(state, {

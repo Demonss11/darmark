@@ -1,4 +1,4 @@
-// Настройки плагина: значение и строка формы.
+
 
 import type { PluginInfo, PluginSettingProperty } from "../../core/tauri";
 import { el } from "./dom";

@@ -1,14 +1,14 @@
-// viewRegistry.ts — контракты двух тиров представлений и реестр провайдеров
-// (DESIGN_DOC §5.3).
-//
-// Тир 1 (`HtmlViewProvider`) — plugin-safe контракт: JSON на входе, HTML на
-// выходе, никакого прямого DOM-доступа извне. Preview реализуется по нему, но
-// встраивается на хосте (D2): завтра `createView` станет вызовом плагина без
-// смены интерфейса. Тир 2 (`DomViewProvider`) — built-in only: редактор и
-// будущие контроллеры, которым нужен полный DOM.
-//
-// `ViewContext` — единственная «песочница» view: никакого доступа к
-// `document`/`window`/`fetch`/файловой системе, только фасад.
+
+
+
+
+
+
+
+
+
+
+
 
 import type { PaneId, ViewId } from "../core/ids";
 import type { DocumentSnapshot, RenderResult } from "../core/tauri";

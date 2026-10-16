@@ -1,12 +1,12 @@
-// Согласие на отправку содержимого документа во внешний сервис.
-//
-// Показывается один раз за сессию до первого запроса; отказ запоминается в
-// `consentDenied`, чтобы диалог не спрашивал заново на каждый ввод. Разрешение
-// сохраняется через `persist` — это обычная настройка, поэтому новый модуль не
-// нужен и состояние согласия живёт в общем.
-//
-// Диалог называет активного провайдера (`name` + хост его `baseURL`):
-// адресат данных определяется конфигом, а не хардкодом.
+
+
+
+
+
+
+
+
+
 
 import { openDialog, type Dialog } from "../../ui/dialog";
 import type { AiSettingsInput } from "../../core/tauri";
@@ -17,7 +17,8 @@ export interface ConsentApi {
   askConsent(onAllowed: () => void): void;
 }
 
-/** Хост URL (`https://example.test/api/v1` → `example.test`); `null`, если разобрать нельзя. */
+
+
 function hostOf(url: string | undefined): string | null {
   if (!url) return null;
   try {

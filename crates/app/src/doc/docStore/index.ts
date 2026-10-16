@@ -1,8 +1,8 @@
-// docStore/index — TS-проекция Rust-стора (D5): текст, ревизия, путь и dirty.
-//
-// Модуль без DOM: ввод приходит из editorView (`setText`), HTML уходит в
-// `onRender`. Рендер и его кэш принадлежат Rust; здесь — дебаунс IPC,
-// отбрасывание устаревших ответов и подписки. Никаких обращений к document/window.
+
+
+
+
+
 
 import {
   newDocument as ipcNew,

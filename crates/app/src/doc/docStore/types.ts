@@ -1,4 +1,4 @@
-// Типы проекции документа.
+
 
 import type { DocumentId } from "../../core/ids";
 import type { DocumentSnapshot, RenderResult } from "../../core/tauri";

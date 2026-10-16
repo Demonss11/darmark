@@ -1,9 +1,9 @@
-// Карточка плагина, предложенного ассистентом: проверка, создание/
-// обновление, перезагрузка и удаление через команды ai_*_plugin.
-//
-// Реестр `pluginCards` в общем состоянии — единственный мост к Tauri-событиям
-// ai:plugin_created/updated/deleted: карточка отдаёт наружу `PluginCardState`,
-// подписки в index.ts только перебирают этот Set и не знают про DOM карточки.
+
+
+
+
+
+
 
 import {
   aiCreatePlugin,
@@ -26,7 +26,8 @@ import type { AiPanelState } from "./state";
 
 export interface PluginCardApi {
   appendAssistantActions(col: HTMLElement, content: string): void;
-  /** Удаляет все карточки из DOM и реестра (очистка чата). */
+  
+
   clearCards(): void;
 }
 
@@ -219,7 +220,8 @@ export function createPluginCard(
     void validate();
   }
 
-  /** Панель действий под ответом ассистента: «применить как правку» + карточка плагина. */
+  
+
   function appendAssistantActions(col: HTMLElement, content: string): void {
     const actions = el("div", "ai-msg-actions");
     const apply = actionButton(

@@ -1,15 +1,15 @@
-// previewView.ts — предпросмотр по тир-1 контракту (HtmlView), встроен на хосте (D2).
-//
-// Единственное место, где выполняется `preview.innerHTML = html` (ТЗ-H1, Фаза 4).
-// Сюда переехали из `main.ts:onRender` применение HTML, украшение таблиц
-// (`createTablesController`, per-view), `resolveLocalImages`, делегирование
-// внешних ссылок и перестроение общего `RenderIndex`. Контракт
-// `HtmlView.render(doc)` + `ViewContext` ничего хост-специфичного не знает —
-// тот же класс может быть заменён плагином.
-//
-// Конвейер: docStore (`onRender`) вызывает `applyRender(res, source)`;
-// `source` — текст, ушедший в рендер (не текущий буфер редактора), по нему
-// строится индекс, иначе `data-md` разъедется с HTML.
+
+
+
+
+
+
+
+
+
+
+
+
 
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { createTablesController } from "../panels/tables";

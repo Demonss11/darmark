@@ -1,10 +1,10 @@
-// toast.ts — тост-уведомления в `#toast-host`.
-//
-// Неинтерактивные (хост `pointer-events: none`); авто-скрытие; не более трёх
-// одновременно (самый старый убирается). Вход/выход — только `opacity`/
-// `transform`, их гасит глобальный `prefers-reduced-motion`. Live-region —
-// сам хост (`aria-live="polite"`); ошибки дополнительно несут `role="alert"`,
-// чтобы озвучиваться сразу (assertive).
+
+
+
+
+
+
+
 
 type ToastKind = "info" | "success" | "warning" | "error";
 

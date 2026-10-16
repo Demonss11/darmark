@@ -1,4 +1,4 @@
-// Тема оформления.
+
 
 const THEME_STORAGE_KEY = "darmark.theme";
 

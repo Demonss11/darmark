@@ -1,4 +1,4 @@
-// DOM-хелперы панели AI-ассистента.
+
 
 export function byId<T extends HTMLElement>(id: string): T {
   const el = document.getElementById(id);

@@ -1,9 +1,9 @@
-// palette/index.ts — палитра команд (Ctrl+K), построена на dialog.ts (variant "top").
-//
-// Провайдеры команд: core (синхронный список из main.ts) и плагинные
-// (асинхронно, list_plugins/run_plugin_command). Палитра не парсит Markdown и не
-// хранит доменное состояние; ошибка провайдера уходит в onError. Ответы
-// устаревших запросов отбрасываются по счётчику сессий (seq-гейт).
+
+
+
+
+
+
 
 import { openDialog, type Dialog } from "../dialog";
 import { pluginColor } from "../../plugin/pluginColor";

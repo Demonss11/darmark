@@ -1,4 +1,4 @@
-// Классификация ошибок AI и заголовки карточек.
+
 
 export type ErrorKind = "auth" | "offline" | "rate" | "context" | "generic";
 
