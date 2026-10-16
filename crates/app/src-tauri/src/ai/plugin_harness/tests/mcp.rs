@@ -85,7 +85,7 @@ fn call_plugin_test(registry: &Registry, dir: &Path) -> Value {
         .expect("plugin_test зарегистрирован, путь в белом списке")
 }
 
-/// Валидный манифест (форма — как у `examples/plugins`).
+/// Валидный манифест (форма — как у `crates/plugin-catalog/examples/plugins`).
 const VALID_MANIFEST: &str = r#"{
   "id": "mcp-plugin-test",
   "name": "MCP plugin test",

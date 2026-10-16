@@ -188,16 +188,14 @@ pub fn remove(id: &str, dest: &Path) -> Result<bool, String> {
     Ok(true)
 }
 
-/// Ближайший к `start` (включая сам `start`) предок с каталогом плагинов: generic
-/// `plugins/index.json` или репозиторный `examples/plugins/index.json` (эталонный каталог darmark).
+/// Ближайший к `start` (включая сам `start`) предок с каталогом плагинов: `plugins/index.json`.
 /// Возвращает сам каталог плагинов (`<предок>/plugins`), а не корень репозитория.
 pub fn discover_repo(start: &Path) -> Option<PathBuf> {
     let mut current: Option<&Path> = Some(start);
     while let Some(dir) = current {
-        for candidate in [dir.join("plugins"), dir.join("examples").join("plugins")] {
-            if candidate.join(CATALOG_FILE).is_file() {
-                return Some(candidate);
-            }
+        let candidate = dir.join("plugins");
+        if candidate.join(CATALOG_FILE).is_file() {
+            return Some(candidate);
         }
         current = dir.parent();
     }
@@ -785,8 +783,6 @@ mod tests {
     #[test]
     fn real_catalog_has_four_valid_entries() {
         let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("..")
-            .join("..")
             .join("examples")
             .join("plugins");
         let catalog = Catalog::load(&repo).unwrap();
@@ -812,14 +808,14 @@ mod tests {
     }
 
     #[test]
-    fn discover_repo_finds_examples_plugins_layout() {
-        // Репозиторный каталог darmark: `examples/plugins/index.json` — тоже находится автопоиском.
+    fn discover_repo_ignores_examples_plugins_layout() {
+        // `examples/plugins` больше не распознаётся: только `plugins/index.json`.
         let root = tempfile::tempdir().unwrap();
         let repo = root.path().join("examples").join("plugins");
         write_plugin(&repo, "alpha", "alpha", "1.0.0");
         write_index(&repo, &[("alpha", "alpha", "тестовый плагин")]);
         let nested = root.path().join("a").join("b");
         fs::create_dir_all(&nested).unwrap();
-        assert_eq!(discover_repo(&nested).unwrap(), repo);
+        assert!(discover_repo(&nested).is_none());
     }
 }

@@ -340,7 +340,13 @@ fn manager_lists_and_reloads_plugin() {
 #[test]
 fn reference_plugins_validate() {
     let repo_root = workspace_root();
-    let report = scan_plugins(&repo_root.join("examples").join("plugins"));
+    let report = scan_plugins(
+        &repo_root
+            .join("crates")
+            .join("plugin-catalog")
+            .join("examples")
+            .join("plugins"),
+    );
     assert!(
         report.errors.is_empty(),
         "ошибки скана эталонных плагинов: {:?}",

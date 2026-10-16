@@ -2,7 +2,7 @@
 
 > **Язык:** Lua **5.5** (mlua `lua55` + vendored). Референс написан под 5.5, а не скопирован
 > из материалов под 5.1/5.4. Нормативная архитектура — `docs/DESIGN_DOC.md`, ADR-0021/0022/0023.
-> Образцы — каталог `examples/plugins/` в репозитории.
+> Образцы — каталог `crates/plugin-catalog/examples/plugins/` в репозитории.
 
 Плагин — это каталог `%APPDATA%/darmark/plugins/<id>/` с манифестом `plugin.json` и `.lua`-файлом.
 
@@ -194,13 +194,13 @@ darmark-plugin update [<id>] [--repo <dir>] [--dest <dir>]  # обновить �
 - **`remove`** — идемпотентен; удаляет `<dest>/<id>` или точку монтирования.
 - **`update`** — переустанавливает копии с устаревшей версией; ссылки пропускаются.
 
-**Разрешение путей:** `--repo`: явный → env `DARMARK_PLUGIN_REPO` → предок с `plugins/index.json` → `<cwd>/plugins`. `--dest`: явный → env `DARMARK_PLUGINS_DIR` → `%APPDATA%/darmark/plugins`.
+**Разрешение путей:** `--repo`: явный → предок с `plugins/index.json` → `<cwd>/plugins`. `--dest`: явный → env `DARMARK_PLUGINS_DIR` → `%APPDATA%/darmark/plugins`.
 
 В `--serve-plugin`/`--debug-plugin` — stdio-конверт (`u32 LE длина || JSON`), host-call'ы обслуживает разработчик (mock-хост); `on_deactivate` при EOF не вызывается.
 
 ---
 
-## 7. Пример (эталон `examples/plugins/word-count`)
+## 7. Пример (эталон `crates/plugin-catalog/examples/plugins/word-count`)
 
 ```lua
 local WINDOW = 65536

@@ -230,12 +230,12 @@ darmark-plugin — CLI разработчика плагинов ПЕНАЛ
   darmark-plugin --version, -V — версия
 
 Примеры:
-  darmark-plugin test examples/plugins/word-count
+  darmark-plugin test crates/plugin-catalog/examples/plugins/word-count
   darmark-plugin test . --json
   darmark-plugin init my-plugin --name \"Мой плагин\"
-  darmark-plugin list --repo examples/plugins
-  darmark-plugin install word-count --repo examples/plugins
-  darmark-plugin link my-plugin --repo examples/plugins
+  darmark-plugin list --repo crates/plugin-catalog/examples/plugins
+  darmark-plugin install word-count --repo crates/plugin-catalog/examples/plugins
+  darmark-plugin link my-plugin --repo crates/plugin-catalog/examples/plugins
   darmark-plugin update";
 
 fn print_usage() {

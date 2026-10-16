@@ -165,4 +165,4 @@ darmark-plugin init <dir>      # создать шаблон плагина
 
 - `docs/PLUGIN_API.md` — полный референс Lua-плагинов
 - `docs/adr/0023-plugin-runtime.md` — архитектура плагинной системы
-- Эталонные примеры — `examples/plugins/` репозитория
+- Эталонные примеры — `crates/plugin-catalog/examples/plugins/` репозитория

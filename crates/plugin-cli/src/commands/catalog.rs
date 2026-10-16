@@ -58,22 +58,17 @@ pub fn run_update(
     catalog.update(id, &dest)
 }
 
-/// Тонкая обёртка: env и текущий каталог — единственное, что берётся из процесса.
+/// Тонкая обёртка: текущий каталог — единственное, что берётся из процесса.
 fn resolve_repo(explicit: Option<PathBuf>) -> PathBuf {
-    let env = std::env::var_os("DARMARK_PLUGIN_REPO");
     let cwd = std::env::current_dir().unwrap_or_default();
-    resolve_repo_with(explicit, env, &cwd)
+    resolve_repo_with(explicit, &cwd)
 }
 
-/// Разрешает каталог репозитория: явный аргумент → env `DARMARK_PLUGIN_REPO` → ближайший
-/// предок (включая CWD) с `plugins/index.json` или `examples/plugins/index.json` →
-/// `<cwd>/plugins` (ошибку даст загрузка индекса).
-fn resolve_repo_with(explicit: Option<PathBuf>, env: Option<OsString>, cwd: &Path) -> PathBuf {
+/// Разрешает каталог репозитория: явный аргумент → ближайший предок (включая CWD) с
+/// `plugins/index.json` → `<cwd>/plugins` (ошибку даст загрузка индекса).
+fn resolve_repo_with(explicit: Option<PathBuf>, cwd: &Path) -> PathBuf {
     if let Some(dir) = explicit {
         return normalize_repo(dir);
-    }
-    if let Some(dir) = env {
-        return normalize_repo(PathBuf::from(dir));
     }
     if let Some(found) = plugin_catalog::discover_repo(cwd) {
         return found;
@@ -82,16 +77,15 @@ fn resolve_repo_with(explicit: Option<PathBuf>, env: Option<OsString>, cwd: &Pat
 }
 
 /// Терпит и каталог-источник (`<dir>/index.json`), и корень репозитория с каталогом плагинов
-/// (`<dir>/plugins/index.json` или `<dir>/examples/plugins/index.json`): можно указать любой из них.
+/// (`<dir>/plugins/index.json`): можно указать любой из них.
 /// Пустой каталог возвращается как есть — понятную ошибку даст загрузка индекса.
 fn normalize_repo(dir: PathBuf) -> PathBuf {
     if dir.join(plugin_catalog::CATALOG_FILE).is_file() {
         return dir;
     }
-    for nested in [dir.join("plugins"), dir.join("examples").join("plugins")] {
-        if nested.join(plugin_catalog::CATALOG_FILE).is_file() {
-            return nested;
-        }
+    let nested = dir.join("plugins");
+    if nested.join(plugin_catalog::CATALOG_FILE).is_file() {
+        return nested;
     }
     dir
 }
@@ -217,56 +211,47 @@ mod tests {
         assert_eq!(normalize_repo(empty.clone()), empty);
     }
 
-    /// Корень репозитория с `examples/plugins/index.json` (эталонный каталог darmark) тоже
-    /// нормализуется; `--repo examples` (родитель каталога) — указатель на тот же каталог.
+    /// `examples/plugins` больше не распознаётся: только `plugins/index.json`.
     #[test]
-    fn normalize_repo_accepts_examples_layout_root() {
+    fn normalize_repo_ignores_examples_plugins_layout() {
         let root = tempfile::tempdir().unwrap();
         let examples = root.path().join("examples").join("plugins");
         fs::create_dir_all(&examples).unwrap();
         fs::write(examples.join(plugin_catalog::CATALOG_FILE), "{}").unwrap();
-        assert_eq!(normalize_repo(root.path().to_path_buf()), examples);
-        assert_eq!(normalize_repo(root.path().join("examples")), examples);
+        // Без `plugins/index.json` рядом — возвращается как есть (ошибку даст загрузка).
+        assert_eq!(normalize_repo(root.path().to_path_buf()), root.path());
     }
 
-    /// Порядок источников: явный аргумент, затем env, затем поиск от CWD вверх.
+    /// Порядок источников: явный аргумент, затем поиск от CWD вверх.
     #[test]
-    fn resolve_repo_prefers_explicit_then_env_then_discovery() {
+    fn resolve_repo_prefers_explicit_then_discovery() {
         let root = tempfile::tempdir().unwrap();
         let explicit = root.path().join("explicit");
-        let from_env = root.path().join("from-env");
         fs::create_dir_all(&explicit).unwrap();
-        fs::create_dir_all(&from_env).unwrap();
 
         // Явный каталог без индекса возвращается как есть (ошибку даст загрузка).
         assert_eq!(
-            resolve_repo_with(Some(explicit.clone()), os("ignored"), root.path()),
+            resolve_repo_with(Some(explicit.clone()), root.path()),
             explicit
         );
         assert_eq!(
-            resolve_repo_with(None, os(from_env.to_str().unwrap()), root.path()),
-            from_env,
-            "env важнее поиска по CWD"
-        );
-        assert_eq!(
-            resolve_repo_with(None, None, root.path()),
+            resolve_repo_with(None, root.path()),
             root.path().join("plugins"),
             "ничего не найдено — <cwd>/plugins"
         );
     }
 
-    /// `discover_repo` ищет каталог с индексом вверх от CWD, включая сам CWD, и понимает
-    /// раскладку `examples/plugins` (эталонный каталог darmark).
+    /// `discover_repo` ищет каталог с индексом вверх от CWD, включая сам CWD.
     #[test]
-    fn resolve_repo_discovers_examples_plugins_from_nested_cwd() {
+    fn resolve_repo_discovers_plugins_from_nested_cwd() {
         let root = tempfile::tempdir().unwrap();
-        let examples = root.path().join("examples").join("plugins");
-        fs::create_dir_all(&examples).unwrap();
-        fs::write(examples.join(plugin_catalog::CATALOG_FILE), "{}").unwrap();
+        let plugins = root.path().join("plugins");
+        fs::create_dir_all(&plugins).unwrap();
+        fs::write(plugins.join(plugin_catalog::CATALOG_FILE), "{}").unwrap();
 
         let nested = root.path().join("crates").join("plugin-cli");
         fs::create_dir_all(&nested).unwrap();
-        assert_eq!(resolve_repo_with(None, None, &nested), examples);
+        assert_eq!(resolve_repo_with(None, &nested), plugins);
     }
 
     #[test]

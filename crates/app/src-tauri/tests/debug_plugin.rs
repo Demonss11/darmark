@@ -1,7 +1,7 @@
 //! Интеграционный тест Фазы 6: `darmark --debug-plugin <path>` (Windows).
 //!
 //! Гоняет реальный `darmark.exe` (debug) с закрытым stdin: dev-режим спавнит
-//! `darmark-plugin-host.exe --serve-plugin examples/plugins/word-count`, тот активируется, получает EOF
+//! `darmark-plugin-host.exe --serve-plugin crates/plugin-catalog/examples/plugins/word-count`, тот активируется, получает EOF
 //! и завершается с кодом 0. Требует собранного child-бинарника — собираем его здесь же
 //! (как `plugins/tests.rs`, чтобы `cargo test -p darmark` был самодостаточным).
 
@@ -30,7 +30,12 @@ fn debug_plugin_runs_reference_fixture_without_gui() {
         .expect("запуск cargo build -p plugin-host");
     assert!(build.success(), "не удалось собрать plugin-host");
 
-    let plugin_dir = root.join("examples").join("plugins").join("word-count");
+    let plugin_dir = root
+        .join("crates")
+        .join("plugin-catalog")
+        .join("examples")
+        .join("plugins")
+        .join("word-count");
     let status = Command::new(env!("CARGO_BIN_EXE_darmark"))
         .arg("--debug-plugin")
         .arg(&plugin_dir)

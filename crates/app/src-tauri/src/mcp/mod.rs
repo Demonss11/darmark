@@ -76,17 +76,12 @@ fn app_log_sink(emitter: impl LogEmitter) -> adapters::LogSink {
     })
 }
 
-/// Каталог-источник плагинов относительно каталога данных приложения: env
-/// `DARMARK_PLUGIN_REPO` → автопоиск от `app_data_dir` → `app_data_dir/plugins`.
+/// Каталог-источник плагинов относительно каталога данных приложения: `app_data_dir/plugins`.
 ///
 /// `app_data_dir` передаётся явно (в проде — `app.path().app_data_dir()`), поэтому функция не
 /// зависит от рабочего каталога процесса: в упакованном приложении CWD произволен, а источник
-/// каталога должен быть детерминированным. Env-override сохраняется для dev/E2E (ADR-0026);
-/// автопоиск находит репозиторный `examples/plugins/`. Если каталога нет — вызывающий
-/// получает понятную ошибку от `Catalog::load`.
+/// каталога должен быть детерминированным. Если каталога нет — вызывающий получает понятную
+/// ошибку от `Catalog::load`.
 pub(crate) fn catalog_repo(app_data_dir: &Path) -> std::path::PathBuf {
-    if let Some(dir) = std::env::var_os("DARMARK_PLUGIN_REPO") {
-        return std::path::PathBuf::from(dir);
-    }
-    plugin_catalog::discover_repo(app_data_dir).unwrap_or_else(|| app_data_dir.join("plugins"))
+    app_data_dir.join("plugins")
 }

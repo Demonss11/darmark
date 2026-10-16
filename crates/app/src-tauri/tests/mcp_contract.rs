@@ -22,16 +22,17 @@ use serde_json::{json, Value};
 
 // ─── Инфраструктура теста ──────────────────────────────────────────
 
-/// Сериализует тесты, меняющие глобальные переменные окружения (переменные процесса общие):
-/// иначе параллельный тест увидел бы промежуточное значение `DARMARK_PLUGIN_REPO`.
-static ENV_LOCK: Mutex<()> = Mutex::new(());
-
 /// Сервер с реальным инвентарём приложения и собирающим журналом.
 ///
 /// Возвращает и сток записей: приватность (AC-MCP-13) проверяется по факту эмиссии.
 /// Базой каталога плагинов служит системный temp: тесты, которым каталог не важен, её
-/// не читают, а тест каталога подменяет источник через `DARMARK_PLUGIN_REPO`.
+/// не читают, а тест каталога передаёт свой `app_data_dir`.
 fn server() -> (McpServer, Arc<Mutex<Vec<String>>>) {
+    server_with_app_data(&std::env::temp_dir())
+}
+
+/// Сервер с явным `app_data_dir` — для тестов, которым нужен конкретный каталог плагинов.
+fn server_with_app_data(app_data_dir: &std::path::Path) -> (McpServer, Arc<Mutex<Vec<String>>>) {
     let records = Arc::new(Mutex::new(Vec::new()));
     let collected = Arc::clone(&records);
     let sink: LogSink = Arc::new(move |message: &str| {
@@ -41,7 +42,7 @@ fn server() -> (McpServer, Arc<Mutex<Vec<String>>>) {
             .push(message.to_string());
     });
     (
-        McpServer::new(build_registry_with_sink(sink, &std::env::temp_dir())),
+        McpServer::new(build_registry_with_sink(sink, app_data_dir)),
         records,
     )
 }
@@ -422,13 +423,9 @@ fn plugin_test_requires_path_per_schema() {
 #[test]
 fn catalog_tool_and_resource_match_plugin_catalog_directly() {
     let repo = examples_plugins_repo();
-    // Каталог читается из `DARMARK_PLUGIN_REPO` (единственный источник и у tool, и у ресурса).
-    // Переменная процесса: меняем её под общим локом и возвращаем прежнее значение.
-    let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let previous = std::env::var_os("DARMARK_PLUGIN_REPO");
-    std::env::set_var("DARMARK_PLUGIN_REPO", &repo);
-
-    let (server, records) = server();
+    // Каталог читается из `app_data_dir` (единственный источник и у tool, и у ресурса).
+    let app_data_dir = repo.parent().expect("родитель каталога");
+    let (server, records) = server_with_app_data(app_data_dir);
 
     let direct = plugin_catalog::Catalog::load(&repo).expect("эталонный каталог читается");
     let expected: Vec<(String, String)> = direct
@@ -505,17 +502,12 @@ fn catalog_tool_and_resource_match_plugin_catalog_directly() {
     let log = records_of(&records);
     assert_eq!(log.len(), 1, "{log:?}");
     assert!(!log[0].contains(":\\"), "журнал без полного пути: {log:?}");
-
-    match previous {
-        Some(value) => std::env::set_var("DARMARK_PLUGIN_REPO", value),
-        None => std::env::remove_var("DARMARK_PLUGIN_REPO"),
-    }
 }
 
 // ─── Фикстуры ──────────────────────────────────────────────────────
 // (фикстуры валидации плагина нужны только Windows-тестам: там живёт белый список путей)
 
-/// Валидный манифест плагина (совпадает по форме с `examples/plugins`).
+/// Валидный манифест плагина (совпадает по форме с `crates/plugin-catalog/examples/plugins`).
 const VALID_MANIFEST: &str = r#"{
   "id": "mcp-contract",
   "name": "MCP contract",
@@ -553,12 +545,14 @@ fn plugin_dir_name(path: &str) -> String {
         .unwrap_or_default()
 }
 
-/// Репозиторный каталог-источник плагинов (`examples/plugins`).
+/// Репозиторный каталог-источник плагинов (`crates/plugin-catalog/examples/plugins`).
 fn examples_plugins_repo() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("..")
         .join("..")
+        .join("crates")
+        .join("plugin-catalog")
         .join("examples")
         .join("plugins")
 }

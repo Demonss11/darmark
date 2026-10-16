@@ -378,10 +378,10 @@ mod tests {
 
     #[test]
     fn test_smoke_word_count_plugin() {
-        // plugin-cli → crates → root → examples/plugins/word-count.
+        // plugin-cli → crates → plugin-catalog → examples/plugins/word-count.
         let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("..")
-            .join("..")
+            .join("plugin-catalog")
             .join("examples")
             .join("plugins")
             .join("word-count");
