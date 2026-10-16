@@ -1,7 +1,7 @@
 //! Тесты маппинга ошибок [`super::super::errors::map_status`].
 
 use crate::ai::errors::map_status;
-use crate::error::ErrorCode;
+use crate::error::{CommandError, ErrorCode};
 
 #[test]
 fn unauthorized_maps_to_bad_key() {
@@ -56,4 +56,44 @@ fn error_message_extracted_from_openai_envelope() {
     let body = "{\"error\":{\"message\":\"model not found\",\"type\":\"invalid_request_error\"}}";
     let err = map_status(400, body, None);
     assert!(err.message.contains("model not found"), "{}", err.message);
+}
+
+/// ADR-0040 §2.1: `map_status` — единственный писатель `http_status`, и во всех ветках он
+/// сохраняет статус ответа провайдера. Поле нужно tool-loop, чтобы отличить отказ шлюза от
+/// локальной ошибки с тем же кодом `AiBadRequest`.
+#[test]
+fn map_status_keeps_http_status_on_every_branch() {
+    for (status, expected) in [
+        (400u16, ErrorCode::AiBadRequest),
+        (401, ErrorCode::AiBadKey),
+        (429, ErrorCode::AiRateLimited),
+        (403, ErrorCode::AiBadRequest),
+        (500, ErrorCode::AiServerError),
+        (503, ErrorCode::AiServerError),
+    ] {
+        let err = map_status(status, "провайдер отказал", None);
+        assert_eq!(err.code, expected, "код для {status}");
+        assert_eq!(
+            err.http_status,
+            Some(status),
+            "HTTP-статус провайдера сохранён для {status}"
+        );
+    }
+}
+
+/// Ветка превышения контекста: статус сохранён (тест tool-loop узнаёт превышение по коду и
+/// не делает повтор — §2.3 п.14).
+#[test]
+fn map_status_keeps_status_for_context_length() {
+    let err = map_status(400, "maximum context length exceeded", None);
+    assert_eq!(err.code, ErrorCode::AiContextLength);
+    assert_eq!(err.http_status, Some(400));
+}
+
+/// Локальная ошибка ответа провайдера не существует: `None` — «HTTP-ответа не было». На этом
+/// отличии держится запрет повтора для ошибок размера ответа и протокола MCP (§2.3 п.15).
+#[test]
+fn local_command_error_carries_no_http_status() {
+    let err = CommandError::new(ErrorCode::AiBadRequest, "ответ превысил допустимый размер");
+    assert_eq!(err.http_status, None);
 }

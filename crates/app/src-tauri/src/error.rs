@@ -1,5 +1,6 @@
 //! Ошибки IPC-команд. Заменяют голый `String`: у ошибки есть код (для логики фронта)
-//! и текст сообщения (для статус-бара). Формат сериализуется в `{ code, message }`.
+//! и текст сообщения (для статус-бара). Формат сериализуется в `{ code, message }`;
+//! `http_status` добавляется только у ошибок провайдера (ADR-0040 §2.1).
 
 use std::fmt;
 
@@ -66,6 +67,11 @@ pub enum ErrorCode {
 pub struct CommandError {
     pub code: ErrorCode,
     pub message: String,
+    /// HTTP-статус ответа провайдера; `None` — ответа по HTTP не было (локальная проверка,
+    /// ошибка протокола MCP, сеть). Писатель ровно один — [`CommandError::provider`], поэтому
+    /// payload остальных команд сериализуется как `{ code, message }` (ADR-0040 §2.1).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub http_status: Option<u16>,
 }
 
 impl CommandError {
@@ -73,6 +79,20 @@ impl CommandError {
         Self {
             code,
             message: message.into(),
+            http_status: None,
+        }
+    }
+
+    /// Ошибка, порождённая ответом провайдера: сохраняет его HTTP-статус.
+    ///
+    /// Нужен там, где без статуса нельзя отличить отказ провайдера от локальной ошибки с тем
+    /// же кодом (ADR-0040 §2.1) — сейчас это политика деградации `tools` в
+    /// [`crate::ai::tool_loop`].
+    pub fn provider(status: u16, code: ErrorCode, message: impl Into<String>) -> Self {
+        Self {
+            code,
+            message: message.into(),
+            http_status: Some(status),
         }
     }
 
@@ -137,5 +157,43 @@ mod tests {
             CommandError::nothing_to_redo().code,
             ErrorCode::NothingToRedo
         );
+    }
+
+    /// ADR-0040 §2.1 п.4: единственный барьер для замороженных контрактов §13.2 — payload всех
+    /// команд, кроме AI-провайдера, остаётся ровно `{ code, message }`. Поле `http_status`
+    /// обязано быть пропущено, даже если конструктор ошибки изменится.
+    #[test]
+    fn local_errors_serialize_without_http_status() {
+        let cases = [
+            ("unknown_document", CommandError::unknown_document("doc-7")),
+            ("not_found", CommandError::not_found("файл отсутствует")),
+            ("io", CommandError::io("диск недоступен")),
+            ("too_large", CommandError::too_large("файл слишком большой")),
+            ("not_utf8", CommandError::not_utf8("некорректный UTF-8")),
+            ("nothing_to_undo", CommandError::nothing_to_undo()),
+            ("nothing_to_redo", CommandError::nothing_to_redo()),
+        ];
+
+        for (label, err) in cases {
+            assert_eq!(err.http_status, None, "у {label} нет HTTP-ответа");
+            let value = serde_json::to_value(&err).expect("ошибка сериализуется");
+            let object = value.as_object().expect("payload — объект");
+            assert_eq!(
+                object.keys().collect::<Vec<_>>(),
+                vec!["code", "message"],
+                "payload {label} не должен содержать http_status: {value}"
+            );
+        }
+    }
+
+    /// Обратная сторона инварианта §2.1: у ошибки провайдера статус виден — по нему tool-loop
+    /// отличает отказ шлюза от локальной ошибки с тем же кодом.
+    #[test]
+    fn provider_error_serializes_http_status() {
+        let err = CommandError::provider(400, ErrorCode::AiBadRequest, "Некорректный запрос");
+        let value = serde_json::to_value(&err).expect("ошибка сериализуется");
+
+        assert_eq!(value["code"], "ai_bad_request");
+        assert_eq!(value["http_status"], 400);
     }
 }

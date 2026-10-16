@@ -5,6 +5,8 @@
 //! живёт в `mcp-core`, здесь — только клиентская механика. Цикл не превышает
 //! [`MAX_TOOL_ITERATIONS`] шагов, а результат каждого вызова обрезается до
 //! [`MAX_TOOL_RESULT_CHARS`], чтобы недоверенный вывод инструмента не исчерпал контекст модели.
+//! Отказ провайдера принимать `tools` не ломает чат: один авто-повтор без них и кэш возможностей
+//! по `(base_url, model)` (ADR-0040).
 
 use std::time::{Duration, Instant};
 
@@ -13,6 +15,7 @@ use serde_json::{json, Value};
 use mcp_core::protocol::{RpcRequest, RPC_VERSION};
 use mcp_core::server::McpServer;
 
+use crate::ai::state::host_of_url;
 use crate::ai::tool_calls::ToolCall;
 use crate::ai::transport::{AiTransport, ChatOutcome, ChatRequest};
 use crate::ai::types::{AiMessage, AiResponse};
@@ -46,6 +49,22 @@ pub struct ToolExecution<'a> {
     pub result: &'a ToolResult,
     /// Сколько заняло исполнение вызова.
     pub duration: Duration,
+}
+
+/// Память о том, какие провайдеры отвергают поле `tools` (ADR-0040 §2.5).
+///
+/// Трейт, а не прямая зависимость от [`crate::ai::state::AiState`]: цикл не должен знать про
+/// состояние приложения, поэтому проверяется фейком (образец шва — [`crate::ai::commands::AiEmitter`]).
+/// `Send + Sync` — из-за ссылки на трейт, переживающей `await` внутри фьючера Tauri-команды.
+/// Ключ — `(base_url, model)` **как есть, без нормализации**: склейка по хосту склеила бы
+/// разные эндпоинты одного шлюза и дала ложный вердикт.
+pub trait ToolsCapability: Send + Sync {
+    /// Разрешены ли инструменты для пары `(base_url, model)`.
+    fn tools_supported(&self, base_url: &str, model: &str) -> bool;
+
+    /// Помечает пару как не поддерживающую `tools` — вызывается **только после успешного
+    /// повтора без `tools`, иначе кэш запомнил бы недоказанный вердикт (§2.5 п.22).
+    fn mark_tools_unsupported(&self, base_url: &str, model: &str);
 }
 
 /// Преобразует результат `tools/list` MCP в OpenAI-массив `tools`.
@@ -151,10 +170,20 @@ pub fn tool_message_content(tool: &str, text: &str) -> String {
 /// последний ответ ассистента. `on_tool_call`/`on_tool_result` — наблюдаемость (журнал, события);
 /// длительность вызова измеряется здесь и приходит в [`ToolExecution`], чтобы наблюдателю не
 /// приходилось коррелировать вызовы по времени самому.
+///
+/// **Деградация провайдера без `tools`** (ADR-0040): HTTP 400 при объявленных инструментах даёт
+/// ровно один авто-повтор без `tools` **внутри этого же цикла** — та же пауза rate limit, тот же
+/// `message_id`, бюджет запросов не растёт (повтор занимает слот итерации). Повтор не начинается,
+/// если повтор в этом `run` уже был, инструменты не объявлялись, следующего слота итерации не
+/// осталось (на последнем слоте отказ доходит до пользователя как есть — иначе ошибка ушла бы в
+/// пустой `ai:done`) либо сработало распознанное превышение контекста. Вердикт «провайдер не умеет
+/// `tools`» пишется в `capability` только после успешного повтора; кэш-хит снимает `tools` до
+/// первого запроса. Наблюдаемость — тихий `warn` на stderr (§2.6).
 pub async fn run<F, S>(
     transport: &dyn AiTransport,
     mcp: &McpServer,
     base: ChatRequest,
+    capability: &dyn ToolsCapability,
     on_delta: &mut (dyn FnMut(String) + Send),
     on_tool_call: &mut F,
     on_tool_result: &mut S,
@@ -165,9 +194,28 @@ where
 {
     let mut request = base;
     let mut last = ChatOutcome::default();
+    let mut degraded = false;
+    let mut pending_verdict: Option<(String, String)> = None;
 
-    for _ in 0..MAX_TOOL_ITERATIONS {
-        let outcome = transport.chat(request.clone(), on_delta).await?;
+    if !capability.tools_supported(&request.base_url, &request.model) {
+        request.tools = None;
+    }
+
+    for index in 0..MAX_TOOL_ITERATIONS {
+        let outcome = match transport.chat(request.clone(), on_delta).await {
+            Ok(outcome) => outcome,
+            Err(err) if !degraded && has_retry_slot(index) && rejected_tools(&request, &err) => {
+                degraded = true;
+                pending_verdict = Some((request.base_url.clone(), request.model.clone()));
+                request.tools = None;
+                continue;
+            }
+            Err(err) => return Err(err),
+        };
+        if let Some((base_url, model)) = pending_verdict.take() {
+            capability.mark_tools_unsupported(&base_url, &model);
+            warn_degraded(&base_url, &model);
+        }
         if outcome.tool_calls.is_empty() {
             return Ok(final_response(outcome));
         }
@@ -188,6 +236,52 @@ where
     }
 
     Ok(final_response(last))
+}
+
+/// Отказ провайдера, который цикл трактует как «не принимает `tools`» (ADR-0040 §2.2 п.6).
+///
+/// Условие: инструменты объявлялись (непустой `tools`) **и** это ответ провайдера `400`, а не
+/// локальная ошибка; распознанное превышение контекста исключено — повтор без `tools` его не
+/// устраняет (§2.3 п.14). Текст отказа не разбирается: он у шлюзов не стандартизован, а промах
+/// эвристики означал бы вечную поломку чата (§2.3 п.13).
+fn rejected_tools(request: &ChatRequest, err: &CommandError) -> bool {
+    declares_tools(request)
+        && err.http_status == Some(400)
+        && err.code != ErrorCode::AiContextLength
+}
+
+/// Объявлялись ли в запросе инструменты: `Some` с непустым массивом спек.
+///
+/// `None` (пустой реестр MCP) и пустой массив — инструменты **не объявлялись**: деградировать
+/// нечего, повтор был бы идентичным запросом, а удачный «повтор» поставил бы ложный вердикт
+/// «провайдер не умеет `tools`» (ADR-0040 §2.2 п.10).
+fn declares_tools(request: &ChatRequest) -> bool {
+    request
+        .tools
+        .as_ref()
+        .is_some_and(|specs| specs.as_array().is_some_and(|entries| !entries.is_empty()))
+}
+
+/// Есть ли свободный слот итерации под повтор: повтор делается `continue`, то есть следующей
+/// итерацией, и на последнем слоте следующей итерации уже нет (ADR-0040 §2.2 п.8).
+fn has_retry_slot(index: usize) -> bool {
+    index + 1 < MAX_TOOL_ITERATIONS
+}
+
+/// Тихая запись о деградации: только метаданные — хост, модель и код ответа провайдера
+/// (ADR-0040 §2.6 п.26).
+///
+/// Печатается **хост, а не `base_url` целиком**: адрес допускает userinfo и query
+/// ([`crate::ai::state::validate_base_url`]), а там может лежать секрет шлюза (H4,
+/// ADR-0035 §2.6 п.16). Модель — свободный пользовательский текст, поэтому переводы строк
+/// заменяются пробелом: иначе ими можно подделать строку лога. Карточки в чате нет (§2.6
+/// п.28), запись в журнал MCP тоже не делается (§2.6 п.29).
+fn warn_degraded(base_url: &str, model: &str) {
+    let host = host_of_url(base_url).unwrap_or_else(|| "неизвестный хост".to_string());
+    let model = model.replace(['\n', '\r'], " ");
+    eprintln!(
+        "darmark: ai: провайдер {host} отверг tools (HTTP 400), модель {model}: чат без инструментов"
+    );
 }
 
 /// Финальный ответ ассистента из последнего `ChatOutcome`.

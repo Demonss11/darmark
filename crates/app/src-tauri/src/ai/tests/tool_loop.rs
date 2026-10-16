@@ -1,106 +1,32 @@
-//! Тесты tool-loop [`super::super::tool_loop`]: спецификации MCP, вызов, разметка R7, цикл.
+//! Тесты tool-loop [`super::super::tool_loop`]: спецификации MCP, вызов, разметка R7, цикл,
+//! деградация провайдера без `tools` (ADR-0040).
 //!
-//! Транспорт провайдера и MCP-сервер подменяются фейками: `ScriptedTransport` отдаёт заранее
-//! заданную последовательность ответов, `FakeTool` — детерминированный результат вызова.
-//! Так проверяется поведение цикла (число запросов, состав `tool`-сообщений, изоляция сбоя),
+//! Транспорт провайдера, MCP-серверы и кэш возможностей подменяются двойниками из
+//! [`super::support`]: `ScriptedTransport` отдаёт заранее заданную последовательность шагов
+//! (включая отказы провайдера), `MockCapability` записывает моменты постановки вердикта. Так
+//! проверяется поведение цикла (число запросов, объявление `tools`, состав диалога, деградация),
 //! а не реализация сети или реестра.
 
-use std::collections::{BTreeMap, VecDeque};
-use std::future::Future;
-use std::sync::{Arc, Mutex};
-use std::task::{Context, Poll, Waker};
+use std::collections::BTreeMap;
 
 use serde_json::{json, Value};
 
-use mcp_core::handlers::ToolError;
 use mcp_core::protocol::{RpcRequest, RPC_VERSION};
 use mcp_core::server::McpServer;
-use mcp_core::{Registry, ToolDefinition, ToolHandler};
 
 use crate::ai::tool_calls::ToolCall;
 use crate::ai::tool_loop::{
     call_mcp_tool, run, tool_message_content, tool_specs_from_tools_list, ToolExecution,
     MAX_TOOL_ITERATIONS, MAX_TOOL_RESULT_CHARS,
 };
-use crate::ai::transport::{AiTransport, BoxFuture, ChatOutcome, ChatRequest, TestRequest};
-use crate::ai::types::{AiMessage, AiUsage};
+use crate::ai::transport::ChatRequest;
+use crate::ai::types::AiMessage;
 use crate::error::{CommandError, ErrorCode};
 
-/// Фейковый инструмент MCP: по флагу `fail` отдаёт успех или ошибку исполнения.
-struct FakeTool {
-    name: String,
-    fail: bool,
-}
-
-impl ToolHandler for FakeTool {
-    fn name(&self) -> &str {
-        &self.name
-    }
-
-    fn description(&self) -> &str {
-        "тестовый инструмент"
-    }
-
-    fn input_schema(&self) -> Value {
-        json!({"type": "object", "properties": {}})
-    }
-
-    fn call(&self, _params: Value) -> Result<Value, ToolError> {
-        if self.fail {
-            Err(ToolError::internal("сбой инструмента"))
-        } else {
-            Ok(json!({"ok": true}))
-        }
-    }
-}
-
-/// MCP-сервер с одним [`FakeTool`] — минимальный реестр для проверки спецификаций и вызова.
-fn fake_server(name: &str, fail: bool) -> McpServer {
-    let mut registry = Registry::new();
-    registry.register_tool(ToolDefinition {
-        name: name.to_string(),
-        description: "тестовый инструмент".to_string(),
-        input_schema: json!({"type": "object", "properties": {}}),
-        handler: Arc::new(FakeTool {
-            name: name.to_string(),
-            fail,
-        }),
-    });
-    McpServer::new(registry)
-}
-
-/// Инструмент с длинным текстовым результатом — проверка обрезки до [`MAX_TOOL_RESULT_CHARS`].
-struct LongTextTool;
-
-impl ToolHandler for LongTextTool {
-    fn name(&self) -> &str {
-        "long_tool"
-    }
-
-    fn description(&self) -> &str {
-        "длинный результат"
-    }
-
-    fn input_schema(&self) -> Value {
-        json!({"type": "object", "properties": {}})
-    }
-
-    fn call(&self, _params: Value) -> Result<Value, ToolError> {
-        Ok(Value::String("я".repeat(MAX_TOOL_RESULT_CHARS + 100)))
-    }
-}
-
-/// MCP-сервер с [`LongTextTool`].
-fn long_server() -> McpServer {
-    let mut registry = Registry::new();
-    registry.register_tool(ToolDefinition {
-        name: "long_tool".to_string(),
-        description: "длинный результат".to_string(),
-        input_schema: json!({"type": "object", "properties": {}}),
-        handler: Arc::new(LongTextTool),
-    });
-    McpServer::new(registry)
-}
+use super::support::{
+    block_on, clone_error, context_length_exceeded, failing_server, fake_server, final_outcome,
+    long_text_server, outcome_with_tool_call, tools_rejected, MockCapability, ScriptedTransport,
+};
 
 /// Результат `tools/list` из реестра — тот же JSON-RPC путь, что и у провайдера.
 fn tools_list_json(server: &McpServer) -> Value {
@@ -114,62 +40,6 @@ fn tools_list_json(server: &McpServer) -> Value {
         .expect("tools/list возвращает ответ")
         .result
         .expect("tools/list возвращает result")
-}
-
-/// Транспорт провайдера с заданной последовательностью ответов; лишние запросы получают
-/// `fallback`. Каждый запрос сохраняется — по нему проверяется число итераций и состав диалога.
-struct ScriptedTransport {
-    script: Mutex<VecDeque<ChatOutcome>>,
-    requests: Mutex<Vec<ChatRequest>>,
-    fallback: ChatOutcome,
-}
-
-impl ScriptedTransport {
-    fn new(script: Vec<ChatOutcome>, fallback: ChatOutcome) -> Self {
-        Self {
-            script: Mutex::new(script.into()),
-            requests: Mutex::new(Vec::new()),
-            fallback,
-        }
-    }
-
-    fn request_count(&self) -> usize {
-        self.requests.lock().expect("запросы не отравлены").len()
-    }
-
-    fn requests(&self) -> Vec<ChatRequest> {
-        self.requests.lock().expect("запросы не отравлены").clone()
-    }
-}
-
-impl AiTransport for ScriptedTransport {
-    fn chat<'a>(
-        &'a self,
-        request: ChatRequest,
-        on_delta: &'a mut (dyn FnMut(String) + Send),
-    ) -> BoxFuture<'a, Result<ChatOutcome, CommandError>> {
-        Box::pin(async move {
-            self.requests
-                .lock()
-                .expect("запросы не отравлены")
-                .push(request);
-            let outcome = self
-                .script
-                .lock()
-                .expect("сценарий не отравлен")
-                .pop_front()
-                .unwrap_or_else(|| self.fallback.clone());
-            on_delta(outcome.content.clone());
-            Ok(outcome)
-        })
-    }
-
-    fn test_connection(
-        &self,
-        _request: TestRequest,
-    ) -> BoxFuture<'_, Result<Option<String>, CommandError>> {
-        Box::pin(async { Ok(None) })
-    }
 }
 
 /// Базовый запрос без инструментов: сообщения дополняет `run`.
@@ -192,48 +62,20 @@ fn base_request() -> ChatRequest {
     }
 }
 
-/// Ответ провайдера с одним вызовом инструмента.
-fn outcome_with_tool_call(name: &str) -> ChatOutcome {
-    ChatOutcome {
-        content: String::new(),
-        usage: None,
-        finish_reason: Some("tool_calls".to_string()),
-        tool_calls: vec![ToolCall {
-            id: "call-1".to_string(),
-            name: name.to_string(),
-            arguments: json!({}),
-        }],
-    }
-}
-
-/// Финальный текстовый ответ провайдера без вызовов.
-fn final_outcome(text: &str) -> ChatOutcome {
-    ChatOutcome {
-        content: text.to_string(),
-        usage: Some(AiUsage {
-            prompt_tokens: 1,
-            completion_tokens: 2,
-        }),
-        finish_reason: Some("stop".to_string()),
-        tool_calls: Vec::new(),
-    }
-}
-
-/// Минимальный исполнитель для `#[test]`: фейковый транспорт не делает I/O, поэтому фьючер
-/// `run` завершается за один опрос. `#[tokio::test]` недоступен (в графе нет фичи `macros`),
-/// а тянуть рантайм ради трёх тестов не оправдано.
-fn block_on<F: Future>(future: F) -> F::Output {
-    let mut future = std::pin::pin!(future);
-    let mut context = Context::from_waker(Waker::noop());
-    match future.as_mut().poll(&mut context) {
-        Poll::Ready(value) => value,
-        Poll::Pending => panic!("тестовый фьючер обязан завершиться за один опрос"),
+/// Тот же запрос с объявленным инструментом — вход для проверки деградации: только при
+/// непустом `tools` провайдер вообще может отвергнуть поле (ADR-0040 §2.2 п.10).
+fn request_with_tools() -> ChatRequest {
+    ChatRequest {
+        tools: Some(json!([
+            {"type": "function", "function": {"name": "fake_tool", "parameters": {}}}
+        ])),
+        ..base_request()
     }
 }
 
 #[test]
 fn tool_specs_from_tools_list_maps_mcp_registry() {
-    let server = fake_server("fake_tool", false);
+    let server = fake_server();
     let list = tools_list_json(&server);
 
     let specs = tool_specs_from_tools_list(&list);
@@ -259,12 +101,9 @@ fn tool_message_content_marks_data_not_instructions() {
 
 #[test]
 fn tool_loop_executes_tool_and_returns_final_answer() {
-    let server = fake_server("fake_tool", false);
-    let transport = ScriptedTransport::new(
-        vec![
-            outcome_with_tool_call("fake_tool"),
-            final_outcome("готовый ответ"),
-        ],
+    let server = fake_server();
+    let transport = ScriptedTransport::ok(
+        vec![outcome_with_tool_call(), final_outcome("готовый ответ")],
         final_outcome("готовый ответ"),
     );
     let mut called: Vec<String> = Vec::new();
@@ -274,6 +113,7 @@ fn tool_loop_executes_tool_and_returns_final_answer() {
         &transport,
         &server,
         base_request(),
+        &MockCapability::empty(),
         &mut |_delta: String| {},
         &mut |call: &ToolCall| called.push(call.name.clone()),
         &mut |exec: &ToolExecution| results.push((exec.call.id.clone(), exec.result.ok)),
@@ -310,14 +150,15 @@ fn tool_loop_executes_tool_and_returns_final_answer() {
 
 #[test]
 fn tool_loop_stops_at_iteration_limit() {
-    let server = fake_server("fake_tool", false);
-    let transport = ScriptedTransport::new(Vec::new(), outcome_with_tool_call("fake_tool"));
+    let server = fake_server();
+    let transport = ScriptedTransport::ok(Vec::new(), outcome_with_tool_call());
     let mut calls = 0usize;
 
     let response = block_on(run(
         &transport,
         &server,
         base_request(),
+        &MockCapability::empty(),
         &mut |_delta: String| {},
         &mut |_call: &ToolCall| calls += 1,
         &mut |_exec: &ToolExecution| {},
@@ -338,12 +179,9 @@ fn tool_loop_stops_at_iteration_limit() {
 
 #[test]
 fn tool_loop_isolates_tool_failure() {
-    let server = fake_server("fake_tool", true);
-    let transport = ScriptedTransport::new(
-        vec![
-            outcome_with_tool_call("fake_tool"),
-            final_outcome("ответ после сбоя"),
-        ],
+    let server = failing_server();
+    let transport = ScriptedTransport::ok(
+        vec![outcome_with_tool_call(), final_outcome("ответ после сбоя")],
         final_outcome("ответ после сбоя"),
     );
     let mut results: Vec<bool> = Vec::new();
@@ -352,6 +190,7 @@ fn tool_loop_isolates_tool_failure() {
         &transport,
         &server,
         base_request(),
+        &MockCapability::empty(),
         &mut |_delta: String| {},
         &mut |_call: &ToolCall| {},
         &mut |exec: &ToolExecution| results.push(exec.result.ok),
@@ -371,7 +210,7 @@ fn tool_loop_isolates_tool_failure() {
 
 #[test]
 fn call_mcp_tool_rejects_unknown_tool() {
-    let server = fake_server("fake_tool", false);
+    let server = fake_server();
 
     let error = call_mcp_tool(&server, "ghost", json!({}))
         .expect_err("неизвестный инструмент — ошибка протокола");
@@ -381,7 +220,7 @@ fn call_mcp_tool_rejects_unknown_tool() {
 
 #[test]
 fn call_mcp_tool_truncates_long_result_on_char_boundary() {
-    let server = long_server();
+    let server = long_text_server();
     let full = Value::String("я".repeat(MAX_TOOL_RESULT_CHARS + 100)).to_string();
 
     let result = call_mcp_tool(&server, "long_tool", json!({})).expect("вызов инструмента");
@@ -396,4 +235,492 @@ fn call_mcp_tool_truncates_long_result_on_char_boundary() {
         full.starts_with(&result.text),
         "обрезка прошла по границе UTF-8 (многобайтный символ не разорван)"
     );
+}
+
+/// Сценарий (а) ADR-0040 §2.2: HTTP 400 при объявленных инструментах даёт ровно один
+/// авто-повтор без `tools` в том же `run`; вердикт кэшируется только после успеха.
+#[test]
+fn run_retries_once_without_tools_on_provider_400() {
+    let transport = ScriptedTransport::new(
+        vec![
+            Err(tools_rejected()),
+            Ok(final_outcome("ответ без инструментов")),
+        ],
+        Err(CommandError::provider(
+            500,
+            ErrorCode::AiServerError,
+            "повтор не должен сверх бюджета",
+        )),
+    );
+    let capability = MockCapability::empty();
+    let request = request_with_tools();
+
+    let response = block_on(run(
+        &transport,
+        &fake_server(),
+        request.clone(),
+        &capability,
+        &mut |_delta: String| {},
+        &mut |_call: &ToolCall| {},
+        &mut |_exec: &ToolExecution| {},
+    ))
+    .expect("один отвергнутый запрос не ломает чат");
+
+    assert_eq!(response.message.content, "ответ без инструментов");
+    let requests = transport.requests();
+    assert_eq!(requests.len(), 2, "один отвергнутый запрос и один повтор");
+    assert!(
+        requests[0].tools.is_some(),
+        "первый запрос объявляет инструменты: {:?}",
+        requests[0].tools
+    );
+    assert!(
+        requests[1].tools.is_none(),
+        "повтор уходит без поля tools: {:?}",
+        requests[1].tools
+    );
+    assert_eq!(
+        capability.marks(),
+        vec![(
+            "https://example.test/v1".to_string(),
+            "test-model".to_string()
+        )],
+        "вердикт о неподдержке tools ставится один раз и только после успеха"
+    );
+}
+
+/// §2.3 п.14: распознанное превышение контекста — не отказ от `tools`, повтор не поможет.
+#[test]
+fn run_skips_retry_on_context_length_400() {
+    let transport = ScriptedTransport::new(
+        vec![Err(context_length_exceeded())],
+        Err(context_length_exceeded()),
+    );
+    let capability = MockCapability::empty();
+
+    let error = block_on(run(
+        &transport,
+        &fake_server(),
+        request_with_tools(),
+        &capability,
+        &mut |_delta: String| {},
+        &mut |_call: &ToolCall| {},
+        &mut |_exec: &ToolExecution| {},
+    ))
+    .expect_err("превышение контекста пользователю не чинится повтором");
+
+    assert_eq!(error.code, ErrorCode::AiContextLength);
+    assert_eq!(error.http_status, Some(400));
+    assert_eq!(
+        transport.request_count(),
+        1,
+        "повтор без tools не выполняется"
+    );
+    assert!(
+        capability.marks().is_empty(),
+        "вердикт о tools не ставится: {:?}",
+        capability.marks()
+    );
+}
+
+/// §2.2 п.6 / §2.3 п.15: повтор — только на 400 провайдера **и** только при объявленных
+/// инструментах. Таблица прогоняет каждую отказную ветку в обоих режимах: `401`, `5xx`,
+/// локальная ошибка без статуса и сам `400` при пустом реестре MCP — все уходят пользователю
+/// как есть, без повтора и без вердикта.
+#[test]
+fn run_does_not_retry_on_other_failures() {
+    let cases = [
+        (
+            "400 — отказ шлюза, но инструменты не объявлялись",
+            tools_rejected(),
+            false,
+        ),
+        (
+            "401 — отказ ключа",
+            CommandError::provider(401, ErrorCode::AiBadKey, "Неверный API-ключ"),
+            true,
+        ),
+        (
+            "401 — отказ ключа, но инструменты не объявлялись",
+            CommandError::provider(401, ErrorCode::AiBadKey, "Неверный API-ключ"),
+            false,
+        ),
+        (
+            "503 — транзиентная ошибка",
+            CommandError::provider(503, ErrorCode::AiServerError, "провайдер недоступен"),
+            true,
+        ),
+        (
+            "локальная ошибка без статуса",
+            CommandError::new(ErrorCode::AiBadRequest, "ответ превысил допустимый размер"),
+            true,
+        ),
+        (
+            "локальная ошибка без статуса, инструменты не объявлялись",
+            CommandError::new(ErrorCode::AiBadRequest, "ответ превысил допустимый размер"),
+            false,
+        ),
+    ];
+
+    for (label, failure, tools_declared) in cases {
+        let transport =
+            ScriptedTransport::new(vec![Err(clone_error(&failure))], Ok(final_outcome("x")));
+        let capability = MockCapability::empty();
+        let request = if tools_declared {
+            request_with_tools()
+        } else {
+            base_request()
+        };
+
+        let error = block_on(run(
+            &transport,
+            &fake_server(),
+            request,
+            &capability,
+            &mut |_delta: String| {},
+            &mut |_call: &ToolCall| {},
+            &mut |_exec: &ToolExecution| {},
+        ))
+        .unwrap_err();
+
+        assert_eq!(
+            error.message, failure.message,
+            "наружу уходит исходная ошибка для {label}"
+        );
+        assert_eq!(
+            error.http_status, failure.http_status,
+            "статус не подменяется для {label}"
+        );
+        assert_eq!(
+            transport.request_count(),
+            1,
+            "повтор не выполняется для {label}"
+        );
+        assert!(
+            capability.marks().is_empty(),
+            "вердикт не ставится для {label}: {:?}",
+            capability.marks()
+        );
+    }
+}
+
+/// §2.2 п.10: деградировать нечего — при пустом реестре MCP в запросе нет `tools`. Регрессия на
+/// инверсию в `declares_tools`: отказ `400` без объявленных инструментов обязан уйти наружу как
+/// есть, одним запросом и без ложного вердикта «провайдер не умеет `tools`».
+#[test]
+fn run_does_not_degrade_when_tools_never_declared() {
+    let variants = [("tools = None", None), ("tools = []", Some(json!([])))];
+
+    for (label, tools) in variants {
+        let transport = ScriptedTransport::new(
+            vec![Err(tools_rejected())],
+            Err(CommandError::provider(
+                400,
+                ErrorCode::AiBadRequest,
+                "лишний повтор без объявленных инструментов",
+            )),
+        );
+        let capability = MockCapability::empty();
+
+        let error = block_on(run(
+            &transport,
+            &fake_server(),
+            ChatRequest {
+                tools,
+                ..base_request()
+            },
+            &capability,
+            &mut |_delta: String| {},
+            &mut |_call: &ToolCall| {},
+            &mut |_exec: &ToolExecution| {},
+        ))
+        .expect_err("отказ без объявленных инструментов уходит пользователю");
+
+        assert_eq!(
+            error.message, "tools is not supported",
+            "наружу уходит исходная ошибка для {label}"
+        );
+        assert_eq!(error.http_status, Some(400));
+        assert_eq!(
+            transport.request_count(),
+            1,
+            "повтор идентичен первому запросу и не выполняется для {label}"
+        );
+        assert!(
+            capability.marks().is_empty(),
+            "ложный вердикт «не умеет tools» не ставится для {label}: {:?}",
+            capability.marks()
+        );
+    }
+}
+
+/// §2.5 п.22: 400 — вердикт по одному ответу. Упавший повтор не кэшируется — пользователь видит
+/// исходную ошибку, следующий запрос проверяет заново.
+#[test]
+fn run_does_not_cache_verdict_when_retry_also_fails() {
+    let second = CommandError::provider(
+        400,
+        ErrorCode::AiBadRequest,
+        "tools is not supported (retry)",
+    );
+    let transport = ScriptedTransport::new(
+        vec![Err(tools_rejected()), Err(clone_error(&second))],
+        Err(tools_rejected()),
+    );
+    let capability = MockCapability::empty();
+
+    let error = block_on(run(
+        &transport,
+        &fake_server(),
+        request_with_tools(),
+        &capability,
+        &mut |_delta: String| {},
+        &mut |_call: &ToolCall| {},
+        &mut |_exec: &ToolExecution| {},
+    ))
+    .expect_err("упавший повтор уходит пользователю");
+
+    assert_eq!(
+        error.message, "tools is not supported (retry)",
+        "наружу уходит ошибка второго запроса, а не первого"
+    );
+    assert_eq!(
+        transport.request_count(),
+        2,
+        "после упавшего повтора попыток нет"
+    );
+    assert!(
+        capability.marks().is_empty(),
+        "недоказанный вердикт не кэшируется: {:?}",
+        capability.marks()
+    );
+}
+
+/// §2.5 п.25: кэш-хит снимает `tools` до первого запроса — ни одного отвергнутого запроса.
+#[test]
+fn run_drops_tools_before_first_request_on_cache_hit() {
+    let transport = ScriptedTransport::ok(Vec::new(), final_outcome("ответ без инструментов"));
+    let capability = MockCapability::with_unsupported("https://example.test/v1", "test-model");
+
+    let response = block_on(run(
+        &transport,
+        &fake_server(),
+        request_with_tools(),
+        &capability,
+        &mut |_delta: String| {},
+        &mut |_call: &ToolCall| {},
+        &mut |_exec: &ToolExecution| {},
+    ))
+    .expect("кэш-хит не ломает чат");
+
+    assert_eq!(response.message.content, "ответ без инструментов");
+    let requests = transport.requests();
+    assert_eq!(requests.len(), 1, "один запрос без повтора");
+    assert!(
+        requests[0].tools.is_none(),
+        "кэш-хит снимает tools до первого запроса: {:?}",
+        requests[0].tools
+    );
+    assert!(
+        capability.marks().is_empty(),
+        "кэш-хит молчит: повторов нет, вердиктов нет"
+    );
+}
+
+/// §2.2 п.8: бюджет запросов не растёт — повтор занимает слот итерации, а не добавляет новый.
+#[test]
+fn run_request_budget_includes_degradation_attempt() {
+    let transport = ScriptedTransport::new(
+        vec![
+            Err(tools_rejected()),
+            Ok(outcome_with_tool_call()),
+            Ok(final_outcome("ответ после вызова")),
+        ],
+        Ok(final_outcome("ответ после вызова")),
+    );
+    let capability = MockCapability::empty();
+
+    let response = block_on(run(
+        &transport,
+        &fake_server(),
+        request_with_tools(),
+        &capability,
+        &mut |_delta: String| {},
+        &mut |_call: &ToolCall| {},
+        &mut |_exec: &ToolExecution| {},
+    ))
+    .expect("цикл доходит до финального ответа");
+
+    assert_eq!(response.message.content, "ответ после вызова");
+    assert!(
+        transport.request_count() <= MAX_TOOL_ITERATIONS,
+        "деградация не увеличила бюджет запросов: {}",
+        transport.request_count()
+    );
+    assert_eq!(capability.marks().len(), 1, "вердикт один");
+}
+
+/// §2.2 п.8: повтор занимает слот итерации, поэтому на **последнем** слоте повтор уже некуда
+/// делать. Отказ `400` там — исходная ошибка наружу, без «повтора» за пределами бюджета и без
+/// вердикта в кэше.
+#[test]
+fn run_reports_error_when_rejection_hits_last_slot() {
+    let transport = ScriptedTransport::new(
+        vec![
+            Ok(outcome_with_tool_call()),
+            Ok(outcome_with_tool_call()),
+            Ok(outcome_with_tool_call()),
+            Err(tools_rejected()),
+        ],
+        Err(CommandError::provider(
+            400,
+            ErrorCode::AiBadRequest,
+            "запрос сверх бюджета итераций",
+        )),
+    );
+    let capability = MockCapability::empty();
+
+    let error = block_on(run(
+        &transport,
+        &fake_server(),
+        request_with_tools(),
+        &capability,
+        &mut |_delta: String| {},
+        &mut |_call: &ToolCall| {},
+        &mut |_exec: &ToolExecution| {},
+    ))
+    .expect_err("повтор на последнем слоте невозможен — ошибка уходит наружу");
+
+    assert_eq!(error.http_status, Some(400));
+    assert_eq!(error.message, "tools is not supported");
+    assert_eq!(
+        transport.request_count(),
+        MAX_TOOL_ITERATIONS,
+        "бюджет запросов не превышен"
+    );
+    assert!(
+        capability.marks().is_empty(),
+        "незавершённая деградация не кэшируется: {:?}",
+        capability.marks()
+    );
+}
+
+/// Обратная граница: отказ на **предпоследнем** слоте — единственный слот, где повтор ещё
+/// помещается в бюджет, и он должен сработать.
+#[test]
+fn run_retries_when_rejection_hits_penultimate_slot() {
+    let transport = ScriptedTransport::new(
+        vec![
+            Ok(outcome_with_tool_call()),
+            Ok(outcome_with_tool_call()),
+            Err(tools_rejected()),
+            Ok(final_outcome("ответ после деградации")),
+        ],
+        Ok(final_outcome("запасной ответ")),
+    );
+    let capability = MockCapability::empty();
+
+    let response = block_on(run(
+        &transport,
+        &fake_server(),
+        request_with_tools(),
+        &capability,
+        &mut |_delta: String| {},
+        &mut |_call: &ToolCall| {},
+        &mut |_exec: &ToolExecution| {},
+    ))
+    .expect("повтор на предпоследнем слоте помещается в бюджет");
+
+    assert_eq!(response.message.content, "ответ после деградации");
+    let requests = transport.requests();
+    assert_eq!(requests.len(), MAX_TOOL_ITERATIONS);
+    assert!(
+        requests[requests.len() - 1].tools.is_none(),
+        "повтор уходит без tools: {:?}",
+        requests[requests.len() - 1].tools
+    );
+    assert_eq!(
+        capability.marks(),
+        vec![(
+            "https://example.test/v1".to_string(),
+            "test-model".to_string()
+        )],
+        "успешный повтор на последнем слоте кэширует вердикт"
+    );
+}
+
+/// Сценарий (б) ADR-0040 §2.4: 200 с пустыми `tool_calls` — штатный финальный ответ цикла.
+/// Повтора нет: первый запрос уже отправил дельты под тем же `message_id`.
+#[test]
+fn run_returns_final_answer_on_empty_tool_calls_without_retry() {
+    let transport = ScriptedTransport::ok(Vec::new(), final_outcome("обычный ответ"));
+    let capability = MockCapability::empty();
+
+    let response = block_on(run(
+        &transport,
+        &fake_server(),
+        request_with_tools(),
+        &capability,
+        &mut |_delta: String| {},
+        &mut |_call: &ToolCall| {},
+        &mut |_exec: &ToolExecution| {},
+    ))
+    .expect("пустые tool_calls — обычный ответ");
+
+    assert_eq!(response.message.content, "обычный ответ");
+    assert_eq!(
+        transport.request_count(),
+        1,
+        "сценарий (б) не порождает повтор"
+    );
+    assert!(
+        capability.marks().is_empty(),
+        "успешный ответ не считается отказом от tools: {:?}",
+        capability.marks()
+    );
+}
+
+/// Регрессия: обычный успешный ход не оставляет вердикта в кэше — провайдер остаётся «умеющим»
+/// `tools`, иначе деградация была бы залипающей.
+#[test]
+fn run_keeps_capability_untouched_on_success() {
+    let transport = ScriptedTransport::ok(
+        vec![outcome_with_tool_call(), final_outcome("готовый ответ")],
+        final_outcome("готовый ответ"),
+    );
+    let capability = MockCapability::empty();
+
+    block_on(run(
+        &transport,
+        &fake_server(),
+        request_with_tools(),
+        &capability,
+        &mut |_delta: String| {},
+        &mut |_call: &ToolCall| {},
+        &mut |_exec: &ToolExecution| {},
+    ))
+    .expect("цикл завершается ответом");
+
+    assert!(
+        capability.marks().is_empty(),
+        "успешный первый запрос не ставит вердикт: {:?}",
+        capability.marks()
+    );
+    let requests = transport.requests();
+    assert!(
+        requests.iter().all(|request| request.tools.is_some()),
+        "инструменты продолжают объявляться: {:?}",
+        requests
+            .iter()
+            .map(|request| request.tools.is_some())
+            .collect::<Vec<_>>()
+    );
+}
+
+/// Проверка типов: двойники тестов обязаны оставаться `Send + Sync` (ADR-0040 §2.7 п.31).
+#[test]
+fn mock_capability_is_send_and_sync() {
+    fn assert_send_sync<T: Send + Sync>() {}
+    assert_send_sync::<MockCapability>();
+    assert_send_sync::<ScriptedTransport>();
 }

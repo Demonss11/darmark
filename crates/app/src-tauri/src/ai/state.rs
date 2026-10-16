@@ -4,12 +4,13 @@
 //! памяти; мутации пишутся в конфиг через [`crate::ai::settings::persist_to`]. Бэкенд — за
 //! трейтом [`AiTransport`] (ADR-0034 §2.2).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::ai::settings;
+use crate::ai::tool_loop::ToolsCapability;
 use crate::ai::transport::AiTransport;
 use crate::ai::types::{
     resolve_api_key, AiSettings, AiSettingsInput, ModelEntry, ProviderConfig, ProviderSettings,
@@ -60,6 +61,12 @@ pub struct AiState {
     backend: Arc<dyn AiTransport>,
     /// Момент, до которого следующий запрос должен подождать (rate limit).
     rate_limit: Mutex<Option<Instant>>,
+    /// Пары `(base_url, model)`, чей провайдер отверг `tools` (ADR-0040 §2.5).
+    ///
+    /// Кэш в памяти и не в статике: процесс-глобальное состояние протекает между тестами и
+    /// живёт дольше сессии. В `config.json` не попадает — это свойство окружения, а не
+    /// пользовательская настройка.
+    tools_unsupported: Mutex<HashSet<(String, String)>>,
     /// Путь конфига для записи секции `ai`; `None` — сохранять некуда.
     config_path: Option<PathBuf>,
 }
@@ -80,6 +87,7 @@ impl AiState {
             settings: Mutex::new(settings),
             backend,
             rate_limit: Mutex::new(None),
+            tools_unsupported: Mutex::new(HashSet::new()),
             config_path,
         }
     }
@@ -171,6 +179,9 @@ impl AiState {
         next.providers = providers;
         settings::persist_to(self.config_path.as_deref(), &next)?;
         *settings = next;
+        // Вердикт «провайдер не умеет tools» мог относиться к прежней конфигурации: адреса и
+        // модели изменились, поэтому кэш сбрасывается целиком (ADR-0040 §2.5 п.23).
+        lock(&self.tools_unsupported).clear();
         Ok(())
     }
 
@@ -217,6 +228,24 @@ impl AiState {
             .unwrap_or_default();
         *last = Some(Instant::now() + wait);
         wait
+    }
+}
+
+/// Кэш возможностей инструментов для tool-loop (ADR-0040 §2.5): вердикт «провайдер не умеет
+/// `tools`» по паре `(base_url, model)` без нормализации, в памяти и не в статике.
+///
+/// Пишет сюда только [`crate::ai::tool_loop::run`] — и лишь после успешного повтора без
+/// `tools`, поэтому кэш не запоминает недоказанный вердикт (§2.5 п.22). Очищается при любом
+/// успешном `ai_set_settings` ([`AiState::update_settings`]).
+impl ToolsCapability for AiState {
+    fn tools_supported(&self, base_url: &str, model: &str) -> bool {
+        let key = (base_url.to_string(), model.to_string());
+        !lock(&self.tools_unsupported).contains(&key)
+    }
+
+    fn mark_tools_unsupported(&self, base_url: &str, model: &str) {
+        let key = (base_url.to_string(), model.to_string());
+        lock(&self.tools_unsupported).insert(key);
     }
 }
 
@@ -303,7 +332,12 @@ pub fn validate_base_url(base_url: &str) -> Result<(), CommandError> {
 }
 
 /// Нормализованный хост URL (нижний регистр, без порта/пути); `None`, если пуст/нет схемы.
-fn host_of_url(url: &str) -> Option<String> {
+///
+/// Единственный источник «адрес без секрета» для привязки согласия (ADR-0035 §2.7) и для
+/// диагностической записи tool-loop: `base_url` допускает userinfo и query, где может лежать
+/// ключ шлюза, поэтому в лог уходит только хост (H4, ADR-0035 §2.6 п.16, ADR-0040 §2.6 п.26).
+/// `pub(super)` — используется в `ai::tool_loop` и проверяется в `ai::tests::state`.
+pub(super) fn host_of_url(url: &str) -> Option<String> {
     let (_, rest) = url.trim().split_once("://")?;
     let host = host_of(rest);
     if host.is_empty() {

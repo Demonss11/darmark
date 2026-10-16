@@ -14,14 +14,15 @@ use crate::ai::commands::{
     ai_done_payload, ai_history_clear, ai_history_load, ai_history_save, ai_list_skills,
     ai_render_markdown, error_code_str, next_message_id, run_chat,
 };
-use crate::ai::state::AiState;
+use crate::ai::state::{resolve_active, AiState};
+use crate::ai::tool_loop::ToolsCapability;
 use crate::ai::transport::AiTransport;
 use crate::ai::types::{AiMessage, AiUsage};
 use crate::error::ErrorCode;
 
 use super::support::{
-    block_on, empty_server, fake_server, final_outcome, outcome_with_tool_call, ready_settings,
-    MockEmitter, ScriptedTransport,
+    block_on, context_length_exceeded, empty_server, fake_server, final_outcome,
+    outcome_with_tool_call, ready_settings, tools_rejected, MockEmitter, ScriptedTransport,
 };
 
 #[test]
@@ -176,7 +177,7 @@ fn render_markdown_sanitizes_ai_answer() {
 /// → `ai:done` с коррелированными `call_id`/`message_id`, длительностью и безопасным `summary`.
 #[test]
 fn chat_emits_tool_lifecycle_events() {
-    let transport = Arc::new(ScriptedTransport::new(
+    let transport = Arc::new(ScriptedTransport::ok(
         vec![outcome_with_tool_call(), final_outcome("готовый ответ")],
         final_outcome("готовый ответ"),
     ));
@@ -270,7 +271,7 @@ fn chat_emits_tool_lifecycle_events() {
 /// Деградация §3.3 ТЗ: при пустом реестре MCP запрос уходит без `tools`, событий вызова нет.
 #[test]
 fn chat_degrades_without_tools_when_registry_empty() {
-    let transport = Arc::new(ScriptedTransport::new(
+    let transport = Arc::new(ScriptedTransport::ok(
         Vec::new(),
         final_outcome("обычный ответ"),
     ));
@@ -307,4 +308,170 @@ fn chat_degrades_without_tools_when_registry_empty() {
         !events.iter().any(|event| event.starts_with("ai:tool")),
         "событий вызова инструментов нет: {events:?}"
     );
+}
+
+/// ADR-0040 §2.2/§2.6: провайдер отверг `tools` (HTTP 400) — чат не ломается. Пользователь
+/// получает обычный ответ, а не `ai:error`; деградация наблюдается только тихим `warn`.
+#[test]
+fn chat_degrades_silently_when_provider_rejects_tools() {
+    let transport = Arc::new(ScriptedTransport::new(
+        vec![
+            Err(tools_rejected()),
+            Ok(final_outcome("ответ без инструментов")),
+        ],
+        Ok(final_outcome("ответ без инструментов")),
+    ));
+    let backend: Arc<dyn AiTransport> = transport.clone();
+    let state = AiState::with_config_path(ready_settings(), backend, None);
+    let emitter = MockEmitter::default();
+
+    let response = block_on(run_chat(
+        &emitter,
+        &state,
+        &fake_server(),
+        vec![AiMessage {
+            role: "user".to_string(),
+            content: "привет".to_string(),
+            ..AiMessage::default()
+        }],
+    ))
+    .expect("деградация не ломает чат");
+
+    assert_eq!(response.message.content, "ответ без инструментов");
+
+    let entries = emitter.entries();
+    let events: Vec<&str> = entries.iter().map(|(event, _)| event.as_str()).collect();
+    assert!(
+        !events.contains(&"ai:error"),
+        "деградация не показывается пользователю как ошибка: {entries:?}"
+    );
+    assert_eq!(
+        events.iter().filter(|event| **event == "ai:done").count(),
+        1,
+        "один ai:done на весь цикл: {events:?}"
+    );
+    assert!(
+        !events.iter().any(|event| event.starts_with("ai:tool")),
+        "вызовов инструментов не было: {events:?}"
+    );
+
+    let message_ids: Vec<&serde_json::Value> = entries
+        .iter()
+        .filter_map(|(_, payload)| payload.get("message_id"))
+        .collect();
+    assert!(
+        message_ids.windows(2).all(|pair| pair[0] == pair[1]),
+        "один message_id на деградацию и повтор: {message_ids:?}"
+    );
+
+    let deltas: String = entries
+        .iter()
+        .filter(|(event, _)| event == "ai:chunk")
+        .map(|(_, payload)| payload["delta"].as_str().unwrap_or_default())
+        .collect();
+    assert_eq!(
+        deltas, "ответ без инструментов",
+        "дельты не задваиваются: отвергнутый запрос текста не приносит"
+    );
+
+    let requests = transport.requests();
+    assert_eq!(requests.len(), 2, "отвергнутый запрос и один повтор");
+    assert!(
+        requests[0].tools.is_some(),
+        "первый запрос объявляет инструменты MCP: {:?}",
+        requests[0].tools
+    );
+    assert!(
+        requests[1].tools.is_none(),
+        "повтор уходит без tools: {:?}",
+        requests[1].tools
+    );
+
+    let resolved = resolve_active(&state.settings()).expect("активная пара разрешена");
+    assert!(
+        !state.tools_supported(&resolved.base_url, &resolved.model),
+        "вердикт о неподдержке tools закэширован в состоянии"
+    );
+}
+
+/// §2.5 п.25: при известном вердикте первый запрос уже уходит без `tools` — ни одного
+/// отвергнутого запроса и никаких событий вызова инструментов.
+#[test]
+fn chat_omits_tools_when_capability_cached() {
+    let transport = Arc::new(ScriptedTransport::ok(
+        Vec::new(),
+        final_outcome("ответ без инструментов"),
+    ));
+    let backend: Arc<dyn AiTransport> = transport.clone();
+    let state = AiState::with_config_path(ready_settings(), backend, None);
+    let resolved = resolve_active(&state.settings()).expect("активная пара разрешена");
+    state.mark_tools_unsupported(&resolved.base_url, &resolved.model);
+    let emitter = MockEmitter::default();
+
+    let response = block_on(run_chat(
+        &emitter,
+        &state,
+        &fake_server(),
+        vec![AiMessage {
+            role: "user".to_string(),
+            content: "привет".to_string(),
+            ..AiMessage::default()
+        }],
+    ))
+    .expect("кэш-хит не ломает чат");
+
+    assert_eq!(response.message.content, "ответ без инструментов");
+    let requests = transport.requests();
+    assert_eq!(requests.len(), 1, "один запрос, повтора нет");
+    assert!(
+        requests[0].tools.is_none(),
+        "кэш-хит снимает tools до первого запроса: {:?}",
+        requests[0].tools
+    );
+    let events: Vec<String> = emitter
+        .entries()
+        .into_iter()
+        .map(|(event, _)| event)
+        .collect();
+    assert!(
+        !events.iter().any(|event| event.starts_with("ai:tool")),
+        "событий вызова инструментов нет: {events:?}"
+    );
+    assert_eq!(
+        events
+            .iter()
+            .filter(|event| event.as_str() == "ai:done")
+            .count(),
+        1,
+        "цикл завершён одним ai:done: {events:?}"
+    );
+}
+
+/// §2.3 п.14: распознанное превышение контекста повтором без `tools` не лечится — ошибка
+/// уходит пользователю и сопровождается `ai:error` (деградация не выдумывается).
+#[test]
+fn chat_reports_context_length_without_degrading() {
+    let transport = Arc::new(ScriptedTransport::new(
+        vec![Err(context_length_exceeded())],
+        Ok(final_outcome("повтор не должен выполняться")),
+    ));
+    let backend: Arc<dyn AiTransport> = transport.clone();
+    let state = AiState::with_config_path(ready_settings(), backend, None);
+    let emitter = MockEmitter::default();
+
+    let error = block_on(run_chat(
+        &emitter,
+        &state,
+        &fake_server(),
+        vec![AiMessage {
+            role: "user".to_string(),
+            content: "привет".to_string(),
+            ..AiMessage::default()
+        }],
+    ))
+    .expect_err("превышение контекста уходит пользователю");
+
+    assert_eq!(error.code, ErrorCode::AiContextLength);
+    assert_eq!(transport.request_count(), 1, "повтор не выполняется");
+    assert_eq!(emitter.payload("ai:error")["code"], "ai_context_length");
 }

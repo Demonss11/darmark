@@ -1,6 +1,7 @@
 //! Тесты состояния [`super::super::state`].
 
-use crate::ai::state::{host_for, resolve_active, validate_base_url, AiState};
+use crate::ai::state::{host_for, host_of_url, resolve_active, validate_base_url, AiState};
+use crate::ai::tool_loop::ToolsCapability;
 use crate::ai::transport::{BoxFuture, ChatOutcome, ChatRequest, TestRequest};
 use crate::ai::types::{
     AiSettings, AiSettingsInput, ModelEntry, ModelInput, ProviderConfig, ProviderInput,
@@ -659,4 +660,106 @@ fn consent_reset_when_active_provider_changes_to_different_host() {
         !state.settings().consent_document_send,
         "смена активного провайдера на другой хост сбрасывает согласие"
     );
+}
+
+/// §2.5 п.20: вердикт «провайдер не умеет `tools`» принадлежит паре `(base_url, model)` как есть,
+/// без нормализации: другой адрес или другая модель той же пары не деградируются.
+#[test]
+fn tools_capability_verdict_scoped_to_base_url_and_model() {
+    let state = state_with(AiSettings::default(), None);
+    let base_url = "https://routerai.ru/api/v1";
+    let model = "deepseek/deepseek-v4.1-flash";
+
+    state.mark_tools_unsupported(base_url, model);
+
+    assert!(
+        !state.tools_supported(base_url, model),
+        "отмеченная пара считается не поддерживающей tools"
+    );
+    assert!(
+        state.tools_supported(base_url, "deepseek/deepseek-v4.2"),
+        "другая модель того же шлюза не затронута"
+    );
+    assert!(
+        state.tools_supported("https://other.test/v1", model),
+        "другой адрес не затронут"
+    );
+    assert!(
+        state.tools_supported("https://RouterAI.ru/api/v1", model),
+        "ключ сравнивается как есть, без нормализации регистра"
+    );
+}
+
+/// §2.5 п.23: конфигурация провайдеров могла измениться — устаревший вердикт хуже отсутствия
+/// вердикта, поэтому сохранение настроек очищает кэш целиком.
+#[test]
+fn update_settings_clears_tools_capability_cache() {
+    let path = temp_config("capability-clear");
+    let state = state_with(AiSettings::default(), Some(path));
+    state.mark_tools_unsupported("https://routerai.ru/api/v1", "m");
+
+    state
+        .update_settings(input(
+            "routerai",
+            "m",
+            vec![provider_input("routerai", "https://example.test/v1", "m")],
+        ))
+        .expect("настройки сохранены");
+
+    assert!(
+        state.tools_supported("https://routerai.ru/api/v1", "m"),
+        "после сохранения настроек кэш возможностей пуст"
+    );
+}
+
+/// §2.5 п.23: `ai_set_api_key` кэш не трогает — адрес и модель те же, вердикт остаётся в силе.
+#[test]
+fn set_api_key_keeps_tools_capability_cache() {
+    let path = temp_config("capability-key");
+    let state = state_with(AiSettings::default(), Some(path));
+    state.mark_tools_unsupported("https://routerai.ru/api/v1", "m");
+
+    state
+        .set_api_key("routerai".to_string(), "sk-new".to_string())
+        .expect("ключ записан");
+
+    assert!(
+        !state.tools_supported("https://routerai.ru/api/v1", "m"),
+        "смена ключа не сбрасывает кэш возможностей"
+    );
+}
+
+/// §2.6 п.26: адрес провайдера допускает userinfo и query, а там может лежать секрет шлюза
+/// (H4, ADR-0035 §2.6 п.16). `warn_degraded` печатает результат этого нормализатора, поэтому
+/// он обязан отбрасывать всё, кроме хоста: иначе секрет утечёт в stderr.
+#[test]
+fn host_of_url_drops_userinfo_query_and_port() {
+    let host = host_of_url("https://user:sk-secret@gateway.example:8443/v1?api-key=sk-x")
+        .expect("хост извлечён");
+
+    assert_eq!(host, "gateway.example");
+    for secret in ["sk-secret", "user", "api-key", "sk-x", "8443"] {
+        assert!(
+            !host.contains(secret),
+            "нормализованный хост не содержит {secret}: {host}"
+        );
+    }
+}
+
+/// Тот же инвариант для петлевого `http://` (тесты/E2E) и для не-URL, который `warn_degraded`
+/// печатает как «неизвестный хост».
+#[test]
+fn host_of_url_handles_loopback_port_and_garbage() {
+    assert_eq!(
+        host_of_url("http://user:pass@127.0.0.1:8080/v1").as_deref(),
+        Some("127.0.0.1"),
+        "userinfo и порт отброшены у loopback-адреса"
+    );
+    assert_eq!(
+        host_of_url("https://RouterAI.ru/api/v1").as_deref(),
+        Some("routerai.ru"),
+        "регистр нормализован, путь отброшен"
+    );
+    assert_eq!(host_of_url("не адрес"), None);
+    assert_eq!(host_of_url(""), None);
 }
