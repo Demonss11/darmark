@@ -236,7 +236,7 @@ export function createPluginCard(
   }
 
   function clearCards(): void {
-    for (const card of [...state.pluginCards]) {
+    for (const card of Array.from(state.pluginCards)) {
       card.remove();
     }
   }
