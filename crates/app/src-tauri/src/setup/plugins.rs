@@ -9,17 +9,17 @@ use std::sync::{Arc, Mutex};
 use crate::plugins;
 use crate::state::DocumentStore;
 
-/// Платформенно-нейтральное состояние плагинной подсистемы для Tauri-команд.
-///
-/// На Windows содержит реальный `plugins::host::PluginHost`; на прочих
-/// платформах — пустую заглушку, чтобы единый `generate_handler!` собирался
-/// (модуль `plugins` включается только под Windows).
+
+
+
+
+
 pub struct PluginState {
     pub(crate) host: plugins::host::PluginHost,
 }
 
 impl PluginState {
-    /// Создаёт/изменяет документ, публикует событие и доставляет его плагинам.
+    
     pub(crate) fn publish_document_changed(&self, doc_id: &str, rev: u64) {
         self.host.publish_document_changed(doc_id, rev);
         self.host.pump();
@@ -35,20 +35,20 @@ impl PluginState {
         self.host.pump();
     }
 
-    /// Публикует `document-event` (S11) — действие пользователя над документом.
-    ///
-    /// Событие идёт в журнал фронтенда (`logPanel`): `new`/`open`/`save`/`close`.
-    /// Доставку в Tauri-событие `document-event` обеспечивает sink из [`setup_plugins`].
+    
+    
+    
+    
     pub(crate) fn publish_document_event(&self, kind: &str, path: Option<&str>, rev: Option<u64>) {
         self.host.publish_document_event(kind, path, rev);
     }
 }
 
-/// Sink ресурс-монитора: конвертирует снимок/событие завершения в Tauri-события
-/// (`resource-metrics`/`plugin-process-exited`, ADR-0031 §2.4 п.15).
-///
-/// Best-effort: сбой `emit` логируется и не роняет монитор. Сам модуль `resource` про Tauri
-/// не знает — адаптер живёт здесь, в `setup_plugins`.
+
+
+
+
+
 struct TauriResourceSink {
     handle: tauri::AppHandle,
 }
@@ -73,8 +73,8 @@ impl plugins::resource::ResourceSink for TauriResourceSink {
     }
 }
 
-/// Каталог плагинов: `%APPDATA%/darmark/plugins`, с override `DARMARK_PLUGINS_DIR`
-/// для тестов/E2E (изоляция от реального профиля пользователя).
+
+
 fn plugins_dir() -> PathBuf {
     if let Some(dir) = std::env::var_os("DARMARK_PLUGINS_DIR") {
         return PathBuf::from(dir);
@@ -85,10 +85,10 @@ fn plugins_dir() -> PathBuf {
     base.join("darmark").join("plugins")
 }
 
-/// Поднимает плагинную подсистему: настройки → scan/load → notify → старт enabled.
-///
-/// Child-exe резолвится [`plugins::supervisor::Supervisor::resolve_child_exe`]; при
-/// его отсутствии плагины не стартуют, а GUI продолжает работу.
+
+
+
+
 pub(crate) fn setup_plugins(app: &mut tauri::App) -> Result<(), String> {
     use tauri::{Emitter, Manager};
     use tauri_plugin_dialog::DialogExt;

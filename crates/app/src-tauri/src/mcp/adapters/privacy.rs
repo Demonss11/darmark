@@ -4,7 +4,7 @@ use serde_json::Value;
 
 use crate::ai::types::AiValidationResult;
 
-/// Префикс verbatim-пути Windows (`\\?\`), который возвращает `canonicalize`.
+
 const VERBATIM_PREFIX: &str = r"\\?\";
 
 /// Имя каталога (последний компонент пути) — приватность §4.6 (не полный путь).

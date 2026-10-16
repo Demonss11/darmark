@@ -15,8 +15,8 @@ use super::common::{
     child_exe, doc_rev, doc_text, fixture, serial, store_with_doc, view_contrib, views,
 };
 
-/// Собирает `DocumentServices` с записью `show_message` в общий журнал: позволяет
-/// проверить, какие события дошли до плагина-наблюдателя (BUG-002).
+
+
 fn services_with_status_log(
     store: &Arc<Mutex<DocumentStore>>,
     views: &Arc<Mutex<crate::plugins::views::PluginViews>>,
@@ -78,10 +78,10 @@ fn run_plugin_command_delivers_doc_id_and_edits() {
     assert_eq!(doc_rev(&store), 1);
 }
 
-/// BUG-002: `command:invoked` — широковещательное событие, его получают все активные
-/// плагины, а не только владелец команды. Фильтрация по `command_id` — обязанность
-/// плагина. Правка (`apply_edit`) чужого плагина порождает `document:changed`, который
-/// тоже доставляется всем активным плагинам — отсюда «видимый эффект» word-count.
+
+
+
+
 #[test]
 fn command_invoked_is_broadcast_and_edit_notifies_other_plugin() {
     let _guard = serial();
@@ -140,9 +140,9 @@ fn command_invoked_is_broadcast_and_edit_notifies_other_plugin() {
     );
 }
 
-/// BUG-002 (контроль): выключенный плагин не получает события шины, хотя активный
-/// сосед по той же команде продолжает работать. Подтверждает, что «эффект третьего»
-/// даёт именно активный подписчик, а не доставка выключенному.
+
+
+
 #[test]
 fn disabled_plugin_does_not_receive_bus_events() {
     let _guard = serial();
@@ -193,9 +193,9 @@ fn disabled_plugin_does_not_receive_bus_events() {
     );
 }
 
-/// BUG-002 (часть A): плагинный `apply_edit` обязан уведомить фронтенд через
-/// `document_sink` ровно один раз — с `(doc_id, rev)` изменившейся ревизии. Эхо-правка
-/// (тот же результат) ревизию не двигает и повторного уведомления не порождает.
+
+
+
 #[test]
 fn plugin_apply_edit_notifies_document_sink_with_doc_and_rev() {
     let _guard = serial();

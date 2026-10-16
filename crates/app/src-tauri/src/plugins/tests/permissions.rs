@@ -13,7 +13,7 @@ use super::common::{
     write_plugin,
 };
 
-/// Чистая функция пересечения: `manifest ∩ granted`, deny-by-default, порядок — из манифеста.
+
 #[test]
 fn effective_permissions_intersects_and_rejects_garbage() {
     let manifest = vec![
@@ -35,8 +35,8 @@ fn effective_permissions_intersects_and_rejects_garbage() {
     assert!(effective_permissions(&manifest, &["nope".to_string()]).is_empty());
 }
 
-/// Дефолт рантайма: права запрашиваются манифестом, но без согласия effective пуст — child
-/// стартует с нулём прав (гейт на host-call, а не на старте).
+
+
 #[test]
 fn runtime_without_grant_has_empty_effective() {
     let store = store_with_doc("x");
@@ -59,8 +59,8 @@ fn runtime_without_grant_has_empty_effective() {
     assert!(runtime.effective().is_empty(), "чужое право отсечено");
 }
 
-/// `PluginHost::set_permissions`: intersect-on-write, персист в `config.json` и отражение в
-/// `list_plugins().granted_permissions` (запрашиваемые `permissions` остаются из манифеста).
+
+
 #[test]
 fn set_permissions_persists_and_updates_list() {
     let dir = tempfile::tempdir().unwrap();
@@ -122,7 +122,7 @@ fn set_permissions_persists_and_updates_list() {
     let _ = std::fs::remove_dir_all(dir.path());
 }
 
-/// Неизвестный id — ошибка (команда не должна молча писать в никуда).
+
 #[test]
 fn set_permissions_unknown_plugin_is_error() {
     let store = store_with_doc("x");
@@ -140,8 +140,8 @@ fn set_permissions_unknown_plugin_is_error() {
     assert_eq!(err.code, "unknown_plugin");
 }
 
-/// Смена прав активного плагина перезапускает его (права захватываются при `start`):
-/// grant → host-call проходит, revoke → `permission_denied` (правка не применяется).
+
+
 #[test]
 fn permission_change_restarts_active_plugin() {
     let _guard = serial();
@@ -190,7 +190,7 @@ fn permission_change_restarts_active_plugin() {
     );
 }
 
-/// `load_plugins` читает согласованные права из `SettingsStore`; при отсутствии записи — пусто.
+
 #[test]
 fn loader_reads_granted_permissions_from_settings() {
     let dir = tempfile::tempdir().unwrap();
@@ -226,7 +226,7 @@ fn loader_reads_granted_permissions_from_settings() {
     );
 }
 
-/// Выключенный плагин: смена прав только персистится (и не стартует), выключение сохраняется.
+
 #[test]
 fn set_permissions_on_disabled_plugin_only_persists() {
     let dir = tempfile::tempdir().unwrap();

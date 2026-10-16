@@ -22,20 +22,20 @@ mod tests;
 use plugin_read::PluginReadTool;
 use tools::{MarkdownRenderTool, PluginCatalogListTool, PluginTestTool, PluginValidateTool};
 
-/// Сток журнала MCP: текст записи → приёмник (в продакшне — Tauri-событие `log-entry`).
-///
-/// Инъекция вместо `AppHandle` держит адаптеры независимыми от Tauri: их контракт
-/// «схема ↔ поведение» (AC-MCP-6) и приватность журнала (AC-MCP-13) проверяются
-/// интеграционным тестом без окна, event-loop и mock-рантайма.
+
+
+
+
+
 pub type LogSink = Arc<dyn Fn(&str) + Send + Sync>;
 
-/// Регистрирует все MCP tools в реестре.
-///
-/// `repo` — уже разрешённый каталог плагинов ([`crate::mcp::catalog_repo`]): обработчики
-/// не читают CWD, а работают с запечённым абсолютным путём.
-///
-/// Инструменты плагинов — только Windows (целевая платформа; там же живёт белый список
-/// путей `plugin_harness`). Без него `plugin_validate` читал бы произвольные пути.
+
+
+
+
+
+
+
 pub fn register_tools(registry: &mut Registry, sink: &LogSink, repo: &Path) {
     registry.register_tool(ToolDefinition {
         name: "plugin_validate".to_string(),
@@ -85,7 +85,7 @@ pub fn register_tools(registry: &mut Registry, sink: &LogSink, repo: &Path) {
     });
 }
 
-/// Схема параметров tools, принимающих путь к каталогу плагина (Windows-only).
+
 pub(super) fn path_schema() -> Value {
     json!({
         "type": "object",
@@ -96,11 +96,11 @@ pub(super) fn path_schema() -> Value {
     })
 }
 
-/// Схема параметров `plugin_read`: **только** `id` — произвольный путь не принимается.
-///
-/// Путь к каталогу плагина строится на стороне Rust из доверенного корня
-/// ([`crate::ai::plugin_harness::plugins_root`]) и проходит белый список путей, поэтому
-/// модель оперирует безопасным `id`, а не путём (TASK-003 §2).
+
+
+
+
+
 pub(super) fn id_schema() -> Value {
     json!({
         "type": "object",
@@ -111,7 +111,7 @@ pub(super) fn id_schema() -> Value {
     })
 }
 
-/// Схема параметров `markdown_render`.
+
 pub(super) fn markdown_schema() -> Value {
     json!({
         "type": "object",

@@ -7,15 +7,15 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-/// Настройки точки доступа провайдера (`settings` в разделе Custom `opencode.json`).
-///
-/// Поля названы как в `opencode.json` (`baseURL`/`apiKey`) с `alias` для legacy-написания
-/// (ADR-0035 §2.1). Секрет `api_key` — локальный (ADR-0035 §2.3): приоритет над `env`.
+
+
+
+
 #[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProviderSettings {
-    /// Точка доступа провайдера. **Обязательна** (ADR-0035 §2.1 п.2): отсутствие поля —
-    /// ошибка разбора, а не молчаливый пустой дефолт. Пустое/невалидное значение отклоняет
-    /// `validate_base_url` при резолве активной пары (`ai_bad_settings`).
+    
+    
+    
     #[serde(rename = "baseURL", alias = "base_url")]
     pub base_url: String,
     #[serde(
@@ -29,7 +29,7 @@ pub struct ProviderSettings {
     pub timeout: Option<u64>,
 }
 
-/// Ручной `Debug`: секрет (`api_key`) маскируется и не попадает в `{:?}`/логи.
+
 impl std::fmt::Debug for ProviderSettings {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ProviderSettings")
@@ -40,11 +40,11 @@ impl std::fmt::Debug for ProviderSettings {
     }
 }
 
-/// Модель провайдера (`models[id]` в Custom `opencode.json`).
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModelEntry {
     pub name: String,
-    /// Ключ модели у провайдера, если отличается от id в map (ADR-0035 §2.1).
+    
     #[serde(
         default,
         rename = "modelID",
@@ -56,20 +56,20 @@ pub struct ModelEntry {
     pub disabled: Option<bool>,
 }
 
-/// Провайдер LLM: описывается **данными**, кода на провайдера нет (ADR-0035 §2.1).
-///
-/// Обязательные поля (`name`, `package`, `settings.baseURL`) без serde-дефолта: их отсутствие —
-/// ошибка разбора, а не молчаливый дефолт. Ловушка: `SettingsStore::load` при ошибке разбора
-/// берёт дефолты (с записью в лог), поэтому реальной границей остаётся валидация `baseURL`
-/// (`validate_base_url`) при резолве активной пары.
+
+
+
+
+
+
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub struct ProviderConfig {
-    /// Отображаемое имя; обязательно (ADR-0035 §2.1 п.2).
+    
     pub name: String,
-    /// Упорядоченные env-переменные для ключа (первая заданная побеждает; §2.3).
+    
     #[serde(default)]
     pub env: Vec<String>,
-    /// Маркер протокола (`openai-compatible`), не npm-пакет (§2.1); обязателен.
+    
     pub package: String,
     #[serde(default)]
     pub settings: ProviderSettings,
@@ -81,9 +81,9 @@ pub struct ProviderConfig {
     pub models: BTreeMap<String, ModelEntry>,
 }
 
-/// Ручной `Debug`: надстройка запроса (`headers`/`body`) не разворачивается в логи —
-/// печатаются только имена заголовков и полей тела (H4, ADR-0035 §2.6 п.16). Секрет
-/// `settings.api_key` маскируется собственным `Debug` у [`ProviderSettings`].
+
+
+
 impl std::fmt::Debug for ProviderConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ProviderConfig")
@@ -112,17 +112,17 @@ impl Default for ProviderConfig {
     }
 }
 
-/// Идентификатор дефолтного провайдера (ADR-0032/0035 §2.8).
+
 pub const DEFAULT_PROVIDER_ID: &str = "routerai";
-/// Дефолтная точка доступа (ADR-0032).
+
 pub const DEFAULT_BASE_URL: &str = "https://routerai.ru/api/v1";
-/// Дефолтная модель (ADR-0032).
+
 pub const DEFAULT_MODEL: &str = "deepseek/deepseek-v4.1-flash";
 
-/// Настройки AI (секция `ai` в `config.json`): map провайдеров + активная пара.
-///
-/// Секреты — в `providers[id].settings.api_key`. `Default` — opt-in: `enabled = false`,
-/// согласие не выдано; один провайдер `routerai` (ADR-0035 §2.8).
+
+
+
+
 #[derive(Clone, PartialEq, Serialize)]
 pub struct AiSettings {
     pub enabled: bool,
@@ -132,7 +132,7 @@ pub struct AiSettings {
     pub max_tokens: u32,
     pub temperature: f32,
     pub providers: BTreeMap<String, ProviderConfig>,
-    /// Легаси-секция разобрана и требует перезаписи конфига (ADR-0035 §2.8).
+    
     #[serde(skip)]
     pub migrated_from_legacy: bool,
 }
@@ -178,7 +178,7 @@ impl Default for AiSettings {
     }
 }
 
-/// Поля, которые могут прийти как в новой схеме (`providers`), так и в legacy (ADR-0032).
+
 #[derive(Deserialize)]
 struct AiSettingsHelper {
     enabled: Option<bool>,
@@ -195,7 +195,7 @@ struct AiSettingsHelper {
 }
 
 impl AiSettings {
-    /// Собирает настройки из `Helper`: новая схема — как есть; legacy — в первый провайдер.
+    
     fn from_helper(helper: AiSettingsHelper) -> Self {
         let defaults = AiSettings::default();
         let enabled = helper.enabled.unwrap_or(defaults.enabled);
@@ -290,13 +290,13 @@ impl AiSettings {
         }
     }
 
-    /// Конфигурация активного провайдера, если id есть в map.
+    
     pub fn active_config(&self) -> Option<&ProviderConfig> {
         self.providers.get(&self.active_provider)
     }
 }
 
-/// Активный провайдер по умолчанию, если поле не задано: `routerai`, иначе первый ключ.
+
 fn default_active_provider(providers: &BTreeMap<String, ProviderConfig>) -> String {
     if providers.contains_key(DEFAULT_PROVIDER_ID) {
         return DEFAULT_PROVIDER_ID.to_string();
@@ -308,7 +308,7 @@ fn default_active_provider(providers: &BTreeMap<String, ProviderConfig>) -> Stri
         .unwrap_or_else(|| DEFAULT_PROVIDER_ID.to_string())
 }
 
-/// Активная модель по умолчанию, если поле не задано: дефолтная, иначе первая у провайдера.
+
 fn default_active_model(
     providers: &BTreeMap<String, ProviderConfig>,
     active_provider: &str,
@@ -324,7 +324,7 @@ fn default_active_model(
     DEFAULT_MODEL.to_string()
 }
 
-/// Ручной `Deserialize`: терпимо к legacy-схеме (ADR-0035 §2.8) и недостающим полям.
+
 impl<'de> Deserialize<'de> for AiSettings {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -335,7 +335,7 @@ impl<'de> Deserialize<'de> for AiSettings {
     }
 }
 
-/// Ручной `Debug`: секреты всех провайдеров маскируются (H4).
+
 impl std::fmt::Debug for AiSettings {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AiSettings")
@@ -351,8 +351,8 @@ impl std::fmt::Debug for AiSettings {
     }
 }
 
-/// Резолв API-ключа провайдера: непустой `settings.apiKey` приоритетнее `env`; из `env`
-/// берётся первая заданная непустая переменная (ADR-0035 §2.3). Чистая — `env` инъектируется.
+
+
 pub fn resolve_api_key<F>(provider: &ProviderConfig, env: F) -> Option<String>
 where
     F: Fn(&str) -> Option<String>,

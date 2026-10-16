@@ -18,7 +18,7 @@ use crate::state::DocumentStore;
 
 use super::common::{push_log, services, store_with_doc, views, write_plugin};
 
-/// F43/S5: `DocumentServices` с подключённым хранилищем настроек плагинов (подменяемый путь).
+
 fn services_with_plugin_settings(
     store: &Arc<Mutex<DocumentStore>>,
     dir: &Path,
@@ -29,8 +29,8 @@ fn services_with_plugin_settings(
     )
 }
 
-/// F43/S5: round-trip разных JSON-типов (число, строка, вложенный объект, `null`) и
-/// отсутствующий ключ → `nil` (`Value::Null`, без ошибки).
+
+
 #[test]
 fn settings_roundtrip_types_and_missing_key() {
     let dir = tempfile::tempdir().unwrap();
@@ -62,7 +62,7 @@ fn settings_roundtrip_types_and_missing_key() {
     assert_eq!(missing, serde_json::Value::Null, "нет ключа → nil");
 }
 
-/// F43/S5: изоляция по `plugin_id` — плагины не видят настройки друг друга.
+
 #[test]
 fn settings_are_isolated_per_plugin() {
     let dir = tempfile::tempdir().unwrap();
@@ -96,7 +96,7 @@ fn settings_are_isolated_per_plugin() {
     );
 }
 
-/// F43/S5: настройки переживают пересоздание стора из того же каталога (персист на диск).
+
 #[test]
 fn settings_persist_across_store_instances() {
     let dir = tempfile::tempdir().unwrap();
@@ -121,7 +121,7 @@ fn settings_persist_across_store_instances() {
     );
 }
 
-/// F43/S5: некорректный ключ → `bad_args`, значение сверх лимита → `too_large`, паники нет.
+
 #[test]
 fn setting_limits_and_bad_key_are_errors() {
     let dir = tempfile::tempdir().unwrap();
@@ -166,7 +166,7 @@ fn setting_limits_and_bad_key_are_errors() {
     assert!(saw_too_large, "хранилище обязано упереться в лимит файла");
 }
 
-/// F43/S5: без подключённого хранилища host-call отвечает `no_settings`, а не падает.
+
 #[test]
 fn settings_without_store_is_error() {
     let store = store_with_doc("x");
@@ -179,7 +179,7 @@ fn settings_without_store_is_error() {
     }
 }
 
-/// F43/S5: без `_plugin_id` (инъекции Supervisor) вызов отвергается — scope обязателен.
+
 #[test]
 fn setting_without_plugin_id_is_rejected() {
     let dir = tempfile::tempdir().unwrap();
@@ -191,8 +191,8 @@ fn setting_without_plugin_id_is_rejected() {
     assert_eq!(err.code, "bad_args");
 }
 
-/// S5b: `PluginHost::plugin_setting_set` персистит значение из UI-формы; `list_plugins`
-/// отдаёт его в `settings_values`, а схема приходит из манифеста (`contributes.settings`).
+
+
 #[test]
 fn plugin_setting_set_persists_and_shows_in_list() {
     let dir = tempfile::tempdir().unwrap();
@@ -248,7 +248,7 @@ fn plugin_setting_set_persists_and_shows_in_list() {
     );
 }
 
-/// S5b: без подключённого `PluginSettingsStore` команда отвечает `no_settings`, не падает.
+
 #[test]
 fn plugin_setting_set_without_store_is_error() {
     let store = store_with_doc("x");
@@ -264,8 +264,8 @@ fn plugin_setting_set_without_store_is_error() {
     assert_eq!(err.code, "no_settings");
 }
 
-/// S5b: запись настройки меняет видимое состояние менеджера → эмитится `plugins-changed`
-/// (фронт перечитает `list_plugins` и покажет новое значение).
+
+
 #[test]
 fn plugin_setting_set_emits_plugins_changed() {
     let settings_dir = tempfile::tempdir().unwrap();

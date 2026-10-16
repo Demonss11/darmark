@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use super::settings::{resolve_api_key, AiSettings};
 
-/// Проекция настроек для фронтенда: секретов нет, только признак `has_key` (ADR-0035 §2.3).
+
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct AiSettingsView {
     pub enabled: bool,
@@ -20,7 +20,7 @@ pub struct AiSettingsView {
     pub providers: Vec<ProviderView>,
 }
 
-/// Провайдер в виде для фронтенда (без `settings.api_key`).
+
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct ProviderView {
     pub id: String,
@@ -32,7 +32,7 @@ pub struct ProviderView {
     pub models: Vec<ModelView>,
 }
 
-/// Точка доступа провайдера для фронтенда: `has_key` вместо секрета.
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct ProviderSettingsView {
     pub base_url: String,
@@ -40,7 +40,7 @@ pub struct ProviderSettingsView {
     pub has_key: bool,
 }
 
-/// Модель провайдера для фронтенда.
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct ModelView {
     pub id: String,
@@ -89,7 +89,7 @@ impl From<&AiSettings> for AiSettingsView {
     }
 }
 
-/// Входные настройки от фронтенда (секретов нет — ключ пишется отдельной командой).
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct AiSettingsInput {
     pub enabled: bool,
@@ -101,7 +101,7 @@ pub struct AiSettingsInput {
     pub providers: Vec<ProviderInput>,
 }
 
-/// Провайдер от фронтенда (без `settings.api_key`).
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct ProviderInput {
     pub id: String,
@@ -117,7 +117,7 @@ pub struct ProviderInput {
     pub models: Vec<ModelInput>,
 }
 
-/// Точка доступа провайдера от фронтенда.
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct ProviderSettingsInput {
     pub base_url: String,
@@ -125,7 +125,7 @@ pub struct ProviderSettingsInput {
     pub timeout: Option<u64>,
 }
 
-/// Модель провайдера от фронтенда.
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct ModelInput {
     pub id: String,

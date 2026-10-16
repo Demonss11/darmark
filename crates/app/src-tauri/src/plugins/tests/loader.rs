@@ -103,8 +103,8 @@ fn loader_takes_manifest_permissions_and_settings_state() {
     );
 }
 
-/// S12a: `list_plugins` проецирует человекочитаемые `name`/`version` из манифеста, а не
-/// выводит их из `id` (фикстура намеренно даёт имя и версию, отличные от id).
+
+
 #[test]
 fn loader_projects_name_and_version_from_manifest() {
     let dir = tempfile::tempdir().unwrap();
@@ -278,8 +278,8 @@ fn load_plugins_registers_contributed_views() {
     assert_eq!(snapshot[0].title, "Статистика");
 }
 
-/// F44/S4: тот же манифест, но без согласия на `view:create` → вкладка не регистрируется
-/// (deny-by-default, как `document:*`).
+
+
 #[test]
 fn load_plugins_without_view_create_does_not_register_view() {
     let dir = tempfile::tempdir().unwrap();

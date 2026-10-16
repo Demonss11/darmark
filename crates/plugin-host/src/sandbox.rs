@@ -9,7 +9,7 @@
 
 use mlua::{Lua, LuaOptions, Result, StdLib, Value};
 
-/// Создаёт изолированное Lua-состояние с allowlist библиотек (D17).
+
 pub fn create() -> Result<Lua> {
     let lua = Lua::new_with(
         StdLib::STRING | StdLib::TABLE | StdLib::MATH | StdLib::UTF8,
@@ -19,8 +19,8 @@ pub fn create() -> Result<Lua> {
     Ok(lua)
 }
 
-/// Чистка базы: убираем динамическую загрузку кода, ручной сборщик мусора и доступ к
-/// «сырым» операциям таблиц (D17 — `rawget`/`rawset` позволяют обойти метаметоды-защиту).
+
+
 fn harden_base(lua: &Lua) -> Result<()> {
     let globals = lua.globals();
     for name in [

@@ -6,10 +6,10 @@
 
 use crate::error::{CommandError, ErrorCode};
 
-/// Максимум символов тела ответа, попадающих в сообщение (защита статусбара от гигантского тела).
+
 const MAX_BODY_CHARS: usize = 400;
 
-/// Признаки превышения контекста модели в теле ошибки (HTTP 400).
+
 const CONTEXT_MARKERS: [&str; 6] = [
     "context length",
     "context_length",
@@ -19,13 +19,13 @@ const CONTEXT_MARKERS: [&str; 6] = [
     "token limit",
 ];
 
-/// Переводит HTTP-статус и тело ответа в ошибку с понятным кодом и сообщением.
-///
-/// `retry_after` — значение заголовка `Retry-After`, если он есть (для 429).
-///
-/// Статус сохраняется в [`CommandError::provider`] во всех ветках: по нему tool-loop отличает
-/// отказ провайдера от локальной ошибки с тем же кодом (ADR-0040 §2.1, §2.3). Коды и тексты
-/// от этого поля не зависят.
+
+
+
+
+
+
+
 pub fn map_status(status: u16, body: &str, retry_after: Option<&str>) -> CommandError {
     let detail = error_detail(body);
     match status {
@@ -65,7 +65,7 @@ pub fn map_status(status: u16, body: &str, retry_after: Option<&str>) -> Command
     }
 }
 
-/// Есть ли в теле ответа признак превышения контекста модели.
+
 fn is_context_length(body: &str) -> bool {
     let lower = body.to_ascii_lowercase();
     CONTEXT_MARKERS.iter().any(|marker| lower.contains(marker))
@@ -78,7 +78,7 @@ fn append_detail(message: &mut String, detail: &str) {
     }
 }
 
-/// Достаёт читаемый текст ошибки из OpenAI-конверта `{"error":{"message": ...}}` либо из тела.
+
 fn error_detail(body: &str) -> String {
     let trimmed = body.trim();
     if trimmed.is_empty() {

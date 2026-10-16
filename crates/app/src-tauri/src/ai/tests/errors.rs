@@ -58,9 +58,9 @@ fn error_message_extracted_from_openai_envelope() {
     assert!(err.message.contains("model not found"), "{}", err.message);
 }
 
-/// ADR-0040 §2.1: `map_status` — единственный писатель `http_status`, и во всех ветках он
-/// сохраняет статус ответа провайдера. Поле нужно tool-loop, чтобы отличить отказ шлюза от
-/// локальной ошибки с тем же кодом `AiBadRequest`.
+
+
+
 #[test]
 fn map_status_keeps_http_status_on_every_branch() {
     for (status, expected) in [
@@ -81,8 +81,8 @@ fn map_status_keeps_http_status_on_every_branch() {
     }
 }
 
-/// Ветка превышения контекста: статус сохранён (тест tool-loop узнаёт превышение по коду и
-/// не делает повтор — §2.3 п.14).
+
+
 #[test]
 fn map_status_keeps_status_for_context_length() {
     let err = map_status(400, "maximum context length exceeded", None);
@@ -90,8 +90,8 @@ fn map_status_keeps_status_for_context_length() {
     assert_eq!(err.http_status, Some(400));
 }
 
-/// Локальная ошибка ответа провайдера не существует: `None` — «HTTP-ответа не было». На этом
-/// отличии держится запрет повтора для ошибок размера ответа и протокола MCP (§2.3 п.15).
+
+
 #[test]
 fn local_command_error_carries_no_http_status() {
     let err = CommandError::new(ErrorCode::AiBadRequest, "ответ превысил допустимый размер");

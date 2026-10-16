@@ -19,7 +19,7 @@ use args::{parse_remove_args, parse_test_args, parse_update_args};
 use commands::{run_init, run_install, run_link, run_list, run_remove, run_test, run_update};
 use report::{print_report_json, print_report_text};
 
-/// Действие CLI, разобранное из аргументов.
+
 #[derive(Debug, PartialEq, Eq)]
 enum Action {
     Test {
@@ -169,7 +169,7 @@ fn main() -> ExitCode {
     }
 }
 
-/// Разбор вручную, без `clap` — так же, как в `plugin-host`.
+
 fn parse_args(args: &[String]) -> Result<Action, String> {
     let Some(command) = args.first() else {
         return Err("не указана команда".to_string());
@@ -188,13 +188,13 @@ fn parse_args(args: &[String]) -> Result<Action, String> {
     }
 }
 
-/// Единый блок ошибки команды: сообщение в stderr и код выхода `1`.
+
 fn op_error(message: String) -> ExitCode {
     eprintln!("ошибка: {message}");
     ExitCode::FAILURE
 }
 
-/// Справка печатается одним куском: правка формулировок не превращается в дифф из десятков строк.
+
 const USAGE: &str = "\
 darmark-plugin — CLI разработчика плагинов ПЕНАЛ
 

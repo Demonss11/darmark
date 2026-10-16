@@ -20,18 +20,18 @@ use mcp_core::protocol::{RpcRequest, RpcResponse};
 use mcp_core::server::McpServer;
 use serde_json::{json, Value};
 
-// ─── Инфраструктура теста ──────────────────────────────────────────
 
-/// Сервер с реальным инвентарём приложения и собирающим журналом.
-///
-/// Возвращает и сток записей: приватность (AC-MCP-13) проверяется по факту эмиссии.
-/// Базой каталога плагинов служит системный temp: тесты, которым каталог не важен, её
-/// не читают, а тест каталога передаёт свой `app_data_dir`.
+
+
+
+
+
+
 fn server() -> (McpServer, Arc<Mutex<Vec<String>>>) {
     server_with_app_data(&std::env::temp_dir())
 }
 
-/// Сервер с явным `app_data_dir` — для тестов, которым нужен конкретный каталог плагинов.
+
 fn server_with_app_data(app_data_dir: &std::path::Path) -> (McpServer, Arc<Mutex<Vec<String>>>) {
     let records = Arc::new(Mutex::new(Vec::new()));
     let collected = Arc::clone(&records);
@@ -56,14 +56,14 @@ fn request(method: &str, params: Option<Value>) -> RpcRequest {
     }
 }
 
-/// Ответ на запрос с `id`: сервер обязан ответить, `None` здесь — ошибка.
+
 fn respond(server: &McpServer, request: RpcRequest) -> RpcResponse {
     server
         .handle(request)
         .expect("запрос с id обязан получить ответ")
 }
 
-/// Успешный `result` ответа — с проверкой, что протокольной ошибки нет.
+
 fn result_of(response: &RpcResponse) -> Value {
     assert!(
         response.error.is_none(),
@@ -73,7 +73,7 @@ fn result_of(response: &RpcResponse) -> Value {
     response.result.clone().expect("result")
 }
 
-/// Вызов tool через MCP: возвращает конверт `{content, isError?}`.
+
 fn call_tool(server: &McpServer, name: &str, arguments: Value) -> Value {
     let response = respond(
         server,
@@ -85,7 +85,7 @@ fn call_tool(server: &McpServer, name: &str, arguments: Value) -> Value {
     result_of(&response)
 }
 
-/// JSON-значение, которое tool вернул в `content[0].text`.
+
 fn tool_payload(envelope: &Value) -> Value {
     let text = envelope["content"][0]["text"]
         .as_str()
@@ -97,12 +97,12 @@ fn is_error(envelope: &Value) -> bool {
     envelope["isError"].as_bool().unwrap_or(false)
 }
 
-/// Записи журнала, снятые со собирающего стока.
+
 fn records_of(records: &Arc<Mutex<Vec<String>>>) -> Vec<String> {
     records.lock().expect("журнал теста не отравлен").clone()
 }
 
-/// Имена tools, которые приложение обязано зарегистрировать (TZ-MCP §4).
+
 fn expected_tools() -> Vec<&'static str> {
     {
         vec![
@@ -115,7 +115,7 @@ fn expected_tools() -> Vec<&'static str> {
     }
 }
 
-/// URI ресурсов, которые приложение обязано зарегистрировать (TZ-MCP §4).
+
 fn expected_resources() -> Vec<&'static str> {
     vec![
         "darmark://contracts/plugin-manifest",
@@ -127,7 +127,7 @@ fn expected_resources() -> Vec<&'static str> {
     ]
 }
 
-// ─── AC-MCP-1/2/3: инвентарь и схемы ───────────────────────────────
+
 
 #[test]
 fn initialize_reports_protocol_version_and_capabilities() {
@@ -242,7 +242,7 @@ fn unknown_tool_is_protocol_error_not_tool_result() {
     assert!(response.result.is_none(), "нет result при ошибке протокола");
 }
 
-// ─── AC-MCP-6: схема == поведение, результат == прямой вызов ядра ──
+
 
 #[test]
 fn markdown_render_matches_md_core_directly() {
@@ -267,7 +267,7 @@ fn markdown_render_matches_md_core_directly() {
         "флаг mapped обязан менять рендер (иначе схема лжёт о поведении)"
     );
 
-    // Журнал фиксирует вызов без содержимого документа (R2).
+    
     let log = records_of(&records);
     assert_eq!(log.len(), 2, "каждый вызов — запись: {log:?}");
     assert!(log[0].contains("markdown_render"), "{log:?}");
@@ -302,13 +302,13 @@ fn plugin_validate_matches_static_validation_and_hides_full_path() {
         json!({ "path": plugin.path().to_string_lossy() }),
     ));
 
-    // Прямой вызов той же проверки ядра (AC-MCP-6: адаптер не дублирует логику).
+    
     let direct = darmark_lib::ai::plugin_harness::validate_plugin_static(plugin.path());
     assert!(direct.ok, "фикстура обязана быть валидной: {direct:?}");
     assert_eq!(payload["ok"], direct.ok);
     assert_eq!(payload["errors"], json!(direct.errors));
 
-    // Приватность (AC-MCP-13): ни в результате, ни в журнале нет полного пути.
+    
     let full_path = plugin.path().to_string_lossy().into_owned();
     assert!(
         !payload.to_string().contains(&full_path),
@@ -328,13 +328,13 @@ fn plugin_validate_matches_static_validation_and_hides_full_path() {
     );
 }
 
-/// Паритет адаптера с ядром на **непустой** ветке `errors` (AC-MCP-6).
-///
-/// Валидная фикстура даёт пустой `errors`, поэтому совпадение двух пустых массивов не
-/// доказывает, что адаптер не теряет/не переписывает ошибки (`sanitize_validation` как раз
-/// правит эти строки). Здесь манифест заведомо невалиден, а его текст ошибки **не содержит**
-/// полного пути (`ManifestError` пути не несёт) — значит паритет с прямым ядром обязан
-/// сохраняться и на непустом `errors`.
+
+
+
+
+
+
+
 #[test]
 fn plugin_validate_reports_nonempty_errors_matching_static_validation() {
     let plugin = temp_plugin_dir(
@@ -351,11 +351,11 @@ fn plugin_validate_reports_nonempty_errors_matching_static_validation() {
     );
     let payload = tool_payload(&envelope);
 
-    // Конверт несёт тот же вердикт, что и журнал: инструмент исполнился, проверка провалилась
-    // (ADR-0041 §2.4 п.14). Раньше `isError` здесь отсутствовал, и карточка рисовала «✓».
+    
+    
     assert!(is_error(&envelope), "провал проверки — isError: {envelope}");
 
-    // Прямой вызов той же проверки ядра (AC-MCP-6: адаптер не дублирует логику).
+    
     let direct = darmark_lib::ai::plugin_harness::validate_plugin_static(plugin.path());
     assert!(!direct.ok, "фикстура обязана быть невалидной: {direct:?}");
     assert!(!direct.errors.is_empty(), "ядро вернуло ошибку: {direct:?}");
@@ -369,7 +369,7 @@ fn plugin_validate_reports_nonempty_errors_matching_static_validation() {
         "адаптер не теряет errors: {payload}"
     );
 
-    // Приватность (AC-MCP-13): ни в результате, ни в журнале нет полного пути.
+    
     let full_path = plugin.path().to_string_lossy().into_owned();
     assert!(
         !payload.to_string().contains(&full_path),
@@ -393,7 +393,7 @@ fn plugin_validate_reports_nonempty_errors_matching_static_validation() {
 fn plugin_validate_rejects_path_outside_whitelist() {
     let (server, _records) = server();
 
-    // Белый список (AC-MCP-12) применяется и через MCP: `C:\Windows` — вне plugins/temp.
+    
     let envelope = call_tool(&server, "plugin_validate", json!({ "path": r"C:\Windows" }));
     assert!(is_error(&envelope), "путь вне белого списка: {envelope}");
     let message = envelope["content"][0]["text"].as_str().unwrap_or_default();
@@ -415,8 +415,8 @@ fn plugin_validate_requires_path_per_schema() {
 fn plugin_test_requires_path_per_schema() {
     let (server, _records) = server();
 
-    // Песочница здесь не запускается: вызов отсекается на схеме (до канонизации пути),
-    // поэтому тест не зависит от наличия сайдкаров рядом с тестовым бинарником.
+    
+    
     let envelope = call_tool(&server, "plugin_test", json!({}));
     assert!(is_error(&envelope), "без path — ошибка вызова: {envelope}");
 }
@@ -453,8 +453,8 @@ fn plugin_read_declares_only_id_schema() {
     );
 }
 
-/// `plugin_read` отсекает параметры до чтения файлов: и отсутствие `id`, и небезопасный `id`
-/// (traversal) дают ошибку вызова, а журнал остаётся пустым (TASK-003 §7).
+
+
 #[test]
 fn plugin_read_requires_id_and_rejects_unsafe_id_without_log() {
     let (server, records) = server();
@@ -477,7 +477,7 @@ fn plugin_read_requires_id_and_rejects_unsafe_id_without_log() {
 #[test]
 fn catalog_tool_and_resource_match_plugin_catalog_directly() {
     let repo = examples_plugins_repo();
-    // Каталог читается из `app_data_dir` (единственный источник и у tool, и у ресурса).
+    
     let app_data_dir = repo.parent().expect("родитель каталога");
     let (server, records) = server_with_app_data(app_data_dir);
 
@@ -489,7 +489,7 @@ fn catalog_tool_and_resource_match_plugin_catalog_directly() {
         .collect();
     assert!(!expected.is_empty(), "каталог пуст — фикстура не найдена");
 
-    // tool: те же записи, что и при прямом чтении каталога (AC-MCP-6).
+    
     let payload = tool_payload(&call_tool(&server, "plugin_catalog_list", json!({})));
     let via_tool: Vec<(String, String)> = payload["plugins"]
         .as_array()
@@ -504,8 +504,8 @@ fn catalog_tool_and_resource_match_plugin_catalog_directly() {
         .collect();
     assert_eq!(via_tool, expected);
 
-    // R2-симметрия: tool, как и ресурс `darmark://plugins/catalog`, не отдаёт `path`
-    // (относительный путь агенту не нужен — «пути → только имена»).
+    
+    
     assert!(
         payload["plugins"]
             .as_array()
@@ -515,7 +515,7 @@ fn catalog_tool_and_resource_match_plugin_catalog_directly() {
         "tool не должен отдавать path: {payload}"
     );
 
-    // resource: тот же каталог через `resources/read`.
+    
     let read = result_of(&respond(
         &server,
         request(
@@ -534,7 +534,7 @@ fn catalog_tool_and_resource_match_plugin_catalog_directly() {
     let expected_ids: Vec<&str> = expected.iter().map(|(id, _)| id.as_str()).collect();
     assert_eq!(via_resource, expected_ids);
 
-    // Шаблонный ресурс читает манифест конкретного плагина.
+    
     let first = &expected[0].0;
     let manifest = result_of(&respond(
         &server,
@@ -552,16 +552,16 @@ fn catalog_tool_and_resource_match_plugin_catalog_directly() {
         "манифест из шаблонного ресурса"
     );
 
-    // Журнал вызова tool — без полного пути (R2).
+    
     let log = records_of(&records);
     assert_eq!(log.len(), 1, "{log:?}");
     assert!(!log[0].contains(":\\"), "журнал без полного пути: {log:?}");
 }
 
-// ─── Фикстуры ──────────────────────────────────────────────────────
-// (фикстуры валидации плагина нужны только Windows-тестам: там живёт белый список путей)
 
-/// Валидный манифест плагина (совпадает по форме с `crates/plugin-catalog/examples/plugins`).
+
+
+
 const VALID_MANIFEST: &str = r#"{
   "id": "mcp-contract",
   "name": "MCP contract",
@@ -571,7 +571,7 @@ const VALID_MANIFEST: &str = r#"{
   "permissions": ["document:read"]
 }"#;
 
-/// Невалидный манифест: пустой `id` (`ManifestError::EmptyField` не несёт пути).
+
 const INVALID_MANIFEST: &str = r#"{
   "id": "",
   "name": "x",
@@ -580,7 +580,7 @@ const INVALID_MANIFEST: &str = r#"{
   "entry": "main.lua"
 }"#;
 
-/// Каталог плагина в `temp` — он в белом списке `plugin_harness` (AC-MCP-12).
+
 fn temp_plugin_dir(prefix: &str, manifest: &str, source: &str) -> tempfile::TempDir {
     let dir = tempfile::Builder::new()
         .prefix(prefix)
@@ -591,7 +591,7 @@ fn temp_plugin_dir(prefix: &str, manifest: &str, source: &str) -> tempfile::Temp
     dir
 }
 
-/// Последний компонент пути — то, что журнал обязан показать вместо полного пути.
+
 fn plugin_dir_name(path: &str) -> String {
     Path::new(path)
         .file_name()
@@ -599,7 +599,7 @@ fn plugin_dir_name(path: &str) -> String {
         .unwrap_or_default()
 }
 
-/// Репозиторный каталог-источник плагинов (`crates/plugin-catalog/examples/plugins`).
+
 fn examples_plugins_repo() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")

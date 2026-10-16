@@ -9,29 +9,29 @@ use std::collections::BTreeMap;
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-/// Один вызов инструмента от провайдера.
-///
-/// `Serialize`/`Deserialize` написаны вручную: на проводе OpenAI ждёт
-/// `{id, type:"function", function:{name, arguments}}`, где `arguments` — **строка** JSON.
-/// Автовывод сериализовал бы `arguments` объектом, и второй запрос tool-loop падал бы на 400.
+
+
+
+
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct ToolCall {
-    /// Идентификатор вызова (для сопоставления результата).
+    
     pub id: String,
-    /// Имя инструмента.
+    
     pub name: String,
-    /// Аргументы вызова (JSON).
+    
     pub arguments: serde_json::Value,
 }
 
-/// Тело `function` в форме OpenAI: `arguments` — компактная строка JSON.
+
 #[derive(Serialize)]
 struct FunctionPayload<'a> {
     name: &'a str,
     arguments: String,
 }
 
-/// Приводит аргументы к строке-объекту: OpenAI не принимает `null` вместо `{}`.
+
 fn arguments_wire(arguments: &serde_json::Value) -> String {
     match arguments {
         serde_json::Value::Null => "{}".to_string(),
@@ -56,7 +56,7 @@ impl Serialize for ToolCall {
     }
 }
 
-/// Промежуточная форма разбора: держит обе раскладки — форму OpenAI и плоскую запись истории.
+
 #[derive(Deserialize)]
 struct ToolCallRepr {
     #[serde(default)]
@@ -69,7 +69,7 @@ struct ToolCallRepr {
     function: Option<FunctionRepr>,
 }
 
-/// Тело `function` при разборе ответа/истории.
+
 #[derive(Deserialize)]
 struct FunctionRepr {
     #[serde(default)]
@@ -78,9 +78,9 @@ struct FunctionRepr {
     arguments: Option<serde_json::Value>,
 }
 
-/// Разбирает обе раскладки: вложенную (`function`) и плоскую (`name`/`arguments`).
-///
-/// Поле `type` игнорируется: старые записи истории его не несут.
+
+
+
 impl<'de> Deserialize<'de> for ToolCall {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -99,14 +99,14 @@ impl<'de> Deserialize<'de> for ToolCall {
     }
 }
 
-/// Накопитель фрагментов tool_calls из SSE-потока.
+
 #[derive(Debug, Default)]
 pub struct ToolCallAccumulator {
-    /// Фрагменты вызовов, сгруппированные по индексу.
+    
     calls: BTreeMap<u32, CallBuffer>,
 }
 
-/// Промежуточное состояние одного вызова.
+
 #[derive(Debug, Default)]
 struct CallBuffer {
     id: Option<String>,
@@ -115,10 +115,10 @@ struct CallBuffer {
 }
 
 impl ToolCallAccumulator {
-    /// Добавляет фрагмент вызова с заданным индексом.
-    ///
-    /// `id`/`name` — берутся из первого непустого значения; `arguments` — конкатенация
-    /// всех фрагментов.
+    
+    
+    
+    
     pub fn push(
         &mut self,
         index: u32,
@@ -134,10 +134,10 @@ impl ToolCallAccumulator {
         }
     }
 
-    /// Завершает накопление: возвращает вызовы, отсортированные по `index`.
-    ///
-    /// `arguments` каждого вызова парсится из склеенной строки JSON; при битом JSON —
-    /// `Value::Null` (не паника).
+    
+    
+    
+    
     pub fn finish(&self) -> Vec<ToolCall> {
         self.calls
             .values()
@@ -151,7 +151,7 @@ impl ToolCallAccumulator {
     }
 }
 
-/// Объединяет поле: первое непустое значение фиксируется, последующие игнорируются.
+
 fn merge_field(current: &mut Option<String>, new: Option<String>) {
     if current.as_deref().is_some_and(|s| !s.is_empty()) {
         return;
@@ -161,10 +161,10 @@ fn merge_field(current: &mut Option<String>, new: Option<String>) {
     }
 }
 
-/// Разбирает tool_calls из не-стриминг-конверта `choices[0].message.tool_calls[]`.
-///
-/// `arguments` может быть строкой JSON или готовым объектом; при битом JSON —
-/// `Value::Null` (не паника).
+
+
+
+
 pub fn tool_calls_from_payload(value: &serde_json::Value) -> Vec<ToolCall> {
     let mut calls = Vec::new();
     if let Some(tool_calls) = value
@@ -183,7 +183,7 @@ pub fn tool_calls_from_payload(value: &serde_json::Value) -> Vec<ToolCall> {
     calls
 }
 
-/// Разбирает один элемент `tool_calls[]`.
+
 fn parse_tool_call(value: &serde_json::Value) -> Option<ToolCall> {
     let function = value.get("function")?;
     Some(ToolCall {
@@ -201,7 +201,7 @@ fn parse_tool_call(value: &serde_json::Value) -> Option<ToolCall> {
     })
 }
 
-/// Парсит `arguments` из элемента `tool_calls[]`: строка JSON → Value, прочее — как есть.
+
 fn parse_arguments(value: Option<&serde_json::Value>) -> serde_json::Value {
     match value {
         Some(serde_json::Value::String(s)) => {

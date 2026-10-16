@@ -93,8 +93,8 @@ fn fallback_manifest_validation_flags_errors() {
     assert!(!manifest_errors(&bad_id, "x").is_empty());
 }
 
-/// Единая точка статической валидации (TZ-MCP R4/AC-MCP-6): принимает валидный
-/// каталог и сообщает `manifest`/`entry`-ошибки при отсутствии файлов.
+
+
 #[test]
 fn static_validation_accepts_valid_plugin_and_reports_missing_files() {
     let root = tempfile::tempdir().unwrap();

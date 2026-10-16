@@ -7,7 +7,7 @@ use crate::ai::history::{
 use crate::ai::types::AiMessage;
 use std::path::PathBuf;
 
-/// Временный каталог для теста (уникальный на процесс + имя).
+
 fn temp_dir(name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("darmark-history-{}-{}", std::process::id(), name));
     let _ = std::fs::remove_dir_all(&dir);

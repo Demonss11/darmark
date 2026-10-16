@@ -6,38 +6,38 @@
 
 use crate::ai::types::AiUsage;
 
-/// Максимум байт неполной строки в буфере. Защита от неограниченного роста, если в
-/// недоверенном потоке нет `\n` (валидные SSE-строки на порядки короче).
+
+
 pub(super) const MAX_BUFFER_BYTES: usize = 1024 * 1024;
 
-/// Разобранное событие SSE-потока.
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SseEvent {
-    /// Инкрементальный кусок текста (`choices[0].delta.content`).
+    
     Delta(String),
-    /// Токены использования (`usage`), если провайдер их прислал (часто в последнем чанке).
+    
     Usage(AiUsage),
-    /// Причина завершения (`choices[0].finish_reason`): `"stop"`, `"length"` и т.д.
+    
     Finish(String),
-    /// Терминатор `data: [DONE]`.
+    
     Done,
-    /// Инкрементальный фрагмент tool_call из `choices[0].delta.tool_calls[]`.
+    
     ToolCallDelta {
-        /// Индекс вызова в массиве tool_calls.
+        
         index: u32,
-        /// Идентификатор вызова (первый непустой фрагмент).
+        
         id: Option<String>,
-        /// Имя инструмента (первый непустой фрагмент).
+        
         name: Option<String>,
-        /// Фрагмент аргументов (конкатенируется).
+        
         arguments: Option<String>,
     },
 }
 
-/// Инкрементальный построчный парсер SSE.
+
 #[derive(Debug, Default)]
 pub struct SseParser {
-    /// Накопленные байты неполной строки (включая разрезанный UTF-8).
+    
     buffer: Vec<u8>,
 }
 
@@ -46,10 +46,10 @@ impl SseParser {
         Self::default()
     }
 
-    /// Добавляет очередной чанк байт и возвращает все **полностью** разобранные события.
-    ///
-    /// Разделитель — байт `\n` (не входит в многобайтовые последовательности UTF-8), поэтому
-    /// строка декодируется целиком; неполный хвост остаётся в буфере до следующего чанка.
+    
+    
+    
+    
     pub fn push(&mut self, chunk: &[u8]) -> Vec<SseEvent> {
         self.buffer.extend_from_slice(chunk);
         let mut events = Vec::new();
@@ -67,13 +67,13 @@ impl SseParser {
         events
     }
 
-    /// Длина неполного хвоста буфера (диагностика/тесты).
+    
     pub fn pending_len(&self) -> usize {
         self.buffer.len()
     }
 }
 
-/// Разбирает одну строку SSE в ноль или более событий (одна строка может нести и `delta`, и `usage`).
+
 fn parse_line(line: &[u8]) -> Vec<SseEvent> {
     let text = String::from_utf8_lossy(line);
     let trimmed = text.trim_start();
@@ -90,7 +90,7 @@ fn parse_line(line: &[u8]) -> Vec<SseEvent> {
     parse_payload(payload)
 }
 
-/// Разбирает JSON-payload одного `data:`-события; битый JSON → пусто (пропуск, не паника).
+
 fn parse_payload(payload: &str) -> Vec<SseEvent> {
     let Ok(value) = serde_json::from_str::<serde_json::Value>(payload) else {
         return Vec::new();
@@ -136,9 +136,9 @@ fn parse_payload(payload: &str) -> Vec<SseEvent> {
     events
 }
 
-/// Извлекает фрагмент tool_call из `delta.tool_calls[]`.
-///
-/// Пустые строки и отсутствующие поля → `None`; если все поля пустые — `None` (не эмитим).
+
+
+
 fn parse_tool_call_delta(value: &serde_json::Value) -> Option<SseEvent> {
     let index = u32::try_from(value.get("index")?.as_u64()?).ok()?;
     let id = value
@@ -169,7 +169,7 @@ fn parse_tool_call_delta(value: &serde_json::Value) -> Option<SseEvent> {
     })
 }
 
-/// Извлекает `usage.{prompt_tokens,completion_tokens}`, если он есть и корректен.
+
 fn parse_usage(value: &serde_json::Value) -> Option<AiUsage> {
     let usage = value.get("usage")?;
     let prompt = usage.get("prompt_tokens")?.as_u64()?;

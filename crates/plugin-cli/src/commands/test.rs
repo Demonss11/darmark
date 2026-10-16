@@ -9,11 +9,11 @@ use plugin_host::selftest;
 use crate::report::{Check, TestReport};
 use crate::templates::MANIFEST_FILE;
 
-/// Лимит размера `plugin.json` (совпадает с GUI-сканированием и самопроверкой child).
+
 const MAX_MANIFEST_BYTES: u64 = 256 * 1024;
 
-/// Проверки идут по порядку; при провале ранней (манифест/entry) последующие не выполняются —
-/// без валидного входа песочницу запускать бессмысленно.
+
+
 pub fn run_test(path: &Path, verbose: bool) -> TestReport {
     let mut checks = Vec::new();
     let mut sandbox_logs = Vec::new();
@@ -107,7 +107,7 @@ fn check_manifest(dir: &Path) -> Result<String, String> {
     ))
 }
 
-/// Путь к entry-файлу: для каталога — из манифеста, для `.lua` — сам файл.
+
 fn entry_path_of(path: &Path) -> Result<PathBuf, String> {
     if path.is_dir() {
         let manifest_path = path.join(MANIFEST_FILE);
@@ -147,21 +147,21 @@ fn check_entry(path: &Path) -> Result<String, String> {
     ))
 }
 
-/// Эвристика объявления **глобальной** точки входа `on_activate`.
-///
-/// Признаются только две формы:
-/// - `function on_activate(...)` — голое имя, `function` и `on_activate` разделены
-///   любыми whitespace (≥1);
-/// - `on_activate = ...` — голое имя, между `on_activate` и `=` любые whitespace.
-///
-/// Отвергаются: поля/методы (`M.on_activate = ...`, `function M.on_activate(...)`),
-/// локальные объявления (`local function on_activate(...)`, `local on_activate = ...`),
-/// а также `on_activate` как значение или часть другого идентификатора.
-///
-/// Известные ограничения:
-/// - Lua-комментарии (`--`, `--[[ ]]`) не обрабатываются;
-/// - явные глобальные формы `_G.on_activate = ...` / `_ENV.on_activate = ...`
-///   отвергаются (перед именем стоит `.`), хотя семантически они глобальные.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 fn has_on_activate(source: &str) -> bool {
     const NEEDLE: &str = "on_activate";
 
@@ -173,8 +173,8 @@ fn has_on_activate(source: &str) -> bool {
         c.is_alphanumeric() || c == '_'
     }
 
-    /// Перед позицией `pos` (после отбрасывания trailing whitespace) не должно быть слова
-    /// `local` — иначе объявление локальное, а не глобальная точка входа.
+    
+    
     fn no_local_before(source: &str, pos: usize) -> bool {
         let before = source[..pos].trim_end_matches(is_ws);
         if before.ends_with("local") {
@@ -191,7 +191,7 @@ fn has_on_activate(source: &str) -> bool {
         true
     }
 
-    /// То же про маркер поля/метода `.` или `:` перед позицией.
+    
     fn no_field_marker_before(source: &str, pos: usize) -> bool {
         let before = source[..pos].trim_end_matches(is_ws);
         !before.ends_with('.') && !before.ends_with(':')
@@ -202,7 +202,7 @@ fn has_on_activate(source: &str) -> bool {
         let start = from + offset;
         let end = start + NEEDLE.len();
 
-        // Соседние буквы/цифры/подчёркивания отсекают on_activate2, my_on_activate и т.п.
+        
         let before_ok = source[..start]
             .chars()
             .next_back()
@@ -213,7 +213,7 @@ fn has_on_activate(source: &str) -> bool {
             .is_none_or(|c| !is_word_char(c));
 
         if before_ok && after_ok {
-            // Присваивание: `on_activate` [ws]* `=`.
+            
             if no_field_marker_before(source, start) && no_local_before(source, start) {
                 let after = source[end..].trim_start_matches(is_ws);
                 if after.starts_with('=') {
@@ -221,8 +221,8 @@ fn has_on_activate(source: &str) -> bool {
                 }
             }
 
-            // Объявление функции: `function` [ws]+ `on_activate`. Пробел обязателен —
-            // иначе `function M.on_activate` прошёл бы как глобальное объявление.
+            
+            
             let before = &source[..start];
             if let Some(func_rel) = before.rfind("function") {
                 let func_start = func_rel;
@@ -244,8 +244,8 @@ fn has_on_activate(source: &str) -> bool {
     false
 }
 
-/// Чтение с жёстким потолком размера: `metadata` обгоняет файл между `stat` и `read`
-/// (TOCTOU), поэтому лимит проверяется ещё раз по фактически прочитанному.
+
+
 fn read_capped(path: &Path, max: u64) -> Result<Vec<u8>, String> {
     let metadata = std::fs::metadata(path).map_err(|e| format!("{}: {e}", path.display()))?;
     if metadata.len() > max {
@@ -366,7 +366,7 @@ mod tests {
     fn test_oversized_source_fails() {
         let root = tempfile::tempdir().unwrap();
         let dir = root.path().join("big");
-        // MAX_PLUGIN_SOURCE_BYTES = 1 МиБ; пишем заведомо больше.
+        
         let big = "function on_activate(ctx) end\n".repeat(70_000);
         write_plugin(&dir, &manifest("big"), Some(&big));
         let report = run_test(&dir, false);
@@ -378,7 +378,7 @@ mod tests {
 
     #[test]
     fn test_smoke_word_count_plugin() {
-        // plugin-cli → crates → plugin-catalog → examples/plugins/word-count.
+        
         let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("..")
             .join("plugin-catalog")
@@ -416,45 +416,45 @@ mod tests {
 
     #[test]
     fn has_on_activate_variants() {
-        // Базовые случаи.
+        
         assert!(has_on_activate("function on_activate(ctx) end"));
         assert!(has_on_activate("on_activate = function(ctx) end"));
         assert!(has_on_activate("on_activate   = function(ctx) end"));
         assert!(has_on_activate("on_activate=function"));
         assert!(!has_on_activate("function on_event() end"));
 
-        // Разные варианты whitespace между function и on_activate.
+        
         assert!(has_on_activate("function  on_activate(ctx) end"));
         assert!(has_on_activate("function\ton_activate(ctx) end"));
         assert!(has_on_activate("function\non_activate(ctx) end"));
         assert!(has_on_activate("function\r\non_activate(ctx) end"));
 
-        // Локальные объявления — не глобальная точка входа.
+        
         assert!(!has_on_activate("local function on_activate(ctx) end"));
         assert!(!has_on_activate("local on_activate = function(ctx) end"));
 
-        // Границы слова: on_activate2 и my_on_activate — не on_activate.
+        
         assert!(!has_on_activate("on_activate2"));
         assert!(!has_on_activate("my_on_activate"));
         assert!(!has_on_activate("local on_activate_handler = 1"));
 
-        // `on_activate` как значение, а не точка входа — не объявление.
+        
         assert!(!has_on_activate("local f = on_activate"));
         assert!(!has_on_activate("return on_activate"));
         assert!(!has_on_activate("print(on_activate)"));
         assert!(!has_on_activate("host.log('info', on_activate)"));
 
-        // Известное ограничение: комментарии не обрабатываются.
-        // Следующая строка будет ложно распознана как объявление:
-        // assert!(has_on_activate("-- function on_activate"));
+        
+        
+        
     }
 
     #[test]
     fn has_on_activate_word_boundaries_around_function() {
-        // `function` как часть более длинного идентификатора — не объявление.
+        
         assert!(!has_on_activate("notfunction on_activate(ctx) end"));
         assert!(!has_on_activate("myfunction on_activate(ctx) end"));
-        // Продолжение имени после on_activate — другой идентификатор.
+        
         assert!(!has_on_activate("function on_activatex(ctx) end"));
         assert!(!has_on_activate("function on_activate_v2(ctx) end"));
         assert!(!has_on_activate("on_activate_v2 = function(ctx) end"));
@@ -462,26 +462,26 @@ mod tests {
 
     #[test]
     fn has_on_activate_mixed_whitespace_variants() {
-        // Смешанные пробелы и переводы строк между function и on_activate.
+        
         assert!(has_on_activate("function \t\n on_activate(ctx) end"));
         assert!(has_on_activate("function\n\non_activate(ctx) end"));
-        // Whitespace перед `=`, включая перевод строки.
+        
         assert!(has_on_activate("on_activate   \n = function(ctx) end"));
         assert!(has_on_activate("on_activate\r\n= function(ctx) end"));
     }
 
     #[test]
     fn has_on_activate_declaration_without_parens() {
-        // Эвристика не парсит синтаксис Lua: `function on_activate` без скобок
-        // и с пробелом перед `(` распознаётся — невалидный синтаксис поймает песочница.
+        
+        
         assert!(has_on_activate("function on_activate end"));
         assert!(has_on_activate("function on_activate (ctx) end"));
     }
 
     #[test]
     fn has_on_activate_unicode_spaces_are_not_separators() {
-        // Lua-лексер считает разделителями только ASCII-пробелы, \t, \n, \r:
-        // NBSP и другие юникод-пробелы не разрывают токены, эвристика это учитывает.
+        
+        
         assert!(!has_on_activate("function\u{00A0}on_activate(ctx) end"));
         assert!(!has_on_activate("on_activate\u{00A0}= function(ctx) end"));
         assert!(!has_on_activate("function\u{2028}on_activate(ctx) end"));
@@ -489,28 +489,28 @@ mod tests {
 
     #[test]
     fn has_on_activate_vertical_tab_and_form_feed() {
-        // Lua допускает \v и \f как разделители токенов — эвристика их учитывает.
+        
         assert!(has_on_activate("function\u{0B}on_activate(ctx) end"));
         assert!(has_on_activate("function\u{0C}on_activate(ctx) end"));
-        // Форма с \v перед `=`.
+        
         assert!(has_on_activate("on_activate\u{0B}= function(ctx) end"));
     }
 
     #[test]
     fn has_on_activate_method_form_is_not_global_entry() {
-        // plugin-host берёт on_activate из globals (selftest.rs: `globals().get`):
-        // `function M.on_activate` создаёт метод таблицы M, а не глобальную точку
-        // входа. Между `function` и `on_activate` стоит `M.` — не чистый whitespace,
-        // поэтому эвристика его уже отвергает (фиксируем корректное поведение).
+        
+        
+        
+        
         assert!(!has_on_activate("function M.on_activate(ctx) end"));
         assert!(!has_on_activate("function M:on_activate(ctx) end"));
     }
 
     #[test]
     fn has_on_activate_field_assignment_is_not_global_entry() {
-        // plugin-host берёт on_activate из globals (selftest.rs: `globals().get`):
-        // `M.on_activate = function` создаёт поле таблицы M, а не глобальную точку
-        // входа, — эвристика не должна его принимать.
+        
+        
+        
         assert!(!has_on_activate("M.on_activate = function(ctx) end"));
     }
 
@@ -529,8 +529,8 @@ mod tests {
 
     #[test]
     fn check_entry_rejects_method_form() {
-        // `function M.on_activate` не создаёт глобальную on_activate,
-        // которую ждёт plugin-host, — entry должен быть отклонён.
+        
+        
         let root = tempfile::tempdir().unwrap();
         let dir = root.path().join("method-form");
         write_plugin(
@@ -544,8 +544,8 @@ mod tests {
 
     #[test]
     fn check_entry_rejects_field_assignment_form() {
-        // `M.on_activate = function` создаёт поле таблицы M, а не глобальную
-        // on_activate, которую ждёт plugin-host, — entry должен быть отклонён.
+        
+        
         let root = tempfile::tempdir().unwrap();
         let dir = root.path().join("field-assignment");
         write_plugin(

@@ -12,7 +12,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-/// Фейковый бэкенд: эхо-ответ, чтобы проверить состояние без сети.
+
 struct EchoBackend;
 
 impl crate::ai::transport::AiTransport for EchoBackend {
@@ -45,7 +45,7 @@ impl crate::ai::transport::AiTransport for EchoBackend {
     }
 }
 
-/// Изолированный путь конфига в temp — тесты не трогают реальный профиль.
+
 fn temp_config(name: &str) -> PathBuf {
     let dir =
         std::env::temp_dir().join(format!("darmark-ai-state-{}-{}", std::process::id(), name));
@@ -57,7 +57,7 @@ fn state_with(settings: AiSettings, config_path: Option<PathBuf>) -> AiState {
     AiState::with_config_path(settings, Arc::new(EchoBackend), config_path)
 }
 
-/// Вход провайдера для `update_settings` с одним ключом модели.
+
 fn provider_input(id: &str, base_url: &str, model: &str) -> ProviderInput {
     ProviderInput {
         id: id.to_string(),
@@ -94,8 +94,8 @@ fn input(
     }
 }
 
-/// Путь, где persist гарантированно падает: `config.json` — существующая директория,
-/// `rename` временного файла на неё отклоняется ОС.
+
+
 fn unwritable_config(name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!(
         "darmark-ai-rollback-{}-{}",
@@ -545,8 +545,8 @@ fn validate_base_url_edge_cases() {
     assert!(validate_base_url("http://LocalHost:8080/v1").is_ok());
 }
 
-/// Надстройка провайдера (`headers`, `body`, `timeout`, `env`) обязана пережить
-/// `update_settings`: именно эти поля формируют HTTP-запрос к модели.
+
+
 #[test]
 fn update_settings_propagates_headers_body_timeout_env() {
     let path = temp_config("propagate");
@@ -603,8 +603,8 @@ fn update_settings_propagates_headers_body_timeout_env() {
     );
 }
 
-/// Переключение активного провайдера на другой хост обязано сбрасывать согласие:
-/// пользователь дал согласие на отправку документов конкретному хосту.
+
+
 #[test]
 fn consent_reset_when_active_provider_changes_to_different_host() {
     let mut settings = AiSettings::default();
@@ -662,8 +662,8 @@ fn consent_reset_when_active_provider_changes_to_different_host() {
     );
 }
 
-/// §2.5 п.20: вердикт «провайдер не умеет `tools`» принадлежит паре `(base_url, model)` как есть,
-/// без нормализации: другой адрес или другая модель той же пары не деградируются.
+
+
 #[test]
 fn tools_capability_verdict_scoped_to_base_url_and_model() {
     let state = state_with(AiSettings::default(), None);
@@ -690,8 +690,8 @@ fn tools_capability_verdict_scoped_to_base_url_and_model() {
     );
 }
 
-/// §2.5 п.23: конфигурация провайдеров могла измениться — устаревший вердикт хуже отсутствия
-/// вердикта, поэтому сохранение настроек очищает кэш целиком.
+
+
 #[test]
 fn update_settings_clears_tools_capability_cache() {
     let path = temp_config("capability-clear");
@@ -712,7 +712,7 @@ fn update_settings_clears_tools_capability_cache() {
     );
 }
 
-/// §2.5 п.23: `ai_set_api_key` кэш не трогает — адрес и модель те же, вердикт остаётся в силе.
+
 #[test]
 fn set_api_key_keeps_tools_capability_cache() {
     let path = temp_config("capability-key");
@@ -729,9 +729,9 @@ fn set_api_key_keeps_tools_capability_cache() {
     );
 }
 
-/// §2.6 п.26: адрес провайдера допускает userinfo и query, а там может лежать секрет шлюза
-/// (H4, ADR-0035 §2.6 п.16). `warn_degraded` печатает результат этого нормализатора, поэтому
-/// он обязан отбрасывать всё, кроме хоста: иначе секрет утечёт в stderr.
+
+
+
 #[test]
 fn host_of_url_drops_userinfo_query_and_port() {
     let host = host_of_url("https://user:sk-secret@gateway.example:8443/v1?api-key=sk-x")
@@ -746,8 +746,8 @@ fn host_of_url_drops_userinfo_query_and_port() {
     }
 }
 
-/// Тот же инвариант для петлевого `http://` (тесты/E2E) и для не-URL, который `warn_degraded`
-/// печатает как «неизвестный хост».
+
+
 #[test]
 fn host_of_url_handles_loopback_port_and_garbage() {
     assert_eq!(

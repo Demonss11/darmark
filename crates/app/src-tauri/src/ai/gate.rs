@@ -8,7 +8,7 @@ use crate::ai::state::resolve_active;
 use crate::ai::types::AiSettings;
 use crate::error::{CommandError, ErrorCode};
 
-/// Фича выключена пользователем (`ai.enabled = false`).
+
 pub fn check_enabled(settings: &AiSettings) -> Result<(), CommandError> {
     if settings.enabled {
         Ok(())
@@ -20,12 +20,12 @@ pub fn check_enabled(settings: &AiSettings) -> Result<(), CommandError> {
     }
 }
 
-/// Активная пара `active_provider`/`active_model` должна резолвиться (ADR-0035 §2.2).
+
 pub fn check_active(settings: &AiSettings) -> Result<(), CommandError> {
     resolve_active(settings).map(|_| ())
 }
 
-/// Не задан непустой API-ключ у активного провайдера (`settings.apiKey` или `env`).
+
 pub fn check_key(settings: &AiSettings) -> Result<(), CommandError> {
     if resolve_active(settings)?.api_key.is_some() {
         Ok(())
@@ -34,7 +34,7 @@ pub fn check_key(settings: &AiSettings) -> Result<(), CommandError> {
     }
 }
 
-/// Нет согласия на отправку содержимого в облако.
+
 pub fn check_consent(settings: &AiSettings) -> Result<(), CommandError> {
     if settings.consent_document_send {
         Ok(())
@@ -46,7 +46,7 @@ pub fn check_consent(settings: &AiSettings) -> Result<(), CommandError> {
     }
 }
 
-/// Полный гейт перед `ai_chat`: включён → активная пара → ключ → согласие.
+
 pub fn check_chat(settings: &AiSettings) -> Result<(), CommandError> {
     check_enabled(settings)?;
     check_active(settings)?;

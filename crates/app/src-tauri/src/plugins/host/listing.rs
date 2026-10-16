@@ -12,11 +12,11 @@ use super::super::supervisor::Supervisor;
 use super::{lock, PluginHost};
 
 impl PluginHost {
-    /// `list_plugins`: снимок реестра плагинов для менеджера UI (Фаза 5).
-    ///
-    /// Схема настроек (`settings_schema`) приходит из манифеста (менеджер); текущие
-    /// значения (`settings_values`) обогащаются из `PluginSettingsStore`, если он подключён
-    /// (S5b). Без стора значения остаются пустым объектом.
+    
+    
+    
+    
+    
     pub fn list_plugins(&self) -> Vec<PluginInfo> {
         let mut infos = lock(&self.manager).list_plugins();
         if let Some(settings) = &self.plugin_settings {
@@ -30,11 +30,11 @@ impl PluginHost {
         infos
     }
 
-    /// Регистрирует один плагин из каталога на диске (harness AI, ADR-0034 §2.4).
-    ///
-    /// Читает каталог тем же контрактом, что и [`super::super::manager::load_plugins`] (манифест +
-    /// entry), добавляет плагин в реестр и, если он включён в настройках, запускает child.
-    /// `Err` — каталог невалиден, плагин с таким id уже в реестре или child-exe не найден.
+    
+    
+    
+    
+    
     pub fn register_plugin_dir(&self, dir: &Path) -> Result<PluginInfo, PluginError> {
         let discovered = super::super::scan::load_single(dir)
             .map_err(|m| PluginError::new("invalid_plugin", m))?;

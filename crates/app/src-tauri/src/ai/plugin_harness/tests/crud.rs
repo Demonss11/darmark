@@ -32,7 +32,7 @@ mod windows_crud {
     use crate::plugins::views::PluginViews;
     use std::sync::{Arc, Mutex};
 
-    /// Валидатор-заглушка: тесты CRUD не зависят от наличия сайдкаров.
+    
     fn always_ok(_dir: &Path) -> AiValidationResult {
         AiValidationResult {
             ok: true,
@@ -41,7 +41,7 @@ mod windows_crud {
         }
     }
 
-    /// Хост без плагинов; плагин `id` выключен в настройках, чтобы не спавнить child.
+    
     fn host_with_disabled(id: &str) -> PluginHost {
         let mut settings = SettingsStore::default();
         settings.set_plugin_enabled(id, false);

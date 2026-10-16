@@ -13,11 +13,11 @@ use super::super::resource::{ProcessMetrics, ResourceMonitor, ResourceSink};
 use super::{lock, PluginHost};
 
 impl PluginHost {
-    /// Запускает поток ресурс-монитора (ADR-0031 §2.3 п.9).
-    ///
-    /// Список активных PID снимается коротким локом менеджера **внутри** потока
-    /// ([`PluginManager::active_pids`](super::super::manager::PluginManager::active_pids)); WinAPI-замеры и эмит событий идут уже без блокировки
-    /// (§2.3 п.10 — дедлок-инвариант). Поток останавливается флагом в [`Drop`].
+    
+    
+    
+    
+    
     pub fn start_resource_monitor<S: ResourceSink + 'static>(
         &mut self,
         provider: Arc<dyn ProcessMetrics>,
@@ -34,9 +34,9 @@ impl PluginHost {
         self.resource_thread = Some(monitor.spawn(children, stop));
     }
 
-    /// Best-effort старт enabled-плагинов и уведомление фронтенда.
-    ///
-    /// Ошибка запуска одного плагина не мешает остальным и не роняет GUI (§4.7).
+    
+    
+    
     pub fn start_enabled(&self) {
         let mut transitions: Vec<(String, PluginStatus, PluginStatus, Option<String>)> = Vec::new();
         {
@@ -75,12 +75,12 @@ impl PluginHost {
         self.notify_all();
     }
 
-    /// `set_plugin_setting`: записывает настройку плагина из UI-формы (S5b).
-    ///
-    /// В отличие от host-call `set_setting` (scope — внедрённый `Supervisor` `_plugin_id`),
-    /// здесь значение приходит от пользователя: владелец (`id`) задаётся явно. Ошибка
-    /// `no_settings`, если хранилище не подключено. После записи — [`Self::notify_plugins`]:
-    /// менеджер перечитает `list_plugins` и покажет новое значение.
+    
+    
+    
+    
+    
+    
     pub fn plugin_setting_set(&self, id: &str, key: &str, value: Value) -> Result<(), PluginError> {
         let store = self.plugin_settings.as_ref().ok_or_else(|| {
             PluginError::new(
@@ -96,12 +96,12 @@ impl PluginHost {
         Ok(())
     }
 
-    /// `set_plugin_enabled`: вкл/выкл плагина (IPC-команда менеджера, Фаза 5).
-    ///
-    /// **Порядок критичен:** при включении contributed view регистрируются в реестре
-    /// **до** старта child (и только при выданном `view:create`, F44/S4) — иначе
-    /// `host.set_view_content` из `on_activate` вернул бы `unknown_view`. При выключении —
-    /// наоборот: стоп, затем снятие view (нет «зомби»).
+    
+    
+    
+    
+    
+    
     pub fn set_enabled(&self, id: &str, enabled: bool) -> Result<(), PluginError> {
         let (views_contrib, effective, old_status) = {
             let manager = lock(&self.manager);
@@ -143,11 +143,11 @@ impl PluginHost {
         result
     }
 
-    /// `remove_plugin`: полное удаление плагина.
-    ///
-    /// Порядок критичен: сначала снимаем views и останавливаем child, потом удаляем
-    /// настройки и каталог с диска. Ошибка удаления файлов не откатывает удаление
-    /// из реестра — плагин уже не запустится, а каталог можно удалить вручную.
+    
+    
+    
+    
+    
     pub fn remove(&self, id: &str) -> Result<(), PluginError> {
         let old_status = self.runtime_status(id);
         lock(&self.views).remove_plugin(id);
@@ -181,10 +181,10 @@ impl PluginHost {
         Ok(())
     }
 
-    /// `reload_plugin`: перезапуск без рестарта GUI (Фаза 5).
-    ///
-    /// Неудачная перезагрузка (синтаксис и т.п.) снимает view плагина: иначе остаётся
-    /// «зомби»-вкладка со старым HTML при статусе «ошибка».
+    
+    
+    
+    
     pub fn reload(&self, id: &str) -> Result<(), PluginError> {
         let old_status = self.runtime_status(id);
         if let Some((true, contributes, effective)) = self.runtime_view_state(id) {
@@ -205,18 +205,18 @@ impl PluginHost {
         result
     }
 
-    /// `set_plugin_permissions`: согласие пользователя как **реальный** гейт прав
-    /// (§8/§12, §11.1 п.4).
-    ///
-    /// Пересечение запрашиваемых манифестом прав и выданных пользователем
-    /// (`manifest ∩ granted`, deny-by-default) сохраняется в `config.json` **до**
-    /// применения — согласие фиксируется даже при сбое перезапуска. Включённый плагин
-    /// перезапускается, чтобы новый набор вступил в силу (права захватываются при
-    /// [`super::super::manager::PluginRuntime::start`]); выключенный — только запоминает набор (`reload` на
-    /// выключенном = `start` ранним выходом). Карантин `reload` не сбрасывает.
-    ///
-    /// Сбой перезапуска снимает view плагина: иначе останется «зомби»-вкладка при
-    /// статусе «ошибка» — как у [`Self::reload`].
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
     pub fn set_permissions(&self, id: &str, granted: Vec<String>) -> Result<(), PluginError> {
         let (requested, enabled, contributes, old_status) = {
             let manager = lock(&self.manager);

@@ -8,7 +8,7 @@ use super::validate::{validate_plugin, validate_plugin_id};
 use crate::ai::types::AiValidationResult;
 use crate::error::CommandError;
 
-/// Валидирует плагин во временном каталоге (запись → проверка), не трогая реальный профиль.
+
 #[tauri::command(async)]
 pub fn ai_validate_plugin(
     id: String,
@@ -23,7 +23,7 @@ pub fn ai_validate_plugin(
     Ok(result)
 }
 
-/// Создаёт плагин: запись → валидация → регистрация. Эмитит `ai:plugin_created`.
+
 #[tauri::command(async)]
 pub fn ai_create_plugin(
     app: tauri::AppHandle,
@@ -38,7 +38,7 @@ pub fn ai_create_plugin(
     Ok(info)
 }
 
-/// Обновляет плагин: перезапись → валидация → `reload_plugin`. Эмитит `ai:plugin_updated`.
+
 #[tauri::command(async)]
 pub fn ai_update_plugin(
     app: tauri::AppHandle,
@@ -53,7 +53,7 @@ pub fn ai_update_plugin(
     Ok(info)
 }
 
-/// Удаляет плагин через существующий `PluginHost::remove`. Эмитит `ai:plugin_deleted`.
+
 #[tauri::command(async)]
 pub fn ai_delete_plugin(
     app: tauri::AppHandle,
@@ -65,7 +65,7 @@ pub fn ai_delete_plugin(
     Ok(())
 }
 
-/// Эмитит событие harness'а `{ plugin_id }` (best-effort: сбой не роняет команду).
+
 fn emit_plugin_event(app: &tauri::AppHandle, event: &str, id: &str) {
     use tauri::Emitter;
     if let Err(e) = app.emit(event, serde_json::json!({ "plugin_id": id })) {

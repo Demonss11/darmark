@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use crate::templates::{MANIFEST_FILE, TEMPLATE_MAIN_LUA, TEMPLATE_PLUGIN_JSON, TEMPLATE_README};
 
-/// Без `--force` не перезаписывает существующие файлы. Возвращает созданные пути.
+
 pub fn run_init(
     dir: &Path,
     id: Option<&str>,
@@ -60,8 +60,8 @@ pub fn run_init(
     Ok(created)
 }
 
-/// Имя каталога → id: вне `[a-z0-9_-]` в `-`, повторы `-` схлопываются, края обрезаются —
-/// иначе манифест с таким id не пройдёт валидацию.
+
+
 fn sanitize_id(name: &str) -> String {
     let mapped: String = name
         .to_lowercase()
@@ -152,7 +152,7 @@ mod tests {
             "файл не должен быть перезаписан"
         );
 
-        // С --force файл перезаписывается.
+        
         run_init(&dir, None, None, true).unwrap();
         assert_ne!(
             fs::read_to_string(dir.join(MANIFEST_FILE)).unwrap(),

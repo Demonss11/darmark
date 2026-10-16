@@ -9,22 +9,22 @@ use std::path::{Path, PathBuf};
 use crate::ai::types::AiSettings;
 use crate::error::CommandError;
 
-/// Путь конфига приложения. `None` — сохранять некуда (нет `APPDATA`/override).
+
 pub fn config_path() -> Option<PathBuf> {
     crate::plugins::settings::SettingsStore::config_path()
 }
 
-/// Читает секцию `ai` из конфига по пути (нет пути/файла/секции → дефолты).
+
 pub fn load_from(path: Option<&Path>) -> AiSettings {
     path.map(|p| crate::plugins::settings::SettingsStore::load(p).ai)
         .unwrap_or_default()
 }
 
-/// Читает секцию `ai` и перезаписывает конфиг, если разобрана legacy-схема (ADR-0035 §2.8).
-///
-/// Идемпотентно: после перезаписи в конфиге уже новый формат (`providers`), и повторная
-/// загрузка миграцию не запускает. Сбой перезаписи не роняет приложение (в памяти остаются
-/// разобранные настройки).
+
+
+
+
+
 pub fn load_and_migrate(path: Option<&Path>) -> AiSettings {
     let Some(path) = path else {
         return AiSettings::default();
@@ -44,9 +44,9 @@ pub fn load_and_migrate(path: Option<&Path>) -> AiSettings {
     migrated
 }
 
-/// Пишет секцию `ai`, **не затирая** прочие секции (плагины/недавние файлы). Атомарно.
-///
-/// Нет пути — no-op (не ошибка команды).
+
+
+
 pub fn persist_to(path: Option<&Path>, settings: &AiSettings) -> Result<(), CommandError> {
     let Some(path) = path else {
         return Ok(());
@@ -58,7 +58,7 @@ pub fn persist_to(path: Option<&Path>, settings: &AiSettings) -> Result<(), Comm
         .map_err(|e| CommandError::io(format!("не сохранить настройки AI: {e}")))
 }
 
-/// Читает настройки из конфига по пути по умолчанию.
+
 pub fn load() -> AiSettings {
     load_from(config_path().as_deref())
 }

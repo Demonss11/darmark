@@ -24,9 +24,9 @@ use crate::ai::transport::{AiTransport, BoxFuture, ChatOutcome, ChatRequest, Tes
 use crate::ai::types::{AiSettings, AiUsage};
 use crate::error::{CommandError, ErrorCode};
 
-/// Mock-эмиттер событий ассистента: копит пары `(event, payload)` в порядке эмиссии.
-///
-/// Прод-эмиттер — [`AppHandle`](tauri::AppHandle), не собираемый в тесте.
+
+
+
 #[derive(Clone, Default)]
 pub(super) struct MockEmitter {
     entries: Arc<Mutex<Vec<(String, Value)>>>,
@@ -43,7 +43,7 @@ impl AiEmitter for MockEmitter {
 }
 
 impl MockEmitter {
-    /// Снимок событий `(event, payload)` в порядке эмиссии.
+    
     pub(super) fn entries(&self) -> Vec<(String, Value)> {
         self.entries
             .lock()
@@ -51,7 +51,7 @@ impl MockEmitter {
             .clone()
     }
 
-    /// Payload первого события с именем `event`; паника, если событие не эмитилось.
+    
     pub(super) fn payload(&self, event: &str) -> Value {
         self.entries()
             .into_iter()
@@ -61,7 +61,7 @@ impl MockEmitter {
     }
 }
 
-/// Фейковый MCP-инструмент: детерминированный успешный результат, без I/O и таймингов.
+
 struct FakeTool;
 
 impl ToolHandler for FakeTool {
@@ -82,7 +82,7 @@ impl ToolHandler for FakeTool {
     }
 }
 
-/// MCP-сервер с одним [`FakeTool`] — реестр, из которого команда объявляет `tools` провайдеру.
+
 pub(super) fn fake_server() -> McpServer {
     let mut registry = Registry::new();
     registry.register_tool(ToolDefinition {
@@ -94,12 +94,12 @@ pub(super) fn fake_server() -> McpServer {
     McpServer::new(registry)
 }
 
-/// MCP-сервер без инструментов — проверка деградации §3.3 ТЗ (запрос без поля `tools`).
+
 pub(super) fn empty_server() -> McpServer {
     McpServer::new(Registry::new())
 }
 
-/// Фейковый инструмент, всегда падающий: сбой исполнения приходит как `ok = false`.
+
 struct FailingTool;
 
 impl ToolHandler for FailingTool {
@@ -120,7 +120,7 @@ impl ToolHandler for FailingTool {
     }
 }
 
-/// MCP-сервер с [`FailingTool`] — изоляция сбоя исполнения в цикле.
+
 pub(super) fn failing_server() -> McpServer {
     let mut registry = Registry::new();
     registry.register_tool(ToolDefinition {
@@ -132,8 +132,8 @@ pub(super) fn failing_server() -> McpServer {
     McpServer::new(registry)
 }
 
-/// Фейковый инструмент с длинным текстовым результатом — обрезка до
-/// [`MAX_TOOL_RESULT_CHARS`].
+
+
 struct LongTextTool;
 
 impl ToolHandler for LongTextTool {
@@ -154,7 +154,7 @@ impl ToolHandler for LongTextTool {
     }
 }
 
-/// MCP-сервер с [`LongTextTool`] — проверка обрезки результата по границе UTF-8.
+
 pub(super) fn long_text_server() -> McpServer {
     let mut registry = Registry::new();
     registry.register_tool(ToolDefinition {
@@ -166,14 +166,14 @@ pub(super) fn long_text_server() -> McpServer {
     McpServer::new(registry)
 }
 
-/// Отказ провайдера принимать поле `tools` — HTTP 400 без маркера превышения контекста
-/// (ADR-0040 §2.3: текст отказа не разбирается, решает статус).
+
+
 pub(super) fn tools_rejected() -> CommandError {
     CommandError::provider(400, ErrorCode::AiBadRequest, "tools is not supported")
 }
 
-/// Ошибка `map_status` для превышения контекста: HTTP 400 **и** распознанный код — повтор без
-/// `tools` по ADR-0040 §2.3 п.14 не выполняется.
+
+
 pub(super) fn context_length_exceeded() -> CommandError {
     CommandError::provider(
         400,
@@ -182,9 +182,9 @@ pub(super) fn context_length_exceeded() -> CommandError {
     )
 }
 
-/// Транспорт провайдера с заданной последовательностью шагов; лишние запросы получают
-/// `fallback`. Шаг — `Ok`/`Err`: ошибки нужны для проверки деградации (ADR-0040).
-/// Каждый запрос сохраняется — по нему проверяется объявление `tools`.
+
+
+
 pub(super) struct ScriptedTransport {
     script: Mutex<VecDeque<Result<ChatOutcome, CommandError>>>,
     requests: Mutex<Vec<ChatRequest>>,
@@ -192,7 +192,7 @@ pub(super) struct ScriptedTransport {
 }
 
 impl ScriptedTransport {
-    /// Сценарий из шагов с ошибками; каждый запрос забирает следующий шаг.
+    
     pub(super) fn new(
         script: Vec<Result<ChatOutcome, CommandError>>,
         fallback: Result<ChatOutcome, CommandError>,
@@ -204,24 +204,24 @@ impl ScriptedTransport {
         }
     }
 
-    /// Сценарий, где провайдер всегда отвечает успехом.
+    
     pub(super) fn ok(script: Vec<ChatOutcome>, fallback: ChatOutcome) -> Self {
         Self::new(script.into_iter().map(Ok).collect(), Ok(fallback))
     }
 
-    /// Снимок запросов, ушедших провайдеру.
+    
     pub(super) fn requests(&self) -> Vec<ChatRequest> {
         self.requests.lock().expect("запросы не отравлены").clone()
     }
 
-    /// Сколько запросов ушло провайдеру (бюджет итераций цикла).
+    
     pub(super) fn request_count(&self) -> usize {
         self.requests.lock().expect("запросы не отравлены").len()
     }
 }
 
-/// Копия ошибки для повторного использования в сценарии: [`CommandError`] не клонируется,
-/// поэтому статус и код переносятся в свежую ошибку с тем же содержимым.
+
+
 pub(super) fn clone_error(err: &CommandError) -> CommandError {
     match err.http_status {
         Some(status) => CommandError::provider(status, err.code, err.message.clone()),
@@ -229,8 +229,8 @@ pub(super) fn clone_error(err: &CommandError) -> CommandError {
     }
 }
 
-/// Копия шага сценария транспорта: успешный ответ клонируется, ошибка — через
-/// [`clone_error`].
+
+
 fn clone_step(step: &Result<ChatOutcome, CommandError>) -> Result<ChatOutcome, CommandError> {
     match step {
         Ok(outcome) => Ok(outcome.clone()),
@@ -257,8 +257,8 @@ impl AiTransport for ScriptedTransport {
                 .map(|step| clone_step(&step))
                 .unwrap_or_else(|| clone_step(&self.fallback));
             match step {
-                // Дельта приходит только от успешного шага: у отказа провайдера текста нет,
-                // иначе в чат попадёт пустой пузырь от деградирующего запроса.
+                
+                
                 Ok(outcome) => {
                     on_delta(outcome.content.clone());
                     Ok(outcome)
@@ -276,15 +276,15 @@ impl AiTransport for ScriptedTransport {
     }
 }
 
-/// Двойник кэша возможностей инструментов: по умолчанию `tools` разрешены, вызовы
-/// `mark_tools_unsupported` записываются для проверки момента вердикта (ADR-0040 §2.5 п.22).
+
+
 pub(super) struct MockCapability {
     unsupported: Vec<(String, String)>,
     marks: Mutex<Vec<(String, String)>>,
 }
 
 impl MockCapability {
-    /// Кэш без вердиктов: инструменты разрешены для любой пары `(base_url, model)`.
+    
     pub(super) fn empty() -> Self {
         Self {
             unsupported: Vec::new(),
@@ -292,7 +292,7 @@ impl MockCapability {
         }
     }
 
-    /// Кэш с готовым вердиктом: пара уже помечена провайдером без `tools` (кэш-хит).
+    
     pub(super) fn with_unsupported(base_url: &str, model: &str) -> Self {
         Self {
             unsupported: vec![(base_url.to_string(), model.to_string())],
@@ -300,7 +300,7 @@ impl MockCapability {
         }
     }
 
-    /// Пары, отмеченные как не поддерживающие `tools`, в порядке вызовов.
+    
     pub(super) fn marks(&self) -> Vec<(String, String)> {
         self.marks.lock().expect("вердикты не отравлены").clone()
     }
@@ -322,7 +322,7 @@ impl ToolsCapability for MockCapability {
     }
 }
 
-/// Настройки, проходящие гейт чата: включён, ключ у активного провайдера, согласие выдано.
+
 pub(super) fn ready_settings() -> AiSettings {
     let mut settings = AiSettings {
         enabled: true,
@@ -338,7 +338,7 @@ pub(super) fn ready_settings() -> AiSettings {
     settings
 }
 
-/// Ответ провайдера с одним вызовом инструмента — первый шаг цикла.
+
 pub(super) fn outcome_with_tool_call() -> ChatOutcome {
     ChatOutcome {
         content: String::new(),
@@ -352,7 +352,7 @@ pub(super) fn outcome_with_tool_call() -> ChatOutcome {
     }
 }
 
-/// Финальный текстовый ответ провайдера без вызовов — последний шаг цикла.
+
 pub(super) fn final_outcome(text: &str) -> ChatOutcome {
     ChatOutcome {
         content: text.to_string(),
@@ -365,10 +365,10 @@ pub(super) fn final_outcome(text: &str) -> ChatOutcome {
     }
 }
 
-/// Минимальный исполнитель для `#[test]`: двойники не делают I/O, поэтому фьючер команды
-/// завершается за один опрос (`#[tokio::test]` недоступен — в графе нет фичи `macros`).
-///
-/// `AiState` в тестах свежий, поэтому `enforce_rate_limit` не уходит в `tokio::time::sleep`.
+
+
+
+
 pub(super) fn block_on<F: Future>(future: F) -> F::Output {
     let mut future = std::pin::pin!(future);
     let mut context = Context::from_waker(Waker::noop());

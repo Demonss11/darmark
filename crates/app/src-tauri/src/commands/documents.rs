@@ -21,7 +21,7 @@ pub(super) fn lock_store<'a>(
         .expect("стор документов не должен быть отравлен")
 }
 
-/// Создаёт безымянный документ (`text` — стартовый текст или пусто).
+
 #[tauri::command(async)]
 pub(crate) fn new_document(
     text: Option<String>,
@@ -35,7 +35,7 @@ pub(crate) fn new_document(
     snapshot
 }
 
-/// Открывает файл с диска и регистрирует его в сторе.
+
 #[tauri::command]
 pub(crate) async fn open_document(
     path: PathBuf,
@@ -57,8 +57,8 @@ pub(crate) async fn open_document(
     Ok(snapshot)
 }
 
-/// Сохраняет документ в файл. Текст берётся из стора (владелец — Rust, D5);
-/// явный `path` (Save As) приоритетнее запомненного.
+
+
 #[tauri::command]
 pub(crate) async fn save_document(
     id: DocumentId,
@@ -105,7 +105,7 @@ pub(crate) async fn save_document(
     Ok(meta)
 }
 
-/// Закрывает документ (появляется вместе с панелями; в UI пока не вызывается).
+
 #[tauri::command(async)]
 pub(crate) fn close_document(
     id: DocumentId,
@@ -126,15 +126,15 @@ pub(crate) fn close_document(
     }
 }
 
-/// Применяет правку текста: обновляет стор (`rev` растёт только при смене), рендерит.
-///
-/// Заменяет stateless `render_markdown`: рендер и кэш `(mapped, rev)` — теперь в сторе,
-/// а `RenderResult.changed` избавляет TS от собственного `lastRenderedHtml`.
-///
-/// **Guard стора отпускается до `publish_document_changed`:** доставка события плагинам может
-/// обслужить host-call к тому же `DocumentStore`, а мьютекс нереентрантен. Событие шлётся
-/// только при реальной смене ревизии (эхо-защита, §7 риски): иначе правка из редактора
-/// зациклилась бы через `document:changed`.
+
+
+
+
+
+
+
+
+
 #[tauri::command(async)]
 pub(crate) fn update_document(
     id: DocumentId,
@@ -158,11 +158,11 @@ pub(crate) fn update_document(
     Ok(result)
 }
 
-/// Отменяет последнюю правку документа (Rust-undo, D5).
-///
-/// `rev` растёт (кэш рендера инвалидируется по ревизии), поэтому плагины уведомляются
-/// `document:changed` — как и при обычной правке. Неизвестный документ →
-/// `unknown_document`; пустой undo-стек → `nothing_to_undo`.
+
+
+
+
+
 #[tauri::command(async)]
 pub(crate) fn undo_document(
     id: DocumentId,
@@ -180,9 +180,9 @@ pub(crate) fn undo_document(
     Ok(result)
 }
 
-/// Повторяет отменённую правку документа (Rust-undo, D5).
-///
-/// Неизвестный документ → `unknown_document`; пустой redo-стек → `nothing_to_redo`.
+
+
+
 #[tauri::command(async)]
 pub(crate) fn redo_document(
     id: DocumentId,
@@ -200,9 +200,9 @@ pub(crate) fn redo_document(
     Ok(result)
 }
 
-/// Рендерит документ без правки текста (смена `mapped`, первый рендер после open/new).
-///
-/// Событий не публикует: ревизия не меняется.
+
+
+
 #[tauri::command]
 pub(crate) fn render_document(
     id: DocumentId,
@@ -214,7 +214,7 @@ pub(crate) fn render_document(
         .ok_or_else(|| CommandError::unknown_document(id.as_str()))
 }
 
-/// Возвращает снапшот документа для фронтенда (pull после события `document-updated`).
+
 #[tauri::command]
 pub(crate) fn document_snapshot(
     id: DocumentId,
@@ -223,17 +223,17 @@ pub(crate) fn document_snapshot(
     lock_store(&store).get(&id).map(|doc| doc.snapshot())
 }
 
-/// Возвращает список всех открытых документов в порядке открытия (мультивкладки, п.11.1.1).
+
 #[tauri::command]
 pub(crate) fn list_documents(store: tauri::State<'_, Arc<Mutex<DocumentStore>>>) -> Vec<DocMeta> {
     lock_store(&store).list()
 }
 
-/// Устанавливает активный документ (мультивкладки, п.11.1.1).
-///
-/// Пока активный документ также хранится на TS-стороне — команда закладывает
-/// контракт для будущего перехода состояния в Rust. Возвращает ошибку,
-/// если документ не найден.
+
+
+
+
+
 #[tauri::command]
 pub(crate) fn activate_document(
     id: DocumentId,

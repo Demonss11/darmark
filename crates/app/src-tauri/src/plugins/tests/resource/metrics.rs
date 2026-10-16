@@ -1,9 +1,9 @@
 use super::*;
 
-/// Сборка снимка: главный — приватный рабочий набор (как в Диспетчере задач), child —
-/// private/commit (ADR-0031 §2.1 п.3); лимит Job Object плагина проброшен в
-/// `mem_limit_bytes`. Оба процесса получают метрики из **одного** вызова провайдера —
-/// класс процесса лишь выбирает поле.
+
+
+
+
 #[test]
 fn collect_uses_private_working_set_for_main_and_private_for_child() {
     let provider = FakeProvider::new(vec![
@@ -54,8 +54,8 @@ fn collect_uses_private_working_set_for_main_and_private_for_child() {
     assert_eq!(child.handles, Some(30));
 }
 
-/// Фолбэк главного: при `PrivateWorkingSetSize == 0` (старая ОС / неизвестный `cb`,
-/// EX2-хвост не заполнен) берётся полный `WorkingSetSize`, а не лживый ноль (F51).
+
+
 #[test]
 fn main_falls_back_to_working_set_when_private_working_set_is_zero() {
     let provider = FakeProvider::new(vec![(
@@ -77,8 +77,8 @@ fn main_falls_back_to_working_set_when_private_working_set_is_zero() {
     );
 }
 
-/// Недоступный/невалидный PID не попадает в снимок: ни паники, ни записи «0» (ADR-0031
-/// §2.3 п.11, F51). Нечитаемый **child** пропускается, остальные дети остаются на месте.
+
+
 #[test]
 fn unreadable_pid_is_skipped_without_zero_record() {
     let provider = FakeProvider::new(vec![(7, raw(100, 0)), (42, raw(10, 20))]);
@@ -101,9 +101,9 @@ fn unreadable_pid_is_skipped_without_zero_record() {
     );
 }
 
-/// Нечитаемый **главный** процесс → снимка нет целиком (`None`), а не `mem_bytes: 0`
-/// (F51/ADR-0031 §2.3 п.11). Даже при читаемых детях отсутствующая метрика главного не
-/// изображается нулём: main-процесс практически всегда читаем, ложный ноль недопустим.
+
+
+
 #[test]
 fn unreadable_main_process_yields_no_snapshot() {
     let provider = FakeProvider::new(vec![(42, raw(10, 20))]);
@@ -118,8 +118,8 @@ fn unreadable_main_process_yields_no_snapshot() {
     );
 }
 
-/// PID наружу выходит только от `Active`-плагина с живым `Supervisor` (`Child::id()`);
-/// `Stopped`/`Failed` процессом не владеют и PID не отдают (ADR-0031 §2.6, §2.2 п.7).
+
+
 #[test]
 fn active_pids_returns_only_live_active_children() {
     let _guard = serial();
@@ -183,8 +183,8 @@ fn active_pids_returns_only_live_active_children() {
     );
 }
 
-/// `ResourceSink` получает `resource-metrics` на каждом тике и `plugin-process-exited`,
-/// когда child исчез из владения (по образцу тестов sink'ов S11).
+
+
 #[test]
 fn resource_sink_receives_metrics_and_exited_events() {
     let provider = FakeProvider::new(vec![(7, raw(512, 0)), (100, raw(1, 77))]);
@@ -215,9 +215,9 @@ fn resource_sink_receives_metrics_and_exited_events() {
     );
 }
 
-/// Завершение определяется **владением процессом**, а не пробой «голого PID»: провайдер
-/// всё ещё «читает» PID 100 (переиспользован чужим процессом — F52), но менеджер уже не
-/// владеет child'ом → `plugin-process-exited` (ADR-0031 §2.4 п.19).
+
+
+
 #[test]
 fn process_exited_comes_from_ownership_not_pid_probe() {
     let provider = FakeProvider::new(vec![(7, raw(1, 0)), (100, raw(1, 55))]);
@@ -234,8 +234,8 @@ fn process_exited_comes_from_ownership_not_pid_probe() {
     );
 }
 
-/// Обратная сторона: недоступная метрика при **сохранённом** владении — это не завершение
-/// процесса. Child пропускается в снимке (не «0»), но `plugin-process-exited` не эмитится.
+
+
 #[test]
 fn unreadable_child_with_active_ownership_is_not_an_exit() {
     let provider = FakeProvider::new(vec![(7, raw(1, 0))]);
@@ -259,8 +259,8 @@ fn unreadable_child_with_active_ownership_is_not_an_exit() {
     );
 }
 
-/// Сериализация снимка в контракт `resource-metrics` (TZ §4.4): имена полей, `mem_limit_bytes`
-/// только у детей, `ts`/`pid` — числа.
+
+
 #[test]
 fn snapshot_serializes_frontend_contract() {
     let snap = ResourceSnapshot {

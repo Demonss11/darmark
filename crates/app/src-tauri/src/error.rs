@@ -6,70 +6,70 @@ use std::fmt;
 
 use serde::Serialize;
 
-/// Машиночитаемый код ошибки. Строковые значения — контракт с TS.
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorCode {
-    /// Файл не найден.
+    
     NotFound,
-    /// Ошибка ввода-вывода при чтении/записи.
+    
     Io,
-    /// Файл превышает лимит размера.
+    
     TooLarge,
-    /// Файл не является корректным UTF-8.
+    
     NotUtf8,
-    /// Команда ссылается на неизвестный документ.
+    
     UnknownDocument,
-    /// Нечего отменять (пустой undo-стек).
+    
     NothingToUndo,
-    /// Нечего повторять (пустой redo-стек).
+    
     NothingToRedo,
-    /// Ошибка плагинной подсистемы (неизвестный плагин/view, отказ invocation).
+    
     Plugin,
-    /// AI: фича выключена пользователем (`ai.enabled = false`, ADR-0034).
+    
     AiDisabled,
-    /// AI: не задан API-ключ провайдера.
+    
     AiNoKey,
-    /// AI: нет согласия на отправку содержимого в облако (ADR-0032 §2.3).
+    
     AiNoConsent,
-    /// AI: ключ отклонён провайдером (HTTP 401).
+    
     AiBadKey,
-    /// AI: превышен лимит запросов/квота (HTTP 429, ADR-0032 §2.5 п.13).
+    
     AiRateLimited,
-    /// AI: провайдер отклонил запрос (HTTP 400 и прочие 4xx).
+    
     AiBadRequest,
-    /// AI: запрос длиннее контекста модели (HTTP 400, context length exceeded).
+    
     AiContextLength,
-    /// AI: транзиентная ошибка провайдера (HTTP 5xx).
+    
     AiServerError,
-    /// AI: нет сети/таймаут/провайдер недоступен (без падения приложения).
+    
     AiOffline,
-    /// AI: некорректные настройки (напр. `base_url` не `https://` и не loopback).
+    
     AiBadSettings,
-    /// AI harness: предложенная правка устарела (ревизия документа изменилась, ADR-0034).
+    
     AiStaleEdit,
-    /// AI harness: правку не удалось применить (невалидные смещения/неизвестный документ).
+    
     AiApplyFailed,
-    /// AI harness: плагин не прошёл валидацию (манифест/entry/песочница, ADR-0034/ADR-0026).
+    
     AiPluginInvalid,
-    /// AI harness: плагин с таким id уже существует (ADR-0034/ADR-0026).
+    
     AiPluginExists,
-    /// AI harness: плагин с таким id не найден.
+    
     AiPluginNotFound,
-    /// AI harness: регистрация плагина в реестре не удалась (не по вине контента).
+    
     AiPluginRegisterFailed,
-    /// AI harness: ошибка ввода-вывода при работе с файлами плагина/временным каталогом.
+    
     AiIo,
 }
 
-/// Ошибка команды: код + сообщение (сообщение видит статус-бар и e2e).
+
 #[derive(Debug, Serialize)]
 pub struct CommandError {
     pub code: ErrorCode,
     pub message: String,
-    /// HTTP-статус ответа провайдера; `None` — ответа по HTTP не было (локальная проверка,
-    /// ошибка протокола MCP, сеть). Писатель ровно один — [`CommandError::provider`], поэтому
-    /// payload остальных команд сериализуется как `{ code, message }` (ADR-0040 §2.1).
+    
+    
+    
     #[serde(skip_serializing_if = "Option::is_none")]
     pub http_status: Option<u16>,
 }
@@ -83,11 +83,11 @@ impl CommandError {
         }
     }
 
-    /// Ошибка, порождённая ответом провайдера: сохраняет его HTTP-статус.
-    ///
-    /// Нужен там, где без статуса нельзя отличить отказ провайдера от локальной ошибки с тем
-    /// же кодом (ADR-0040 §2.1) — сейчас это политика деградации `tools` в
-    /// [`crate::ai::tool_loop`].
+    
+    
+    
+    
+    
     pub fn provider(status: u16, code: ErrorCode, message: impl Into<String>) -> Self {
         Self {
             code,
@@ -159,9 +159,9 @@ mod tests {
         );
     }
 
-    /// ADR-0040 §2.1 п.4: единственный барьер для замороженных контрактов §13.2 — payload всех
-    /// команд, кроме AI-провайдера, остаётся ровно `{ code, message }`. Поле `http_status`
-    /// обязано быть пропущено, даже если конструктор ошибки изменится.
+    
+    
+    
     #[test]
     fn local_errors_serialize_without_http_status() {
         let cases = [
@@ -186,8 +186,8 @@ mod tests {
         }
     }
 
-    /// Обратная сторона инварианта §2.1: у ошибки провайдера статус виден — по нему tool-loop
-    /// отличает отказ шлюза от локальной ошибки с тем же кодом.
+    
+    
     #[test]
     fn provider_error_serializes_http_status() {
         let err = CommandError::provider(400, ErrorCode::AiBadRequest, "Некорректный запрос");

@@ -38,11 +38,6 @@ npx tauri dev     # dev-режим
 npx tauri build   # NSIS-установщик
 ```
 
-## Документация
-
-- [Руководство по плагинам](docs/PLUGIN_GUIDE.md)
-- [Плагинная система: контракт и runtime](docs/adr/0023-plugin-runtime.md)
-
 ## Лицензия
 
 MIT

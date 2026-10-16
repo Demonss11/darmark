@@ -11,17 +11,17 @@ pub mod selftest;
 
 use std::path::Path;
 
-/// Заглушка plugin_id до Фазы 3 (id берётся из манифеста): хост всегда передаёт его в `load`.
+
 pub const DEFAULT_PLUGIN_ID: &str = "plugin";
 
-/// plugin_id из имени `.lua`-файла (для режимов без манифеста).
+
 pub fn plugin_id_of(path: &Path) -> String {
     path.file_stem()
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_else(|| DEFAULT_PLUGIN_ID.to_string())
 }
 
-/// Читает `.lua`-исходник с проверкой размера (лимит `MAX_PLUGIN_SOURCE_BYTES`) и UTF-8.
+
 pub fn read_plugin_source(path: &Path) -> Result<String, String> {
     let bytes = std::fs::read(path).map_err(|e| format!("не читается {}: {e}", path.display()))?;
     if bytes.len() as u64 > plugin_core::MAX_PLUGIN_SOURCE_BYTES {
@@ -34,11 +34,11 @@ pub fn read_plugin_source(path: &Path) -> Result<String, String> {
     String::from_utf8(bytes).map_err(|e| format!("{}: не UTF-8: {e}", path.display()))
 }
 
-/// Разбирает `<path>`: каталог плагина (`plugin.json` + entry) или `.lua`-файл.
-///
-/// Возвращает `(plugin_id, source)`. Для каталога манифест валидируется
-/// ([`plugin_core::manifest::Manifest::from_json`]) **до** чтения `.lua`; `entry` безопасен
-/// (его проверяет сам манифест).
+
+
+
+
+
 pub fn read_plugin_manifest_source(path: &Path) -> Result<(String, String), String> {
     if path.is_dir() {
         let manifest_path = path.join("plugin.json");
@@ -46,7 +46,7 @@ pub fn read_plugin_manifest_source(path: &Path) -> Result<(String, String), Stri
             .map_err(|e| format!("не читается {}: {e}", manifest_path.display()))?;
         let manifest = plugin_core::manifest::Manifest::from_json(&bytes)
             .map_err(|e| format!("{}: {e}", manifest_path.display()))?;
-        // `manifest.entry` — безопасное имя `.lua` (валидировано манифестом).
+        
         let entry_path = path.join(&manifest.entry);
         let source = read_plugin_source(&entry_path)?;
         Ok((manifest.id, source))

@@ -16,19 +16,19 @@ use crate::ai::tool_loop::MAX_TOOL_RESULT_CHARS;
 use crate::plugins::scan::MAX_MANIFEST_BYTES;
 use plugin_core::MAX_PLUGIN_SOURCE_BYTES;
 
-/// Исходник для `plugin_read` — не совпадает с манифестом, чтобы ответ нельзя было
-/// спутать с эхом входа.
+
+
 const READ_SOURCE: &str = "function on_activate(ctx)\n  print(\"read\")\nend\n";
 
-/// Идентификатор каталога-фикстуры для `plugin_read`.
+
 const READ_PLUGIN_ID: &str = "mcp-plugin-test";
 
-/// Кладёт плагин `<root>/<id>/{plugin.json,main.lua}` (каталог создаётся).
+
 fn plugin_fixture(root: &Path, id: &str, manifest: &str, source: &str) {
     plugin_dir(root, id, &[("plugin.json", manifest), ("main.lua", source)]);
 }
 
-/// Кладёт каталог плагина `<root>/<id>` с произвольным набором файлов.
+
 fn plugin_dir(root: &Path, id: &str, files: &[(&str, &str)]) {
     let dir = root.join(id);
     std::fs::create_dir(&dir).expect("каталог плагина");
@@ -37,10 +37,10 @@ fn plugin_dir(root: &Path, id: &str, files: &[(&str, &str)]) {
     }
 }
 
-/// Вызывает `plugin_read` под корнем `root`: итог вызова вместе с записями журнала.
-///
-/// `DARMARK_PLUGINS_DIR` — переменная процесса: ставим под общим env-локом `ai` и возвращаем
-/// прежнее значение (как `paths.rs`), иначе параллельные тесты увидели бы промежуточный корень.
+
+
+
+
 fn plugin_read_at(root: &Path, id: &str) -> (Result<Value, CallToolError>, Vec<String>) {
     use crate::ai::history::env_lock;
 
@@ -57,7 +57,7 @@ fn plugin_read_at(root: &Path, id: &str) -> (Result<Value, CallToolError>, Vec<S
     (result, records)
 }
 
-/// `plugin_read` строит путь сам из `plugins_root()` и отдаёт **ровно** манифест + `entry`.
+
 #[test]
 fn mcp_plugin_read_returns_manifest_and_source_by_id() {
     let root = tempfile::tempdir().expect("корень плагинов");
@@ -74,19 +74,19 @@ fn mcp_plugin_read_returns_manifest_and_source_by_id() {
         "исходник уложился в лимит модели — усечения нет: {payload}"
     );
 
-    // Контракт ответа — ровно `manifest`, `source`, `truncated`: ни настроек, ни документа
-    // (TASK-003 §6.3). Поле `truncated` объявляет усечение, а не прячет его в транспорте.
+    
+    
     let object = payload.as_object().expect("payload — объект");
     let mut keys: Vec<&str> = object.keys().map(String::as_str).collect();
     keys.sort_unstable();
     assert_eq!(keys, vec!["manifest", "source", "truncated"], "{payload}");
-    // ADR-0041 §2.2 п.15: `plugin_read` не верификатор — поля `isError` в payload нет.
+    
     assert!(
         !object.contains_key("isError"),
         "payload без isError: {payload}"
     );
 
-    // Журнал фиксирует вызов tool и не несёт полного пути (R2/AC-MCP-13).
+    
     assert_eq!(journal.len(), 1, "каждый вызов — запись: {journal:?}");
     assert!(journal[0].contains("plugin_read"), "{journal:?}");
     assert!(journal[0].contains("ok"), "{journal:?}");
@@ -98,7 +98,7 @@ fn mcp_plugin_read_returns_manifest_and_source_by_id() {
     assert!(!journal[0].contains(":\\"), "журнал без диска: {journal:?}");
 }
 
-/// Манифест вправе объявить другой `entry`: читается **он**, а не жёстко `main.lua`.
+
 #[test]
 fn mcp_plugin_read_reads_declared_entry() {
     const MANIFEST: &str = r#"{
@@ -111,7 +111,7 @@ fn mcp_plugin_read_reads_declared_entry() {
     const ENTRY_SOURCE: &str = "function on_activate(ctx)\n  print(\"entry\")\nend\n";
 
     let root = tempfile::tempdir().expect("корень плагинов");
-    // Оба файла на месте: тест доказывает, что выбран объявленный `entry`, а не `main.lua`.
+    
     plugin_dir(
         root.path(),
         "mcp-entry-test",
@@ -130,8 +130,8 @@ fn mcp_plugin_read_reads_declared_entry() {
     assert_eq!(journal.len(), 1, "каждый вызов — запись: {journal:?}");
 }
 
-/// Каталог есть, объявленного файла нет: карточка ошибки **и** запись журнала `ok = false` —
-/// любая ошибка после входа в инструмент обязана быть видна обоим наблюдателям.
+
+
 #[test]
 fn mcp_plugin_read_missing_entry_writes_error_log() {
     let root = tempfile::tempdir().expect("корень плагинов");
@@ -164,8 +164,8 @@ fn mcp_plugin_read_missing_entry_writes_error_log() {
     assert!(!journal[0].contains(":\\"), "журнал без диска: {journal:?}");
 }
 
-/// Гигантские `plugin.json`/`main.lua` отсекаются потолком чтения, а не чтением целиком:
-/// файл над лимитом не попадает в память хоста (защита от OOM).
+
+
 #[test]
 fn mcp_plugin_read_rejects_files_over_read_limits() {
     let cases = [
@@ -180,7 +180,7 @@ fn mcp_plugin_read_rejects_files_over_read_limits() {
             id,
             &[("plugin.json", VALID_MANIFEST), ("main.lua", READ_SOURCE)],
         );
-        // Содержимое не важно — важен размер над лимитом: файл растягивается без записи данных.
+        
         let file = std::fs::File::create(root.path().join(id).join(oversized)).expect("файл");
         file.set_len(limit + 1).expect("размер над лимитом");
         drop(file);
@@ -200,8 +200,8 @@ fn mcp_plugin_read_rejects_files_over_read_limits() {
     }
 }
 
-/// Исходник сверх бюджета модели отдаётся урезанным с `truncated: true`, а payload остаётся
-/// валидным JSON в пределах лимита транспорта: молчаливого обрезания посередине больше нет.
+
+
 #[test]
 fn mcp_plugin_read_truncates_source_over_model_budget() {
     let oversized = "x".repeat(MAX_TOOL_RESULT_CHARS + 1024);
@@ -233,8 +233,8 @@ fn mcp_plugin_read_truncates_source_over_model_budget() {
         "усечение по границе UTF-8 (только целые символы исходника)"
     );
 
-    // Транспорт отдаёт модели `payload.to_string()` и режет его до `MAX_TOOL_RESULT_CHARS`:
-    // payload обязан уложиться сам, иначе модель получила бы обрезанный JSON.
+    
+    
     let text = payload.to_string();
     assert!(
         text.chars().count() <= MAX_TOOL_RESULT_CHARS,
@@ -245,8 +245,8 @@ fn mcp_plugin_read_truncates_source_over_model_budget() {
     assert!(journal[0].contains("ok"), "{journal:?}");
 }
 
-/// Манифест, который один не влезает в бюджет модели: явная ошибка вместо обрезанного
-/// посередине JSON (`truncated` объявляет усечение только исходника).
+
+
 #[test]
 fn mcp_plugin_read_reports_manifest_over_model_budget() {
     let padding = "m".repeat(MAX_TOOL_RESULT_CHARS + 1024);
@@ -272,7 +272,7 @@ fn mcp_plugin_read_reports_manifest_over_model_budget() {
     assert!(journal[0].contains("ошибка"), "{journal:?}");
 }
 
-/// Небезопасный и несуществующий `id` отвергаются **до** чтения файлов и без записи в журнал.
+
 #[test]
 fn mcp_plugin_read_rejects_unsafe_and_unknown_id() {
     let (registry, journal) = registry_with_journal();

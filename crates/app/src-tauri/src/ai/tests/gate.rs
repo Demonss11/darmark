@@ -4,7 +4,7 @@ use crate::ai::gate::{check_active, check_chat, check_enabled, check_key};
 use crate::ai::types::AiSettings;
 use crate::error::ErrorCode;
 
-/// Настройки, проходящие все проверки.
+
 fn ready() -> AiSettings {
     let mut settings = AiSettings {
         enabled: true,

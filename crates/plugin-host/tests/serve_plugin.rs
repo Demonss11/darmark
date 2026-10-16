@@ -33,8 +33,8 @@ fn read_one<R: Read>(reader: &mut R) -> ToHost {
     envelope::read_to_host(reader).unwrap().unwrap()
 }
 
-/// Шлёт `event` (плагин уже активирован) и ждёт `done` с тем же id, затем закрывает stdin
-/// и проверяет штатный выход 0. `ready`/`log` пропускаются.
+
+
 fn event_roundtrip_and_exit(child: &mut Child) {
     let mut stdin = child.stdin.take().unwrap();
     let mut stdout = child.stdout.take().unwrap();
@@ -67,7 +67,7 @@ fn event_roundtrip_and_exit(child: &mut Child) {
     }
     assert!(done, "не дождались done #1");
 
-    // EOF: разработчик закрыл пайп — child завершается штатно.
+    
     drop(stdin);
     let status = child.wait().unwrap();
     assert!(

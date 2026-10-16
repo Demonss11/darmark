@@ -4,18 +4,18 @@ use std::time::{Duration, Instant};
 
 use crate::error::{CommandError, ErrorCode};
 
-/// Host-side таймаут запуска CLI/`--self-test` (ADR-0034 §2.4): при превышении — `ok=false`.
+
 pub(super) const VALIDATION_TIMEOUT: Duration = Duration::from_secs(15);
 
-/// Env-override и имя сайдкара CLI разработчика.
+
 pub(super) const CLI_ENV: &str = "DARMARK_PLUGIN_CLI";
 pub(super) const CLI_EXE: &str = "darmark-plugin.exe";
-/// Env-override и имя child-хоста песочницы.
+
 pub(super) const HOST_ENV: &str = "DARMARK_PLUGIN_HOST_EXE";
 pub(super) const HOST_EXE: &str = "darmark-plugin-host.exe";
 
-/// Резолвит сайдкар: env-override → рядом с `darmark.exe` → соседний каталог
-/// (тесты: `target/debug/deps` ↔ `target/debug`). Образец — `Supervisor::resolve_child_exe`.
+
+
 pub(super) fn resolve_sidecar(env: &str, name: &str) -> Option<PathBuf> {
     if let Ok(path) = std::env::var(env) {
         let path = PathBuf::from(path);
@@ -32,11 +32,11 @@ pub(super) fn resolve_sidecar(env: &str, name: &str) -> Option<PathBuf> {
     candidates.into_iter().find(|p| p.is_file())
 }
 
-/// Запуск процесса с host-side таймаутом. По истечении — процесс снимается, `Err`.
-///
-/// stdout/stderr читаются **параллельно** ожиданию (отдельные потоки): иначе «болтливый»
-/// вывод переполняет буфер пайпа, процесс блокируется на записи и ложно срабатывает
-/// таймаут (ADR-0034 §2.4).
+
+
+
+
+
 pub(super) fn run_with_timeout(
     mut command: Command,
     timeout: Duration,
@@ -95,14 +95,14 @@ pub(super) fn run_with_timeout(
     }
 }
 
-/// Исход ожидания процесса: выход, таймаут или ошибка опроса.
+
 enum WaitOutcome {
     Exited(std::process::ExitStatus),
     TimedOut,
     Failed(CommandError),
 }
 
-/// Результат запуска сайдкара.
+
 pub(super) struct ProcessOutput {
     pub(super) success: bool,
     pub(super) stdout: String,
@@ -121,7 +121,7 @@ fn process_io_error(e: std::io::Error) -> CommandError {
     CommandError::new(ErrorCode::AiIo, format!("процесс проверки плагина: {e}"))
 }
 
-/// Хвост вывода процесса для сообщения об ошибке (не раздуваем статусбар).
+
 pub(super) fn tail(text: &str) -> String {
     const MAX: usize = 400;
     let trimmed = text.trim();

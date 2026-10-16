@@ -8,7 +8,7 @@
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
-/// Корень репозитория: `CARGO_MANIFEST_DIR` = `crates/app/src-tauri`, три `parent()` до `<repo>`.
+
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -22,7 +22,7 @@ fn workspace_root() -> PathBuf {
 fn debug_plugin_runs_reference_fixture_without_gui() {
     let root = workspace_root();
 
-    // child резолвится рядом с darmark.exe (target/debug) — собираем из того же workspace.
+    
     let build = Command::new(env!("CARGO"))
         .args(["build", "-p", "plugin-host"])
         .current_dir(&root)

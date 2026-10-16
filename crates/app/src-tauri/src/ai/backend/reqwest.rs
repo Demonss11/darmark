@@ -16,18 +16,18 @@ use crate::ai::tool_calls::ToolCallAccumulator;
 use crate::ai::transport::{AiTransport, BoxFuture, ChatOutcome, ChatRequest, TestRequest};
 use crate::error::{CommandError, ErrorCode};
 
-/// Таймаут запроса к провайдеру по умолчанию (ADR-0032, ADR-0033 §2.3 п.9).
+
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
-/// Число попыток для транзиентной 5xx (первая + один ретрай, ADR-0032 §2.5 п.13).
+
 const MAX_ATTEMPTS: u32 = 2;
-/// Пауза перед ретраем на 5xx.
+
 const RETRY_BACKOFF: Duration = Duration::from_secs(1);
-/// Лимит накопленного текста ответа: недоверенное тело не должно исчерпать память под `panic=abort`.
+
 pub(in crate::ai) const MAX_RESPONSE_BYTES: usize = 8 * 1024 * 1024;
-/// Лимит чтения тела ошибки/списка моделей перед разбором (защита от гигантского тела).
+
 const MAX_ERROR_BODY_BYTES: usize = 64 * 1024;
 
-/// HTTP-клиент AI на `reqwest` + SChannel. `reqwest::Client` строится лениво (ADR-0034 §2.3).
+
 pub struct ReqwestBackend {
     client: std::sync::OnceLock<reqwest::Client>,
 }
@@ -39,15 +39,15 @@ impl ReqwestBackend {
         }
     }
 
-    /// Возвращает общий клиент, создавая его при первом обращении (ленивая инициализация).
+    
     fn client(&self) -> Result<&reqwest::Client, CommandError> {
         if let Some(client) = self.client.get() {
             return Ok(client);
         }
         let built = reqwest::Client::builder()
             .timeout(REQUEST_TIMEOUT)
-            // Редиректы запрещены: тело (документ) не должно уходить на хост, не названный
-            // в согласии (H2).
+            
+            
             .redirect(reqwest::redirect::Policy::none())
             .build()
             .map_err(|e| {
@@ -63,12 +63,12 @@ impl Default for ReqwestBackend {
     }
 }
 
-/// Склеивает базовую точку и путь, не допуская двойного слэша.
+
 pub(in crate::ai) fn endpoint(base_url: &str, path: &str) -> String {
     format!("{}/{}", base_url.trim_end_matches('/'), path)
 }
 
-/// Проверяет, что накопленный ответ вместе с новой дельтой не превышает лимит (H1).
+
 pub(in crate::ai) fn ensure_within_response_limit(
     current: usize,
     incoming: usize,
@@ -83,7 +83,7 @@ pub(in crate::ai) fn ensure_within_response_limit(
     }
 }
 
-/// Читает тело ответа, но не более `limit` байт (недоверенное тело не читается целиком).
+
 async fn read_body_limited(response: reqwest::Response, limit: usize) -> String {
     let mut stream = response.bytes_stream();
     let mut buf: Vec<u8> = Vec::new();
@@ -101,8 +101,8 @@ async fn read_body_limited(response: reqwest::Response, limit: usize) -> String 
     String::from_utf8_lossy(&buf).into_owned()
 }
 
-/// Собирает тело Chat Completions, вливая пользовательский `extra_body` как **надстройку**:
-/// обязательные поля протокола (`model`/`messages`/`stream`/…) не переопределяются (ADR-0035 §2.4).
+
+
 pub(in crate::ai) fn build_chat_body(request: &ChatRequest) -> serde_json::Value {
     let mut body = serde_json::Map::new();
     body.insert(
@@ -135,8 +135,8 @@ pub(in crate::ai) fn build_chat_body(request: &ChatRequest) -> serde_json::Value
     serde_json::Value::Object(body)
 }
 
-/// Заголовки, которые формирует клиент: пользовательские `headers` их не переопределяют,
-/// иначе источник авторизации стал бы неоднозначным (ADR-0035 §2.4 п.11).
+
+
 fn is_reserved_header(name: &str) -> bool {
     matches!(
         name.to_ascii_lowercase().as_str(),
@@ -144,7 +144,7 @@ fn is_reserved_header(name: &str) -> bool {
     )
 }
 
-/// Отбирает из пользовательских `headers` валидные и не зарезервированные пары.
+
 pub(in crate::ai) fn custom_headers(
     headers: &std::collections::BTreeMap<String, String>,
 ) -> Vec<(HeaderName, HeaderValue)> {
@@ -161,7 +161,7 @@ pub(in crate::ai) fn custom_headers(
         .collect()
 }
 
-/// Навешивает пользовательские заголовки на запрос (уже отфильтрованные [`custom_headers`]).
+
 fn apply_custom_headers(
     mut builder: reqwest::RequestBuilder,
     headers: &std::collections::BTreeMap<String, String>,

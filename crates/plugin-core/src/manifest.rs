@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::HOST_API_VERSION;
 
-/// Разрешения, реально поддержанные хостом (§4.4 плагинной системы).
+
 pub const H2_PERMISSIONS: &[&str] = &[
     "document:read",
     "document:write",
@@ -17,11 +17,11 @@ pub const H2_PERMISSIONS: &[&str] = &[
     "ui:statusbar",
 ];
 
-/// Разрешения, объявленные в §8 DESIGN_DOC, но отложенные за пределы H2. Распознаются как
-/// **известные**, но отклоняются валидатором с отдельным сообщением (это не «неизвестное»).
+
+
 pub const KNOWN_OUT_OF_H2_PERMISSIONS: &[&str] = &["ui:menu", "ui:sidebar", "ui:toolbar"];
 
-/// Манифест плагина (`plugin.json`).
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Manifest {
     pub id: String,
@@ -35,7 +35,7 @@ pub struct Manifest {
     pub contributes: Contributes,
 }
 
-/// Точки расширения (§6.4 DESIGN_DOC).
+
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Contributes {
     #[serde(default)]
@@ -83,28 +83,28 @@ fn default_tier() -> u8 {
     1
 }
 
-/// Ошибка валидации манифеста или исходника плагина.
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ManifestError {
-    /// Не разобран JSON.
+    
     Parse(String),
-    /// Пустое обязательное поле.
+    
     EmptyField(&'static str),
-    /// `id` не является безопасным идентификатором.
+    
     InvalidId(String),
-    /// `api_version` новее, чем поддерживает хост.
+    
     ApiVersionTooNew { found: u32, host: u32 },
-    /// `api_version == 0` — бессмысленное значение (§7.2: версия начинается с 1).
+    
     ApiVersionZero,
-    /// `entry` не является безопасным относительным `.lua`-файлом.
+    
     InvalidEntry(String),
-    /// Разрешение отсутствует в наборе §8.
+    
     UnknownPermission(String),
-    /// Разрешение известно (§8), но отложено за пределы H2.
+    
     PermissionNotInH2(String),
-    /// Разрешение известно (§8), но не реализуется вообще (ФС/сеть).
+    
     UnsupportedPermission(String),
-    /// `.lua`-исходник больше лимита.
+    
     SourceTooLarge { len: u64, max: u64 },
 }
 
@@ -145,7 +145,7 @@ impl std::fmt::Display for ManifestError {
 impl std::error::Error for ManifestError {}
 
 impl Manifest {
-    /// Разбирает манифест из JSON и сразу валидирует его.
+    
     pub fn from_json(bytes: &[u8]) -> Result<Self, ManifestError> {
         let manifest: Manifest =
             serde_json::from_slice(bytes).map_err(|e| ManifestError::Parse(e.to_string()))?;
@@ -153,7 +153,7 @@ impl Manifest {
         Ok(manifest)
     }
 
-    /// Проверяет обязательные поля, `api_version` и разрешения.
+    
     pub fn validate(&self) -> Result<(), ManifestError> {
         if self.id.is_empty() {
             return Err(ManifestError::EmptyField("id"));
@@ -186,20 +186,20 @@ impl Manifest {
     }
 }
 
-/// Результат проверки разрешения.
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PermissionClass {
-    /// Поддержано хостом в H2.
+    
     Implemented,
-    /// Известно из §8, но отложено за H2.
+    
     KnownOutOfH2,
-    /// Известно из §8, но не реализуется (ФС/сеть).
+    
     Unsupported,
-    /// Совсем неизвестно набору §8.
+    
     Unknown,
 }
 
-/// Классифицирует разрешение, не считая его ошибкой.
+
 pub fn permission_class(permission: &str) -> PermissionClass {
     if H2_PERMISSIONS.contains(&permission) {
         PermissionClass::Implemented
@@ -212,7 +212,7 @@ pub fn permission_class(permission: &str) -> PermissionClass {
     }
 }
 
-/// Проверяет разрешение и возвращает ошибку, если оно недопустимо в H2.
+
 pub fn classify_permission(permission: &str) -> Result<PermissionClass, ManifestError> {
     let class = permission_class(permission);
     match class {
@@ -227,7 +227,7 @@ pub fn classify_permission(permission: &str) -> Result<PermissionClass, Manifest
     }
 }
 
-/// Проверяет размер `.lua`-исходника перед загрузкой (§10.1 DESIGN_DOC).
+
 pub fn validate_source_len(len: u64) -> Result<(), ManifestError> {
     let max = crate::MAX_PLUGIN_SOURCE_BYTES;
     if len > max {
@@ -236,12 +236,12 @@ pub fn validate_source_len(len: u64) -> Result<(), ManifestError> {
     Ok(())
 }
 
-/// `filesystem:*` и `network` — известные категории §8, которые H2 не предоставляет вообще.
+
 fn is_unsupported_permission(permission: &str) -> bool {
     permission == "network" || permission.starts_with("filesystem:")
 }
 
-/// Безопасный id: строчные латинские буквы, цифры, `-`, `_`; непустой.
+
 fn is_safe_id(id: &str) -> bool {
     !id.is_empty()
         && id
@@ -249,7 +249,7 @@ fn is_safe_id(id: &str) -> bool {
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_')
 }
 
-/// Безопасный entry: имя файла, оканчивающееся на `.lua`, без разделителей пути и `..`.
+
 fn is_safe_entry(entry: &str) -> bool {
     !entry.is_empty()
         && entry.ends_with(".lua")

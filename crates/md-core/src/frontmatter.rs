@@ -12,10 +12,10 @@
 //! проход выполнит `sanitize_html` ядра (все генерируемые теги и атрибуты — из
 //! его белого списка).
 
-/// Максимальная глубина вложенности — защита от «бомбы» отступов.
+
 const MAX_DEPTH: usize = 32;
 
-/// Разобранное значение YAML-подмножества.
+
 #[derive(Debug, PartialEq, Eq)]
 enum Yaml {
     Scalar(String),
@@ -24,15 +24,15 @@ enum Yaml {
     Seq(Vec<Yaml>),
 }
 
-/// Строка после нормализации: значимый отступ и содержимое без ведущих пробелов.
+
 #[derive(Debug, Clone)]
 struct Line {
     indent: usize,
     content: String,
 }
 
-/// Рендерит тело YAML-шапки в HTML-фрагмент: таблицу/список либо `<pre>` с
-/// исходником, если подмножество YAML распарсить не удалось.
+
+
 pub(crate) fn render_frontmatter(yaml: &str) -> String {
     match parse_document(yaml) {
         Some(node) => render_node(&node, 0),
@@ -40,7 +40,7 @@ pub(crate) fn render_frontmatter(yaml: &str) -> String {
     }
 }
 
-/// Fallback: исходник шапки как экранированный текст.
+
 fn render_source(yaml: &str) -> String {
     let mut out = String::from("<pre class=\"md-frontmatter-source\"><code>");
     escape_html_text_into(&mut out, yaml);
@@ -48,9 +48,9 @@ fn render_source(yaml: &str) -> String {
     out
 }
 
-// ─── Парсер подмножества YAML ──────────────────────────────────────────
 
-/// Парсит документ целиком. `None` — неподдерживаемая конструкция.
+
+
 fn parse_document(yaml: &str) -> Option<Yaml> {
     let lines = normalize_lines(yaml)?;
     if lines.is_empty() {
@@ -59,16 +59,16 @@ fn parse_document(yaml: &str) -> Option<Yaml> {
     let base = lines[0].indent;
     let mut i = 0usize;
     let node = parse_block(&lines, &mut i, base)?;
-    // Лишние строки означают конструкцию, которую мы не разобрали (например,
-    // многострочный скаляр) — честнее отдать исходник, чем терять данные.
+    
+    
     if i != lines.len() {
         return None;
     }
     Some(node)
 }
 
-/// Разбивает вход на значимые строки, выбрасывая пустые и полные комментарии.
-/// `None`, если в отступе встретился таб (не поддерживаем смешанные отступы).
+
+
 fn normalize_lines(yaml: &str) -> Option<Vec<Line>> {
     let mut out = Vec::new();
     for raw in yaml.lines() {
@@ -89,7 +89,7 @@ fn normalize_lines(yaml: &str) -> Option<Vec<Line>> {
     Some(out)
 }
 
-/// Разбирает узел с позиции *i на отступе indent; i продвигается за пределы узла.
+
 fn parse_block(lines: &[Line], i: &mut usize, indent: usize) -> Option<Yaml> {
     let line = lines.get(*i)?;
     if line.indent != indent {
@@ -111,8 +111,8 @@ fn parse_map(lines: &[Line], i: &mut usize, indent: usize) -> Option<Yaml> {
         if line.indent < indent {
             break;
         }
-        // Более глубокий отступ без «родителя» или смешение map и seq на
-        // одном уровне — ошибка подмножества.
+        
+        
         if line.indent > indent || seq_marker(&line.content).is_some() {
             return None;
         }
@@ -154,8 +154,8 @@ fn parse_seq(lines: &[Line], i: &mut usize, indent: usize) -> Option<Yaml> {
                 _ => items.push(Yaml::Null),
             }
         } else if split_map_entry(rest).is_some() {
-            // «- key: value» — элемент-объект. Колонку `key` берём из позиции
-            // остатка в исходной строке, чтобы продолжения легли на тот же отступ.
+            
+            
             let item_indent = indent + line.content.find(rest).unwrap_or(2);
             let mut sub = vec![Line {
                 indent: item_indent,
@@ -199,7 +199,7 @@ fn parse_scalar(raw: &str) -> Option<Yaml> {
     if s.len() >= 2 && s.starts_with('"') && s.ends_with('"') {
         return Some(Yaml::Scalar(unescape_double(&s[1..s.len() - 1])));
     }
-    // Незакрытая кавычка — почти всегда опечатка; не гадаем.
+    
     if s.starts_with('\'') || s.starts_with('"') {
         return None;
     }
@@ -238,8 +238,8 @@ fn parse_inline_map(inner: &str) -> Option<Yaml> {
     Some(Yaml::Map(entries))
 }
 
-/// Распознаёт маркер элемента последовательности. Возвращает остаток строки
-/// и его байтовое смещение в исходном содержимом.
+
+
 fn seq_marker(content: &str) -> Option<(&str, usize)> {
     if content == "-" {
         return Some(("", 1));
@@ -247,8 +247,8 @@ fn seq_marker(content: &str) -> Option<(&str, usize)> {
     content.strip_prefix("- ").map(|rest| (rest, 2))
 }
 
-/// Ищет разделитель map-записи: `:` вне кавычек, за которым пробел/таб/конец.
-/// Скаляры вида `http://…` и время `12:30` не расщепляются.
+
+
 fn split_map_entry(s: &str) -> Option<(&str, &str)> {
     let bytes = s.as_bytes();
     let mut quote: Option<u8> = None;
@@ -345,7 +345,7 @@ fn unescape_double(s: &str) -> String {
     out
 }
 
-// ─── Отрисовка дерева в HTML ───────────────────────────────────────────
+
 
 fn render_node(node: &Yaml, depth: usize) -> String {
     let mut out = String::new();
@@ -434,7 +434,7 @@ mod tests {
     fn sequence_of_maps_becomes_tables_in_list() {
         let html = render_frontmatter("authors:\n  - name: A\n    role: X\n  - name: B\n");
         assert!(html.contains("<ul class=\"fm-list\">"), "{html}");
-        // Внешняя таблица + вложенная таблица на каждый элемент-объект.
+        
         assert_eq!(html.matches("<table").count(), 3, "{html}");
         assert!(html.contains("role"), "{html}");
         assert!(

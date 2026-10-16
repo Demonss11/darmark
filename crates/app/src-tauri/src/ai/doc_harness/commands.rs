@@ -9,10 +9,10 @@ use crate::state::{DocumentId, DocumentStore, UndoResult};
 use super::apply::{apply_with_guard, emit_document_updated, notify_applied};
 use super::diff::checked_diff_ops;
 
-/// Предлагает дифф для документа `doc_id` относительно текущего текста стора.
-///
-/// Эмитит `ai:edit_proposed { doc_id, diff }` (best-effort). Неизвестный документ →
-/// `unknown_document`.
+
+
+
+
 #[tauri::command]
 pub fn ai_diff(
     app: AppHandle,
@@ -44,18 +44,18 @@ pub fn ai_diff(
     Ok(diff)
 }
 
-/// Применяет предложенную правку через `DocumentStore::apply_edit` (D5).
-///
-/// **Rev-guard:** если `base_rev != текущая rev` — правка устарела (`ai_stale_edit`), ничего
-/// не применяется. При успехе уведомляет плагины (`document:changed`, как
-/// `update_document`/`undo_document`) и фронт (`document-updated` → pull-снапшот, AC-4),
-/// затем эмитит `ai:edit_applied { doc_id, rev }`.
-///
-/// **Guard стора обязан быть отпущен до уведомлений:** доставка `document:changed` плагинам
-/// может обслужить host-call к тому же `DocumentStore`, а мьютекс нереентрантен — удержание
-/// лока дало бы дедлок. Поэтому `lock_store` живёт во внутреннем блоке, а `notify_applied`
-/// вызывается после него. Порядок важен: сначала изменение документа (плагины + фронт),
-/// затем `ai:edit_applied`.
+
+
+
+
+
+
+
+
+
+
+
+
 #[tauri::command]
 pub fn ai_apply_edit(
     app: AppHandle,
@@ -89,7 +89,7 @@ pub fn ai_apply_edit(
     Ok(result)
 }
 
-/// Блокировка стора без паники (под `panic = "abort"` отравление невозможно).
+
 fn lock_store<'a>(
     store: &'a State<'_, Arc<Mutex<DocumentStore>>>,
 ) -> std::sync::MutexGuard<'a, DocumentStore> {

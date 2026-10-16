@@ -94,11 +94,11 @@ fn ai_done_payload_finish_reason_none_serializes_as_null() {
     assert_eq!(payload["usage"], serde_json::Value::Null);
 }
 
-/// Roundtrip команд истории: save → load → clear → load.
-///
-/// Изоляция от реального профиля: общий `env_lock` с тестами `history`
-/// (команда `DARMARK_CONFIG_PATH` общая на процесс) + уникальный temp-каталог
-/// на процесс. Команды внутри используют `settings::config_path()`.
+
+
+
+
+
 #[test]
 fn history_commands_roundtrip() {
     use crate::ai::history::env_lock;
@@ -146,8 +146,8 @@ fn history_commands_roundtrip() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// Эталонный XSS-payload из ADR-0038 §2.5: команда обязана вырезать `onerror`,
-/// `<script` и `javascript:`, сохранив безопасную разметку.
+
+
 #[test]
 fn render_markdown_sanitizes_ai_answer() {
     let payload = r##"# Заголовок
@@ -173,8 +173,8 @@ fn render_markdown_sanitizes_ai_answer() {
     );
 }
 
-/// AC-MCP-4/5/11/13: вызов инструмента даёт жизненный цикл `ai:tool-call` → `ai:tool-result`
-/// → `ai:done` с коррелированными `call_id`/`message_id`, длительностью и безопасным `summary`.
+
+
 #[test]
 fn chat_emits_tool_lifecycle_events() {
     let transport = Arc::new(ScriptedTransport::ok(
@@ -268,7 +268,7 @@ fn chat_emits_tool_lifecycle_events() {
     );
 }
 
-/// Деградация §3.3 ТЗ: при пустом реестре MCP запрос уходит без `tools`, событий вызова нет.
+
 #[test]
 fn chat_degrades_without_tools_when_registry_empty() {
     let transport = Arc::new(ScriptedTransport::ok(
@@ -310,8 +310,8 @@ fn chat_degrades_without_tools_when_registry_empty() {
     );
 }
 
-/// ADR-0040 §2.2/§2.6: провайдер отверг `tools` (HTTP 400) — чат не ломается. Пользователь
-/// получает обычный ответ, а не `ai:error`; деградация наблюдается только тихим `warn`.
+
+
 #[test]
 fn chat_degrades_silently_when_provider_rejects_tools() {
     let transport = Arc::new(ScriptedTransport::new(
@@ -394,8 +394,8 @@ fn chat_degrades_silently_when_provider_rejects_tools() {
     );
 }
 
-/// §2.5 п.25: при известном вердикте первый запрос уже уходит без `tools` — ни одного
-/// отвергнутого запроса и никаких событий вызова инструментов.
+
+
 #[test]
 fn chat_omits_tools_when_capability_cached() {
     let transport = Arc::new(ScriptedTransport::ok(
@@ -447,8 +447,8 @@ fn chat_omits_tools_when_capability_cached() {
     );
 }
 
-/// §2.3 п.14: распознанное превышение контекста повтором без `tools` не лечится — ошибка
-/// уходит пользователю и сопровождается `ai:error` (деградация не выдумывается).
+
+
 #[test]
 fn chat_reports_context_length_without_degrading() {
     let transport = Arc::new(ScriptedTransport::new(

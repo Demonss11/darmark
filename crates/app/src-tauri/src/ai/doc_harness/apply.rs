@@ -4,11 +4,11 @@ use crate::ai::types::AiEditOp;
 use crate::error::{CommandError, ErrorCode};
 use crate::state::{DocumentId, DocumentStore, UndoResult};
 
-/// Rev-guard + применение операций: ядро команды [`ai_apply_edit`](super::ai_apply_edit)
-/// (без Tauri — тестируемо).
-///
-/// `base_rev != rev` → `ai_stale_edit` (правка не применяется). Неизвестный документ →
-/// `unknown_document`. Невалидные смещения → `ai_apply_failed`.
+
+
+
+
+
 pub fn apply_with_guard(
     store: &mut DocumentStore,
     id: &DocumentId,
@@ -28,12 +28,12 @@ pub fn apply_with_guard(
     apply_ops(store, id, ops)
 }
 
-/// Применяет операции в порядке убывания `start`, чтобы более ранние смещения не «поехали».
-///
-/// **Атомарность (ADR-0034):** сначала **все** операции проверяются против базового текста
-/// ([`validate_ops`]); при любой невалидной — `ai_apply_failed` **без частичных изменений**.
-/// Возвращает [`UndoResult`] по первой (нижней по смещению) операции — фронт по нему
-/// выставляет выделение.
+
+
+
+
+
+
 fn apply_ops(
     store: &mut DocumentStore,
     id: &DocumentId,
@@ -67,9 +67,9 @@ fn apply_ops(
     })
 }
 
-/// Проверяет все операции против базового текста **до** применения: диапазоны в границах,
-/// обе границы — на границе UTF-8, операции не перекрываются. Любая невалидная →
-/// `ai_apply_failed` (ни одна правка не применена).
+
+
+
 fn validate_ops(text: &str, ops: &[AiEditOp]) -> Result<(), CommandError> {
     let mut ordered: Vec<&AiEditOp> = ops.iter().collect();
     ordered.sort_by_key(|op| op.start);
@@ -92,7 +92,7 @@ fn validate_ops(text: &str, ops: &[AiEditOp]) -> Result<(), CommandError> {
     Ok(())
 }
 
-/// Ошибка невалидной операции правки (`ai_apply_failed`).
+
 fn apply_failed(op: &AiEditOp) -> CommandError {
     CommandError::new(
         ErrorCode::AiApplyFailed,
@@ -100,9 +100,9 @@ fn apply_failed(op: &AiEditOp) -> CommandError {
     )
 }
 
-/// Порядок уведомлений после успешного применения правки: сначала изменение документа
-/// (плагины + фронт), затем `ai:edit_applied` (карточка диффа). Выделено отдельно ради
-/// тестируемости порядка (ADR-0034).
+
+
+
 pub(in crate::ai) fn notify_applied(
     doc_id: &str,
     rev: u64,
@@ -113,9 +113,9 @@ pub(in crate::ai) fn notify_applied(
     edit_applied(doc_id, rev);
 }
 
-/// Эмитит фронту `document-updated { doc_id, rev }` — тот же контракт, что `DocumentSink`
-/// плагинной подсистемы (см. `setup_plugins`): фронт по событию тянет снапшот и обновляет
-/// `#editor`/`#preview`. Best-effort: сбой эмита не роняет команду.
+
+
+
 pub(super) fn emit_document_updated(app: &AppHandle, doc_id: &str, rev: u64) {
     if let Err(e) = app.emit(
         "document-updated",

@@ -7,9 +7,9 @@ use crate::state::{DocumentId, DocumentStore};
 use crate::plugins::services::DocumentServices;
 use crate::plugins::supervisor::Supervisor;
 
-/// Процессные тесты конкурируют за CPU (chatty/hang крутят цикл) и искажают замеры watchdog,
-/// поэтому выполняем их строго по одному. Заодно глушим WER-диалоги Windows: иначе `abort`
-/// child'а может висеть до ручного закрытия и «крах» превратится в `timeout`.
+
+
+
 pub(super) fn serial() -> std::sync::MutexGuard<'static, ()> {
     suppress_windows_error_dialogs();
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -38,7 +38,7 @@ pub(super) fn fixture(name: &str) -> String {
     std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("фикстура {}: {e}", path.display()))
 }
 
-/// Корень репозитория: `CARGO_MANIFEST_DIR` = `crates/app/src-tauri`, три `parent()` до `<repo>`.
+
 pub(super) fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -48,14 +48,14 @@ pub(super) fn workspace_root() -> PathBuf {
         .to_path_buf()
 }
 
-/// Путь к child-бинарнику. Всегда пересобирает его debug-профилем: `host.crash`
-/// существует только в debug (`#[cfg(debug_assertions)]`), а mtime-проверка
-/// пропускала release-бинарник — тесты молча гоняли его и получали `lua_error`
-/// вместо `crashed`. Инкрементальная debug-сборка дешёвая (~0.1 s), корректность
-/// важнее скорости.
-///
-/// Env-override `DARMARK_PLUGIN_HOST_EXE` пропускает сборку (осознанное
-/// исключение): путь используется как есть — отвечаете за его профиль сами.
+
+
+
+
+
+
+
+
 pub(super) fn child_exe() -> PathBuf {
     if let Ok(path) = std::env::var("DARMARK_PLUGIN_HOST_EXE") {
         return PathBuf::from(path);
@@ -70,7 +70,7 @@ pub(super) fn child_exe() -> PathBuf {
     Supervisor::resolve_child_exe().expect("child exe после сборки")
 }
 
-/// Стор с одним документом `doc-1` (id плагины адресуют строкой).
+
 pub(super) fn store_with_doc(text: &str) -> Arc<Mutex<DocumentStore>> {
     let mut store = DocumentStore::default();
     let snap = store.create(text.to_string());
@@ -132,8 +132,8 @@ pub(super) fn view_contrib(
     }
 }
 
-/// Колбэк, пишущий имя сигнала в общий журнал (F41/S2): позволяет проверить, какой именно
-/// канал эмитится в каждом сценарии.
+
+
 pub(super) fn push_log(
     log: &Arc<Mutex<Vec<&'static str>>>,
     event: &'static str,

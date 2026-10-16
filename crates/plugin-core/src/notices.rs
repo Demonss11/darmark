@@ -3,17 +3,17 @@
 //! Единый источник текстов для UI и будущего магазина плагинов: изоляция ограничена
 //! **отказами**, защита данных не обеспечивается.
 
-/// Общая памятка об изоляции. Показывается у каждого плагина.
+
 pub const ISOLATION_NOTICE: &str =
     "Плагин исполняется в отдельном процессе: его сбой или зависание не затрагивают редактор. \
      Это изоляция отказов, а не защита данных.";
 
-/// Предупреждение для плагинов с доступом к документу: текст читается полностью.
+
 pub const DOCUMENT_ACCESS_NOTICE: &str =
     "Плагин с доступом к документу (document) читает его содержимое полностью, включая \
      конфиденциальный текст.";
 
-/// Предупреждения по конкретным разрешениям. Рендеринг — задача UI (H2 Фаза 5).
+
 pub fn permission_notices<P: AsRef<str>>(permissions: &[P]) -> Vec<&'static str> {
     let mut notices = vec![ISOLATION_NOTICE];
     if permissions
@@ -25,7 +25,7 @@ pub fn permission_notices<P: AsRef<str>>(permissions: &[P]) -> Vec<&'static str>
     notices
 }
 
-/// `document`, `document:read`, `document:write` — всё это доступ к содержимому документа.
+
 fn is_document_permission(permission: &str) -> bool {
     permission == "document" || permission.starts_with("document:")
 }

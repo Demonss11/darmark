@@ -119,8 +119,8 @@ fn set_enabled_false_removes_views() {
     );
 }
 
-/// F44/S4: выдача `view:create` активному плагину регистрирует view, отзыв — снимает.
-/// Доказывает, что регистрация следует за согласием (deny-by-default), а не за манифестом.
+
+
 #[test]
 fn granting_view_create_adds_and_revoking_removes_view() {
     let _guard = serial();
@@ -171,8 +171,8 @@ fn granting_view_create_adds_and_revoking_removes_view() {
     );
 }
 
-/// Хост с одним view-плагином `viewplugin`, наполняющим вкладку **только** по событию
-/// (`view-event.lua`, не в `on_activate`); права `view:modify` выданы.
+
+
 fn view_event_host() -> PluginHost {
     let store = store_with_doc("x");
     let views = views();
@@ -200,9 +200,9 @@ fn view_event_host() -> PluginHost {
     PluginHost::new(manager, views, services, notify, pending)
 }
 
-/// После `reload` contributed view снимается и регистрируется заново с пустым HTML, а шина
-/// уже пуста — плагин, наполняющий вкладку по подписке на `document:opened`, без
-/// переиздания остался бы пустым. Хост обязан адресно переиздать ему последний документ.
+
+
+
 #[test]
 fn reload_reannounces_opened_to_view_plugin() {
     let _guard = serial();
@@ -226,8 +226,8 @@ fn reload_reannounces_opened_to_view_plugin() {
     );
 }
 
-/// Тот же сценарий, но документ не публиковался: переиздавать нечего — reannounce no-op,
-/// view остаётся пустым (хост не выдумывает документ).
+
+
 #[test]
 fn reload_without_document_leaves_view_empty() {
     let _guard = serial();

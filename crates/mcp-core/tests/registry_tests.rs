@@ -41,8 +41,8 @@ fn call_unknown_tool_returns_unknown_tool_error() {
     assert!(matches!(err, CallToolError::UnknownTool(name) if name == "ghost"));
 }
 
-/// Ресурс-заглушка: запоминает URI, с которым его вызвали (проверяем, что реестр
-/// передаёт **фактический** URI запроса, а не шаблон).
+
+
 struct RecordingResource {
     seen: Arc<Mutex<Vec<String>>>,
 }
@@ -97,7 +97,7 @@ fn template_resource_rejects_mismatched_segment_count() {
 fn exact_resource_takes_precedence_over_template() {
     let seen = Arc::new(Mutex::new(Vec::new()));
     let mut registry = registry_with_manifest_template(Arc::clone(&seen));
-    // Статический ресурс с URI, который буквально совпадает с запросом.
+    
     registry.register_resource(ResourceDefinition {
         uri: "darmark://plugins/catalog".to_string(),
         name: "Каталог плагинов".to_string(),

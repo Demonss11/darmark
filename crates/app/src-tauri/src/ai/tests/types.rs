@@ -203,7 +203,7 @@ fn view_hides_secret_for_every_provider() {
         .insert("corp".to_string(), provider_with_api_key("sk-super-secret"));
     let view = AiSettingsView::from(&settings);
 
-    // Окружение больше не нужно: возвращаем до проверок, чтобы тест не зависел от env.
+    
     match previous {
         Some(value) => std::env::set_var("ROUTERAI_API_KEY", value),
         None => std::env::remove_var("ROUTERAI_API_KEY"),
@@ -360,7 +360,7 @@ fn ai_response_serializes_none_finish_reason() {
     );
 }
 
-/// Пустые tool-поля не попадают в JSON: история чата не должна разрастаться `null`-ами.
+
 #[test]
 fn ai_message_omits_absent_tool_fields() {
     let message = AiMessage {
@@ -375,7 +375,7 @@ fn ai_message_omits_absent_tool_fields() {
     );
 }
 
-/// Поля tool-loop переживают сериализацию/десериализацию (история грузит сообщения обратно).
+
 #[test]
 fn ai_message_roundtrips_tool_call_fields() {
     let message = AiMessage {

@@ -4,8 +4,8 @@ use std::process::Command;
 use super::super::*;
 use crate::error::ErrorCode;
 
-/// Создаёт junction (`mklink /J`, без прав администратора). `false` — окружение не
-/// позволило; вызывающий тест должен явно сообщить о пропуске.
+
+
 fn try_junction(link: &Path, target: &Path) -> bool {
     let status = Command::new("cmd")
         .args(["/C", "mklink", "/J"])
@@ -15,8 +15,8 @@ fn try_junction(link: &Path, target: &Path) -> bool {
     matches!(status, Ok(s) if s.success()) && std::fs::symlink_metadata(link).is_ok()
 }
 
-/// Создаёт symlink-файл (`mklink` без `/J`). Требует прав администратора или Developer
-/// Mode; `false` — недоступно (тест сообщает о пропуске).
+
+
 fn try_symlink_file(link: &Path, target: &Path) -> bool {
     let status = Command::new("cmd")
         .args(["/C", "mklink"])
@@ -174,8 +174,8 @@ fn ensure_plugin_path_allowed_accepts_path_inside_plugins_root() {
     let plugin_dir = root.path().join("my-plugin");
     std::fs::create_dir(&plugin_dir).unwrap();
 
-    // Общий env-лок `ai`: `DARMARK_PLUGINS_DIR` — переменная процесса, параллельные тесты
-    // не должны видеть её промежуточное значение.
+    
+    
     let _guard = env_lock();
     let previous = std::env::var_os("DARMARK_PLUGINS_DIR");
     std::env::set_var("DARMARK_PLUGINS_DIR", root.path());
@@ -198,7 +198,7 @@ fn ensure_plugin_path_allowed_accepts_root_and_normalized_layouts() {
     ensure_plugin_path_allowed(&upper).expect("регистр нормализуется канонизацией");
 }
 
-/// Объявленный в манифесте `entry` (не `main.lua`) читается после гейта.
+
 #[test]
 fn ensure_plugin_entry_allowed_accepts_declared_entry() {
     let dir = tempfile::tempdir().unwrap();
@@ -214,7 +214,7 @@ fn ensure_plugin_entry_allowed_accepts_declared_entry() {
     );
 }
 
-/// Отсутствующий или выходящий за каталог `entry` — отказ (fail-closed), а не чтение «мимо».
+
 #[test]
 fn ensure_plugin_entry_allowed_rejects_missing_and_traversal() {
     let base = tempfile::tempdir().unwrap();
@@ -230,8 +230,8 @@ fn ensure_plugin_entry_allowed_rejects_missing_and_traversal() {
     }
 }
 
-/// Symlink на объявленном `entry` отвергается тем же гейтом, что `plugin.json`/`main.lua`
-/// (AC-MCP-12): иначе исходник читался бы вслед за ссылкой за пределы `plugins/`.
+
+
 #[test]
 fn ensure_plugin_entry_allowed_rejects_symlinked_entry() {
     let base = tempfile::tempdir().unwrap();

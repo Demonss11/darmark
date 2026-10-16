@@ -18,22 +18,22 @@ use mcp_core::Registry;
 use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager};
 
-/// Собирает реестр MCP-инструментов и ресурсов для запущенного приложения.
-///
-/// Каталог плагинов разрешается от `app_data_dir` (а не от CWD): в упакованном приложении
-/// рабочий каталог произволен, а источник каталога должен быть детерминированным.
+
+
+
+
 pub fn build_registry(app: &AppHandle) -> Registry {
     let app_data_dir = app.path().app_data_dir().unwrap_or_default();
     build_registry_with_sink(app_log_sink(app.clone()), &app_data_dir)
 }
 
-/// Собирает реестр с заданным стоком журнала и каталогом данных — без Tauri.
-///
-/// Единственная точка сборки инвентаря MCP (5 tools + 6 resources, TZ-MCP §4):
-/// [`build_registry`] передаёт сюда продакшн-сток и `app_data_dir`, контракт-тесты —
-/// собирающий сток (AC-MCP-6/AC-MCP-13), поэтому тест проверяет тот же состав, что и
-/// приложение. Каталог плагинов вычисляется здесь один раз ([`catalog_repo`]) и
-/// «запекается» в обработчики: зависимости от CWD на пути чтения нет.
+
+
+
+
+
+
+
 pub fn build_registry_with_sink(sink: adapters::LogSink, app_data_dir: &Path) -> Registry {
     let repo = catalog_repo(app_data_dir);
     let mut registry = Registry::new();
@@ -42,13 +42,13 @@ pub fn build_registry_with_sink(sink: adapters::LogSink, app_data_dir: &Path) ->
     registry
 }
 
-/// Эмиттер событий журнала — граница между стоком MCP и транспортом (Tauri-событие в проде).
-///
-/// Инъекция вместо жёсткой зависимости от `AppHandle` делает конверт события `log-entry`
-/// (уровень/категория/сообщение) проверяемым Rust-тестом: прод отдаёт [`AppHandle`], тест —
-/// собирающий mock. Прод-поведение не меняется.
+
+
+
+
+
 pub trait LogEmitter: Send + Sync + 'static {
-    /// Отправляет событие `event` с JSON-конвертом `payload`; `Err` — транспорт недоступен.
+    
     fn emit(&self, event: &str, payload: Value) -> Result<(), String>;
 }
 
@@ -58,11 +58,11 @@ impl LogEmitter for AppHandle {
     }
 }
 
-/// Сток журнала MCP → Tauri-событие `log-entry` (TZ-MCP R2, best-effort).
-///
-/// Сбой `emit` логируется и не роняет вызов инструмента: журнал — наблюдаемость,
-/// а не критичный путь. Конверт несёт уровень `info` и категорию `system` (TS-тип
-/// `LogCategory` не трогаем, §4.6).
+
+
+
+
+
 fn app_log_sink(emitter: impl LogEmitter) -> adapters::LogSink {
     Arc::new(move |message: &str| {
         let payload = serde_json::json!({
@@ -76,12 +76,12 @@ fn app_log_sink(emitter: impl LogEmitter) -> adapters::LogSink {
     })
 }
 
-/// Каталог-источник плагинов относительно каталога данных приложения: `app_data_dir/plugins`.
-///
-/// `app_data_dir` передаётся явно (в проде — `app.path().app_data_dir()`), поэтому функция не
-/// зависит от рабочего каталога процесса: в упакованном приложении CWD произволен, а источник
-/// каталога должен быть детерминированным. Если каталога нет — вызывающий получает понятную
-/// ошибку от `Catalog::load`.
+
+
+
+
+
+
 pub(crate) fn catalog_repo(app_data_dir: &Path) -> std::path::PathBuf {
     app_data_dir.join("plugins")
 }

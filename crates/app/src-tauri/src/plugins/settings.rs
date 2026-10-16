@@ -16,20 +16,20 @@ use serde::{Deserialize, Serialize};
 
 use crate::ai::types::AiSettings;
 
-/// Сколько недавних файлов хранить.
+
 pub const RECENT_FILES_LIMIT: usize = 20;
 
-/// Лимит размера `config.json` (защита от гигантского файла при старте).
+
 pub const MAX_CONFIG_BYTES: u64 = 4 * 1024 * 1024;
 
-/// Настройки одного плагина.
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PluginSettings {
-    /// Включён ли плагин. По умолчанию — да (выключение явное).
+    
     #[serde(default = "default_true")]
     pub enabled: bool,
-    /// Разрешения, на которые пользователь дал согласие (§8/§12). Фильтрация по согласию —
-    /// менеджер UI (Фаза 5).
+    
+    
     #[serde(default)]
     pub granted_permissions: Vec<String>,
 }
@@ -43,30 +43,30 @@ impl Default for PluginSettings {
     }
 }
 
-/// Запись недавнего файла: путь + время открытия (unix-секунды), §12.
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RecentFile {
     pub path: String,
     pub opened_at: u64,
 }
 
-/// Корневой конфиг приложения.
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct SettingsStore {
-    /// Настройки плагинов по id.
+    
     #[serde(default)]
     pub plugins: HashMap<String, PluginSettings>,
-    /// Недавние файлы, новейшие первыми (≤ [`RECENT_FILES_LIMIT`]).
+    
     #[serde(default)]
     pub recent_files: Vec<RecentFile>,
-    /// Настройки AI-ассистента (секция `ai`, ADR-0032/0034). Секрет `api_key` — здесь же.
+    
     #[serde(default)]
     pub ai: AiSettings,
 }
 
 impl SettingsStore {
-    /// Путь конфига: `DARMARK_CONFIG_PATH` (override для тестов/E2E) либо
-    /// `%APPDATA%/darmark/config.json`. `None`, если ни override, ни `APPDATA` не заданы.
+    
+    
     pub fn config_path() -> Option<PathBuf> {
         if let Some(path) = std::env::var_os("DARMARK_CONFIG_PATH") {
             return Some(PathBuf::from(path));
@@ -75,8 +75,8 @@ impl SettingsStore {
         Some(PathBuf::from(base).join("darmark").join("config.json"))
     }
 
-    /// Каталог данных приложения: `DARMARK_CONFIG_PATH`-override (родитель файла) либо
-    /// `%APPDATA%/darmark`. `None`, если ни override, ни `APPDATA` не заданы.
+    
+    
     pub fn data_dir() -> Option<PathBuf> {
         if let Ok(path) = std::env::var("DARMARK_CONFIG_PATH") {
             return PathBuf::from(path).parent().map(PathBuf::from);
@@ -85,8 +85,8 @@ impl SettingsStore {
         Some(PathBuf::from(base).join("darmark"))
     }
 
-    /// Читает конфиг. Отсутствие файла — пустые настройки; реальная IO-ошибка/битый JSON
-    /// логируются (конфиг не должен ронять приложение). Список недавних нормализуется.
+    
+    
     pub fn load(path: &Path) -> Self {
         let mut settings = match std::fs::metadata(path) {
             Ok(meta) if meta.len() > MAX_CONFIG_BYTES => {
@@ -116,8 +116,8 @@ impl SettingsStore {
         settings
     }
 
-    /// Сохраняет конфиг атомарно: временный файл в том же каталоге + `rename`. Создаёт каталог
-    /// `%APPDATA%/darmark/` при необходимости. Прерывание записи не усекает рабочий конфиг.
+    
+    
     pub fn save(&self, path: &Path) -> std::io::Result<()> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
@@ -134,17 +134,17 @@ impl SettingsStore {
         }
     }
 
-    /// Включён ли плагин (неизвестный — включён по умолчанию).
+    
     pub fn plugin_enabled(&self, id: &str) -> bool {
         self.plugins.get(id).map(|p| p.enabled).unwrap_or(true)
     }
 
-    /// Фиксирует тумблер вкл/выкл.
+    
     pub fn set_plugin_enabled(&mut self, id: &str, enabled: bool) {
         self.plugins.entry(id.to_string()).or_default().enabled = enabled;
     }
 
-    /// Согласие на разрешения плагина (§12). Пусто — согласие ещё не выдано.
+    
     pub fn granted_permissions(&self, id: &str) -> Vec<String> {
         self.plugins
             .get(id)
@@ -152,7 +152,7 @@ impl SettingsStore {
             .unwrap_or_default()
     }
 
-    /// Записывает согласие пользователя на разрешения плагина.
+    
     pub fn set_granted_permissions(&mut self, id: &str, permissions: Vec<String>) {
         self.plugins
             .entry(id.to_string())
@@ -160,12 +160,12 @@ impl SettingsStore {
             .granted_permissions = permissions;
     }
 
-    /// Удаляет настройки плагина (вкл/выкл, согласованные права).
+    
     pub fn remove_plugin(&mut self, id: &str) {
         self.plugins.remove(id);
     }
 
-    /// Добавляет файл в начало списка недавних: дедупликация, лимит [`RECENT_FILES_LIMIT`].
+    
     pub fn push_recent_file(&mut self, path: impl Into<String>) {
         let path = path.into();
         self.recent_files.retain(|recent| recent.path != path);
@@ -179,7 +179,7 @@ impl SettingsStore {
         self.recent_files.truncate(RECENT_FILES_LIMIT);
     }
 
-    /// Нормализует список недавних из файла: дедупликация по пути и обрезка до лимита.
+    
     fn normalize_recent(&mut self) {
         let mut seen = std::collections::HashSet::new();
         self.recent_files

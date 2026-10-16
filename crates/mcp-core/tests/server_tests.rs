@@ -24,7 +24,7 @@ impl ToolHandler for EchoTool {
     }
 }
 
-/// Инструмент, чей обработчик падает — проверяем `isError`-результат.
+
 struct FailingTool;
 
 impl ToolHandler for FailingTool {
@@ -42,8 +42,8 @@ impl ToolHandler for FailingTool {
     }
 }
 
-/// Инструмент-верификатор: обработчик возвращает `Ok` с отрицательным вердиктом, объявленным
-/// полем `isError` в payload (ADR-0041 §2.2 п.5).
+
+
 struct RejectingTool;
 
 impl ToolHandler for RejectingTool {
@@ -107,7 +107,7 @@ fn request(id: i64, method: &str, params: Option<Value>) -> RpcRequest {
     }
 }
 
-/// Запрос без `id` — JSON-RPC notification.
+
 fn notification(method: &str, params: Option<Value>) -> RpcRequest {
     RpcRequest {
         jsonrpc: "2.0".into(),
@@ -117,7 +117,7 @@ fn notification(method: &str, params: Option<Value>) -> RpcRequest {
     }
 }
 
-/// Ответ на запрос с `id`: сервер обязан ответить, `None` здесь — ошибка.
+
 fn respond(server: &McpServer, request: RpcRequest) -> RpcResponse {
     server
         .handle(request)
@@ -197,7 +197,7 @@ fn tools_call_execution_error_returns_is_error_result() {
     assert_eq!(result["content"][0]["text"], "boom");
 }
 
-/// ADR-0041 §2.2 п.5: `isError` из payload обработчика копируется в конверт.
+
 #[test]
 fn tools_call_copies_handler_is_error_into_envelope() {
     let server = server();
@@ -212,7 +212,7 @@ fn tools_call_copies_handler_is_error_into_envelope() {
     assert!(response.error.is_none());
     let result = response.result.expect("result");
     assert_eq!(result["isError"], true);
-    // Payload не переписывается (п.6): структурированный вердикт остаётся в тексте.
+    
     let text = result["content"][0]["text"].as_str().expect("text");
     let payload: Value = serde_json::from_str(text).expect("payload — JSON");
     assert_eq!(payload["ok"], false);
@@ -220,7 +220,7 @@ fn tools_call_copies_handler_is_error_into_envelope() {
     assert_eq!(payload["errors"], json!(["поле id пустое"]));
 }
 
-/// ADR-0041 §2.2 п.8: без поля `isError` в payload конверт побайтово прежний — признака нет.
+
 #[test]
 fn tools_call_without_handler_is_error_has_no_is_error() {
     let server = server();

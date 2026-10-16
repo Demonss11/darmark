@@ -8,15 +8,15 @@ use crate::PluginStatus;
 use super::{lock, status_state, PluginHost, MAX_PUMP_ROUNDS};
 
 impl PluginHost {
-    /// Снимок статуса плагина (для сравнения «до/после» при эмиссии `plugin-status-changed`).
+    
     pub(super) fn runtime_status(&self, id: &str) -> Option<PluginStatus> {
         lock(&self.manager)
             .get(id)
             .map(|runtime| runtime.status.clone())
     }
 
-    /// Эмитит `plugin-status-changed` для одного перехода. `message` — диагностический
-    /// текст (при `failed` фолбэк на сообщение из [`PluginStatus::Failed`]).
+    
+    
     pub(super) fn emit_status_transition(
         &self,
         id: &str,
@@ -36,31 +36,31 @@ impl PluginHost {
         );
     }
 
-    /// Уведомляет фронтенд о смене реестра/контента представлений (`plugin-views-changed`).
+    
     fn notify_views(&self) {
         (self.views_notify)();
     }
 
-    /// Уведомляет менеджер о смене состава/статуса/карантина (`plugins-changed`).
+    
     pub(super) fn notify_plugins(&self) {
         (self.plugins_notify)();
     }
 
-    /// Оба сигнала: реестр view и статусы изменились вместе (enable/reload/remove/permissions).
+    
     pub(super) fn notify_all(&self) {
         self.notify_views();
         self.notify_plugins();
     }
 
-    /// Доставляет накопленные события всем активным плагинам.
-    ///
-    /// Вызывать **без** удержания блокировки `DocumentStore` (host-call плагина
-    /// берёт тот же мьютекс → дедлок). Ошибка плагина не паникует: он снимается
-    /// менеджером, остальные продолжают получать события.
-    ///
-    /// Цикл нужен для плагинных правок: обработчик `document:changed` может сам
-    /// вызвать `apply_edit`, породив новый `document:changed`; такие события лежат в
-    /// [`Self::pending_changed`] и доставляются следующим раундом. Число раундов ограничено.
+    
+    
+    
+    
+    
+    
+    
+    
+    
     pub fn pump(&self) {
         let mut status_changed = false;
         let mut transitions: Vec<(String, PluginStatus, PluginStatus, Option<String>)> = Vec::new();

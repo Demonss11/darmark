@@ -10,16 +10,16 @@ use crate::PluginViewInfo;
 use super::{lock, PluginHost};
 
 impl PluginHost {
-    /// `plugin_views`: снимок реестра представлений для фронтенда.
+    
     pub fn plugin_views(&self) -> Vec<PluginViewInfo> {
         lock(&self.views).snapshot()
     }
 
-    /// `plugin_view_action`: обратная маршрутизация из тир-1 view (§9.4).
-    ///
-    /// `plugin_id` берётся из `view_id` до `:`; вызывается `on_action` плагина.
-    /// Возвращённый плагином HTML уходит через `host.set_view_content` и
-    /// санитизируется на хосте.
+    
+    
+    
+    
+    
     pub fn plugin_view_action(
         &self,
         view_id: &str,
@@ -62,8 +62,8 @@ impl PluginHost {
         result
     }
 
-    /// Состояние плагина: `(enabled, contributes.views, effective permissions)`, если он
-    /// зарегистрирован. Эффективный набор нужен для гейта регистрации view (`view:create`).
+    
+    
     pub(super) fn runtime_view_state(
         &self,
         id: &str,

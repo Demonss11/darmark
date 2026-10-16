@@ -13,8 +13,8 @@ use std::time::Instant;
 use plugin_core::envelope::{self, ToChild, ToHost};
 use serde_json::json;
 
-const DOC_SIZE: usize = 1024 * 1024; // 1 МБ
-const WINDOW: usize = 65536; // 64 КБ, как WINDOW в примерах плагинов
+const DOC_SIZE: usize = 1024 * 1024; 
+const WINDOW: usize = 65536; 
 
 type Spawn = (Child, std::process::ChildStdout, std::process::ChildStdin);
 
@@ -51,7 +51,7 @@ fn expect_event<R: Read>(reader: &mut R, id: u32) {
     }
 }
 
-/// Загружает плагин и активирует его. Возвращает (child, stdout, stdin).
+
 fn load_and_activate(source: &str) -> Spawn {
     let (child, mut stdout, mut stdin) = spawn_child();
 
@@ -80,7 +80,7 @@ fn load_and_activate(source: &str) -> Spawn {
     (child, stdout, stdin)
 }
 
-/// Ответ `get_document_text` — имитация DocumentServices::handle: JSON с полным текстом.
+
 fn reply_full<W: Write>(stdin: &mut W, id: u32, text: &str) {
     envelope::write_to_child(
         stdin,
@@ -92,7 +92,7 @@ fn reply_full<W: Write>(stdin: &mut W, id: u32, text: &str) {
     .unwrap();
 }
 
-/// Ответ на `get_document_range` — имитация DocumentServices::handle: JSON с окном.
+
 fn reply_range<W: Write>(stdin: &mut W, id: u32, text: &str, start: usize, len: usize) {
     let end = (start + len).min(text.len());
     envelope::write_to_child(
@@ -105,7 +105,7 @@ fn reply_range<W: Write>(stdin: &mut W, id: u32, text: &str, start: usize, len: 
     .unwrap();
 }
 
-/// Генерирует "документ" ровно 1 МБ — ASCII-паттерн длиной 256 байт (делит DOC_SIZE нацело).
+
 fn make_doc() -> String {
     let unit: String = (0..256u16)
         .map(|i| (b'a' + (i % 26) as u8) as char)
@@ -114,7 +114,7 @@ fn make_doc() -> String {
     unit.repeat(repeats)
 }
 
-/// Замеряет латентность N1: один вызов get_document_text на документ 1 МБ.
+
 fn bench_n1(doc: &str) -> std::time::Duration {
     let source = r#"
         function on_activate(ctx)
@@ -144,7 +144,7 @@ fn bench_n1(doc: &str) -> std::time::Duration {
     )
     .unwrap();
 
-    // Ждём HostCall → отвечаем → ждём done
+    
     match read_one(&mut stdout) {
         ToHost::HostCall { id, method, .. } => {
             assert_eq!(method, "get_document_text");
@@ -162,7 +162,7 @@ fn bench_n1(doc: &str) -> std::time::Duration {
     elapsed
 }
 
-/// Замеряет латентность range/delta: N вызовов get_document_range для документа 1 МБ.
+
 fn bench_range_delta(doc: &str) -> std::time::Duration {
     let source = r#"
         function on_activate(ctx)
@@ -199,7 +199,7 @@ fn bench_range_delta(doc: &str) -> std::time::Duration {
     )
     .unwrap();
 
-    // Отвечаем на каждый HostCall get_document_range, потом ждём done
+    
     let mut pos = 0;
     loop {
         match read_one(&mut stdout) {
@@ -231,11 +231,11 @@ fn latency_range_vs_n1() {
     let doc = make_doc();
     assert_eq!(doc.len(), DOC_SIZE);
 
-    // Прогрев (инициализация процессов)
+    
     let _ = bench_n1(&doc);
     let _ = bench_range_delta(&doc);
 
-    // Основные прогоны
+    
     let mut n1_times = Vec::new();
     let mut range_times = Vec::new();
 

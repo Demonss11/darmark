@@ -2,8 +2,8 @@
 
 use std::path::PathBuf;
 
-// Версия схемы — общая с GUI-хостом, который сверяет её и уходит в fallback при расхождении
-// (ADR-0034 §2.4).
+
+
 pub use plugin_core::REPORT_SCHEMA_VERSION;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -78,7 +78,7 @@ pub fn print_report_text(report: &TestReport) {
     );
 }
 
-/// Значение JSON-отчёта отделено от печати, чтобы тесты проверяли форму, а не stdout.
+
 pub fn report_to_json(report: &TestReport) -> serde_json::Value {
     let checks: Vec<serde_json::Value> = report
         .checks

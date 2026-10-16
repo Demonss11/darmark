@@ -23,13 +23,13 @@ mod tests;
 
 pub use types::{DocMeta, DocumentSnapshot, EditOp, RenderCache, RenderResult, UndoResult};
 
-/// Идентификатор документа. Строка, а не число: единый формат с TS и Lua-плагинами
-/// (у плагинов — строковые ключи таблиц), плюс генерацию id контролирует хост.
+
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct DocumentId(String);
 
-/// Документ: текст, ревизия, путь, кэш рендера и undo/redo.
+
 pub struct Document {
     pub id: DocumentId,
     pub path: Option<PathBuf>,
@@ -40,13 +40,13 @@ pub struct Document {
     pub redo: Vec<EditOp>,
 }
 
-/// Хранилище открытых документов. Порядок (`order`) сохраняется под будущие вкладки.
+
 #[derive(Default)]
 pub struct DocumentStore {
     docs: HashMap<DocumentId, Document>,
     pub(super) order: Vec<DocumentId>,
     next_id: u64,
-    /// Активный документ (для мультивкладок, п.11.1.1). Пока дублирует состояние
-    /// на TS-стороне, но контракт закладывается на будущее.
+    
+    
     active_id: Option<DocumentId>,
 }

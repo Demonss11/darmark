@@ -12,7 +12,7 @@ use mcp_core::registry::Registry;
 use crate::mcp::adapters::LogSink;
 use crate::mcp::build_registry_with_sink;
 
-/// Реестр приложения с собирающим журналом — как в `mcp_contract.rs`, но без Tauri.
+
 pub(super) fn registry_with_journal() -> (Registry, Arc<Mutex<Vec<String>>>) {
     let journal = Arc::new(Mutex::new(Vec::new()));
     let collected = Arc::clone(&journal);
@@ -28,7 +28,7 @@ pub(super) fn registry_with_journal() -> (Registry, Arc<Mutex<Vec<String>>>) {
     )
 }
 
-/// Валидный манифест (форма — как у `crates/plugin-catalog/examples/plugins`).
+
 pub(super) const VALID_MANIFEST: &str = r#"{
   "id": "mcp-plugin-test",
   "name": "MCP plugin test",

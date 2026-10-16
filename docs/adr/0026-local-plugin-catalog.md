@@ -4,7 +4,7 @@
 - **Дата:** 10.10.2026
 - **Основание:** веха H3 «экосистема» (Фаза 2 «Реестр плагинов»); Фаза 1 — `crates/plugin-cli`
 - **Связанные:** `docs/DESIGN_DOC.md` §7.1, §10; `docs/adr/0021-*`; `docs/adr/0023-*`;
-  `docs/adr/0042-plugin-host-api-norm-carriers.md` (носители нормы host-API); справка CLI —
+  справка CLI —
   §2.3 настоящего ADR
 
 ---
@@ -134,6 +134,6 @@ Ed25519-подпись и доверие реестру — вне этого AD
 ## 6. Ссылки
 
 - Справка CLI `darmark-plugin` (команды, флаги, каталог `index.json`) — §2.3 настоящего ADR;
-  носители нормы host-API — `docs/adr/0042-plugin-host-api-norm-carriers.md` §2
+  носители нормы host-API — ADR (реестр ADR) и док-комментарии ядра
 - `docs/adr/0021-plugin-isolation-process.md`, `docs/adr/0023-plugin-runtime.md`,
   `docs/adr/0024-plugin-drawer-placement.md`

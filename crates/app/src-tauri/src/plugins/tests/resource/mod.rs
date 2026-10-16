@@ -15,10 +15,10 @@ use crate::plugins::resource::{
 };
 use crate::plugins::PluginStatus;
 
-/// Бюджет Job Object по умолчанию (64 МБ, `SupervisorParams::new`).
+
 const LIMIT: usize = 64 * 1024 * 1024;
 
-/// Фейковый провайдер: «сырые» метрики по PID без реальных процессов (шов ADR-0031 §2.6).
+
 struct FakeProvider {
     map: HashMap<u32, RawMetrics>,
 }
@@ -37,8 +37,8 @@ impl ProcessMetrics for FakeProvider {
     }
 }
 
-/// Фейковые сырые метрики: `private_working_set_bytes` совпадает с рабочим набором
-/// (фолбэк-эквивалент), если тесту не нужно различать их явно.
+
+
 fn raw(working_set: usize, private: usize) -> RawMetrics {
     RawMetrics {
         working_set_bytes: working_set,
@@ -49,7 +49,7 @@ fn raw(working_set: usize, private: usize) -> RawMetrics {
     }
 }
 
-/// Записывающий sink: реальные снимки и события завершения (по образцу sink-тестов S11).
+
 #[derive(Default)]
 struct RecordingSink {
     metrics: Mutex<Vec<ResourceSnapshot>>,

@@ -11,18 +11,18 @@ use mlua::{Function, Lua, Result, Table, Value, Variadic};
 use plugin_core::envelope::PluginError;
 use serde_json::json;
 
-/// Хост-API за границей процесса. Реализация на стороне child шлёт [`ToHost`](plugin_core::envelope::ToHost)
-/// и ждёт reply; проверка permissions и доступ к документу — забота GUI-хоста.
+
+
 pub trait HostApi: Send + Sync + 'static {
-    /// Синхронный host-call. `Err` — отказ (например `permission_denied`), не Lua-исключение на хосте.
+    
     fn call(
         &self,
         method: &str,
         args: serde_json::Value,
     ) -> std::result::Result<serde_json::Value, PluginError>;
-    /// Канонический канал лога (`ToHost::Log`).
+    
     fn log(&self, level: &str, message: &str);
-    /// Событие жизненного цикла (`ToHost::Event`).
+    
     fn emit(&self, kind: &str, payload: serde_json::Value);
 }
 
@@ -50,11 +50,11 @@ fn host_err(e: PluginError) -> mlua::Error {
     mlua::Error::RuntimeError(e.to_string())
 }
 
-/// Превращает результат host-call в Lua-контракт `(value, err)`.
-///
-/// Permission-отказ приходит плагину **значением**, а не исключением (§4.4 плагинной
-/// системы / §8 DESIGN_DOC):
-/// `on_activate` не прерывается, плагин сам решает, что делать.
+
+
+
+
+
 fn defuse(
     lua: &Lua,
     result: std::result::Result<serde_json::Value, PluginError>,
@@ -65,7 +65,7 @@ fn defuse(
     }
 }
 
-/// Таблица ошибки host-call для Lua: `{ code, message, permission?, data? }`.
+
 fn error_to_lua(lua: &Lua, error: &PluginError) -> Result<Value> {
     let table = lua.create_table()?;
     table.set("code", error.code.clone())?;
@@ -79,7 +79,7 @@ fn error_to_lua(lua: &Lua, error: &PluginError) -> Result<Value> {
     Ok(Value::Table(table))
 }
 
-/// Регистрирует глобальные таблицы `host`, `md`, `json` и переопределяет `print`.
+
 pub fn register(lua: &Lua, plugin_id: &str, api: Arc<dyn HostApi>) -> Result<()> {
     register_host(lua, plugin_id, Arc::clone(&api))?;
     register_md(lua)?;
@@ -113,8 +113,8 @@ fn register_host(lua: &Lua, plugin_id: &str, api: Arc<dyn HostApi>) -> Result<()
         })?,
     )?;
 
-    // Экспорт HTML идёт через нативный диалог хоста (Фаза 5): согласие даёт сам диалог
-    // сохранения, поэтому permission `filesystem:write` не требуется (§6.3/§8).
+    
+    
     let api_export = Arc::clone(&api);
     host.set(
         "export_html",
@@ -186,8 +186,8 @@ fn register_host(lua: &Lua, plugin_id: &str, api: Arc<dyn HostApi>) -> Result<()
         )?,
     )?;
 
-    // Тир-1 view: HTML уходит на GUI-хост и там санитизируется (md-core) перед вставкой
-    // в DOM — плагин не может протолкнуть сырой HTML (D7/§11.1); доступ гейтит `view:modify`.
+    
+    
     let api_view = Arc::clone(&api);
     host.set(
         "set_view_content",
@@ -228,7 +228,7 @@ fn register_host(lua: &Lua, plugin_id: &str, api: Arc<dyn HostApi>) -> Result<()
         })?,
     )?;
 
-    // Dev-утилита проверки изоляции отказов; в релизный child не попадает (§6.3).
+    
     #[cfg(debug_assertions)]
     host.set(
         "crash",
@@ -237,7 +237,7 @@ fn register_host(lua: &Lua, plugin_id: &str, api: Arc<dyn HostApi>) -> Result<()
 
     lua.globals().set("host", host)?;
 
-    // print уводим в лог: stdout child'а — канал конверта (§6.1).
+    
     let tostring: mlua::Function = lua.globals().get("tostring")?;
     let log_for_print = Arc::clone(&log);
     lua.globals().set(
@@ -294,11 +294,11 @@ fn register_json(lua: &Lua) -> Result<()> {
     Ok(())
 }
 
-/// Строит `ctx` для `on_activate`/`on_deactivate` (§6.2/§9.3 DESIGN_DOC).
-///
-/// Подписки лежат в `ctx._subs` (`name → список функций`), `subscribe` возвращает
-/// `unsubscribe`-функцию. Снятие подписки — сравнением функций через `==` (родная
-/// семантика Lua), поэтому отдельные замыкания не совпадут.
+
+
+
+
+
 pub fn make_context(lua: &Lua, plugin_id: &str) -> Result<Table> {
     let ctx = lua.create_table()?;
     ctx.set("plugin_id", plugin_id)?;
@@ -334,9 +334,9 @@ pub fn make_context(lua: &Lua, plugin_id: &str) -> Result<Table> {
     Ok(ctx)
 }
 
-/// Доставляет событие подписчикам `ctx._subs[name]`, затем глобальному `on_event`.
-/// Подписчики и глобальный `on_event` получают `(name, payload)`.
-/// `ctx = None` (плагин не загружен) — вызывается только глобальный `on_event`.
+
+
+
 pub fn dispatch_event(
     lua: &Lua,
     ctx: Option<&Table>,
@@ -361,18 +361,18 @@ pub fn dispatch_event(
     Ok(())
 }
 
-/// Обёртка над конвертером: наружу отдаём ошибку как `mlua::Error`.
+
 pub fn json_to_lua(lua: &Lua, value: &serde_json::Value) -> Result<Value> {
     json_conv::json_to_lua(lua, value).map_err(host_err)
 }
 
-/// Конвертация Lua ↔ JSON без `mlua`-фичи `serialize` (она не включена ради размера child).
+
 mod json_conv {
     use mlua::{Lua, Table, Value};
     use plugin_core::envelope::PluginError;
     use serde_json::Value as Json;
 
-    /// Lua → JSON. Функции/потоки/userdata не кодируются — ошибка `lua_error`.
+    
     pub fn lua_to_json(value: &Value) -> std::result::Result<Json, PluginError> {
         Ok(match value {
             Value::Nil => Json::Null,
@@ -393,7 +393,7 @@ mod json_conv {
 
     fn table_to_json(t: &Table) -> std::result::Result<Json, PluginError> {
         let len = t.raw_len();
-        // Непустая таблица с ключами 1..len и без «дыр» — массив; иначе объект.
+        
         if len > 0 {
             let mut arr = Vec::with_capacity(len);
             let mut is_array = true;
@@ -429,7 +429,7 @@ mod json_conv {
         Ok(Json::Object(map))
     }
 
-    /// JSON → Lua.
+    
     pub fn json_to_lua(lua: &Lua, value: &Json) -> std::result::Result<Value, PluginError> {
         Ok(match value {
             Json::Null => Value::Nil,
@@ -575,7 +575,7 @@ mod tests {
         assert!(calls.iter().any(|(m, _)| m == "apply_edit"));
     }
 
-    /// Хост, всегда отклоняющий host-call (эмулирует отсутствие permission).
+    
     struct DenyingHost;
 
     impl HostApi for DenyingHost {
@@ -609,7 +609,7 @@ mod tests {
         assert_eq!(code, "permission_denied");
         assert_eq!(permission, "document:write");
 
-        // Обработчик жив: следующий вызов тоже отдаёт значение.
+        
         let second: String = lua
             .load(r#"local _, e = host.get_document_range("d", 0, 1); return e.code"#)
             .eval()

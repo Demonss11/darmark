@@ -6,31 +6,31 @@
 
 use std::io::{self, Read, Write};
 
-/// Потолок размера **входящего в host** кадра (child → host). Легитимные входящие события малы:
-/// лог, host-call (аргумент range/`apply_edit`), завершение.
+
+
 pub const MAX_EVENT_FRAME_BYTES: usize = 1024 * 1024;
 
-/// Потолок размера **входящего в child** кадра (host → child). Здесь крупные кадры легитимны:
-/// ответ на `get_document_text` несёт документ ≤ `MAX_FILE_SIZE` (10 МБ).
+
+
 pub const MAX_HOST_FRAME_BYTES: usize = 16 * 1024 * 1024;
 
 fn protocol_error(msg: impl Into<String>) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, msg.into())
 }
 
-/// Пишет кадр: `u32 LE длина` + payload, затем flush.
+
 pub fn write_frame<W: Write>(w: &mut W, payload: &[u8]) -> io::Result<()> {
     w.write_all(&(payload.len() as u32).to_le_bytes())?;
     w.write_all(payload)?;
     w.flush()
 }
 
-/// Читает кадр события (child → host) с потолком [`MAX_EVENT_FRAME_BYTES`].
+
 pub fn read_frame<R: Read>(r: &mut R) -> io::Result<Vec<u8>> {
     read_frame_capped(r, MAX_EVENT_FRAME_BYTES)
 }
 
-/// Читает кадр host → child (команда/ответ) с потолком [`MAX_HOST_FRAME_BYTES`].
+
 pub fn read_frame_host<R: Read>(r: &mut R) -> io::Result<Vec<u8>> {
     read_frame_capped(r, MAX_HOST_FRAME_BYTES)
 }
@@ -73,8 +73,8 @@ mod tests {
 
     #[test]
     fn read_frame_host_allows_large_document_frame() {
-        // 2 МиБ проходит как кадр host → child (документ ≤ MAX_FILE_SIZE) и не проходит как
-        // событие child → host.
+        
+        
         let mut buf = Vec::new();
         write_frame(&mut buf, &vec![7u8; 2 * 1024 * 1024]).unwrap();
         assert!(read_frame(&mut buf.as_slice()).is_err());

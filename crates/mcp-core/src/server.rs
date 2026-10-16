@@ -5,10 +5,10 @@ use serde_json::{json, Value};
 use crate::protocol::{self, RpcRequest, RpcResponse};
 use crate::registry::CallToolError;
 
-/// Версия MCP-протокола, поддерживаемая сервером.
+
 pub const MCP_PROTOCOL_VERSION: &str = "2024-11-05";
 
-/// MCP-сервер: маршрутизация JSON-RPC запросов к реестру.
+
 pub struct McpServer {
     registry: crate::registry::Registry,
 }
@@ -18,11 +18,11 @@ impl McpServer {
         Self { registry }
     }
 
-    /// Обработка JSON-RPC запроса.
-    ///
-    /// `None` — валидный notification (запрос без `id`): по JSON-RPC 2.0 ответ на него
-    /// не отправляется. Невалидный `jsonrpc` получает ошибку с `id` из запроса (или `null`),
-    /// поскольку обнаружить в нём notification нельзя.
+    
+    
+    
+    
+    
     pub fn handle(&self, request: RpcRequest) -> Option<RpcResponse> {
         if request.jsonrpc != protocol::RPC_VERSION {
             return Some(RpcResponse::error(
@@ -33,7 +33,7 @@ impl McpServer {
                 ),
             ));
         }
-        // Notification — запрос без `id`: ответ не отправляется.
+        
         request.id.as_ref()?;
         let id = request.id.clone();
         Some(match request.method.as_str() {
@@ -66,12 +66,12 @@ impl McpServer {
         })
     }
 
-    /// Вызов инструмента и сборка конверта `tools/call`.
-    ///
-    /// Конверт собирается из двух независимых источников: `content` — всегда текст payload
-    /// обработчика, `isError` — либо из [`CallToolError::Execution`], либо из одноимённого
-    /// булева поля payload, если обработчик его объявил (ADR-0041 §2.2). Payload обработчика
-    /// при этом не переписывается: сервер копирует признак, а не забирает его из данных.
+    
+    
+    
+    
+    
+    
     fn handle_tool_call(&self, id: Option<Value>, params: Option<Value>) -> RpcResponse {
         let Some(params) = params else {
             return RpcResponse::error(
@@ -85,8 +85,8 @@ impl McpServer {
                 protocol::RpcError::new(protocol::INVALID_PARAMS, "tools/call требует params.name"),
             );
         };
-        // `"arguments": null` и отсутствие `arguments` эквивалентны пустому объекту:
-        // обработчики получают JSON-объект, а не `Value::Null`.
+        
+        
         let arguments = params
             .get("arguments")
             .cloned()
@@ -97,11 +97,11 @@ impl McpServer {
             arguments
         };
         match self.registry.call_tool(name, arguments) {
-            // Признак вердикта вызова копируется из payload обработчика: инструмент-верификатор
-            // возвращает `isError` рядом со структурированными данными (`ok`, `errors`, `report`),
-            // иначе журнал и карточка показывали бы противоположное (ADR-0041 §2.2 п.5).
-            // Payload не мутируется: поле остаётся и в `content[0].text` (п.6), а без него
-            // конверт собирается ровно как прежде — побайтово (п.8).
+            
+            
+            
+            
+            
             Ok(result) => {
                 let mut envelope =
                     json!({ "content": [{ "type": "text", "text": result.to_string() }] });
@@ -110,12 +110,12 @@ impl McpServer {
                 }
                 RpcResponse::success(id, envelope)
             }
-            // Неизвестный инструмент — ошибка протокола, а не результат вызова.
+            
             Err(CallToolError::UnknownTool(name)) => RpcResponse::error(
                 id,
                 protocol::RpcError::new(protocol::INVALID_PARAMS, format!("Unknown tool: {name}")),
             ),
-            // Ошибка исполнения инструмента — результат с `isError`.
+            
             Err(CallToolError::Execution(error)) => RpcResponse::success(
                 id,
                 json!({ "isError": true, "content": [{ "type": "text", "text": error.message }] }),

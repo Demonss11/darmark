@@ -7,7 +7,7 @@ use super::validate::{check_plugin_limits, validate_manifest_id, validate_plugin
 use crate::ai::types::AiValidationResult;
 use crate::error::{CommandError, ErrorCode};
 
-/// Записывает `plugin.json` + `main.lua` в каталог (создавая его).
+
 pub fn write_plugin_files(dir: &Path, manifest: &Value, source: &str) -> Result<(), CommandError> {
     std::fs::create_dir_all(dir).map_err(io_error)?;
     let manifest_bytes = serde_json::to_vec_pretty(manifest).map_err(|e| {
@@ -21,7 +21,7 @@ pub fn write_plugin_files(dir: &Path, manifest: &Value, source: &str) -> Result<
     Ok(())
 }
 
-/// Уникальный временный каталог для валидации (не трогает реальный профиль).
+
 pub(super) fn temp_validate_dir(id: &str) -> PathBuf {
     use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -39,7 +39,7 @@ fn io_error(e: std::io::Error) -> CommandError {
     CommandError::new(ErrorCode::AiIo, e.to_string())
 }
 
-/// Сводка ошибок валидации для кода `ai_plugin_invalid`.
+
 fn errors_summary(errors: &[String]) -> String {
     if errors.is_empty() {
         "плагин не прошёл валидацию".to_string()
@@ -48,11 +48,11 @@ fn errors_summary(errors: &[String]) -> String {
     }
 }
 
-/// Создание: безопасный id/манифест/лимиты → каталог не существует → запись → валидация →
-/// регистрация.
-///
-/// Невалидный плагин откатывается (каталог удаляется), чтобы не блокировать повторную попытку.
-/// Ошибка регистрации (в т.ч. `no_host`) тоже откатывает каталог — «сиротских» каталогов нет.
+
+
+
+
+
 pub fn create_plugin_at(
     host: &crate::plugins::host::PluginHost,
     root: &Path,
@@ -89,11 +89,11 @@ pub fn create_plugin_at(
     }
 }
 
-/// Обновление: безопасный id/манифест/лимиты → каталог существует (и не reparse point) →
-/// валидация предложенного контента во временном каталоге → перезапись реальных файлов →
-/// `reload_plugin`.
-///
-/// **Рабочий плагин не затирается:** при `!ok` реальные файлы не трогаются (ADR-0034/ADR-0026).
+
+
+
+
+
 pub fn update_plugin_at(
     host: &crate::plugins::host::PluginHost,
     root: &Path,
@@ -147,7 +147,7 @@ pub fn update_plugin_at(
         })
 }
 
-/// Удаление через существующий `PluginHost::remove`.
+
 pub fn delete_plugin_at(
     host: &crate::plugins::host::PluginHost,
     id: &str,
@@ -157,9 +157,9 @@ pub fn delete_plugin_at(
         .map_err(|error| CommandError::new(ErrorCode::AiPluginNotFound, error.message))
 }
 
-/// Маппинг ошибки регистрации на коды IPC: «уже существует» → `ai_plugin_exists`,
-/// «нет сайдкара-хоста» → `plugin` (проблема окружения, не контента), «не появился в
-/// реестре» → `ai_plugin_register_failed`, иначе → `ai_plugin_invalid`.
+
+
+
 pub(super) fn map_register_error(error: plugin_core::envelope::PluginError) -> CommandError {
     let code = match error.code.as_str() {
         "plugin_exists" => ErrorCode::AiPluginExists,

@@ -14,7 +14,7 @@ use serde_json::{json, Value};
 
 use super::common::{registry_with_journal, VALID_MANIFEST};
 
-/// Корень workspace: `CARGO_MANIFEST_DIR` = `crates/app/src-tauri`, три `parent()` до репозитория.
+
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -24,12 +24,12 @@ fn workspace_root() -> PathBuf {
         .to_path_buf()
 }
 
-/// Собирает child-хост `darmark-plugin-host.exe` debug-профилем.
-///
-/// `cargo test -p darmark` не тянет `plugin-host` (это не зависимость GUI-хоста, ADR-0021),
-/// поэтому без сайдкара `validate_plugin` уходит в fallback и рапортует «хост не найден».
-/// Сборка кладёт exe в `<target>/debug`, откуда `resolve_sidecar` находит его рядом с тестовым
-/// бинарником (`<target>/debug/deps` → `<target>/debug`) — глобальные env-переменные не трогаем.
+
+
+
+
+
+
 fn ensure_plugin_host() {
     if std::env::var_os("DARMARK_PLUGIN_HOST_EXE").is_some() {
         return;
@@ -42,7 +42,7 @@ fn ensure_plugin_host() {
     assert!(status.success(), "не удалось собрать plugin-host");
 }
 
-/// Каталог плагина в `temp` — он в белом списке путей `plugin_harness` (AC-MCP-12).
+
 fn temp_plugin(manifest: &str, source: &str) -> tempfile::TempDir {
     let dir = tempfile::Builder::new()
         .prefix("darmark-mcp-plugin-test")
@@ -53,21 +53,21 @@ fn temp_plugin(manifest: &str, source: &str) -> tempfile::TempDir {
     dir
 }
 
-/// Вызывает `plugin_test` через реестр и возвращает payload инструмента.
-///
-/// `plugin_test` кодирует провал валидации в результат (`ok: false`), а не в `Err`: ошибка
-/// вызова осталась бы только для неверных параметров или пути вне белого списка. Тот же вердикт
-/// payload объявляет полем `isError`, и транспорт копирует его в конверт `tools/call` —
-/// поэтому журнал и карточка вызова не могут разойтись (ADR-0041 §2.2). Здесь тест берёт
-/// payload напрямую из реестра, минуя конверт: проверяется паритет данных с ядром, а сам
-/// конверт проверяет контракт-тест `tests/mcp_contract.rs`.
+
+
+
+
+
+
+
+
 fn call_plugin_test(registry: &Registry, dir: &Path) -> Value {
     registry
         .call_tool("plugin_test", json!({ "path": dir.to_string_lossy() }))
         .expect("plugin_test зарегистрирован, путь в белом списке")
 }
 
-/// Невалидный манифест: пустой `id` (`ManifestError::EmptyField`).
+
 const INVALID_MANIFEST: &str = r#"{
   "id": "",
   "name": "broken",
@@ -76,8 +76,8 @@ const INVALID_MANIFEST: &str = r#"{
   "entry": "main.lua"
 }"#;
 
-/// `plugin_test` обязан исполнить Lua в песочнице: valid-плагин с `print("ok")` в `on_activate`
-/// даёт `ok: true` и пустой список ошибок (признак успешного прогона).
+
+
 #[test]
 fn mcp_plugin_test_executes_lua_in_sandbox() {
     ensure_plugin_host();
@@ -100,7 +100,7 @@ fn mcp_plugin_test_executes_lua_in_sandbox() {
         "успешный прогон без ошибок песочницы: {payload}"
     );
 
-    // Журнал фиксирует вызов tool и не несёт полного пути (R2/AC-MCP-13).
+    
     let journal = journal.lock().expect("журнал не отравлен").clone();
     assert_eq!(journal.len(), 1, "каждый вызов — запись: {journal:?}");
     assert!(journal[0].contains("plugin_test"), "{journal:?}");
@@ -111,7 +111,7 @@ fn mcp_plugin_test_executes_lua_in_sandbox() {
     );
 }
 
-/// Невалидный манифест не запускает песочницу и возвращает ошибку валидации.
+
 #[test]
 fn mcp_plugin_test_reports_invalid_manifest() {
     let dir = temp_plugin(INVALID_MANIFEST, "function on_activate(ctx) end\n");

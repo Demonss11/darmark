@@ -10,11 +10,11 @@ use mcp_core::handlers::{ResourceError, ResourceReader};
 use mcp_core::registry::{Registry, ResourceDefinition};
 use serde_json::{json, Value};
 
-/// Регистрирует все MCP-ресурсы в реестре.
-///
-/// `repo` — уже разрешённый каталог плагинов ([`crate::mcp::catalog_repo`]): динамические
-/// читатели не зависят от CWD. Tauri здесь не нужен: ресурсы read-only и не эмитят события —
-/// модуль не зависит от `AppHandle` (сужено вместе с инъекцией [`super::adapters::LogSink`]).
+
+
+
+
+
 pub fn register_resources(registry: &mut Registry, repo: &Path) {
     registry.register_resource(ResourceDefinition {
         uri: "darmark://contracts/plugin-manifest".to_string(),
@@ -62,7 +62,7 @@ pub fn register_resources(registry: &mut Registry, repo: &Path) {
     });
 }
 
-/// Статический ресурс: неизменное содержимое, отдаётся как есть.
+
 struct StaticResource {
     content: Value,
 }
@@ -79,7 +79,7 @@ impl ResourceReader for StaticResource {
     }
 }
 
-/// Схема plugin.json (манифеста плагина).
+
 fn manifest_schema() -> Value {
     json!({
         "title": "plugin.json — манифест плагина",
@@ -95,7 +95,7 @@ fn manifest_schema() -> Value {
     })
 }
 
-/// Контракт host.*/md.*/json.* функций.
+
 fn host_api_schema() -> Value {
     json!({
         "host.*": "функции хоста (host.log, host.get_document, host.set_view_content и т.д.)",
@@ -104,7 +104,7 @@ fn host_api_schema() -> Value {
     })
 }
 
-/// Каталог событий.
+
 fn events_schema() -> Value {
     json!({
         "on_activate": "вызывается при активации плагина",
@@ -115,7 +115,7 @@ fn events_schema() -> Value {
     })
 }
 
-/// Контракт рендера/санитайзера Markdown.
+
 fn markdown_schema() -> Value {
     json!({
         "to_html": "markdown → HTML (без маппинга)",
@@ -124,7 +124,7 @@ fn markdown_schema() -> Value {
     })
 }
 
-/// Индекс локального каталога плагинов.
+
 struct PluginsCatalogResource {
     repo: PathBuf,
 }
@@ -150,7 +150,7 @@ impl ResourceReader for PluginsCatalogResource {
     }
 }
 
-/// Манифест конкретного плагина из каталога (`darmark://plugins/{id}/manifest`).
+
 struct PluginManifestResource {
     repo: PathBuf,
 }

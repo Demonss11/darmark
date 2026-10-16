@@ -10,11 +10,11 @@ use crate::plugins::HostServices;
 
 use super::common::{child_exe, fixture, serial, store_with_doc, view_contrib, views};
 
-/// Одна запись `plugin-status-changed`: `(plugin_id, old_state, new_state, message)`.
+
 type StatusTransition = (String, String, String, Option<String>);
 
-/// Колбэк сбора `plugin-status-changed`, переиспользующий приём `push_log` (общий
-/// `Arc<Mutex<Vec<…>>>`): тест читает реальные переходы, а не считает вызовы.
+
+
 fn record_status_changes() -> (StatusChangedSink, Arc<Mutex<Vec<StatusTransition>>>) {
     let seen = Arc::new(Mutex::new(Vec::<StatusTransition>::new()));
     let seen_for = Arc::clone(&seen);
@@ -31,8 +31,8 @@ fn record_status_changes() -> (StatusChangedSink, Arc<Mutex<Vec<StatusTransition
     (sink, seen)
 }
 
-/// Хост с одним активируемым view-плагином и подключённым каналом `plugin-status-changed`
-/// (по образцу `host_with_signal_log`).
+
+
 fn host_with_status_changes() -> (PluginHost, Arc<Mutex<Vec<StatusTransition>>>) {
     let store = store_with_doc("x");
     let views = views();
@@ -63,9 +63,9 @@ fn host_with_status_changes() -> (PluginHost, Arc<Mutex<Vec<StatusTransition>>>)
     (host, seen)
 }
 
-/// S11: включение/выключение меняет статус → `plugin-status-changed` несёт
-/// `(plugin_id, old_state, new_state)`. Проверяем оба перехода: `stopped → active`
-/// и `active → stopped` (состояния — как в сериализации `PluginStatus`).
+
+
+
 #[test]
 fn plugin_status_changed_on_enable_and_disable() {
     let _guard = serial();
@@ -91,8 +91,8 @@ fn plugin_status_changed_on_enable_and_disable() {
     );
 }
 
-/// S11: `reload` — точка смены статуса (TZ §5.2) → событие обязано эмититься,
-/// даже если итоговое состояние осталось `active` (сценарий «плагин перезагружен»).
+
+
 #[test]
 fn plugin_status_changed_on_reload() {
     let _guard = serial();
@@ -110,8 +110,8 @@ fn plugin_status_changed_on_reload() {
     );
 }
 
-/// S11: `remove` — плагин исчезает из реестра → событие `active → stopped` с сообщением
-/// об удалении (точка смены статуса `remove`, TZ §5.2).
+
+
 #[test]
 fn plugin_status_changed_on_remove() {
     let _guard = serial();
@@ -132,8 +132,8 @@ fn plugin_status_changed_on_remove() {
     );
 }
 
-/// S11 (а): смена прав на включённом, но ещё не запущенном плагине перезапускает его
-/// (`reload` при `set_permissions`) → переход `stopped → active` попадает в ленту.
+
+
 #[test]
 fn set_permissions_emits_status_change_on_restart() {
     let _guard = serial();
@@ -150,8 +150,8 @@ fn set_permissions_emits_status_change_on_restart() {
     );
 }
 
-/// S11 (б): установка на активный плагин **того же** набора прав не эмитит лишнего —
-/// инвариант «эмитим только при смене статуса» (перезапуск `active → active` молчит).
+
+
 #[test]
 fn set_permissions_same_set_emits_no_extra_event() {
     let _guard = serial();
@@ -171,8 +171,8 @@ fn set_permissions_same_set_emits_no_extra_event() {
     );
 }
 
-/// S11: `start_enabled` — автозапуск включённого, но не запущенного плагина →
-/// переход `stopped → active` попадает в `plugin-status-changed`.
+
+
 #[test]
 fn start_enabled_emits_stopped_to_active() {
     let _guard = serial();
@@ -188,8 +188,8 @@ fn start_enabled_emits_stopped_to_active() {
     );
 }
 
-/// S11: отказ доставки события уводит плагин из `Active` → в ленту должна попасть
-/// смена `active → failed` с диагностическим сообщением (сценарий 1 ТЗ).
+
+
 #[test]
 fn plugin_status_changed_on_pump_failure() {
     let _guard = serial();
@@ -235,8 +235,8 @@ fn plugin_status_changed_on_pump_failure() {
     );
 }
 
-/// S11: команды документов эмитят `document-event` с типом действия и опциональными
-/// `path`/`rev` (TZ §5.2). Проверяем все четыре типа: `new`/`open`/`save`/`close`.
+
+
 #[test]
 fn document_event_sink_receives_all_action_types() {
     let seen = Arc::new(Mutex::new(
@@ -269,8 +269,8 @@ fn document_event_sink_receives_all_action_types() {
     );
 }
 
-/// S11: host-call `log` (сообщения `host.log` из Lua) пишется в `LogSink` с
-/// `(level, category, message)`; логи плагина получают категорию `plugin` (TZ §5.2).
+
+
 #[test]
 fn log_entry_calls_log_sink() {
     let store = store_with_doc("x");
@@ -310,8 +310,8 @@ fn log_entry_calls_log_sink() {
     );
 }
 
-/// S11: без подключённого `LogSink` host-call `log` не паникует и не ломает плагин
-/// (best-effort observability, как `show_message` без sink).
+
+
 #[test]
 fn log_without_sink_is_noop() {
     let store = store_with_doc("x");

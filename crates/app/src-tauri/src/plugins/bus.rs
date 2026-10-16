@@ -13,18 +13,18 @@ use std::collections::HashMap;
 
 use serde_json::{json, Value};
 
-/// Событие шины: имя (`document:changed`, …) и JSON-payload.
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Event {
     pub name: String,
     pub payload: Value,
 }
 
-/// Накопитель событий между тиками доставки.
-///
-/// Очередь снимается целиком через [`EventBus::drain`]; `document:changed`
-/// коалесцируется по `doc_id` на месте (последняя ревизия, позиция первого
-/// появления — детерминированный порядок).
+
+
+
+
+
 #[derive(Default)]
 pub struct EventBus {
     pending: Vec<Event>,
@@ -36,7 +36,7 @@ impl EventBus {
         Self::default()
     }
 
-    /// Публикует `document:changed{doc_id,rev}` с коалесингом по `doc_id`.
+    
     pub fn publish_document_changed(&mut self, doc_id: &str, rev: u64) {
         let event = Event {
             name: "document:changed".to_string(),
@@ -52,12 +52,12 @@ impl EventBus {
         }
     }
 
-    /// Публикует `document:opened{doc_id,path}`.
+    
     pub fn publish_opened(&mut self, doc_id: &str, path: Option<&str>) {
         self.push("document:opened", json!({ "doc_id": doc_id, "path": path }));
     }
 
-    /// Публикует `document:closed{doc_id}` (путь закрытого документа хосту неизвестен).
+    
     pub fn publish_closed(&mut self, doc_id: &str) {
         self.push(
             "document:closed",
@@ -65,10 +65,10 @@ impl EventBus {
         );
     }
 
-    /// Публикует `command:invoked{command_id, doc_id}`.
-    ///
-    /// `doc_id` — текущий документ (может отсутствовать): у плагина нет собственного
-    /// доступа к «активному» документу вне события, поэтому команда несёт его с собой (§9).
+    
+    
+    
+    
     pub fn publish_command(&mut self, command_id: &str, doc_id: Option<&str>) {
         self.push(
             "command:invoked",
@@ -83,7 +83,7 @@ impl EventBus {
         });
     }
 
-    /// Забирает все накопленные события и очищает очередь (в т.ч. карту коалесинга).
+    
     pub fn drain(&mut self) -> Vec<Event> {
         self.changed_at.clear();
         std::mem::take(&mut self.pending)

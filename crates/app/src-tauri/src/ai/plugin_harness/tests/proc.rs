@@ -3,8 +3,8 @@ use std::time::Duration;
 
 use super::super::proc::run_with_timeout;
 
-/// «Болтливый» процесс: вывод больше буфера пайпа. Без параллельного чтения процесс
-/// заблокировался бы на записи и таймаут сработал бы ложно.
+
+
 #[test]
 fn run_with_timeout_reads_large_output_without_false_timeout() {
     let mut command = Command::new("cmd");

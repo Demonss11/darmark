@@ -13,7 +13,7 @@ use pulldown_cmark::{html, Event, Options, Parser, Tag, TagEnd};
 
 mod frontmatter;
 
-/// Все расширения, включённые по умолчанию в приложении.
+
 pub const DEFAULT_OPTIONS: Options = Options::empty()
     .union(Options::ENABLE_TABLES)
     .union(Options::ENABLE_STRIKETHROUGH)
@@ -21,21 +21,21 @@ pub const DEFAULT_OPTIONS: Options = Options::empty()
     .union(Options::ENABLE_FOOTNOTES)
     .union(Options::ENABLE_HEADING_ATTRIBUTES);
 
-/// Рендерит markdown в HTML-фрагмент с расширениями по умолчанию.
-///
-/// Синтаксические ошибки отсутствуют по построению: невалидный markdown
-/// рендерится как обычный текст (CommonMark fallback), поэтому Result не нужен.
+
+
+
+
 pub fn to_html(markdown: &str) -> String {
     to_html_with(markdown, DEFAULT_OPTIONS)
 }
 
-/// То же, но с произвольным набором опций.
-///
-/// Ведущая YAML-шапка отрисовывается в HTML-таблицу через [`frontmatter`],
-/// остальной текст — обычным парсером. Detection свой, а не
-/// `Options::ENABLE_YAML_STYLE_METADATA_BLOCKS`: опция pulldown распознаёт
-/// metadata-блок в любом месте столбца 0 и тогда обычные пары `---` съедали бы
-/// содержимое; нам нужна только шапка в начале.
+
+
+
+
+
+
+
 pub fn to_html_with(markdown: &str, options: Options) -> String {
     let (front, rest) = match split_frontmatter(markdown) {
         Some((yaml, rest_start)) => (
@@ -52,23 +52,23 @@ pub fn to_html_with(markdown: &str, options: Options) -> String {
     sanitize_html(&out)
 }
 
-/// Санитизирует произвольный HTML-фрагмент той же политикой белых списков,
-/// что и [`to_html`].
-///
-/// Публичный вход для плагинных тир-1 view (§11.1 DESIGN_DOC): HTML из
-/// `host.set_view_content` обязан пройти ровно ту же санитизацию, что и
-/// предпросмотр. Расширенный allowlist `data-p-<pluginid>-*` (D7/§11.2) действует
-/// и здесь.
+
+
+
+
+
+
+
 pub fn sanitize_fragment(html: &str) -> String {
     sanitize_html(html)
 }
 
-/// Определяет ведущую YAML-шапку Markdown-документа.
-///
-/// Шапкой считается **только блок в начале документа**: первая строка — ровно
-/// `---` (после необязательного BOM), закрытие — строка `---` или `...`.
-/// Возвращает `(тело между делимитрами, байтовое смещение начала остального
-/// текста)`. `None` — шапки нет (тогда ведущий `---` остаётся обычным `<hr>`).
+
+
+
+
+
+
 fn split_frontmatter(markdown: &str) -> Option<(&str, usize)> {
     let (text, bom) = match markdown.strip_prefix('\u{FEFF}') {
         Some(rest) => (rest, markdown.len() - rest.len()),
@@ -102,33 +102,33 @@ fn split_frontmatter(markdown: &str) -> Option<(&str, usize)> {
     }
 }
 
-/// Рендерит markdown с пометкой топ-блоков: каждый блок оборачивается в
-/// `<div class="md-block" data-md="{start},{end}">`, где `start`/`end` — байтовые
-/// смещения блока в исходном markdown (start включительно, end исключительно).
-///
-/// Документ парсится **один раз**: события `OffsetIter` группируются по
-/// топ-блокам и каждая группа прогоняется через `html::push_html` — иначе
-/// ссылочные определения (`[foo]: /url`) и сноски (`[^1]`) разрешались бы
-/// разными парсерами и терялись.
-///
-/// Инварианты:
-/// * детерминированность — одинаковый вход даёт одинаковый выход;
-/// * содержимое блоков **без всех `data-md`-атрибутов** (и без обёрток) побайтово
-///   совпадает с [`to_html`] (тот же `DEFAULT_OPTIONS` + тот же санитайзер);
-/// * содержимое `data-md` — только цифры и запятая (значения формируются из usize);
-/// * границы блоков — UTF-8 char-boundary (гарантия `OffsetIter`);
-/// * пустые блоки не создаются (проверка по итоговому HTML, а не по срезу).
-///
-/// Блоки-таблицы дополнительно размечаются: `<tr>`, `<th>`, `<td>` получают
-/// собственный `data-md`. Строка заголовка размечается только на уровне ячеек —
-/// отдельного `tr` у неё нет. Диапазоны берутся из парсера, поэтому экранированный
-/// `\|` не сбивает маппинг. Инъекция выполняется **после** санитайзера, иначе
-/// `data-*` был бы срезан.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 pub fn to_html_mapped(markdown: &str) -> String {
     let mut result = String::with_capacity(markdown.len() + 64);
     match split_frontmatter(markdown) {
         Some((yaml, rest_start)) => {
-            // Шапка — отдельный top-блок: инспектор подсвечивает её целиком.
+            
             let end = trim_end_ws(markdown, 0, rest_start);
             result.push_str("<div class=\"md-block\" data-md=\"0,");
             result.push_str(&end.to_string());
@@ -142,12 +142,12 @@ pub fn to_html_mapped(markdown: &str) -> String {
     result
 }
 
-/// Размечает топ-блоки `body`, прибавляя `base` к байтовым смещениям — сдвиг
-/// остатка документа после вырезанной YAML-шапки.
+
+
 fn map_body(body: &str, base: usize) -> String {
-    // Группы событий по топ-блокам: (start, end, события блока, структурные
-    // диапазоны таблиц). Структурные диапазоны собираем на этапе обхода, пока
-    // доступны байтовые смещения `OffsetIter` — в `Event` их уже нет.
+    
+    
+    
     let mut blocks: Vec<(usize, usize, Vec<Event<'_>>, Vec<StructRange>)> = Vec::new();
     let mut group: Vec<Event<'_>> = Vec::new();
     let mut group_struct: Vec<StructRange> = Vec::new();
@@ -188,8 +188,8 @@ fn map_body(body: &str, base: usize) -> String {
             }
             _ => {
                 if depth == 0 {
-                    // Одиночные события верхнего уровня не образуют контейнер
-                    // (`Rule`, HTML-блоки, «висячий» текст) — каждое своём блоком.
+                    
+                    
                     blocks.push((range.start, range.end, vec![event], Vec::new()));
                 } else {
                     group.push(event);
@@ -198,9 +198,9 @@ fn map_body(body: &str, base: usize) -> String {
         }
     }
 
-    // Ссылочные определения не порождают событий, поэтому их байты оказываются
-    // «между» блоками. Приклеиваем такие промежутки к следующему блоку
-    // (хвостовой — к последнему), чтобы покрытие не рвалось.
+    
+    
+    
     let mut prev_end = 0;
     for block in blocks.iter_mut() {
         let start = block.0;
@@ -220,8 +220,8 @@ fn map_body(body: &str, base: usize) -> String {
 
     let mut result = String::with_capacity(body.len() + 64);
     for (start, end, events, struct_ranges) in blocks {
-        // Хвостовые пробелы не относятся к блоку: подсветка не должна захватывать
-        // «воздух» между абзацами.
+        
+        
         let end = trim_end_ws(body, start, end);
         if end <= start {
             continue;
@@ -229,7 +229,7 @@ fn map_body(body: &str, base: usize) -> String {
         let mut html_out = String::with_capacity((end - start) + 32);
         html::push_html(&mut html_out, events.into_iter());
         let mut sanitized = sanitize_html(&html_out);
-        // Санитайзер срезает `data-*`, поэтому вложенную разметку добавляем после него.
+        
         if !struct_ranges.is_empty() {
             let shifted: Vec<StructRange> = struct_ranges
                 .into_iter()
@@ -241,9 +241,9 @@ fn map_body(body: &str, base: usize) -> String {
                 .collect();
             sanitized = inject_structural_data_md(&sanitized, &shifted);
         }
-        // Непустой по исходнику HTML-комментарий после санитайзера оставляет лишь
-        // пробельный хвост — обёртку не создаём, но хвост сохраняем,
-        // чтобы конкатенация совпадала с to_html.
+        
+        
+        
         if sanitized.trim().is_empty() {
             result.push_str(&sanitized);
             continue;
@@ -259,9 +259,9 @@ fn map_body(body: &str, base: usize) -> String {
     result
 }
 
-// ─── Структурная разметка таблиц ───────────────────────────────────────
 
-/// Тип структурного элемента таблицы, получающего собственный `data-md`.
+
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum StructTag {
     Row,
@@ -269,7 +269,7 @@ enum StructTag {
     Td,
 }
 
-/// Байтовый диапазон структурного элемента таблицы в исходном markdown.
+
 #[derive(Debug, Clone, Copy)]
 struct StructRange {
     tag: StructTag,
@@ -277,12 +277,12 @@ struct StructRange {
     end: usize,
 }
 
-/// Собирает диапазон структурного тега таблицы из очередного события.
-///
-/// Порядок добавления совпадает с порядком следования HTML-тегов, поэтому
-/// инъекция сопоставляет их курсором. Строка заголовка (`TableRow` внутри
-/// `TableHead`) не размечается: у шапки интерактивны `th`, а отдельный `tr`
-/// только запутал бы сопоставление.
+
+
+
+
+
+
 fn collect_struct_range(
     markdown: &str,
     event: &Event<'_>,
@@ -319,9 +319,9 @@ fn collect_struct_range(
     }
 }
 
-/// Обрезает диапазон ячейки до её содержимого (без обрамляющих пробелов).
-/// Если после обрезки содержимого нет (ячейка из пробелов) — возвращает
-/// исходный диапазон парсера, чтобы не потерять место в структуре.
+
+
+
 fn trim_cell(markdown: &str, start: usize, end: usize) -> (usize, usize) {
     match (
         first_non_ws(markdown, start, end),
@@ -332,13 +332,13 @@ fn trim_cell(markdown: &str, start: usize, end: usize) -> (usize, usize) {
     }
 }
 
-/// Вставляет `data-md="start,end"` в открывающие теги `<tr>`/`<th>`/`<td>`
-/// в порядке `ranges`. Чистая функция над уже санитизированным HTML.
-///
-/// Состояние: `in_head` (по `<thead>`/`<tbody>`/`<tfoot>`) и `cell_depth`
-/// (глубина вложенности ячеек) — оба учитываются только на внешнем уровне
-/// (`cell_depth == 0`), что защищает от вложенной таблицы внутри ячейки. При
-/// несовпадении типа тега и диапазона тег пропускается без сдвига курсора.
+
+
+
+
+
+
+
 fn inject_structural_data_md(html: &str, ranges: &[StructRange]) -> String {
     let mut out = String::with_capacity(html.len() + ranges.len() * 24);
     let mut cursor = 0usize;
@@ -349,7 +349,7 @@ fn inject_structural_data_md(html: &str, ranges: &[StructRange]) -> String {
     let mut i = 0usize;
     while i < bytes.len() {
         if bytes[i] != b'<' {
-            // Копируем текст до следующего '<' одним куском — дешевле посимвольно.
+            
             match html[i..].find('<') {
                 Some(off) => {
                     out.push_str(&html[i..i + off]);
@@ -414,8 +414,8 @@ fn inject_structural_data_md(html: &str, ranges: &[StructRange]) -> String {
     out
 }
 
-/// Индекс `>` открывающего/закрывающего тега, начиная с `<` по `start`,
-/// с учётом кавычек внутри тега (`style="text-align: right"`).
+
+
 fn find_tag_end(html: &str, start: usize) -> usize {
     let bytes = html.as_bytes();
     let mut i = start + 1;
@@ -441,7 +441,7 @@ fn find_tag_end(html: &str, start: usize) -> usize {
     bytes.len().saturating_sub(1)
 }
 
-/// Имя тега в нижнем регистре из сырого `<...>` (без закрывающего слэша).
+
 fn tag_name(raw: &str) -> String {
     raw.trim_start_matches('<')
         .trim_start_matches('/')
@@ -451,7 +451,7 @@ fn tag_name(raw: &str) -> String {
         .to_ascii_lowercase()
 }
 
-/// Дописывает тег `raw` в `out`, вставив ` data-md="s,e"` перед `>`.
+
 fn push_with_data_md(out: &mut String, raw: &str, range: StructRange) {
     let inner = raw.strip_suffix('>').unwrap_or(raw);
     out.push_str(inner);
@@ -462,7 +462,7 @@ fn push_with_data_md(out: &mut String, raw: &str, range: StructRange) {
     out.push_str("\">");
 }
 
-/// Байтовый индекс первого непробельного символа в `markdown[from..to]`.
+
 fn first_non_ws(markdown: &str, from: usize, to: usize) -> Option<usize> {
     let slice = markdown.get(from..to)?;
     slice
@@ -471,8 +471,8 @@ fn first_non_ws(markdown: &str, from: usize, to: usize) -> Option<usize> {
         .map(|(i, _)| from + i)
 }
 
-/// Байтовый индекс сразу после последнего непробельного символа в
-/// `markdown[from..to]`.
+
+
 fn last_non_ws_end(markdown: &str, from: usize, to: usize) -> Option<usize> {
     let slice = markdown.get(from..to)?;
     slice
@@ -482,7 +482,7 @@ fn last_non_ws_end(markdown: &str, from: usize, to: usize) -> Option<usize> {
         .next_back()
 }
 
-/// Усекает `end`, убирая хвостовые пробельные символы в `markdown[start..end]`.
+
 fn trim_end_ws(markdown: &str, start: usize, end: usize) -> usize {
     match markdown.get(start..end) {
         Some(slice) => start + slice.trim_end().len(),
@@ -490,19 +490,19 @@ fn trim_end_ws(markdown: &str, start: usize, end: usize) -> usize {
     }
 }
 
-// ─── Санитайзер HTML-вывода pulldown-cmark (белые списки) ─────────────
-//
-// pulldown-cmark не санитайзит вывод: сырой HTML из документа проходит как есть.
-// Идеи взяты из ammonia (без зависимости от html5ever):
-//   * неизвестный тег «разворачиваем», содержимое опасных контейнеров
-//     (script/style/iframe/…) выкидываем целиком;
-//   * белый список атрибутов (глобальные + по тегу) вместо «удалить on*» —
-//     это автоматически убирает on*, srcdoc, formaction и т.п.;
-//   * схемы URL проверяем по белому списку, а не по префиксу;
-//   * значения атрибутов декодируем от сущностей и заново экранируем, чтобы
-//     `&#34;` не мог «разорвать» кавычки и создать новый атрибут.
 
-/// Разрешённые теги (аналог `ammonia::Builder::tags`).
+
+
+
+
+
+
+
+
+
+
+
+
 const ALLOWED_TAGS: &[&str] = &[
     "a",
     "abbr",
@@ -559,20 +559,20 @@ const ALLOWED_TAGS: &[&str] = &[
     "var",
 ];
 
-/// Теги, которые вместе с содержимым удаляются целиком. Только элементы с
-/// закрывающим тегом — иначе незакрытый тег «съел» бы весь остаток документа.
+
+
 const DROP_CONTENT_TAGS: &[&str] = &[
     "script", "style", "iframe", "object", "form", "template", "svg", "math", "noscript",
     "textarea", "select", "button", "xmp", "title",
 ];
 
-/// Атрибуты, разрешённые на любом теге (аналог `generic_attributes`).
+
 const GLOBAL_ATTRS: &[&str] = &["class", "id", "title", "lang", "dir", "role"];
 
-/// Разрешённые схемы URL (аналог `url_schemes`).
+
 const ALLOWED_SCHEMES: &[&str] = &["http", "https", "mailto", "tel"];
 
-/// Атрибуты, значение которых — URL (аналог `is_url_attr`).
+
 const URL_ATTRS: &[&str] = &[
     "href",
     "src",
@@ -592,7 +592,7 @@ fn is_drop_content_tag(name: &str) -> bool {
     DROP_CONTENT_TAGS.contains(&name)
 }
 
-/// Атрибуты, разрешённые конкретному тегу (сверх глобальных).
+
 fn tag_attrs(tag: &str) -> &'static [&'static str] {
     match tag {
         "a" => &["href", "target", "rel", "hreflang", "type"],
@@ -617,9 +617,9 @@ fn is_allowed_attr(tag: &str, attr: &str) -> bool {
     GLOBAL_ATTRS.contains(&attr) || tag_attrs(tag).contains(&attr) || is_plugin_data_attr(attr)
 }
 
-/// Атрибут плагина `data-p-<pluginid>-<suffix>` — единственный класс `data-*`,
-/// переживающий санитизацию (D7/§11.2). `pluginid` — `[a-z0-9_-]+`, `suffix` —
-/// непустой; остальные `data-*` срезаются.
+
+
+
 fn is_plugin_data_attr(attr: &str) -> bool {
     let Some(rest) = attr.strip_prefix("data-p-") else {
         return false;
@@ -638,8 +638,8 @@ fn is_url_attr(attr: &str) -> bool {
     URL_ATTRS.contains(&attr)
 }
 
-/// Декодирует числовые (`&#106;`, `&#x61;`) и несколько «опасных» именованных
-/// сущностей. Неизвестные `&name;` оставляем как есть — их заэкранирует вывод.
+
+
 fn decode_entities(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut rest = s;
@@ -700,10 +700,10 @@ fn escape_html_attr(out: &mut String, value: &str) {
     }
 }
 
-/// Проверяет URL по белому списку схем. Значение должно быть уже декодировано от
-/// сущностей (см. [`rewrite_tag`]), иначе `&#106;avascript:` пройдёт. Управляющие
-/// символы и пробелы убираются, чтобы `java\tscript:` не проскочил. Относительные
-/// пути разрешены.
+
+
+
+
 fn url_is_safe(attr: &str, value: &str) -> bool {
     let cleaned: String = value
         .chars()
@@ -713,7 +713,7 @@ fn url_is_safe(attr: &str, value: &str) -> bool {
     match cleaned.find(':') {
         Some(colon) => {
             let scheme = &cleaned[..colon];
-            // ':' внутри относительного пути — не схема.
+            
             if scheme.contains('/') || scheme.contains('?') || scheme.contains('#') {
                 return true;
             }
@@ -729,7 +729,7 @@ fn url_is_safe(attr: &str, value: &str) -> bool {
     }
 }
 
-/// `scheme = ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )` по RFC 3986.
+
 fn is_scheme(s: &str) -> bool {
     let mut chars = s.chars();
     match chars.next() {
@@ -739,7 +739,7 @@ fn is_scheme(s: &str) -> bool {
     chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
 }
 
-/// Оставляем `style` только для выравнивания ячеек (то, что генерирует pulldown).
+
 fn style_is_safe(value: &str) -> bool {
     match value.trim().to_ascii_lowercase().split_once(':') {
         Some(("text-align", rest)) => {
@@ -761,7 +761,7 @@ fn sanitize_html(html: &str) -> String {
 
         let saved: String = chars.clone().take(40).collect();
         if saved.to_ascii_lowercase().starts_with("!--") {
-            // Съедаем `!--` (3 символа), остаток до `-->` — в skip_comment.
+            
             for _ in 0..3 {
                 chars.next();
             }
@@ -781,7 +781,7 @@ fn sanitize_html(html: &str) -> String {
     out
 }
 
-/// Читает имя тега, не потребляя поток. Возвращает (имя, закрывающий ли тег).
+
 fn peek_tag_name(chars: &std::iter::Peekable<std::str::Chars<'_>>) -> Option<(String, bool)> {
     let mut it = chars.clone().peekable();
     let closing = it.peek() == Some(&'/');
@@ -804,9 +804,9 @@ fn peek_tag_name(chars: &std::iter::Peekable<std::str::Chars<'_>>) -> Option<(St
     }
 }
 
-/// Пропускает содержимое контейнера до закрывающего `</name>` (включительно).
-// `while let … chars.next()` вместо `for c in chars.by_ref()`: внутри тела нужны
-// `chars.clone()` и `chars.by_ref()`, а `for` занял бы поток.
+
+
+
 #[allow(clippy::while_let_on_iterator)]
 fn skip_element_block(chars: &mut std::iter::Peekable<std::str::Chars<'_>>, name: &str) -> bool {
     let close = format!("/{name}");
@@ -834,7 +834,7 @@ fn skip_element_block(chars: &mut std::iter::Peekable<std::str::Chars<'_>>, name
     false
 }
 
-/// Пропускает HTML-комментарий после уже съеденного `<!--`.
+
 fn skip_comment(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) -> bool {
     while let Some(c) = chars.next() {
         if c == '-' && chars.peek() == Some(&'-') {
@@ -848,7 +848,7 @@ fn skip_comment(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) -> bool {
     false
 }
 
-/// Собирает сырой тег от текущей позиции (уже после `<`) до `>` вне кавычек.
+
 fn collect_tag(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) -> String {
     let mut raw = String::from("<");
     let mut in_quote: Option<char> = None;
@@ -867,13 +867,13 @@ fn collect_tag(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) -> String {
     raw
 }
 
-/// Символы, допустимые в имени атрибута/тега (до разделителя или конца).
+
 fn is_name_char(c: char) -> bool {
     !(c.is_whitespace() || c == '=' || c == '>' || c == '/')
 }
 
-/// Работает по `Vec<char>`, а не по байтовым индексам: кириллица в атрибуте
-/// (`title="заголовок"`) не должна уводить индекс в середину символа.
+
+
 fn rewrite_tag(tag: &str) -> String {
     let ch: Vec<char> = tag.chars().collect();
     let n = ch.len();
@@ -907,7 +907,7 @@ fn rewrite_tag(tag: &str) -> String {
     }
 
     if !is_allowed_tag(&name) {
-        // Неизвестный тег «разворачиваем»: сам тег убираем, содержимое остаётся.
+        
         return String::new();
     }
 
@@ -987,7 +987,7 @@ fn rewrite_tag(tag: &str) -> String {
     out
 }
 
-/// Пропускает пробелы в диапазоне `[i, end)`.
+
 fn skip_ws(ch: &[char], mut i: usize, end: usize) -> usize {
     while i < end && ch[i].is_whitespace() {
         i += 1;
@@ -1045,7 +1045,7 @@ mod tests {
         assert_eq!(to_html(""), "");
     }
 
-    // ─── XSS-санитайзер ─────────────────────────────────────────────────
+    
 
     #[test]
     fn strips_img_onerror() {
@@ -1112,8 +1112,8 @@ mod tests {
 
     #[test]
     fn prevents_entity_attribute_breakout() {
-        // `&#34;` декодируется в кавычку и должна быть заэкранирована,
-        // иначе атрибут «порвётся» и создаст onerror.
+        
+        
         let html = to_html(r#"<img alt='&#34; onerror=alert(1)'>"#);
         assert!(
             html.contains("alt=\"&quot; onerror=alert(1)\""),
@@ -1167,11 +1167,11 @@ mod tests {
         );
     }
 
-    // ─── (regression): не-ASCII в атрибутах не должен ронять санитайзер ───
-    //
-    // Реализация считала позиции в байтах, а выводила символы через
-    // chars().nth(i): кириллица в title/alt уводила индекс в середину
-    // многобайтового символа → panic «is not a char boundary».
+    
+    
+    
+    
+    
 
     #[test]
     fn cyrillic_link_title_survives() {
@@ -1211,11 +1211,11 @@ mod tests {
         assert!(html.contains("кириллица"), "html: {html}");
     }
 
-    // ─── табличный harness ───────────────────────────────────────────────
-    //
-    // Точечные тесты выше проверяют отдельные случаи; здесь единый инвариант
-    // «ни один XSS-вектор не выживает» прогоняется по таблице контекстов.
-    // Расширять нужно именно эти таблицы, чтобы новое правило не «протекало».
+    
+    
+    
+    
+    
 
     fn assert_clean(input: &str, forbidden: &[&str]) {
         let html = to_html(input);
@@ -1305,7 +1305,7 @@ mod tests {
         }
     }
 
-    // ─── Точечные тесты внутренних функций v2 ──────────────────────────
+    
 
     #[test]
     fn decode_entities_handles_numeric_and_named() {
@@ -1334,11 +1334,11 @@ mod tests {
         assert!(!style_is_safe("position:fixed"));
     }
 
-    // ─── Режим инспектора: to_html_mapped ───────────────────────────────
+    
 
-    /// Извлекает `(start, end)`-пары из `data-md` **обёрток блоков**. Сужено
-    /// намеренно: после разметки ячеек/строк таблиц `data-md` в документе уже
-    /// не уникален, а блочные тесты должны видеть только `.md-block`.
+    
+    
+    
     fn mapped_ranges(md: &str) -> Vec<(usize, usize)> {
         const WRAP: &str = "<div class=\"md-block\" data-md=\"";
         let html = to_html_mapped(md);
@@ -1456,15 +1456,15 @@ mod tests {
     fn crlf_bytes() {
         let md = "# H\r\n\r\ntext\r\n";
         let ranges = mapped_ranges(md);
-        // Байты: "# H"(0..3) \r\n \r\n "text"(7..11) \r\n.
-        // trim_end не захватывает хвостовой `\r`.
+        
+        
         assert_eq!(ranges, vec![(0, 3), (7, 11)], "ranges: {ranges:?}");
         assert_eq!(&md[ranges[0].0..ranges[0].1], "# H");
         assert_eq!(&md[ranges[1].0..ranges[1].1], "text");
     }
 
-    /// Снимает с mapped-HTML обёртки блоков, оставляя только содержимое.
-    /// Учитывает вложенные `<div>` (например, `footnote-definition`).
+    
+    
     fn strip_mapped_wrappers(html: &str) -> String {
         const OPEN: &str = "<div class=\"md-block\" data-md=\"";
         let mut out = String::new();
@@ -1472,7 +1472,7 @@ mod tests {
         while let Some(pos) = rest.find(OPEN) {
             out.push_str(&rest[..pos]);
             let after = &rest[pos + OPEN.len()..];
-            // после `data-md="…"` идёт `>` — пропускаем до него
+            
             let Some(gt) = after.find('>') else { break };
             let inner = &after[gt + 1..];
             match find_matching_div_close(inner) {
@@ -1489,7 +1489,7 @@ mod tests {
         out
     }
 
-    /// Индекс парного `</div>` в `s` для уже открытого `<div>` (глубина = 1).
+    
     fn find_matching_div_close(s: &str) -> Option<usize> {
         let bytes = s.as_bytes();
         let mut depth = 1usize;
@@ -1511,13 +1511,13 @@ mod tests {
         None
     }
 
-    /// Удаляет все атрибуты `data-md="…"` из HTML (с предшествующим пробелом).
+    
     fn strip_all_data_md(html: &str) -> String {
         const ATTR: &str = "data-md=\"";
         let mut out = String::with_capacity(html.len());
         let mut rest = html;
         while let Some(pos) = rest.find(ATTR) {
-            // Срезаем один пробел-разделитель перед атрибутом, если он есть.
+            
             let cut = if pos > 0 && rest.as_bytes()[pos - 1] == b' ' {
                 pos - 1
             } else {
@@ -1537,9 +1537,9 @@ mod tests {
         out
     }
 
-    /// Диапазоны `data-md` **на структурных тегах таблицы** (`tr`/`th`/`td`)
-    /// в порядке документа: `(tag, start, end)`. Обёртки `.md-block` (тег `div`)
-    /// игнорируются.
+    
+    
+    
     fn table_ranges(html: &str) -> Vec<(String, usize, usize)> {
         let bytes = html.as_bytes();
         let mut out = Vec::new();
@@ -1559,8 +1559,8 @@ mod tests {
             }
             let name = html[name_start..j].to_ascii_lowercase();
             if matches!(name.as_str(), "tr" | "th" | "td") {
-                // Конец открывающего тега (атрибуты могут содержать кавычки, но
-                // `data-md` у нас всегда числовой и не содержит `>`).
+                
+                
                 let mut k = j;
                 while k < bytes.len() && bytes[k] != b'>' {
                     k += 1;
@@ -1583,9 +1583,9 @@ mod tests {
         out
     }
 
-    /// Содержимое блоков (без обёрток) обязано побайтово совпадать с `to_html`.
-    /// Проверяем на документах, задевающих все ветки парсера: ссылочные
-    /// определения, картинки, сноски, `<hr>`, HTML-комментарии.
+    
+    
+    
     #[test]
     fn mapped_matches_to_html_regression() {
         for md in [
@@ -1595,7 +1595,7 @@ mod tests {
             "Text[^1]\n\n[^1]: note",
             "text\n\n***\n\nmore",
             "before\n\n<!-- hidden -->\n\nafter",
-            // Таблицы: вложенная разметка tr/th/td не должна менять содержимое.
+            
             "| A | B |\n|---|---|\n| 1 | 2 |",
             "| Файл | Размер |\n|------|-------:|\n| README.md | 2 КБ |",
             "| A\\|B | C |\n|---|---|\n| a | b |",
@@ -1673,20 +1673,20 @@ mod tests {
     fn assert_blocks_cover_nonempty(md: &str) {
         let ranges = mapped_ranges(md);
 
-        // Диапазоны не пересекаются и упорядочены.
+        
         for pair in ranges.windows(2) {
             assert!(pair[0].1 <= pair[1].0, "наложение: {pair:?}");
         }
 
-        // Каждый диапазон покрывает только «содержательные» байты.
+        
         for (s, e) in &ranges {
             assert!(md.is_char_boundary(*s) && md.is_char_boundary(*e));
             assert!(!md[*s..*e].trim().is_empty(), "пустой блок {s}..{e}");
         }
 
-        // Каждая непустая строка целиком попадает хотя бы в один диапазон.
-        // (Диапазон может захватывать и пустые строки — например, ссылочное
-        // определение, приклеенное к соседнему блоку.)
+        
+        
+        
         let mut pos = 0usize;
         for segment in md.split_inclusive('\n') {
             let no_nl = segment.strip_suffix('\n').unwrap_or(segment);
@@ -1718,9 +1718,9 @@ mod tests {
         }
     }
 
-    // ─── Режим инспектора: гранулярность таблиц ─────────────────────────
-    //
-    // Ядро размечает tr/th/td атрибутом data-md (байтовые диапазоны парсера).
+    
+    
+    
 
     #[test]
     fn table_rows_and_cells_are_mapped() {
@@ -1786,7 +1786,7 @@ mod tests {
         assert_eq!(tags, vec!["th", "th", "tr", "td", "td"], "html: {html}");
     }
 
-    /// Таблица внутри цитаты тоже размечается; строка — без префикса `> `.
+    
     #[test]
     fn table_inside_blockquote_is_mapped() {
         let md = "> | A |\n> |---|\n> | a |";
@@ -1808,8 +1808,8 @@ mod tests {
         assert_eq!(mapped_ranges(md), vec![(0, 3), (5, 9)]);
     }
 
-    /// Ячейка со смешанной inline-разметкой выделяется целиком — вместе с
-    /// маркерами (`**`, бэктики), а не только по «внутреннему» тексту.
+    
+    
     #[test]
     fn cell_with_inline_markup_maps_full_source() {
         let md = "| **b** | `c` |\n|---|---|\n| x | y |";
@@ -1829,8 +1829,8 @@ mod tests {
         );
     }
 
-    /// Экранированный `\|` — ядро берёт диапазоны парсера, а не наивный
-    /// split по `|`, поэтому ячейка мапится целиком.
+    
+    
     #[test]
     fn escaped_pipe_cell_maps_correctly() {
         let md = "| A\\|B | C |\n|---|---|\n| a | b |";
@@ -1862,8 +1862,8 @@ mod tests {
         assert_eq!(rows, vec!["A", "| a |", "a"], "html: {html}");
     }
 
-    /// Несколько таблиц в документе размечаются независимо: курсор диапазонов
-    /// не «перетекает» между блоками.
+    
+    
     #[test]
     fn multiple_tables_each_mapped() {
         let md = "| A |\n|---|\n| a |\n\n| B |\n|---|\n| b |";
@@ -1876,8 +1876,8 @@ mod tests {
         assert_eq!(cells, vec!["A", "a", "B", "b"], "html: {html}");
     }
 
-    /// Выравнивание колонок (`style="text-align: …"`) не мешает инъекции:
-    /// `data-md` оказывается на ячейке, диапазон корректен.
+    
+    
     #[test]
     fn aligned_cells_are_mapped() {
         let md = "| A | B |\n|:--|--:|\n| x | y |";
@@ -1894,7 +1894,7 @@ mod tests {
         assert_eq!(cells, vec!["A", "B", "x", "y"], "html: {html}");
     }
 
-    /// Таблица внутри списка тоже размечается; строка — без отступа списка.
+    
     #[test]
     fn table_inside_list_is_mapped() {
         let md = "- | A |\n  |---|\n  | a |";
@@ -1908,8 +1908,8 @@ mod tests {
         assert_eq!(&md[*s..*e], "| a |", "html: {html}");
     }
 
-    /// Большая таблица (500×8) размечается полностью. Тайминговый порог не
-    /// проверяем (нестабилен), но полнота разметки ловит квадратичность и пропуски.
+    
+    
     #[test]
     fn large_table_maps_every_row_and_cell() {
         const COLS: usize = 8;
@@ -1946,7 +1946,7 @@ mod tests {
         }
     }
 
-    // ─── YAML-шапка: таблица-таблиц (frontmatter.rs) ───────────────────
+    
 
     #[test]
     fn frontmatter_becomes_table_before_content() {
@@ -2022,8 +2022,8 @@ mod tests {
 
     #[test]
     fn frontmatter_shifts_table_structural_offsets() {
-        // Таблица после шапки: её `data-md` должны указывать в оригинальный
-        // markdown, а не в остаток после вырезанной шапки.
+        
+        
         let md = "---\na: 1\n---\n\n| A | B |\n|---|---|\n| x | y |";
         let html = to_html_mapped(md);
         let cells: Vec<String> = table_ranges(&html)
@@ -2034,7 +2034,7 @@ mod tests {
         assert_eq!(cells, vec!["A", "B", "x", "y"], "html: {html}");
     }
 
-    // ─── Публичный вход санитизации + allowlist data-p-* (D7/§11.2) ───────
+    
 
     #[test]
     fn sanitize_fragment_matches_to_html_policy() {
@@ -2069,7 +2069,7 @@ mod tests {
 
     #[test]
     fn plugin_data_attr_value_with_quote_is_escaped() {
-        // Значение с `"` не должно «разорвать» атрибут и создать новый.
+        
         let html = sanitize_fragment(r#"<span data-p-p-action="a&quot;b">x</span>"#);
         assert!(
             html.contains(r#"data-p-p-action="a&quot;b""#),
@@ -2089,7 +2089,7 @@ mod tests {
 
     #[test]
     fn malformed_plugin_data_attr_is_stripped() {
-        // Нет суффикса / пустой pluginid / пустой суффикс — не плагинный атрибут.
+        
         for attr in ["data-p-", "data-p--action", "data-p-foo-"] {
             let html = sanitize_fragment(&format!(r#"<span {attr}="v">x</span>"#));
             assert!(!html.contains("data-p-"), "{attr} не срезан: {html}");

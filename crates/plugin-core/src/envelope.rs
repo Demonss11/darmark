@@ -5,7 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Коды [`PluginError`]. Строки — часть контракта для UI/Lua.
+
 pub mod codes {
     pub const PERMISSION_DENIED: &str = "permission_denied";
     pub const TIMEOUT: &str = "timeout";
@@ -14,48 +14,48 @@ pub mod codes {
     pub const LUA_ERROR: &str = "lua_error";
 }
 
-/// Сообщение host → child: вызов метода плагина либо ответ на ранее присланный host-call.
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "msg", rename_all = "snake_case")]
 pub enum ToChild {
-    /// Вызов (`load`/`activate`/`event`/`action`/…) с идентификатором для сопоставления ответа.
+    
     Invoke {
         id: u32,
         method: String,
         #[serde(default)]
         args: serde_json::Value,
     },
-    /// Ответ на [`ToHost::HostCall`] с тем же `id`.
+    
     Reply {
         id: u32,
         result: Result<serde_json::Value, PluginError>,
     },
 }
 
-/// Сообщение child → host.
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "msg", rename_all = "snake_case")]
 pub enum ToHost {
-    /// Запрос host-функции (range/delta документа, настройки, экспорт и т.п.).
+    
     HostCall {
         id: u32,
         method: String,
         #[serde(default)]
         args: serde_json::Value,
     },
-    /// Событие жизненного цикла (`ready`/`done`/…). Для строк лога используйте [`ToHost::Log`].
+    
     Event {
         kind: String,
         #[serde(default)]
         payload: serde_json::Value,
     },
-    /// Лог плагина — **канонический** канал строк лога (host.log/print). `Event{kind:"log"}`
-    /// допустим, но не рекомендуется: два способа логирования рассинхронизируются.
+    
+    
     Log { level: String, message: String },
 }
 
-/// Ошибка, пересекающая границу процесса. Возвращается как **значение**, не Lua-исключение
-/// (например `permission_denied` при отсутствии разрешения, §4.4/§8).
+
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PluginError {
     pub code: String,
@@ -111,29 +111,29 @@ impl std::fmt::Display for PluginError {
 
 impl std::error::Error for PluginError {}
 
-/// Сериализует сообщение в JSON-payload кадра.
+
 pub fn encode_to_child(msg: &ToChild) -> serde_json::Result<Vec<u8>> {
     serde_json::to_vec(msg)
 }
 
-/// Сериализует сообщение child → host в JSON-payload кадра.
+
 pub fn encode_to_host(msg: &ToHost) -> serde_json::Result<Vec<u8>> {
     serde_json::to_vec(msg)
 }
 
-/// Разбирает payload host → child. Ошибка разбора — [`PluginError`] `protocol` (fallible, без паники).
+
 pub fn decode_to_child(payload: &[u8]) -> Result<ToChild, PluginError> {
     serde_json::from_slice(payload)
         .map_err(|e| PluginError::protocol(format!("конверт хост→child: {e}")))
 }
 
-/// Разбирает payload child → host. **Не паникует** на мусоре/обрезке (F36).
+
 pub fn decode_to_host(payload: &[u8]) -> Result<ToHost, PluginError> {
     serde_json::from_slice(payload)
         .map_err(|e| PluginError::protocol(format!("конверт child→host: {e}")))
 }
 
-/// Сторона хоста: запись кадра host → child.
+
 pub fn write_to_child<W: std::io::Write>(w: &mut W, msg: &ToChild) -> std::io::Result<()> {
     let bytes = encode_to_child(msg).map_err(|e| {
         std::io::Error::new(
@@ -144,14 +144,14 @@ pub fn write_to_child<W: std::io::Write>(w: &mut W, msg: &ToChild) -> std::io::R
     crate::frame::write_frame(w, &bytes)
 }
 
-/// Читает кадр host → child (сторона child). Ошибка кадра — `io::Error`; нарушение формата —
-/// `Ok(Err(PluginError protocol))`, чтобы вызывающий единообразно обработал сбой конверта.
+
+
 pub fn read_to_child<R: std::io::Read>(r: &mut R) -> std::io::Result<Result<ToChild, PluginError>> {
     let payload = crate::frame::read_frame_host(r)?;
     Ok(decode_to_child(&payload))
 }
 
-/// Пишет кадр child → host (сторона child).
+
 pub fn write_to_host<W: std::io::Write>(w: &mut W, msg: &ToHost) -> std::io::Result<()> {
     let bytes = encode_to_host(msg).map_err(|e| {
         std::io::Error::new(
@@ -162,8 +162,8 @@ pub fn write_to_host<W: std::io::Write>(w: &mut W, msg: &ToHost) -> std::io::Res
     crate::frame::write_frame(w, &bytes)
 }
 
-/// Читает кадр child → host (сторона хоста). Ошибка кадра — `io::Error`, нарушение формата —
-/// `Ok(Err(PluginError protocol))`: вызывающий единообразно трактует отказ плагина.
+
+
 pub fn read_to_host<R: std::io::Read>(r: &mut R) -> std::io::Result<Result<ToHost, PluginError>> {
     let payload = crate::frame::read_frame(r)?;
     Ok(decode_to_host(&payload))
@@ -295,7 +295,7 @@ mod tests {
 
     #[test]
     fn read_to_child_oversized_frame_is_io_error() {
-        // Хост → child допускает крупные кадры (документ), но потолок всё же есть.
+        
         let mut data = ((crate::frame::MAX_HOST_FRAME_BYTES as u32) + 1)
             .to_le_bytes()
             .to_vec();

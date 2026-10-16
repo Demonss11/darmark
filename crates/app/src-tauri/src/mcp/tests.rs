@@ -12,10 +12,10 @@ use serde_json::Value;
 use super::catalog_repo;
 use super::{app_log_sink, LogEmitter};
 
-/// Mock-эмиттер: захватывает пары `(event, payload)`, проверки идут после вызова стока.
-///
-/// Разделяемое состояние за `Arc`: экземпляр передаётся в сток по значению, а проверяющая
-/// половина остаётся у теста.
+
+
+
+
 #[derive(Clone, Default)]
 struct MockEmitter {
     entries: Arc<Mutex<Vec<(String, Value)>>>,
@@ -69,7 +69,7 @@ fn mcp_log_entry_has_valid_level_category_message() {
     );
 }
 
-/// `catalog_repo` возвращает `<app_data_dir>/plugins` — без автопоиска и env-override.
+
 #[test]
 fn catalog_repo_returns_app_data_dir_plugins() {
     let app_dir = tempfile::tempdir().unwrap();

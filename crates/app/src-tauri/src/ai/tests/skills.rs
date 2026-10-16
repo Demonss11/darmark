@@ -3,8 +3,8 @@
 use crate::ai::skills::{builtin_skills, skills};
 use crate::ai::types::AiSkill;
 
-/// Скилл по `id`: позиционные обращения (`skills()[1]`) не говорят, какой скилл проверяется,
-/// и молча уезжают на другой при перестановке состава.
+
+
 fn skill_by_id(id: &str) -> AiSkill {
     skills()
         .into_iter()
@@ -206,10 +206,10 @@ fn explain_prompt_has_output_structure() {
     );
 }
 
-/// Промт отладки обязан звать `plugin_read` первым ходом и иметь fallback (TASK-003 §3),
-/// а его чек-лист — покрывать рантайм-классы отказов, а не только загрузку (TASK-003 §4).
-/// Усечение исходника транспортом обязано быть **объявлено** промтом: модель не судит о коде,
-/// которого не видела.
+
+
+
+
 #[test]
 fn debug_plugin_prompt_reads_source_and_covers_runtime_failures() {
     let prompt = &skill_by_id("debug-plugin").prompt_template;

@@ -13,37 +13,37 @@ use std::path::{Path, PathBuf};
 use plugin_core::manifest::Manifest;
 use plugin_core::MAX_PLUGIN_SOURCE_BYTES;
 
-/// Имя файла манифеста в каталоге плагина.
+
 pub const MANIFEST_FILE: &str = "plugin.json";
 
-/// Лимит размера `plugin.json`: манифест мал, всё сверх — мусор/атака на память хоста.
+
 pub const MAX_MANIFEST_BYTES: u64 = 256 * 1024;
 
-/// Валидный плагин, найденный на диске.
+
 pub struct DiscoveredPlugin {
     pub dir: PathBuf,
     pub manifest: Manifest,
-    /// Исходник, прочитанный при сканировании (кэш; `reload` перечитывает с диска).
+    
     pub source: String,
-    /// Путь к `.lua`-файлу — для перечитывания при перезагрузке.
+    
     pub entry_path: PathBuf,
 }
 
-/// Ошибка одного каталога (не роняет сканирование).
+
 #[derive(Debug)]
 pub struct ScanError {
     pub dir: PathBuf,
     pub message: String,
 }
 
-/// Результат сканирования: валидные плагины + ошибки по остальным.
+
 #[derive(Default)]
 pub struct ScanReport {
     pub plugins: Vec<DiscoveredPlugin>,
     pub errors: Vec<ScanError>,
 }
 
-/// Сканирует каталог плагинов. Отсутствующий каталог — пустой отчёт (плагинов нет — не ошибка).
+
 pub fn scan_plugins(dir: &Path) -> ScanReport {
     let mut report = ScanReport::default();
     let Ok(entries) = std::fs::read_dir(dir) else {
@@ -68,20 +68,20 @@ pub fn scan_plugins(dir: &Path) -> ScanReport {
     report
 }
 
-/// Читает `.lua`-исходник с диска с проверкой размера. Общий путь для сканирования и `reload`.
+
 pub fn read_source(entry_path: &Path) -> Result<String, String> {
     let bytes = read_capped(entry_path, MAX_PLUGIN_SOURCE_BYTES)?;
     String::from_utf8(bytes).map_err(|e| format!("{}: не UTF-8: {e}", entry_path.display()))
 }
 
-/// Читает и валидирует один каталог плагина (harness AI, ADR-0034 §2.4).
-///
-/// Общая точка с [`scan_plugins`]: те же проверки манифеста/entry/размера.
+
+
+
 pub fn load_single(dir: &Path) -> Result<DiscoveredPlugin, String> {
     load_plugin(dir)
 }
 
-/// Читает и валидирует один каталог плагина.
+
 fn load_plugin(dir: &Path) -> Result<DiscoveredPlugin, String> {
     let manifest_path = dir.join(MANIFEST_FILE);
     let manifest_bytes = read_capped(&manifest_path, MAX_MANIFEST_BYTES)?;
@@ -98,12 +98,12 @@ fn load_plugin(dir: &Path) -> Result<DiscoveredPlugin, String> {
     })
 }
 
-/// Читает файл, но не более `max` байт: сначала быстрый `metadata().len()`, затем жёсткий
-/// потолок через `Read::take(max + 1)` — даже если файл вырастет между проверкой и чтением,
-/// аллокация ограничена `max + 1` (защита GUI от OOM).
-///
-/// Единственная реализация потолка: ею же ограничено чтение файлов плагина в MCP-адаптере
-/// `plugin_read` — второй копии проверки быть не должно, иначе один из путей чтения отстанет.
+
+
+
+
+
+
 pub(crate) fn read_capped(path: &Path, max: u64) -> Result<Vec<u8>, String> {
     let metadata = std::fs::metadata(path).map_err(|e| format!("{}: {e}", path.display()))?;
     if metadata.len() > max {

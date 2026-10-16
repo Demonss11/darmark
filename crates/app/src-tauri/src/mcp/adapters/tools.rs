@@ -12,13 +12,13 @@ pub(super) struct PluginValidateTool {
     pub(super) sink: LogSink,
 }
 
-/// Сериализует результат верификатора и объявляет его вердикт вызову.
-///
-/// Вердикт — единственный источник для обоих наблюдателей: журнал пишется из `result.ok`,
-/// конверт `tools/call` получает `isError: !ok` отсюда же (ADR-0041 §2.4 п.13). Вызывается
-/// строго **после** `sanitize_validation`: добавление булева поля не может ослабить приватность
-/// payload (AC-MCP-13), а `AiValidationResult` не получает транспортное поле — тип обслуживает
-/// ещё и команду `ai_validate_plugin` (ADR-0041 §2.3 п.10–11).
+
+
+
+
+
+
+
 fn verification_payload(result: &crate::ai::types::AiValidationResult) -> Result<Value, ToolError> {
     let payload = serde_json::to_value(result).map_err(|e| ToolError::internal(e.to_string()))?;
     let Value::Object(mut map) = payload else {
@@ -114,7 +114,7 @@ impl ToolHandler for PluginTestTool {
 
 pub(super) struct PluginCatalogListTool {
     pub(super) sink: LogSink,
-    /// Уже разрешённый каталог плагинов (абсолютный, без CWD) — см. `mcp::catalog_repo`.
+    
     pub(super) repo: PathBuf,
 }
 

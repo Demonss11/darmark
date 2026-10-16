@@ -202,9 +202,9 @@ fn apply_edit_defers_document_changed() {
     assert_eq!(pending.lock().unwrap().len(), 1, "эхо не порождает событие");
 }
 
-/// F40/S1: ответ `get_document_text` — JSON-строка; при обилии управляющих символов
-/// экранирование раздувает кадр host→child (до 6×) сверх `MAX_HOST_FRAME_BYTES`. Вместо
-/// `protocol`-сбоя хост обязан вернуть **явный** `too_large` (основной путь — окна).
+
+
+
 #[test]
 fn get_document_text_rejects_escaping_overflow() {
     let dense = "\u{0001}".repeat(3 * 1024 * 1024);
@@ -220,8 +220,8 @@ fn get_document_text_rejects_escaping_overflow() {
     );
 }
 
-/// F40/S1 (контроль): текст, умещающийся в кадр даже после экранирования, отдаётся целиком —
-/// гард не должен резать легитимные документы.
+
+
 #[test]
 fn get_document_text_allows_text_within_frame() {
     let text = "\"".repeat(1024 * 1024);

@@ -14,7 +14,7 @@ fn read_one<R: Read>(reader: &mut R) -> ToHost {
     envelope::read_to_host(reader).unwrap().unwrap()
 }
 
-/// Ждёт `Event{kind:"done", payload.id == id}`. Паникует на `error` с тем же id.
+
 fn expect_done<R: Read>(reader: &mut R, id: u32) {
     for _ in 0..16 {
         match read_one(reader) {

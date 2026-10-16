@@ -12,8 +12,8 @@ use std::io;
 type Handle = *mut c_void;
 type Bool = i32;
 
-// SAFETY: функции kernel32 объявлены с корректными сигнатурами по Win32 API; вызовы
-// обёрнуты в `unsafe` и получают только валидные хэндлы (см. комментарии в местах вызова).
+
+
 #[link(name = "kernel32")]
 extern "system" {
     fn CreateJobObjectW(attrs: *const c_void, name: *const u16) -> Handle;
@@ -34,12 +34,12 @@ extern "system" {
     fn IsProcessInJob(process: Handle, job: Handle, result: *mut Bool) -> Bool;
 }
 
-/// Находится ли **наш** процесс внутри чужого Job (тогда создаваемый Job — вложенный).
-/// Вложенность важна: для неё действует правило «эффективный лимит — не менее строгий из цепочки».
+
+
 pub fn parent_is_in_job() -> bool {
     let mut r: Bool = 0;
-    // SAFETY: GetCurrentProcess — псевдо-хэндл (закрывать нельзя); при null-job
-    // IsProcessInJob проверяет лишь наличие Job и пишет в валидный `r`.
+    
+    
     unsafe { IsProcessInJob(GetCurrentProcess(), std::ptr::null_mut(), &mut r) };
     r != 0
 }
@@ -70,8 +70,8 @@ struct IoCounters {
 #[repr(C)]
 #[derive(Default, Clone, Copy)]
 struct BasicLimitInformation {
-    per_process_user_time_limit: i64, // 100 нс
-    per_job_user_time_limit: i64,     // 100 нс
+    per_process_user_time_limit: i64, 
+    per_job_user_time_limit: i64,     
     limit_flags: u32,
     minimum_working_set_size: usize,
     maximum_working_set_size: usize,
@@ -106,23 +106,23 @@ struct BasicAccountingInformation {
 }
 
 fn last_error() -> io::Error {
-    // SAFETY: GetLastError без аргументов — UB невозможен.
+    
     io::Error::from_raw_os_error(unsafe { GetLastError() } as i32)
 }
 
-/// Job Object как RAII-хэндл. С `KILL_ON_JOB_CLOSE` смерть parent уносит и child.
+
 pub struct Job {
     handle: Handle,
 }
 
-// SAFETY: хэндл ядра — это значение-идентификатор; его можно передавать между потоками
-// (все операции с ним потокобезопасны на уровне ОС). Закрывается ровно один раз в Drop.
+
+
 unsafe impl Send for Job {}
 
 impl Job {
     pub fn new() -> io::Result<Self> {
-        // SAFETY: null-аргументы означают «безымянный Job с дефолтными атрибутами»; при
-        // неуспехе возвращается null, что проверяется ниже.
+        
+        
         let handle = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
         if handle.is_null() {
             return Err(last_error());
@@ -130,16 +130,16 @@ impl Job {
         Ok(Self { handle })
     }
 
-    /// Лимиты: `cpu_ms` — суммарное пользовательское время процесса (0 = выключить),
-    /// `mem_bytes` — лимит committed-памяти процесса и job'а (0 = выключить).
+    
+    
     pub fn set_limits(&self, cpu_ms: u64, mem_bytes: usize) -> io::Result<()> {
         let mut info = ExtendedLimitInformation::default();
         let mut flags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
 
         if cpu_ms > 0 {
-            // Ставим и per-process, и per-job лимит: эффективный — более строгий (равны).
+            
             flags |= JOB_OBJECT_LIMIT_PROCESS_TIME | JOB_OBJECT_LIMIT_JOB_TIME;
-            let ticks = (cpu_ms as i64) * 10_000; // мс → 100 нс
+            let ticks = (cpu_ms as i64) * 10_000; 
             info.basic.per_process_user_time_limit = ticks;
             info.basic.per_job_user_time_limit = ticks;
         }
@@ -150,8 +150,8 @@ impl Job {
         }
         info.basic.limit_flags = flags;
 
-        // SAFETY: self.handle — валидный Job-хэндл (создан в new, живёт до Drop); info —
-        // заполненная структура нужного класса, длина передаётся ровно её размером.
+        
+        
         let ok = unsafe {
             SetInformationJobObject(
                 self.handle,
@@ -166,17 +166,17 @@ impl Job {
         Ok(())
     }
 
-    /// Назначает процесс по PID (нужны права PROCESS_SET_QUOTA|PROCESS_TERMINATE).
+    
     pub fn assign_pid(&self, pid: u32) -> io::Result<()> {
-        // SAFETY: OpenProcess с валидными правами/pid; при неуспехе — null (проверяется).
+        
         let proc = unsafe { OpenProcess(PROCESS_SET_QUOTA | PROCESS_TERMINATE, 0, pid) };
         if proc.is_null() {
             return Err(last_error());
         }
-        // SAFETY: оба хэндла валидны (self.handle — Job, proc — только что открытый процесс).
+        
         let ok = unsafe { AssignProcessToJobObject(self.handle, proc) };
         let err = if ok == 0 { Some(last_error()) } else { None };
-        // SAFETY: proc открыт выше и здесь освобождается ровно один раз.
+        
         unsafe { CloseHandle(proc) };
         match err {
             Some(e) => Err(e),
@@ -184,17 +184,17 @@ impl Job {
         }
     }
 
-    /// Принудительно завершает все процессы job'а (страховка/уборка).
+    
     pub fn terminate(&self, code: u32) {
-        // SAFETY: self.handle валиден; TerminateJobObject не может привести к UB при валидном
-        // хэндле и произвольном коде завершения.
+        
+        
         unsafe { TerminateJobObject(self.handle, code) };
     }
 
-    /// Снимок ExtendedLimitInformation; `None` при ошибке запроса.
+    
     fn query_extended(&self) -> Option<ExtendedLimitInformation> {
         let mut info = ExtendedLimitInformation::default();
-        // SAFETY: self.handle валиден; info — корректная по размеру структура вывода.
+        
         let ok = unsafe {
             QueryInformationJobObject(
                 self.handle,
@@ -207,7 +207,7 @@ impl Job {
         (ok != 0).then_some(info)
     }
 
-    /// То, что реально хранит ОС: (limit_flags, PerProcessUserTimeLimit 100нс, PerJobUserTimeLimit 100нс).
+    
     pub fn stored_limits(&self) -> (u32, i64, i64) {
         match self.query_extended() {
             Some(info) => (
@@ -219,24 +219,24 @@ impl Job {
         }
     }
 
-    /// Пиковая committed-память процессов job'а, байт.
+    
     pub fn peak_process_memory(&self) -> usize {
         self.query_extended()
             .map(|i| i.peak_process_memory_used)
             .unwrap_or(0)
     }
 
-    /// Пиковая job-wide committed-память (сумма по всем процессам job'а), байт.
+    
     pub fn peak_job_memory(&self) -> usize {
         self.query_extended()
             .map(|i| i.peak_job_memory_used)
             .unwrap_or(0)
     }
 
-    /// Суммарное пользовательское время процессов job'а, мс.
+    
     pub fn total_user_time_ms(&self) -> f64 {
         let mut info = BasicAccountingInformation::default();
-        // SAFETY: self.handle валиден; info — корректная по размеру структура вывода.
+        
         let ok = unsafe {
             QueryInformationJobObject(
                 self.handle,
@@ -256,7 +256,7 @@ impl Job {
 
 impl Drop for Job {
     fn drop(&mut self) {
-        // SAFETY: хэндл создан в new и закрывается ровно один раз (Drop вызывается один раз).
+        
         unsafe { CloseHandle(self.handle) };
     }
 }

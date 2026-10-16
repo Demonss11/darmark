@@ -77,8 +77,8 @@ fn path_schema_requires_path() {
     assert_eq!(schema["required"][0], "path");
 }
 
-/// Critical #1: ошибки CLI несут полный путь (`…\plugin.json: …`) — в журнал/результат
-/// он попадать не должен.
+
+
 #[test]
 fn sanitize_validation_strips_full_path_from_errors_and_report() {
     let dir = Path::new(r"C:\Users\Demon\AppData\Roaming\darmark\plugins\word-count");
@@ -121,7 +121,7 @@ fn sanitize_validation_strips_full_path_from_errors_and_report() {
     );
 }
 
-/// `canonicalize` отдаёт verbatim-путь (`\\?\…`); чистка обязана покрыть и его.
+
 #[test]
 fn sanitize_paths_handles_verbatim_prefix() {
     let dir = Path::new(r"\\?\C:\Users\Demon\AppData\Roaming\darmark\plugins\word-count");

@@ -7,7 +7,7 @@ use serde_json::{json, Value};
 use crate::handlers::{ResourceError, ResourceReader, ToolError, ToolHandler};
 use crate::protocol;
 
-/// Определение инструмента в реестре.
+
 pub struct ToolDefinition {
     pub name: String,
     pub description: String,
@@ -15,10 +15,10 @@ pub struct ToolDefinition {
     pub handler: Arc<dyn ToolHandler>,
 }
 
-/// Определение ресурса в реестре.
-///
-/// `name` обязателен по спецификации MCP (поле `Resource.name`) и отдаётся
-/// агенту в `resources/list` — по нему агент понимает назначение ресурса.
+
+
+
+
 pub struct ResourceDefinition {
     pub uri: String,
     pub name: String,
@@ -26,25 +26,25 @@ pub struct ResourceDefinition {
     pub reader: Arc<dyn ResourceReader>,
 }
 
-/// Результат `call_tool`: различает protocol-ошибку и ошибку исполнения.
-///
-/// «Инструмент не зарегистрирован» — это ошибка протокола (JSON-RPC error),
-/// а не результат работы инструмента. Смешивать их нельзя: агент по `isError`
-/// судит о сбое самого вызова, а не о неверном имени (спека MCP).
-///
-/// `isError` в конверте вызыва несёт не только этот тип: инструмент-верификатор вправе сам
-/// объявить отрицательный вердикт полем `isError` в payload — транспорт копирует его в
-/// конверт, сохраняя структурированные данные (ADR-0041 §2.2). Различение protocol-ошибки
-/// и ошибки исполнения этим не отменяется: обе они остаются `Err`.
+
+
+
+
+
+
+
+
+
+
 #[derive(Clone, Debug)]
 pub enum CallToolError {
-    /// Инструмент не зарегистрирован (protocol error, JSON-RPC `-32602`).
+    
     UnknownTool(String),
-    /// Ошибка исполнения инструмента (отдаётся как результат с `isError: true`).
+    
     Execution(ToolError),
 }
 
-/// Реестр инструментов и ресурсов.
+
 #[derive(Default)]
 pub struct Registry {
     tools: Vec<ToolDefinition>,
@@ -64,7 +64,7 @@ impl Registry {
         self.resources.push(def);
     }
 
-    /// Список инструментов для `tools/list`.
+    
     pub fn tools_list(&self) -> Value {
         let tools: Vec<Value> = self
             .tools
@@ -80,7 +80,7 @@ impl Registry {
         json!({ "tools": tools })
     }
 
-    /// Список ресурсов для `resources/list`.
+    
     pub fn resources_list(&self) -> Value {
         let resources: Vec<Value> = self
             .resources
@@ -96,10 +96,10 @@ impl Registry {
         json!({ "resources": resources })
     }
 
-    /// Вызов инструмента по имени.
-    ///
-    /// Неизвестное имя — `CallToolError::UnknownTool` (protocol error);
-    /// ошибка обработчика — `CallToolError::Execution`.
+    
+    
+    
+    
     pub fn call_tool(&self, name: &str, params: Value) -> Result<Value, CallToolError> {
         let tool = self
             .tools
@@ -109,12 +109,12 @@ impl Registry {
         tool.handler.call(params).map_err(CallToolError::Execution)
     }
 
-    /// Чтение ресурса по URI.
-    ///
-    /// Сначала точное совпадение (статические ресурсы), затем — шаблонные регистрации
-    /// (`darmark://plugins/{id}/manifest`): без этого шаблонный ресурс недостижим, так как
-    /// запрос всегда несёт конкретный URI, а не шаблон. Читателю передаётся **фактический**
-    /// URI запроса (не шаблон) — он сам извлекает из него параметры.
+    
+    
+    
+    
+    
+    
     pub fn read_resource(&self, uri: &str) -> Result<Value, ResourceError> {
         if let Some(resource) = self.resources.iter().find(|r| r.uri == uri) {
             return resource.reader.read(uri);
@@ -133,12 +133,12 @@ impl Registry {
     }
 }
 
-/// Сопоставляет запрошенный URI с шаблоном ресурса.
-///
-/// Сегментный матч по `/`: сегмент шаблона вида `{name}` матчит **любой непустой**
-/// сегмент запроса; остальные сегменты должны совпасть буквально. Число сегментов
-/// обязано совпадать, поэтому `{id}` не «съедает» лишние `/`. Шаблон без `{…}` —
-/// обычный точный URI.
+
+
+
+
+
+
 fn uri_matches_template(template: &str, actual: &str) -> bool {
     if !template.contains('{') {
         return template == actual;
@@ -157,7 +157,7 @@ fn uri_matches_template(template: &str, actual: &str) -> bool {
         })
 }
 
-/// Имя параметра шаблонного сегмента (`{id}` → `Some("id")`), иначе `None`.
+
 fn placeholder_name(segment: &str) -> Option<&str> {
     segment.strip_prefix('{')?.strip_suffix('}')
 }
@@ -170,7 +170,7 @@ mod tests {
     fn exact_uri_matches_only_itself() {
         assert!(uri_matches_template("darmark://test", "darmark://test"));
         assert!(!uri_matches_template("darmark://test", "darmark://other"));
-        // URI без `{…}` — не шаблон: лишний сегмент не допускается.
+        
         assert!(!uri_matches_template(
             "darmark://test",
             "darmark://test/extra"
@@ -184,12 +184,12 @@ mod tests {
             template,
             "darmark://plugins/word-count/manifest"
         ));
-        // Пустой сегмент на месте `{id}` не матчится (id обязателен).
+        
         assert!(!uri_matches_template(
             template,
             "darmark://plugins//manifest"
         ));
-        // Число сегментов должно совпадать.
+        
         assert!(!uri_matches_template(
             template,
             "darmark://plugins/word-count/manifest/extra"
@@ -198,7 +198,7 @@ mod tests {
             template,
             "darmark://plugins/word-count"
         ));
-        // Литеральные сегменты — буквально.
+        
         assert!(!uri_matches_template(
             template,
             "darmark://plugins/word-count/meta"

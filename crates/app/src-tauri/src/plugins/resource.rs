@@ -35,40 +35,40 @@ use windows::Win32::System::Threading::{
     PROCESS_QUERY_LIMITED_INFORMATION,
 };
 
-/// Период опроса монитора (§6): тик раз в 2 с, отдельный поток.
+
 pub const POLL_PERIOD: Duration = Duration::from_secs(2);
 
-/// TTL записей `cpu_prev` (10× период опроса). Протухшие PID чистятся на каждом `read`:
-/// иначе карта растёт монотонно при reload/crash плагинов, а переиспользованный чужой
-/// PID давал бы ложную дельту CPU (ADR-0031 §2.5 п.20).
+
+
+
 const CPU_PREV_TTL: Duration = Duration::from_secs(POLL_PERIOD.as_secs() * 10);
 
-/// Сырые метрики одного процесса за один вызов провайдера.
-///
-/// `working_set_bytes`/`private_bytes`/`private_working_set_bytes` берутся из одного
-/// `K32GetProcessMemoryInfo` (`PROCESS_MEMORY_COUNTERS_EX2`); `cpu_percent`/`handles`
-/// опциональны — фронт рендерит их, если есть (TZ §4.4). Отсутствие метрики представляется
-/// `None`, а не нулём (F51).
+
+
+
+
+
+
 #[derive(Debug, Clone, Copy, Default)]
 pub struct RawMetrics {
-    /// Полный рабочий набор (`WorkingSetSize`), байты — включает разделяемые страницы (DLL).
+    
     pub working_set_bytes: usize,
-    /// Private/commit (`PrivateUsage`), байты — то, что ограничивает Job Object.
+    
     pub private_bytes: usize,
-    /// Приватный рабочий набор (`PrivateWorkingSetSize`, `PROCESS_MEMORY_COUNTERS_EX2`), байты —
-    /// то, что показывает Диспетчер задач. `0`, если ОС не заполнила EX2-хвост: тогда
-    /// эффективное значение берётся из [`RawMetrics::private_working_set`].
+    
+    
+    
     pub private_working_set_bytes: usize,
-    /// CPU % (доля одного ядра), `None` если измерить не удалось.
+    
     pub cpu_percent: Option<f64>,
-    /// Число хендлов процесса, `None` если прав на чтение не хватает.
+    
     pub handles: Option<u32>,
 }
 
 impl RawMetrics {
-    /// Приватный рабочий набор главного процесса (как в Диспетчере задач) с фолбэком на полный
-    /// рабочий набор: `PrivateWorkingSetSize == 0` на старой ОС / при неизвестном `cb`
-    /// (EX2-хвост не заполнен) — тогда берём `WorkingSetSize`, а не лживый ноль (F51).
+    
+    
+    
     pub fn private_working_set(&self) -> usize {
         if self.private_working_set_bytes == 0 {
             self.working_set_bytes
@@ -78,18 +78,18 @@ impl RawMetrics {
     }
 }
 
-/// Шов тестопригодности: источник «сырых» метрик процесса по PID.
-///
-/// WinAPI-реализация — [`WinProcessMetrics`]; тесты подставляют фейк без реальных процессов.
-/// `None` — недоступный/мёртвый/невалидный PID: метрика пропускается, не паника и не «0».
+
+
+
+
 pub trait ProcessMetrics: Send + Sync {
     fn read(&self, pid: u32) -> Option<RawMetrics>;
 }
 
-/// Метрики главного процесса (приватный рабочий набор; лимита Job Object нет).
+
 #[derive(Debug, Clone, Serialize)]
 pub struct MainMetrics {
-    /// Приватный рабочий набор, байты (TZ §4.2) — как в Диспетчере задач.
+    
     pub mem_bytes: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cpu_percent: Option<f64>,
@@ -97,14 +97,14 @@ pub struct MainMetrics {
     pub handles: Option<u32>,
 }
 
-/// Метрики child'а плагина (`PrivateUsage`; знаменатель порогов — лимит Job Object).
+
 #[derive(Debug, Clone, Serialize)]
 pub struct ChildMetrics {
     pub plugin_id: String,
     pub pid: u32,
-    /// Private/commit, байты (TZ §4.2).
+    
     pub mem_bytes: usize,
-    /// Лимит Job Object плагина (private/commit), байты — знаменатель прогресс-бара (TZ §6.5).
+    
     pub mem_limit_bytes: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cpu_percent: Option<f64>,
@@ -112,26 +112,26 @@ pub struct ChildMetrics {
     pub handles: Option<u32>,
 }
 
-/// Снимок метрик для события `resource-metrics` (TZ §4.4).
+
 #[derive(Debug, Clone, Serialize)]
 pub struct ResourceSnapshot {
-    /// Момент снятия (`Date.now()` на Rust-стороне), мс.
+    
     pub ts: u64,
     pub main: MainMetrics,
     pub children: Vec<ChildMetrics>,
 }
 
 impl ResourceSnapshot {
-    /// Собирает снимок по списку детей.
-    ///
-    /// `None` — если метрика **главного** процесса не читается (`provider.read(main_pid)`
-    /// вернул `None`): отсутствующая метрика — не ноль (F51/ADR-0031 §2.3 п.11), а главный
-    /// процесс практически всегда читаем, так что лживый `mem_bytes: 0` недопустим. Для главного
-    /// берётся [`RawMetrics::private_working_set`] (приватный рабочий набор, как в Диспетчере
-    /// задач; фолбэк на полный рабочий набор при нулевом `PrivateWorkingSetSize`), для child'а —
-    /// `private_bytes` (commit). Нечитаемые дети пропускаются (не «0»). `mem_limit_bytes` — бюджет
-    /// Job Object, только у детей (TZ §4.4).
-    ///
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
     pub fn collect(
         provider: &dyn ProcessMetrics,
         main_pid: u32,
@@ -164,27 +164,27 @@ impl ResourceSnapshot {
     }
 }
 
-/// Канал фронт-шины ресурс-монитора (аналог `LogSink`/`DocumentSink`).
-///
-/// Реализация в `setup_plugins` эмитит Tauri-события `resource-metrics`/`plugin-process-exited`.
-/// Best-effort: потеря семпла некритична.
+
+
+
+
 pub trait ResourceSink: Send + Sync {
-    /// Текущий снимок (событие `resource-metrics`).
+    
     fn metrics(&self, snapshot: &ResourceSnapshot);
-    /// Child утрачен по **владению процессом** (событие `plugin-process-exited`).
+    
     fn process_exited(&self, plugin_id: &str, pid: u32, reason: Option<&str>);
 }
 
-/// Монитор: один [`Self::tick`] — цикл «снимок PID → замер → эмит»; [`Self::spawn`]
-/// оборачивает его в поток с флагом остановки (ADR-0031 §2.3 п.9).
+
+
 pub struct ResourceMonitor {
     provider: Arc<dyn ProcessMetrics>,
     sink: Arc<dyn ResourceSink>,
     main_pid: u32,
     mem_limit_bytes: usize,
-    /// Владение child'ами на предыдущем тике: `plugin_id → pid`. Утрата записи (или смена PID
-    /// при том же `plugin_id`) — это `plugin-process-exited`, а не проба «голого PID»
-    /// (ADR-0031 §2.4 п.19).
+    
+    
+    
     active: HashMap<String, u32>,
 }
 
@@ -204,8 +204,8 @@ impl ResourceMonitor {
         }
     }
 
-    /// Один цикл сбора/эмита. `children` — активные `(plugin_id, pid)` из менеджера,
-    /// снятые вызывающей стороной под коротким локом (вне этого вызова блокировок нет).
+    
+    
     pub fn tick(&mut self, children: &[(String, u32)]) {
         let snapshot = ResourceSnapshot::collect(
             self.provider.as_ref(),
@@ -228,12 +228,12 @@ impl ResourceMonitor {
         }
     }
 
-    /// Запускает поток опроса: `children()` снимает активные PID, `stop` взводится при
-    /// закрытии приложения. Спит чанками, чтобы быстро реагировать на остановку.
-    ///
-    /// `children()` отдаёт `None`, когда снимок PID сейчас взять нельзя (занятый лок
-    /// менеджера): тик **пропускается** — без ложных `plugin-process-exited` и без
-    /// долгого ожидания (best-effort, ADR-0031 §2.3 п.10).
+    
+    
+    
+    
+    
+    
     pub fn spawn<F>(self, children: F, stop: Arc<AtomicBool>) -> JoinHandle<()>
     where
         F: Fn() -> Option<Vec<(String, u32)>> + Send + 'static,
@@ -253,7 +253,7 @@ impl ResourceMonitor {
     }
 }
 
-/// Текущее время в миллисекундах Unix-эпохи (без паники на сбое часов).
+
 fn now_millis() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -261,10 +261,10 @@ fn now_millis() -> u64 {
         .unwrap_or(0)
 }
 
-/// WinAPI-провайдер метрик (Windows-only, ADR-0031 §2.1 п.1).
-///
-/// Держит `cpu_prev` для расчёта CPU % как дельты `GetProcessTimes` между тиками. Этот мьютекс
-/// — внутренний для провайдера и не пересекается с `PluginManager`/`DocumentStore`.
+
+
+
+
 pub struct WinProcessMetrics {
     cpu_prev: std::sync::Mutex<HashMap<u32, (u64, Instant)>>,
 }
@@ -282,8 +282,8 @@ impl WinProcessMetrics {
         Self::default()
     }
 
-    /// CPU % как доля одного ядра: `Δ(cpu_100ns) / Δ(wall_100ns) × 100`. `None`, если
-    /// предыдущего замера нет или прошло нулевое время.
+    
+    
     fn cpu_percent(&self, pid: u32, cpu_100ns: Option<u64>) -> Option<f64> {
         let cpu = cpu_100ns?;
         let now = Instant::now();
@@ -326,15 +326,15 @@ impl ProcessMetrics for WinProcessMetrics {
     }
 }
 
-/// (рабочий набор, private/commit, приватный рабочий набор) по открытому хэндлу — один вызов
-/// `K32GetProcessMemoryInfo` со структурой `PROCESS_MEMORY_COUNTERS_EX2`.
-///
-/// `cb` = `size_of::<PROCESS_MEMORY_COUNTERS_EX2>()` (96 байт на 64-бит): на старых ОС, не
-/// знающих EX2-хвост, `PrivateWorkingSetSize` остаётся нулём — эффективное значение с фолбэком
-/// даёт [`RawMetrics::private_working_set`].
-///
-/// SAFETY: `handle` — валидный хэндл с правом запроса; `counters` — локальная структура
-/// нужного размера; WinAPI пишет в неё и возвращает BOOL (не Result).
+
+
+
+
+
+
+
+
+
 unsafe fn memory_counter(handle: HANDLE) -> Option<(usize, usize, usize)> {
     let mut counters = PROCESS_MEMORY_COUNTERS_EX2::default();
     let ok = K32GetProcessMemoryInfo(
@@ -349,9 +349,9 @@ unsafe fn memory_counter(handle: HANDLE) -> Option<(usize, usize, usize)> {
     ))
 }
 
-/// CPU-время (kernel + user) в единицах 100 нс по открытому хэндлу.
-///
-/// SAFETY: все `FILETIME` — локальные; `handle` валиден.
+
+
+
 unsafe fn cpu_100ns(handle: HANDLE) -> Option<u64> {
     let mut creation = FILETIME::default();
     let mut exit = FILETIME::default();
@@ -362,7 +362,7 @@ unsafe fn cpu_100ns(handle: HANDLE) -> Option<u64> {
         .map(|_| filetime_to_u64(kernel) + filetime_to_u64(user))
 }
 
-/// `FILETIME` (два 32-битных поля) → 64-битное значение (единицы 100 нс).
+
 fn filetime_to_u64(time: FILETIME) -> u64 {
     ((time.dwHighDateTime as u64) << 32) | (time.dwLowDateTime as u64)
 }

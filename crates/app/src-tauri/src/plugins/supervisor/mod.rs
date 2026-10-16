@@ -27,25 +27,25 @@ use permissions::{decode_error, with_plugin_id};
 
 pub use permissions::{check_permission, required_permission};
 
-/// Флаг Win32: без консольного окна у child (TZ §2: «subsystem console, но с CREATE_NO_WINDOW»).
+
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
-/// Имя child-бинарника рядом с `darmark.exe`.
+
 pub const CHILD_EXE_NAME: &str = "darmark-plugin-host.exe";
 
-/// Параметры запуска child-процесса.
+
 pub struct SupervisorParams {
-    /// Путь к `darmark-plugin-host.exe`.
+    
     pub exe: PathBuf,
     pub plugin_id: String,
-    /// Разрешения манифеста (Фаза 3 наполнит из `plugin.json`; здесь — уже готовый список).
+    
     pub permissions: Vec<String>,
     pub services: Arc<dyn HostServices>,
-    /// Прогресс-таймаут invocation (§4.3).
+    
     pub progress: Duration,
-    /// Абсолютный дедлайн invocation (§4.3).
+    
     pub deadline: Duration,
-    /// Лимит committed-памяти child'а (0 — без лимита).
+    
     pub mem_bytes: usize,
 }
 
@@ -77,13 +77,13 @@ impl SupervisorParams {
     }
 }
 
-/// Надзор за одним процессом плагина.
+
 pub struct Supervisor {
     plugin_id: String,
     child: Child,
     job: Job,
-    /// Канал в writer-поток. Отправка неблокирующая: даже если child перестал читать stdin,
-    /// основной поток не виснет, а watchdog продолжает тикать (F27, §3.2 ревью).
+    
+    
     to_child: Option<mpsc::Sender<ToChild>>,
     writer: Option<JoinHandle<()>>,
     rx: Receiver<Result<ToHost, PluginError>>,
@@ -96,10 +96,10 @@ pub struct Supervisor {
 }
 
 impl Supervisor {
-    /// Спавнит child, назначает Job и загружает исходник (`load`), но **не** активирует.
-    ///
-    /// Активация — отдельный шаг ([`Supervisor::activate`]): хост успевает подписаться на
-    /// события/команды до `on_activate` (Фаза 4).
+    
+    
+    
+    
     pub fn start(params: SupervisorParams, source: &str) -> Result<Self, PluginError> {
         let job = Job::new().map_err(|e| PluginError::crashed(format!("Job Object: {e}")))?;
         job.set_limits(0, params.mem_bytes)
@@ -181,26 +181,26 @@ impl Supervisor {
         &self.plugin_id
     }
 
-    /// PID живого child-процесса (`Child::id()`).
-    ///
-    /// Наружу выдаётся только из [`Self`] — владения процессом (ADR-0031 §2.6): пока
-    /// `Supervisor` жив, PID принадлежит нашему `darmark-plugin-host.exe`, а не чужому
-    /// процессу с тем же номером (F52).
+    
+    
+    
+    
+    
     pub fn pid(&self) -> u32 {
         self.child.id()
     }
 
-    /// Вызывает `on_activate` плагина.
+    
     pub fn activate(&mut self) -> Result<Value, PluginError> {
         self.invoke("activate", Value::Null)
     }
 
-    /// Вызывает `on_deactivate` плагина (best-effort перед остановкой).
+    
     pub fn deactivate(&mut self) -> Result<Value, PluginError> {
         self.invoke("deactivate", Value::Null)
     }
 
-    /// Доставляет событие шины плагину (`event`).
+    
     pub fn dispatch_event(&mut self, name: &str, payload: Value) -> Result<Value, PluginError> {
         self.invoke(
             "event",
@@ -208,7 +208,7 @@ impl Supervisor {
         )
     }
 
-    /// Вызывает произвольный метод плагина с прогресс-таймаутом и дедлайном.
+    
     pub fn invoke(&mut self, method: &str, args: Value) -> Result<Value, PluginError> {
         let id = self.next_id;
         self.next_id = self.next_id.wrapping_add(1);
@@ -228,9 +228,9 @@ impl Supervisor {
             .map_err(|_| PluginError::crashed("child недоступен (writer завершён)"))
     }
 
-    /// Ждёт `Event{done|error, id}` для invocation `id`, попутно обслуживая host-call'ы.
-    ///
-    /// Два таймера: прогресс сбрасывается каждым кадром child'а, дедлайн — нет (ловит `chatty`).
+    
+    
+    
     fn await_result(&mut self, id: u32) -> Result<Value, PluginError> {
         let mut started = Instant::now();
         let mut last_progress = started;
@@ -307,29 +307,29 @@ impl Supervisor {
         }
     }
 
-    /// Проверяет permission и исполняет host-call.
-    ///
-    /// В object-args инжектится `_plugin_id` (`self.plugin_id`): хост не доверяет
-    /// идентификатору из плагина (плагин не может подменить владельца view/настроек).
+    
+    
+    
+    
     fn serve_host_call(&self, method: &str, args: &Value) -> Result<Value, PluginError> {
         check_permission(&self.permissions, method)?;
         self.services
             .handle(method, with_plugin_id(args, &self.plugin_id))
     }
 
-    /// Принудительно завершает child (Job Object + kill процесса).
+    
     pub fn terminate(&mut self) {
         self.job.terminate(1);
         let _ = self.child.kill();
     }
 
-    /// Завершился ли child — по объекту процесса, а не по каналу stdio (канал может закрыться
-    /// позже, особенно на Windows после `abort`).
+    
+    
     fn child_exited(&mut self) -> bool {
         matches!(self.child.try_wait(), Ok(Some(_)))
     }
 
-    /// Исход исчерпания бюджета: процесс уже мёртв → `crashed`, иначе `timeout`.
+    
     fn expired(exited: bool, plugin_id: &str, budget: Duration, what: &str) -> PluginError {
         if exited {
             PluginError::crashed(format!("{plugin_id}: child завершился"))
@@ -338,10 +338,10 @@ impl Supervisor {
         }
     }
 
-    /// Путной путь child-бинарника рядом с текущим exe (продукт), с override для dev.
-    ///
-    /// Порядок: env `DARMARK_PLUGIN_HOST_EXE` → рядом с `darmark.exe` → соседний каталог
-    /// (тесты: `target/debug/deps` ↔ `target/debug`).
+    
+    
+    
+    
     pub fn resolve_child_exe() -> Option<PathBuf> {
         if let Ok(path) = std::env::var("DARMARK_PLUGIN_HOST_EXE") {
             let path = PathBuf::from(path);

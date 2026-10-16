@@ -15,19 +15,19 @@ use plugin_core::manifest::ViewContrib;
 
 use crate::PluginViewInfo;
 
-/// Разрешение, гейтящее регистрацию тир-1 view (F44/S4, §8): без него `contributes.views`
-/// не превращается во вкладку. Запись HTML всё равно требует отдельного `view:modify`.
+
+
 pub const VIEW_CREATE_PERMISSION: &str = "view:create";
 
-/// Разрешение, гейтящее **запись** HTML в тир-1 view (`host.set_view_content`, §8).
-/// Отзыв `view:modify` не убирает вкладку, но очищает её содержимое: владение
-/// записью возвращается хосту, пока плагин снова не получит право.
+
+
+
 pub const VIEW_MODIFY_PERMISSION: &str = "view:modify";
 
-/// Реестр представлений: `view_id = "{plugin_id}:{kind}"` → HTML и метаданные.
-///
-/// `BTreeMap` даёт детерминированный (отсортированный по `view_id`) порядок
-/// [`PluginViews::snapshot`] — фронтенд получает стабильный список.
+
+
+
+
 #[derive(Default)]
 pub struct PluginViews {
     views: BTreeMap<String, PluginViewInfo>,
@@ -38,11 +38,11 @@ impl PluginViews {
         Self::default()
     }
 
-    /// Регистрирует тир-1 view плагина (идемпотентно). HTML изначально пуст —
-    /// плагин заполнит его через `set_view_content` при активации.
-    ///
-    /// Тиры выше 1 игнорируются: тир-2 — built-in only (ADR-0022), плагинные
-    /// представления всегда тир-1.
+    
+    
+    
+    
+    
     pub fn register(&mut self, plugin_id: &str, contributes: &[ViewContrib]) {
         for view in contributes.iter().filter(|v| v.tier == 1) {
             let view_id = format!("{plugin_id}:{}", view.kind);
@@ -62,12 +62,12 @@ impl PluginViews {
         }
     }
 
-    /// Обновляет HTML представления, санитизируя его `md-core`. Неизвестный `view_id` —
-    /// ошибка (значением, не паникой): плагин адресует только свои view.
-    ///
-    /// Возвращает `true`, если HTML действительно изменился: вызывающий не должен
-    /// эмитить событие фронтенду на `set_view_content` с тем же содержимым (иначе
-    /// «болтливый» плагин вызывает шторм IPC/перерисовок).
+    
+    
+    
+    
+    
+    
     pub fn set_content(&mut self, view_id: &str, html: &str) -> Result<bool, PluginError> {
         let view = self.views.get_mut(view_id).ok_or_else(|| {
             PluginError::new(
@@ -81,29 +81,29 @@ impl PluginViews {
         Ok(changed)
     }
 
-    /// Снимок для фронтенда (отсортирован по `view_id`).
+    
     pub fn snapshot(&self) -> Vec<PluginViewInfo> {
         self.views.values().cloned().collect()
     }
 
-    /// Зарегистрировано ли представление с таким `view_id` (валидация маршрутизации).
+    
     pub fn contains(&self, view_id: &str) -> bool {
         self.views.contains_key(view_id)
     }
 
-    /// Убирает все представления плагина (выключение/перезагрузка/удаление).
+    
     pub fn remove_plugin(&mut self, plugin_id: &str) {
         self.views.retain(|_, view| view.plugin_id != plugin_id);
     }
 
-    /// Очищает HTML всех представлений плагина, оставляя сами вкладки в реестре.
-    ///
-    /// Нужно при отзыве `view:modify` (deny-by-default): вкладка остаётся видимой,
-    /// но её содержимое, записанное плагином, сбрасывается — иначе старый HTML
-    /// продолжал бы отображаться, хотя право на запись уже отозвано.
-    ///
-    /// Возвращает `true`, если хотя бы одно представление реально изменилось
-    /// (было непустым): вызывающий не должен эмитить событие на no-op.
+    
+    
+    
+    
+    
+    
+    
+    
     pub fn clear_content(&mut self, plugin_id: &str) -> bool {
         let mut changed = false;
         for view in self
@@ -119,17 +119,17 @@ impl PluginViews {
         changed
     }
 
-    /// Синхронизирует представления плагина с его **эффективными** правами (F44/S4).
-    ///
-    /// Тир-1 view регистрируется только если выдан `view:create` (deny-by-default, как
-    /// `document:*`); иначе все view плагина снимаются. Единая точка для загрузки, вкл/выкл,
-    /// `reload` и смены прав: вкладка появляется/исчезает вслед за согласием пользователя.
-    /// Вызов идемпотентен и безопасен при пустом `contributes`.
-    ///
-    /// Если `view:create` есть, но `view:modify` отозван — вкладку **не снимаем**, а
-    /// очищаем её содержимое: запись HTML — отдельное право, и при его отсутствии
-    /// показанный ранее контент больше не принадлежит плагину (deny-by-default). При
-    /// возврате `view:modify` плагин переиздаёт HTML через `set_view_content`.
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
     pub fn sync(&mut self, plugin_id: &str, contributes: &[ViewContrib], effective: &[String]) {
         let can_create = effective
             .iter()
@@ -281,8 +281,8 @@ mod tests {
         assert_eq!(b.html, "<b>b</b>", "чужой плагин не затронут");
     }
 
-    /// Отзыв `view:modify` при живом `view:create`: вкладка остаётся, но HTML пуст
-    /// (deny-by-default на запись), и очистка идемпотентна.
+    
+    
     #[test]
     fn sync_without_view_modify_clears_content_but_keeps_view() {
         let mut views = PluginViews::new();
@@ -305,7 +305,7 @@ mod tests {
         );
     }
 
-    /// `view:create`+`view:modify`: контент сохраняется при повторном `sync`.
+    
     #[test]
     fn sync_with_view_modify_preserves_content() {
         let mut views = PluginViews::new();
@@ -322,8 +322,8 @@ mod tests {
         );
     }
 
-    /// Полный сценарий E2E: наполнили → сняли `view:modify` (контент пуст) → вернули
-    /// (вкладка пуста до нового `set_content`) → новое `set_content` снова наполняет.
+    
+    
     #[test]
     fn revoking_and_regranting_view_modify_round_trip() {
         let mut views = PluginViews::new();

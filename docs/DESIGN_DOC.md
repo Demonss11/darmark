@@ -2,9 +2,9 @@
 
 > **Тип: нормативная спецификация целевого состояния.** Описывает архитектуру, которой обязана следовать кодовая база; не описывает текущее состояние, ход работ и измерения. Продукт — лёгкий Markdown-редактор с плагинным UX «открыл `.lua` — поправил — работает».
 >
-> **Правила чистоты:** трассировка решений и измерений — только §16 и `docs/adr/*` / `docs/FINDINGS.md`; в теле нет номеров фактов FINDINGS, чисел измерений, статусов принятия и процессного нарратива; нумерация §0–§13 **заморожена** (ссылки ADR: §7.1, §10, §11.4); идеи, не дошедшие до ADR, — `tasks/`.
+> **Правила чистоты:** трассировка решений и измерений — только §16 и `docs/adr/*` / `docs/FINDINGS.md`; в теле нет номеров фактов FINDINGS, чисел измерений, статусов принятия и процессного нарратива; нумерация §0–§13 **заморожена**; идеи, не дошедшие до ADR, — `tasks/`.
 >
-> **Детали вынесены:** host-API и манифест — `crates/plugin-core`, промты встроенных скиллов ассистента и ADR-0021/0022/0023/0027; CLI — ADR-0026; гайд и примеры — `docs/PLUGIN_GUIDE.md`; обоснования — `docs/adr/*`; механика песочницы — навык `plugin-sandbox`.
+> **Детали вынесены:** host-API и манифест — `crates/plugin-core`; гайд и примеры — `crates/plugin-cli/templates/plugin/README.md`; обоснования — `docs/adr/*`; механика песочницы — навык `plugin-sandbox`.
 
 ---
 
@@ -40,7 +40,7 @@
 > Пользователь кладёт `.lua` в `%APPDATA%/darmark/plugins/` — работает. Правит файл → «Перезагрузить плагин» — новая версия. **Без компилятора и пересборки.**
 
 ### 1.3. Вне рамок (не-цели)
-- CodeMirror — отдельный ADR. CPU-тяжёлые плагины (парсер, LSP, mermaid) — не поддерживаем.
+- CodeMirror — отдельное решение. CPU-тяжёлые плагины (парсер, LSP, mermaid) — не поддерживаем.
 
 ---
 
@@ -84,7 +84,7 @@ Rust владеет данными (текст, ревизии, кэш, undo/red
 Дерево: `Pane` (вкладки, D4) | `Split` (row/column). Операции — чистые функции без DOM.
 
 ### 5.3. ViewProvider и ViewContext
-Два тира: plugin-safe (HTML) / built-in only (DOM) — **ADR-0022** §2. Preview — тир-1 на хосте (D2). ViewContext — единственная «песочница» для view.
+Два тира: plugin-safe (HTML) / built-in only (DOM). Preview — тир-1 на хосте (D2). ViewContext — единственная «песочница» для view.
 
 ### 5.5. Ограничения
 D5, §11. Карта модулей — §2, `AGENTS.md`.
@@ -94,29 +94,29 @@ D5, §11. Карта модулей — §2, `AGENTS.md`.
 ## 6. Плагинная система: Lua
 
 ### 6.1. Рантайм
-`mlua` 0.12 + vendored Lua 5.5; LuaJIT запрещён (D1). Отдельный процесс и Lua-состояние на плагин (§10, §11.4). Обоснование — ADR-0021/0023; синтаксис Lua 5.5, доступные библиотеки и перечень host-функций задаёт встроенный скилл `create-plugin` (ADR-0042).
+`mlua` 0.12 + vendored Lua 5.5; LuaJIT запрещён (D1). Отдельный процесс и Lua-состояние на плагин (§10, §11.4). Синтаксис Lua 5.5, доступные библиотеки и перечень host-функций задаёт встроенный скилл `create-plugin`.
 
 ### 6.2. Модель: плагин = код, инстанс = привязка
 `plugin = манифест + .lua`; `instance = привязка к view/подписке`. Состояние хранит хост — плагины **stateless по коду** (упрощает `dispose()` и перезагрузку).
 
 ### 6.3. API плагина (host-функции)
-Функции с permission возвращают `(value, err)`; `permission_denied` — значением, не исключением (§8). `host.log`, `md.*`, `json.*` без permission. Сигнатуры и перечень — `crates/plugin-core` и промт встроенного скилла `create-plugin` (ADR-0042).
+Функции с permission возвращают `(value, err)`; `permission_denied` — значением, не исключением (§8). `host.log`, `md.*`, `json.*` без permission. Сигнатуры и перечень — `crates/plugin-core` и промт встроенного скилла `create-plugin`.
 
 ### 6.4. Точки расширения (`contributes`)
-Манифест: `views`, `commands`, `statusbar`, `toolbar`, `settings` (формат — `crates/plugin-core::Manifest`, ADR-0022/0023). `ui:toolbar` отложен (§8).
+Манифест: `views`, `commands`, `statusbar`, `toolbar`, `settings` (формат — `crates/plugin-core::Manifest`). `ui:toolbar` отложен (§8).
 
 ### 6.6. Жизненный цикл
-Цикл: `scan → validate → load → on_activate → … → on_deactivate → unload`. Перезагрузка — `unload` → `load` с диска, без перезапуска. Ошибка загрузки → `failed`, приложение работает. Автоперезагрузка — off. Детали — ADR-0023 §2.4.
+Цикл: `scan → validate → load → on_activate → … → on_deactivate → unload`. Перезагрузка — `unload` → `load` с диска, без перезапуска. Ошибка загрузки → `failed`, приложение работает. Автоперезагрузка — off.
 
 ---
 
 ## 7. Протокол и транспорт
 
 ### 7.1. Уровни
-Конверт `Request`/`Response`/`Error` (serde); транспорт — stdio. Dev-режим — тот же конверт. JSON-RPC не обязателен. Детали — ADR-0021/0023.
+Конверт `Request`/`Response`/`Error` (serde); транспорт — stdio. Dev-режим — тот же конверт. JSON-RPC не обязателен.
 
 ### 7.2. Версионирование
-`api_version` в манифесте; хост отвергает `api_version > HOST_API_VERSION`. Удаление функций запрещено без мажора. Депрекация — ADR-0027.
+`api_version` в манифесте; хост отвергает `api_version > HOST_API_VERSION`. Удаление функций запрещено без мажора.
 
 ---
 
@@ -124,8 +124,8 @@ D5, §11. Карта модулей — §2, `AGENTS.md`.
 
 По образцу Tauri ACL: deny-by-default; эффективный набор = **`manifest ∩ granted`**. Проверка — на хосте, до вызова; `permission_denied` — значением (§6.3).
 
-- Поддержаны: `document:*`, `view:*`, `ui:statusbar`. `filesystem:*`/`network` — нет; `ui:menu`/`ui:sidebar`/`ui:toolbar` — отложены. Привязка — ADR-0023; версии и депрекация — ADR-0027 §2.2–§2.3 (носители нормы — ADR-0042).
-- **Согласие:** `%APPDATA%/darmark/config.json`; смена — перезапуском child'а. Предупреждения — ADR-0021 §3; магазин обязан показать (§11.4).
+- Поддержаны: `document:*`, `view:*`, `ui:statusbar`. `filesystem:*`/`network` — нет; `ui:menu`/`ui:sidebar`/`ui:toolbar` — отложены.
+- **Согласие:** `%APPDATA%/darmark/config.json`; смена — перезапуском child'а. Магазин обязан показать (§11.4).
 
 ---
 
@@ -138,7 +138,7 @@ D5, §11. Карта модулей — §2, `AGENTS.md`.
 | `document:opened`/`closed` | `doc_id`, `path` |
 | `view:scroll`, `view:focus`, `command:invoked` | `view_id`/`command_id` |
 
-> События фронт-шины (ADR-0029/0031) — вне контракта host↔child.
+> События фронт-шины — вне контракта host↔child.
 
 ### 9.2. Модель доставки: notify-only + pull
 Событие — только `doc_id` и `rev`; плагин вызывает `get_document_range`/`get_document_text` при необходимости.
@@ -171,7 +171,7 @@ D5, §11. Карта модулей — §2, `AGENTS.md`.
 ## 11. Санитайзер и границы безопасности
 
 ### 11.1. Единая точка
-Санитизация — только на хосте, в конце конвейера. `preview.innerHTML` доверяет результату. HTML плагинов — тем же ядром (§11.2). Ответ AI рендерится как Markdown через общий хелпер `setSanitizedHtml` (`crates/app/src/safeHtml.ts`) и `md_core::to_html` как источник HTML ответа. Точки `innerHTML` на фронте исчерпывающе перечислены: `previewView.ts`, `safeHtml.ts` → `setSanitizedHtml()` (ADR-0038), `pluginViews.ts`; четвёртая точка запрещена.
+Санитизация — только на хосте, в конце конвейера. `preview.innerHTML` доверяет результату. HTML плагинов — тем же ядром (§11.2). Ответ AI рендерится как Markdown через общий хелпер `setSanitizedHtml` (`crates/app/src/safeHtml.ts`) и `md_core::to_html` как источник HTML ответа. Точки `innerHTML` на фронте исчерпывающе перечислены: `previewView.ts`, `safeHtml.ts` → `setSanitizedHtml()`, `pluginViews.ts`; четвёртая точка запрещена.
 
 ### 11.2. Политика санитизации
 Allowlist: безопасные теги/атрибуты/URL. `data-p-<pluginid>-*` — единственная правка. SVG — без событий и внешних ссылок.
@@ -187,7 +187,7 @@ Allowlist: безопасные теги/атрибуты/URL. `data-p-<pluginid
 ## 12. Настройки, состояние, recent files
 
 - **Конфиг**: `%APPDATA%/darmark/config.json` (Rust `SettingsStore`).
-- **AI-провайдеры**: `ai.providers` + `ai.active_provider`/`active_model`; модель — `provider/model` (ADR-0035).
+- **AI-провайдеры**: `ai.providers` + `ai.active_provider`/`active_model`; модель — `provider/model`.
 - **Плагины**: `%APPDATA%/darmark/plugins/<id>/`; настройки — `plugin-settings/<id>.json` (UI-схема `contributes.settings`, S5b).
 - **Состояние окна**: размер/позиция, layout, открытые документы, активная панель.
 - **Recent files**: пути + время, лимит 20.
@@ -210,6 +210,6 @@ Allowlist: безопасные теги/атрибуты/URL. `data-p-<pluginid
 Полный список id и инвариантов — в e2e-фичах (`crates/app/e2e/features/`). Принципы:
 - `editor`/`preview` — скролл-контейнеры (`hidden`-toggle); `data-md` — контракт инспектора.
 - Отправка наружу — только с согласия. Имя продукта (D8) согласовано везде.
-- HTML ответа модели — только через хелпер `setSanitizedHtml` (ADR-0038).
+- HTML ответа модели — только через хелпер `setSanitizedHtml`.
 
 ---

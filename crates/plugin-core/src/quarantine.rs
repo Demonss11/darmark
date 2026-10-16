@@ -3,7 +3,7 @@
 //! После `threshold` **подряд** неудач плагин автоотключается до ручного включения. Успешный
 //! запуск сбрасывает серию. Состояние per-plugin живёт в хосте (плагин stateless, §6.2).
 
-/// Карантин: счётчик последовательных неудач и флаг отключения.
+
 #[derive(Debug, Clone)]
 pub struct Quarantine {
     threshold: u32,
@@ -32,7 +32,7 @@ impl Quarantine {
         self.consecutive_failures = 0;
     }
 
-    /// Неудача запуска (краш, зависание, отказ): при накоплении `threshold` — карантин.
+    
     pub fn record_failure(&mut self) {
         self.consecutive_failures += 1;
         if self.consecutive_failures >= self.threshold {
@@ -40,7 +40,7 @@ impl Quarantine {
         }
     }
 
-    /// Ручное включение после карантина: счётчик и флаг сбрасываются.
+    
     pub fn reset(&mut self) {
         self.consecutive_failures = 0;
         self.disabled = false;

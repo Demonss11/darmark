@@ -22,11 +22,11 @@ mod tests;
 use plugin_core::envelope::PluginError;
 use serde_json::Value;
 
-/// Услуги хоста, которые плагин вызывает через host-call (range/delta документа, настройки,
-/// экспорт). Проверку permissions делает [`supervisor::Supervisor`] **до** вызова; реализация
-/// только исполняет операцию и остаётся без Tauri (тестируема на фейке).
+
+
+
 pub trait HostServices: Send + Sync + 'static {
-    /// Обрабатывает один host-call. `Err` возвращается плагину как значение, не паника.
+    
     fn handle(&self, method: &str, args: Value) -> Result<Value, PluginError>;
 }
 

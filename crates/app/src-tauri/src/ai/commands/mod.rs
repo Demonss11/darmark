@@ -24,13 +24,13 @@ use crate::ai::types::{
 };
 use crate::error::{CommandError, ErrorCode};
 
-/// Возвращает настройки AI для фронтенда (без секретов — только `has_key` на провайдера).
+
 #[tauri::command]
 pub fn ai_get_settings(state: State<'_, AiState>) -> AiSettingsView {
     AiSettingsView::from(&state.settings())
 }
 
-/// Сохраняет настройки провайдеров/активной пары/лимитов/согласия/включаемости.
+
 #[tauri::command]
 pub fn ai_set_settings(
     settings: AiSettingsInput,
@@ -39,7 +39,7 @@ pub fn ai_set_settings(
     state.update_settings(settings)
 }
 
-/// Записывает API-ключ провайдера в конфиг. Ключ не логируется и наружу не отдаётся.
+
 #[tauri::command]
 pub fn ai_set_api_key(
     provider_id: String,
@@ -49,19 +49,19 @@ pub fn ai_set_api_key(
     state.set_api_key(provider_id, key)
 }
 
-/// Возвращает встроенную библиотеку скиллов (состав — `skills::builtin_skills`, ADR-0032).
+
 #[tauri::command]
 pub fn ai_list_skills() -> Vec<AiSkill> {
     skills::skills()
 }
 
-/// Эмиттер событий ассистента — граница между командой и транспортом (Tauri-событие в проде).
-///
-/// Инъекция вместо жёсткой зависимости от [`AppHandle`] делает последовательность событий
-/// (`ai:chunk`/`ai:tool-call`/`ai:tool-result`/`ai:done`/`ai:error`) проверяемой Rust-тестом:
-/// прод отдаёт [`AppHandle`], тест — собирающий mock. Образец шва — `mcp::LogEmitter`.
+
+
+
+
+
 pub(super) trait AiEmitter: Send + Sync + 'static {
-    /// Отправляет событие `event` с JSON-payload; `Err` — транспорт недоступен.
+    
     fn emit(&self, event: &str, payload: serde_json::Value) -> Result<(), String>;
 }
 
@@ -71,12 +71,12 @@ impl AiEmitter for AppHandle {
     }
 }
 
-/// Отправляет чат-запрос провайдеру со стримингом дельт событиями `ai:chunk`.
-///
-/// Аддитивные события жизненного цикла вызова инструментов — `ai:tool-call` и
-/// `ai:tool-result` (контракт с фронтендом). Тонкая точка входа: работа — в [`run_chat`],
-/// чтобы эмиссию событий можно было подменить в тестах (см. [`AiEmitter`]). Реестр MCP
-/// приходит из состояния приложения.
+
+
+
+
+
+
 #[tauri::command]
 pub async fn ai_chat(
     app: AppHandle,
@@ -87,14 +87,14 @@ pub async fn ai_chat(
     run_chat(&app, &state, &mcp, messages).await
 }
 
-/// Прогоняет чат через tool-loop MCP, эмитя события жизненного цикла вызова инструментов.
-///
-/// Гейт до сети: включён → активная пара → ключ → согласие (иначе [`CommandError`] + `ai:error`).
-/// **Одна** пауза rate limit и один `message_id` на весь цикл: фронт склеивает ответ и карточки
-/// вызовов по нему. Инструменты объявляются провайдеру из реестра MCP ([`provider_tools`]); при
-/// пустом реестре запрос уходит без `tools`, и цикл вырождается в один запрос. Если провайдер
-/// отверг `tools` (HTTP 400), цикл делает один повтор без них и кэширует вердикт в состоянии
-/// (ADR-0040) — деградация пользователю не показывается.
+
+
+
+
+
+
+
+
 pub(super) async fn run_chat(
     emitter: &dyn AiEmitter,
     state: &AiState,
@@ -193,12 +193,12 @@ pub(super) async fn run_chat(
     Ok(response)
 }
 
-/// Инструменты провайдеру из реестра MCP; `None` — объявлять нечего.
-///
-/// Реестр читается тем же JSON-RPC путём, что и у любого клиента MCP (`tools/list`, ADR-0036):
-/// команда не заглядывает внутрь сервера. Пустой список даёт `None` — запрос уходит без поля
-/// `tools`. Отказ провайдера принимать `tools` разбирает уже цикл: один повтор без них и кэш
-/// вердикта по `(base_url, model)` (ADR-0040 §2.2, §2.5).
+
+
+
+
+
+
 fn provider_tools(mcp: &McpServer) -> Option<serde_json::Value> {
     let list = mcp
         .handle(RpcRequest {
@@ -217,10 +217,10 @@ fn provider_tools(mcp: &McpServer) -> Option<serde_json::Value> {
     }
 }
 
-/// Короткая разметка результата вызова для `ai:tool-result`.
-///
-/// Только статус: содержимое результата, аргументы и пути в событие не попадают
-/// (AC-MCP-8/13). Карточку вызова фронт строит из имени инструмента, `ok` и `duration_ms`.
+
+
+
+
 fn tool_summary(exec: &ToolExecution<'_>) -> &'static str {
     if exec.result.ok {
         "готово"
@@ -229,18 +229,18 @@ fn tool_summary(exec: &ToolExecution<'_>) -> &'static str {
     }
 }
 
-/// Эмитит событие ассистента (best-effort: сбой emit логируется, не паника).
+
 fn emit_event(emitter: &dyn AiEmitter, event: &str, payload: serde_json::Value) {
     if let Err(e) = emitter.emit(event, payload) {
         eprintln!("не эмитить {event}: {e}");
     }
 }
 
-/// Лёгкая проверка соединения с провайдером (`GET /models`). Без паник: ошибка — в `error`.
-///
-/// Согласие на отправку содержимого здесь не требуется: текст документа не передаётся.
-/// Возвращает `Result` (требование Tauri к async-командам со ссылками), но `Err` не
-/// порождается: исход проверки всегда кодируется в [`AiTestResult`].
+
+
+
+
+
 #[tauri::command]
 pub async fn ai_test_connection(state: State<'_, AiState>) -> Result<AiTestResult, CommandError> {
     let settings = state.settings();
@@ -283,10 +283,10 @@ pub async fn ai_test_connection(state: State<'_, AiState>) -> Result<AiTestResul
     })
 }
 
-/// Формирует payload события `ai:done` для фронтенда.
-///
-/// `finish_reason` прокидывается явно: фронтенд читает его из этого события, чтобы отличить
-/// нормальное завершение (`"stop"`) от обрыва по лимиту (`"length"`).
+
+
+
+
 pub(super) fn ai_done_payload(
     message_id: &str,
     usage: Option<AiUsage>,
@@ -295,7 +295,7 @@ pub(super) fn ai_done_payload(
     serde_json::json!({ "message_id": message_id, "usage": usage, "finish_reason": finish_reason })
 }
 
-/// Идентификатор сообщения для корреляции `ai:chunk`/`ai:done` (без внешних зависимостей).
+
 pub(super) fn next_message_id() -> String {
     use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -308,7 +308,7 @@ pub(super) fn next_message_id() -> String {
     format!("ai-{now}-{sequence}")
 }
 
-/// Эмитит `ai:error { code, message }` (best-effort: сбой emit логируется, не паника).
+
 fn emit_error(emitter: &dyn AiEmitter, err: &CommandError) {
     let payload = serde_json::json!({
         "code": error_code_str(err.code),
@@ -317,7 +317,7 @@ fn emit_error(emitter: &dyn AiEmitter, err: &CommandError) {
     emit_event(emitter, "ai:error", payload);
 }
 
-/// Строковое значение кода ошибки (совпадает с serde `snake_case` — контракт с фронтендом).
+
 pub(super) fn error_code_str(code: ErrorCode) -> String {
     serde_json::to_value(code)
         .ok()
@@ -325,20 +325,20 @@ pub(super) fn error_code_str(code: ErrorCode) -> String {
         .unwrap_or_else(|| "ai_error".to_string())
 }
 
-/// Рендерит Markdown-ответ модели в санитизированный HTML (ADR-0038).
-///
-/// `md_core::to_html` **сам** прогоняет результат через allowlist-санитайзер
-/// (`crates/md-core/src/lib.rs:52`), поэтому второй вызов `sanitize_fragment` не нужен.
-/// `to_html_mapped` не используется: ответ AI не участвует в инспекторе и не несёт `data-md`.
+
+
+
+
+
 #[tauri::command]
 pub fn ai_render_markdown(text: String) -> String {
     md_core::to_html(&text)
 }
 
-/// Возвращает историю чата для фронтенда (без секретов и абсолютных путей).
-///
-/// Ошибок не возвращает: битый файл / превышение лимита / отсутствие файла — пустая
-/// сессия + `warning` (приложение стартует, см. `history::load`).
+
+
+
+
 #[tauri::command]
 pub fn ai_history_load() -> HistoryView {
     let base = history_base();
@@ -351,10 +351,10 @@ pub fn ai_history_load() -> HistoryView {
     }
 }
 
-/// Сохраняет историю чата (полная замена файла). Принимает только `role`/`content`.
-///
-/// Неизвестные поля в JSON игнорируются serde (контракт с фронтендом). Лимит сообщений
-/// и атомарная запись — в `history::save`.
+
+
+
+
 #[tauri::command]
 pub fn ai_history_save(messages: Vec<AiMessage>) -> Result<(), CommandError> {
     let base = history_base();
@@ -367,7 +367,7 @@ pub fn ai_history_save(messages: Vec<AiMessage>) -> Result<(), CommandError> {
     history::save(base.as_deref(), &file)
 }
 
-/// Очищает историю чата: перезаписывает файл пустой сессией со свежей меткой времени.
+
 #[tauri::command]
 pub fn ai_history_clear() -> Result<(), CommandError> {
     let base = history_base();
@@ -376,15 +376,15 @@ pub fn ai_history_clear() -> Result<(), CommandError> {
     history::save(base.as_deref(), &file)
 }
 
-/// Каталог для файла истории: родитель конфига (каталог данных приложения).
-///
-/// На Windows и в тестах путь конфига читает `DARMARK_CONFIG_PATH` (см.
-/// `plugins::settings::SettingsStore::config_path`); история лежит рядом с конфигом.
+
+
+
+
 fn history_base() -> Option<std::path::PathBuf> {
     settings::config_path().and_then(|path| path.parent().map(|dir| dir.to_path_buf()))
 }
 
-/// Текущие unix-секунды (метка `updated_at` для истории).
+
 fn now_secs() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

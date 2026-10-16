@@ -12,11 +12,11 @@ use super::super::HostServices;
 use super::{DocumentServices, MAX_RANGE_BYTES, MAX_TEXT_REPLY_ESCAPED};
 
 impl DocumentServices {
-    /// `set_view_content`: санитизация и запись HTML в реестр представлений.
-    ///
-    /// Не трогает `DocumentStore` (важно для дедлок-безопасности: вызов приходит
-    /// из `pump`, где блокировка стора уже отпущена). `_plugin_id` инжектится
-    /// `Supervisor` — плагин не может подменить владельца view.
+    
+    
+    
+    
+    
     fn set_view_content(&self, args: &Value) -> Result<Value, PluginError> {
         let view_id = args.get("view_id").and_then(Value::as_str).ok_or_else(|| {
             PluginError::new("bad_args", "set_view_content: нет строкового view_id")
@@ -56,11 +56,11 @@ impl DocumentServices {
         Ok(json!(true))
     }
 
-    /// `export_html`: HTML → нативный диалог сохранения (Фаза 5, §6.3).
-    ///
-    /// Не берёт блокировку стора: диалог может висеть до выбора пользователя, а
-    /// замороженный `DocumentStore` заблокировал бы редактор. Permission не требуется —
-    /// согласие даёт сам диалог (`filesystem:write` не нужен).
+    
+    
+    
+    
+    
     fn export_html(&self, args: &Value) -> Result<Value, PluginError> {
         let html = args
             .get("html")
@@ -75,9 +75,9 @@ impl DocumentServices {
         }
     }
 
-    /// `show_message`: уведомление в статусбар через событие `plugin-message`.
-    ///
-    /// `_plugin_id` инжектится `Supervisor` — плагин не может подменить автора сообщения.
+    
+    
+    
     fn show_message(&self, args: &Value) -> Result<Value, PluginError> {
         let text = args
             .get("text")
@@ -93,12 +93,12 @@ impl DocumentServices {
         Ok(json!(true))
     }
 
-    /// `log`: сообщение плагина в журнал (`log-entry`, S11).
-    ///
-    /// Источник — `host.log`/`print` из Lua (транспортный кадр `ToHost::Log` доходит сюда
-    /// через `Supervisor`). `_plugin_id` инжектится `Supervisor`. Категория плагинных
-    /// логов фиксирована (TZ §5.2) — `plugin`. Best-effort: без sink'а — no-op, не ошибка
-    /// (как `show_message`).
+    
+    
+    
+    
+    
+    
     fn log(&self, args: &Value) -> Result<Value, PluginError> {
         let level = args.get("level").and_then(Value::as_str).unwrap_or("info");
         let message = args
@@ -111,11 +111,11 @@ impl DocumentServices {
         Ok(json!(true))
     }
 
-    /// `get_setting`: читает постоянную настройку плагина (F43/S5).
-    ///
-    /// Scope — по внедрённому `Supervisor` `_plugin_id`: плагин видит только свои настройки.
-    /// Отсутствующий ключ → `nil` (`Value::Null`, без ошибки). Недоступное хранилище или
-    /// некорректный ключ — значение-ошибка, не паника.
+    
+    
+    
+    
+    
     fn get_setting(&self, args: &Value) -> Result<Value, PluginError> {
         let plugin_id = plugin_id_arg(args)?;
         let key = key_arg(args)?;
@@ -131,10 +131,10 @@ impl DocumentServices {
         Ok(store.get(plugin_id, key)?.unwrap_or(Value::Null))
     }
 
-    /// `set_setting`: записывает постоянную настройку плагина (F43/S5).
-    ///
-    /// Значение — произвольный JSON. Scope — по `_plugin_id` (плагин пишет только свои
-    /// настройки). Пустой/слишком длинный ключ или значение сверх лимита — значение-ошибка.
+    
+    
+    
+    
     fn set_setting(&self, args: &Value) -> Result<Value, PluginError> {
         let plugin_id = plugin_id_arg(args)?;
         let key = key_arg(args)?;
@@ -254,11 +254,11 @@ impl HostServices for DocumentServices {
     }
 }
 
-/// Верхняя оценка длины JSON-строки `text` после экранирования serde_json (F40/S1).
-///
-/// `"` и `\` → 2 Б; управляющие символы (< 0x20) → до 6 Б (`\u00XX`); прочие байты
-/// (включая UTF-8) serde_json не экранирует. Оценка намеренно **сверху** (например, `\n`
-/// реально 2 Б, но считаем 6): недооценка привела бы к отправке кадра сверх лимита.
+
+
+
+
+
 fn json_escaped_len(text: &str) -> usize {
     text.bytes()
         .map(|b| match b {
@@ -277,15 +277,15 @@ fn doc_id(args: &Value) -> Result<DocumentId, PluginError> {
     Ok(DocumentId::new(raw))
 }
 
-/// Владелец host-call'а: `_plugin_id` инжектит [`super::super::supervisor::Supervisor`], плагин не
-/// может подменить владельца своих настроек. Без инъекции вызов отвергается.
+
+
 fn plugin_id_arg(args: &Value) -> Result<&str, PluginError> {
     args.get("_plugin_id")
         .and_then(Value::as_str)
         .ok_or_else(|| PluginError::new("bad_args", "нет _plugin_id"))
 }
 
-/// Строковый ключ настройки (валидацию длины делает хранилище).
+
 fn key_arg(args: &Value) -> Result<&str, PluginError> {
     args.get("key")
         .and_then(Value::as_str)

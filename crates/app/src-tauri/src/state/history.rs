@@ -2,16 +2,16 @@
 
 use super::{DocumentId, DocumentStore, EditOp, UndoResult};
 
-/// Потолок undo/redo-стека: при переполнении отбрасывается самый старый оп.
-///
-/// Ограничивает память: редактор шлёт правку на каждое нажатие, а каждый оп держит
-/// две строки. 500 шагов с запасом покрывают типичную сессию редактирования.
+
+
+
+
 pub(super) const UNDO_LIMIT: usize = 500;
 
-/// Кладёт оп в стек, отбрасывая самый старый при переполнении [`UNDO_LIMIT`].
-///
-/// Применяется к обоим стекам сообразно: `undo` растёт на новых правках, `redo` —
-/// на отменах; каждый держится в границах лимита.
+
+
+
+
 pub(super) fn push_op(stack: &mut Vec<EditOp>, op: EditOp) {
     stack.push(op);
     if stack.len() > UNDO_LIMIT {
@@ -19,11 +19,11 @@ pub(super) fn push_op(stack: &mut Vec<EditOp>, op: EditOp) {
     }
 }
 
-/// Минимальная правка `old → new`: общий префикс и общий суффикс по байтам.
-///
-/// Границы усекаются **вниз до границ UTF-8**: общий префикс/суффикс может разрезать
-/// многочленный символ (совпавшие байты внутри разных символов), и без выравнивания
-/// срез `&str` запаниковал бы. Возвращает оп с байтовыми `start`, `removed`, `inserted`.
+
+
+
+
+
 pub(super) fn minimal_diff(old: &str, new: &str) -> EditOp {
     let old_bytes = old.as_bytes();
     let new_bytes = new.as_bytes();
@@ -57,11 +57,11 @@ pub(super) fn minimal_diff(old: &str, new: &str) -> EditOp {
 }
 
 impl DocumentStore {
-    /// Отменяет последнюю правку (LIFO). `None` — документа нет или нечего отменять.
-    ///
-    /// Меняет `[start, start+inserted.len())` обратно на `removed`, переносит оп в
-    /// `redo`, растит `rev` (кэш рендера инвалидируется по ревизии). Возвращает текст
-    /// и байтовый диапазон восстановленного фрагмента.
+    
+    
+    
+    
+    
     pub fn undo(&mut self, id: &DocumentId) -> Option<UndoResult> {
         let doc = self.docs.get_mut(id)?;
         let op = doc.undo.pop()?;
@@ -82,10 +82,10 @@ impl DocumentStore {
         Some(result)
     }
 
-    /// Повторяет отменённую правку (LIFO). `None` — документа нет или нечего повторять.
-    ///
-    /// Меняет `[start, start+removed.len())` на `inserted`, переносит оп назад в
-    /// `undo`, растит `rev`. Возвращает текст и байтовый диапазон применённого фрагмента.
+    
+    
+    
+    
     pub fn redo(&mut self, id: &DocumentId) -> Option<UndoResult> {
         let doc = self.docs.get_mut(id)?;
         let op = doc.redo.pop()?;

@@ -21,15 +21,15 @@ use super::views::PluginViews;
 use super::{HostServices, PluginStatus};
 use crate::{CommandInfo, PluginInfo};
 
-/// Порог карантина: 3 неудачи подряд (ADR-0021 §3).
+
 pub const QUARANTINE_THRESHOLD: u32 = 3;
 
-/// Эффективные права плагина: пересечение запрашиваемых манифестом (`manifest`) и выданных
-/// пользователем (`granted`) — deny-by-default, §8/§12.
-///
-/// Порядок — как в манифесте (детерминирован), дубли не плодятся. «Мусор» в `granted`
-/// (разрешение, которого нет в манифесте) отсекается: подпись пользователя не расширяет
-/// декларацию плагина. Чистая функция — без зависимостей от процессов/IO, потому и тестируема.
+
+
+
+
+
+
 pub fn effective_permissions(manifest: &[String], granted: &[String]) -> Vec<String> {
     manifest
         .iter()
@@ -38,37 +38,37 @@ pub fn effective_permissions(manifest: &[String], granted: &[String]) -> Vec<Str
         .collect()
 }
 
-/// Один плагин и его child-процесс.
+
 pub struct PluginRuntime {
     pub id: String,
-    /// Человекочитаемое имя из манифеста (`plugin.json`) — для менеджера UI (S12a).
+    
     pub name: String,
-    /// Версия из манифеста (`plugin.json`) — для менеджера UI (S12a).
+    
     pub version: String,
-    /// Запрашиваемые плагином права из манифеста (а не фактические — их даёт [`Self::effective`]).
+    
     pub permissions: Vec<String>,
-    /// Согласованные пользователем права (подмножество `permissions`, §8/§12, Фаза 5).
-    /// Пусто — согласие не выдано; при старте child получает [`Self::effective`] (deny-by-default).
+    
+    
     granted: Vec<String>,
     pub status: PluginStatus,
-    /// Тир-1 view из манифеста (регистрируются в общем [`PluginViews`] при загрузке;
-    /// здесь — для менеджера UI Фазы 5: перерегистрация при перезагрузке).
+    
+    
     #[allow(dead_code)]
     pub views: Vec<ViewContrib>,
-    /// Команды из манифеста (`contributes.commands`): менеджер UI показывает их кнопками,
-    /// `run_plugin_command` публикует `command:invoked` с этим `command_id`.
+    
+    
     #[allow(dead_code)]
     pub commands: Vec<CommandContrib>,
-    /// Схема настроек из манифеста (`contributes.settings`) для UI-формы (S5b).
-    /// `None`, если плагин не объявил `contributes.settings`.
+    
+    
     pub settings: Option<Value>,
     quarantine: Quarantine,
     exe: PathBuf,
-    /// Кэш исходника; используется, если [`PluginRuntime::entry_path`] не задан (тесты).
+    
     source: String,
-    /// Путь к `.lua` на диске: `reload`/`start` перечитывают его, чтобы подхватить правки (§4.7).
+    
     entry_path: Option<PathBuf>,
-    /// Каталог плагина на диске — для удаления (`remove_plugin`).
+    
     dir: PathBuf,
     services: Arc<dyn HostServices>,
     supervisor: Option<Supervisor>,
@@ -78,12 +78,12 @@ pub struct PluginRuntime {
     deadline: Duration,
 }
 
-/// Набор плагинов. Фаза 5 оборачивает его Tauri-командами.
-///
-/// **Инвариант блокировок:** host-call'ы берут `Mutex<DocumentStore>` внутри `invoke`;
-/// `std::sync::Mutex` не реентрантный, поэтому вызывать операции менеджера **нельзя** под уже
-/// удерживаемой блокировкой стора (иначе дедлок). При IPC-подключении (Фаза 4/5) состояние
-/// станет `Arc<Mutex<DocumentStore>>` (§4.2 ревью).
+
+
+
+
+
+
 #[derive(Default)]
 pub struct PluginManager {
     plugins: HashMap<String, PluginRuntime>,
@@ -94,7 +94,7 @@ impl PluginManager {
         self.plugins.insert(runtime.id.clone(), runtime);
     }
 
-    /// `list_plugins`: снимок для UI.
+    
     pub fn list_plugins(&self) -> Vec<PluginInfo> {
         let mut infos: Vec<PluginInfo> = self
             .plugins
@@ -128,7 +128,7 @@ impl PluginManager {
         infos
     }
 
-    /// `set_plugin_enabled`: вкл/выкл плагина (включение снимает карантин).
+    
     pub fn set_plugin_enabled(&mut self, id: &str, enabled: bool) -> Result<(), PluginError> {
         let plugin = self
             .plugins
@@ -141,7 +141,7 @@ impl PluginManager {
         Ok(())
     }
 
-    /// `reload_plugin`: перезапуск без рестарта приложения.
+    
     pub fn reload_plugin(&mut self, id: &str) -> Result<(), PluginError> {
         let plugin = self
             .plugins
@@ -150,11 +150,11 @@ impl PluginManager {
         plugin.reload()
     }
 
-    /// Удаляет плагин из реестра: останавливает child и возвращает путь к каталогу
-    /// на диске для последующего удаления файлов.
-    ///
-    /// Каталог не удаляется здесь — это ответственность вызывающего (`PluginHost`),
-    /// который сначала снимает views и настройки, а потом удаляет файлы.
+    
+    
+    
+    
+    
     pub fn remove_plugin(&mut self, id: &str) -> Result<PathBuf, PluginError> {
         let mut plugin = self
             .plugins
@@ -164,13 +164,13 @@ impl PluginManager {
         Ok(plugin.dir)
     }
 
-    /// `set_plugin_permissions`: фиксирует согласие пользователя на права плагина.
-    ///
-    /// Пересечение с манифестом (`manifest ∩ granted`) — deny-by-default: выданное
-    /// пользователем разрешение, которого нет в декларации, отсекается ещё до записи.
-    /// Включённый плагин перезапускается, чтобы новый набор вступил в силу (права
-    /// захватываются при [`PluginRuntime::start`]); выключенный — только запоминает набор.
-    /// `reload` **не** снимает карантин: плагин в нём вернёт `quarantined`.
+    
+    
+    
+    
+    
+    
+    
     pub fn set_plugin_permissions(
         &mut self,
         id: &str,
@@ -192,12 +192,12 @@ impl PluginManager {
         self.plugins.get(id)
     }
 
-    /// Активные плагины с PID живого child'а (`(plugin_id, pid)`), детерминированно по id.
-    ///
-    /// Источник списка процессов для ресурс-монитора (ADR-0031 §2.2/§2.6): только `Active`
-    /// с живым `Supervisor`. Вызывается под **коротким** локом менеджера — снимок PID;
-    /// WinAPI-замеры и эмит идут вне блокировки (§2.3 п.10).
-    ///
+    
+    
+    
+    
+    
+    
     pub fn active_pids(&self) -> Vec<(String, u32)> {
         let mut pids: Vec<(String, u32)> = self
             .plugins
@@ -212,12 +212,12 @@ impl PluginManager {
         self.plugins.get_mut(id)
     }
 
-    /// Изменяемый обход всех плагинов (старт enabled-плагинов, Фаза 4).
+    
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut PluginRuntime> {
         self.plugins.values_mut()
     }
 
-    /// Изменяемый обход только активных плагинов (доставка событий, §9).
+    
     pub fn iter_active_mut(&mut self) -> impl Iterator<Item = &mut PluginRuntime> {
         self.plugins
             .values_mut()
@@ -225,18 +225,18 @@ impl PluginManager {
     }
 }
 
-/// Результат загрузки реестра: менеджер + ошибки сканирования (битые манифесты и т.п.).
+
 pub struct LoadResult {
     pub manager: PluginManager,
     pub errors: Vec<super::scan::ScanError>,
 }
 
-/// Сканирует каталог и строит реестр плагинов (**без запуска** процессов).
-///
-/// Запрашиваемые права берутся из манифеста, согласованные — из [`SettingsStore`]
-/// (deny-by-default: нет записи — нет прав). Вкл/выкл — тоже из настроек. Фактический
-/// набор (`manifest ∩ granted`) вычисляет [`PluginRuntime::effective`] и передаёт child'у
-/// при старте; автозапуск enabled-плагинов — `PluginHost::start_enabled`.
+
+
+
+
+
+
 pub fn load_plugins(
     plugins_dir: &Path,
     exe: &Path,

@@ -13,33 +13,33 @@ use serde::{Deserialize, Serialize};
 use crate::ai::types::AiMessage;
 use crate::error::CommandError;
 
-/// Текущая версия схемы файла истории.
+
 pub(crate) const SCHEMA_VERSION: u32 = 1;
 
-/// Сколько сообщений хранить в истории (последние N).
+
 pub const MAX_HISTORY_MESSAGES: usize = 40;
 
-/// Максимальный размер файла истории в байтах (защита от гигантского файла при старте).
+
 pub const MAX_HISTORY_BYTES: u64 = 2 * 1024 * 1024;
 
-/// Белый список ролей сообщений. Роль вне списка отбрасывается при загрузке.
+
 const ALLOWED_ROLES: &[&str] = &["system", "user", "assistant", "tool"];
 
-/// Файл истории чата: метаданные + сообщения.
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct HistoryFile {
-    /// Версия схемы (для будущей миграции).
+    
     pub schema_version: u32,
-    /// Идентификатор сессии чата.
+    
     pub session_id: String,
-    /// Время последнего обновления (unix-секунды).
+    
     pub updated_at: u64,
-    /// Сообщения чата (последние первыми — новые в конце).
+    
     pub messages: Vec<AiMessage>,
 }
 
 impl HistoryFile {
-    /// Пустая сессия (нет файла / битый файл / неизвестная схема).
+    
     pub fn empty() -> Self {
         Self {
             schema_version: SCHEMA_VERSION,
@@ -50,15 +50,15 @@ impl HistoryFile {
     }
 }
 
-/// Путь к файлу истории: `<base>/ai-history.json`. `None` — сохранять некуда.
+
 pub fn history_path(base: Option<&Path>) -> Option<PathBuf> {
     base.map(|dir| dir.join("ai-history.json"))
 }
 
-/// Читает историю из файла. Возвращает `(HistoryFile, Option<предупреждение>)`.
-///
-/// Предупреждение — короткая строка без содержимого сообщений (не логируется).
-/// Паники нет: любая проблема → пустая сессия + предупреждение.
+
+
+
+
 pub fn load(base: Option<&Path>) -> (HistoryFile, Option<String>) {
     let Some(path) = history_path(base) else {
         return (HistoryFile::empty(), None);
@@ -88,10 +88,10 @@ pub fn load(base: Option<&Path>) -> (HistoryFile, Option<String>) {
     }
 }
 
-/// Парсит JSON в `HistoryFile`. Битый JSON / неизвестная схема → пустая сессия + предупреждение.
-///
-/// **Приватность:** текст serde-ошибки не пробрасывается наружу — он может содержать фрагмент
-/// содержимого файла, а сообщения чата не должны попадать в логи и предупреждения.
+
+
+
+
 fn parse_history(bytes: &[u8]) -> (HistoryFile, Option<String>) {
     let file: HistoryFile = match serde_json::from_slice(bytes) {
         Ok(f) => f,
@@ -129,10 +129,10 @@ fn parse_history(bytes: &[u8]) -> (HistoryFile, Option<String>) {
     )
 }
 
-/// Сохраняет историю атомарно: временный файл + `rename`.
-///
-/// Перед записью хвост старых сообщений отбрасывается, пока не останется
-/// ≤ [`MAX_HISTORY_MESSAGES`] (последнее сообщение всегда сохраняется).
+
+
+
+
 pub fn save(base: Option<&Path>, history: &HistoryFile) -> Result<(), CommandError> {
     let Some(path) = history_path(base) else {
         return Ok(());
@@ -178,11 +178,11 @@ pub fn save(base: Option<&Path>, history: &HistoryFile) -> Result<(), CommandErr
     }
 }
 
-/// Укладывает сериализованную историю в [`MAX_HISTORY_BYTES`], отбрасывая старые сообщения
-/// с начала, пока файл не уместится; последнее сообщение сохраняется всегда.
-///
-/// Инвариант: сохранённый файл обязан загружаться `load` без срабатывания лимита размера —
-/// иначе сессия «переживала» бы запись и терялась при следующем запуске.
+
+
+
+
+
 fn fit_within_byte_limit(
     history: &HistoryFile,
     mut bytes: Vec<u8>,
@@ -208,8 +208,8 @@ fn fit_within_byte_limit(
     Ok(bytes)
 }
 
-/// Мьютекс для тестов, меняющих переменные окружения (параллельные тесты не должны конфликтовать).
-/// Общий на весь модуль `ai`: `commands` и `history` сериализуют доступ к `DARMARK_CONFIG_PATH`.
+
+
 #[cfg(test)]
 pub(crate) fn env_lock() -> std::sync::MutexGuard<'static, ()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();

@@ -154,7 +154,7 @@ pub fn parse_update_args(args: &[String]) -> Result<Action, String> {
     Ok(Action::Update { id, repo, dest })
 }
 
-/// Общая часть `install` и `link`: `<id> [--repo <dir>] [--dest <dir>] [--force]`.
+
 fn parse_transfer_args(
     args: &[String],
     command: &str,
@@ -230,8 +230,8 @@ mod tests {
         );
     }
 
-    /// `install` и `link` делят парсер: префикс команды попадает в текст ошибки, чтобы
-    /// подсказка в stderr называла именно ту команду, которую ввели.
+    
+    
     #[test]
     fn transfer_rejects_second_id_with_command_prefix() {
         assert_eq!(
@@ -249,7 +249,7 @@ mod tests {
         assert_eq!(err(parse_link_args(&args(&[]))), "link требует id <id>");
     }
 
-    /// `update` — единственная команда, где id необязателен (без него обновляется всё).
+    
     #[test]
     fn update_takes_optional_id_and_dest() {
         assert_eq!(
@@ -327,8 +327,8 @@ mod tests {
         );
     }
 
-    /// Неизвестный флаг отвергается одинаково у всех команд — иначе опечатка молча
-    /// превращалась бы в позиционный аргумент.
+    
+    
     #[test]
     fn unknown_flag_is_rejected_by_every_command() {
         type ParseFn = fn(&[String]) -> Result<Action, String>;
@@ -350,7 +350,7 @@ mod tests {
         }
     }
 
-    /// У `list`/`update` нет позиционных аргументов: лишний — ошибка, а не тихий id.
+    
     #[test]
     fn list_and_update_reject_extra_positional() {
         assert_eq!(

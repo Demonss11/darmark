@@ -28,7 +28,7 @@ use super::support::{
     long_text_server, outcome_with_tool_call, tools_rejected, MockCapability, ScriptedTransport,
 };
 
-/// Результат `tools/list` из реестра — тот же JSON-RPC путь, что и у провайдера.
+
 fn tools_list_json(server: &McpServer) -> Value {
     server
         .handle(RpcRequest {
@@ -42,7 +42,7 @@ fn tools_list_json(server: &McpServer) -> Value {
         .expect("tools/list возвращает result")
 }
 
-/// Базовый запрос без инструментов: сообщения дополняет `run`.
+
 fn base_request() -> ChatRequest {
     ChatRequest {
         base_url: "https://example.test/v1".to_string(),
@@ -62,8 +62,8 @@ fn base_request() -> ChatRequest {
     }
 }
 
-/// Тот же запрос с объявленным инструментом — вход для проверки деградации: только при
-/// непустом `tools` провайдер вообще может отвергнуть поле (ADR-0040 §2.2 п.10).
+
+
 fn request_with_tools() -> ChatRequest {
     ChatRequest {
         tools: Some(json!([
@@ -237,8 +237,8 @@ fn call_mcp_tool_truncates_long_result_on_char_boundary() {
     );
 }
 
-/// Сценарий (а) ADR-0040 §2.2: HTTP 400 при объявленных инструментах даёт ровно один
-/// авто-повтор без `tools` в том же `run`; вердикт кэшируется только после успеха.
+
+
 #[test]
 fn run_retries_once_without_tools_on_provider_400() {
     let transport = ScriptedTransport::new(
@@ -289,7 +289,7 @@ fn run_retries_once_without_tools_on_provider_400() {
     );
 }
 
-/// §2.3 п.14: распознанное превышение контекста — не отказ от `tools`, повтор не поможет.
+
 #[test]
 fn run_skips_retry_on_context_length_400() {
     let transport = ScriptedTransport::new(
@@ -323,10 +323,10 @@ fn run_skips_retry_on_context_length_400() {
     );
 }
 
-/// §2.2 п.6 / §2.3 п.15: повтор — только на 400 провайдера **и** только при объявленных
-/// инструментах. Таблица прогоняет каждую отказную ветку в обоих режимах: `401`, `5xx`,
-/// локальная ошибка без статуса и сам `400` при пустом реестре MCP — все уходят пользователю
-/// как есть, без повтора и без вердикта.
+
+
+
+
 #[test]
 fn run_does_not_retry_on_other_failures() {
     let cases = [
@@ -404,9 +404,9 @@ fn run_does_not_retry_on_other_failures() {
     }
 }
 
-/// §2.2 п.10: деградировать нечего — при пустом реестре MCP в запросе нет `tools`. Регрессия на
-/// инверсию в `declares_tools`: отказ `400` без объявленных инструментов обязан уйти наружу как
-/// есть, одним запросом и без ложного вердикта «провайдер не умеет `tools`».
+
+
+
 #[test]
 fn run_does_not_degrade_when_tools_never_declared() {
     let variants = [("tools = None", None), ("tools = []", Some(json!([])))];
@@ -454,8 +454,8 @@ fn run_does_not_degrade_when_tools_never_declared() {
     }
 }
 
-/// §2.5 п.22: 400 — вердикт по одному ответу. Упавший повтор не кэшируется — пользователь видит
-/// исходную ошибку, следующий запрос проверяет заново.
+
+
 #[test]
 fn run_does_not_cache_verdict_when_retry_also_fails() {
     let second = CommandError::provider(
@@ -496,7 +496,7 @@ fn run_does_not_cache_verdict_when_retry_also_fails() {
     );
 }
 
-/// §2.5 п.25: кэш-хит снимает `tools` до первого запроса — ни одного отвергнутого запроса.
+
 #[test]
 fn run_drops_tools_before_first_request_on_cache_hit() {
     let transport = ScriptedTransport::ok(Vec::new(), final_outcome("ответ без инструментов"));
@@ -527,7 +527,7 @@ fn run_drops_tools_before_first_request_on_cache_hit() {
     );
 }
 
-/// §2.2 п.8: бюджет запросов не растёт — повтор занимает слот итерации, а не добавляет новый.
+
 #[test]
 fn run_request_budget_includes_degradation_attempt() {
     let transport = ScriptedTransport::new(
@@ -560,9 +560,9 @@ fn run_request_budget_includes_degradation_attempt() {
     assert_eq!(capability.marks().len(), 1, "вердикт один");
 }
 
-/// §2.2 п.8: повтор занимает слот итерации, поэтому на **последнем** слоте повтор уже некуда
-/// делать. Отказ `400` там — исходная ошибка наружу, без «повтора» за пределами бюджета и без
-/// вердикта в кэше.
+
+
+
 #[test]
 fn run_reports_error_when_rejection_hits_last_slot() {
     let transport = ScriptedTransport::new(
@@ -605,8 +605,8 @@ fn run_reports_error_when_rejection_hits_last_slot() {
     );
 }
 
-/// Обратная граница: отказ на **предпоследнем** слоте — единственный слот, где повтор ещё
-/// помещается в бюджет, и он должен сработать.
+
+
 #[test]
 fn run_retries_when_rejection_hits_penultimate_slot() {
     let transport = ScriptedTransport::new(
@@ -649,8 +649,8 @@ fn run_retries_when_rejection_hits_penultimate_slot() {
     );
 }
 
-/// Сценарий (б) ADR-0040 §2.4: 200 с пустыми `tool_calls` — штатный финальный ответ цикла.
-/// Повтора нет: первый запрос уже отправил дельты под тем же `message_id`.
+
+
 #[test]
 fn run_returns_final_answer_on_empty_tool_calls_without_retry() {
     let transport = ScriptedTransport::ok(Vec::new(), final_outcome("обычный ответ"));
@@ -680,8 +680,8 @@ fn run_returns_final_answer_on_empty_tool_calls_without_retry() {
     );
 }
 
-/// Регрессия: обычный успешный ход не оставляет вердикта в кэше — провайдер остаётся «умеющим»
-/// `tools`, иначе деградация была бы залипающей.
+
+
 #[test]
 fn run_keeps_capability_untouched_on_success() {
     let transport = ScriptedTransport::ok(
@@ -717,7 +717,7 @@ fn run_keeps_capability_untouched_on_success() {
     );
 }
 
-/// Проверка типов: двойники тестов обязаны оставаться `Send + Sync` (ADR-0040 §2.7 п.31).
+
 #[test]
 fn mock_capability_is_send_and_sync() {
     fn assert_send_sync<T: Send + Sync>() {}

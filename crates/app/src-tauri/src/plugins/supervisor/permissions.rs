@@ -7,11 +7,11 @@
 use plugin_core::envelope::PluginError;
 use serde_json::Value;
 
-/// Возвращает копию object-args с инжектированным `_plugin_id`.
-///
-/// Хост не доверяет идентификатору из плагина: `serve_host_call` подставляет
-/// `self.plugin_id` перед передачей в [`HostServices`](super::super::HostServices). Не-object args остаются
-/// как есть (host-call'ы с object-аргументами — контракт H2).
+
+
+
+
+
 pub(super) fn with_plugin_id(args: &Value, plugin_id: &str) -> Value {
     let mut args = args.clone();
     if let Some(object) = args.as_object_mut() {
@@ -23,7 +23,7 @@ pub(super) fn with_plugin_id(args: &Value, plugin_id: &str) -> Value {
     args
 }
 
-/// Читает `PluginError` из `payload["error"]`; при сбое разбора — `protocol`.
+
 pub(super) fn decode_error(payload: &Value) -> PluginError {
     match payload.get("error") {
         Some(value) => serde_json::from_value::<PluginError>(value.clone())
@@ -32,7 +32,7 @@ pub(super) fn decode_error(payload: &Value) -> PluginError {
     }
 }
 
-/// Разрешение, необходимое host-call'у (§4.4). `None` — вызов без permission.
+
 pub fn required_permission(method: &str) -> Option<&'static str> {
     match method {
         "get_document_len"
@@ -47,8 +47,8 @@ pub fn required_permission(method: &str) -> Option<&'static str> {
     }
 }
 
-/// Проверяет, что у плагина есть разрешение на host-call. Отказ — значение
-/// [`PluginError::permission_denied`], а не паника.
+
+
 pub fn check_permission(permissions: &[String], method: &str) -> Result<(), PluginError> {
     if let Some(required) = required_permission(method) {
         if !permissions.iter().any(|p| p == required) {

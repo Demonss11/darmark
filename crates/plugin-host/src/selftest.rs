@@ -15,22 +15,22 @@ use serde_json::Value;
 
 use crate::{bindings, sandbox};
 
-/// Лимит размера `plugin.json` при самопроверке (совпадает с GUI-сканированием, §6.6).
+
 pub const MAX_MANIFEST_BYTES: u64 = 256 * 1024;
 
 const MANIFEST_FILE: &str = "plugin.json";
 
-/// Отчёт о самопроверке плагина.
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct SelfTestReport {
     pub plugin_id: String,
     pub source_bytes: usize,
     pub activated: bool,
-    /// Логи и события песочницы (host.log/print/emit).
+    
     pub logs: Vec<String>,
 }
 
-/// Хост-заглушка: host-call'ы отклоняются, логи/события копятся в `logs`.
+
 struct LogHost {
     logs: Arc<Mutex<Vec<String>>>,
 }
@@ -61,8 +61,8 @@ impl bindings::HostApi for LogHost {
     }
 }
 
-/// Проверяет плагин в песочнице: чтение (манифест/entry), `load`, `on_activate`,
-/// `on_deactivate` (если объявлена).
+
+
 pub fn self_test(path: &Path) -> Result<SelfTestReport, String> {
     let (plugin_id, source_bytes, source) = resolve_source(path)?;
 
@@ -86,7 +86,7 @@ pub fn self_test(path: &Path) -> Result<SelfTestReport, String> {
         .map_err(|_| format!("{plugin_id}: отсутствует on_activate"))?;
     let ctx =
         bindings::make_context(&lua, &plugin_id).map_err(|e| format!("не создать ctx: {e}"))?;
-    // Один ctx на весь цикл: состояние из on_activate доживает до on_deactivate (§6.2).
+    
     activate
         .call::<()>(ctx.clone())
         .map_err(|e| format!("{plugin_id}: on_activate упал: {e}"))?;
@@ -97,7 +97,7 @@ pub fn self_test(path: &Path) -> Result<SelfTestReport, String> {
             .map_err(|e| format!("{plugin_id}: on_deactivate упал: {e}"))?;
     }
 
-    // Arc остаётся захвачен замыканиями Lua, поэтому Vec из-под лока не вынести — копируем.
+    
     let logs = logs.lock().unwrap_or_else(|e| e.into_inner()).clone();
 
     Ok(SelfTestReport {
@@ -108,8 +108,8 @@ pub fn self_test(path: &Path) -> Result<SelfTestReport, String> {
     })
 }
 
-/// Читает исходник плагина (каталог → манифест + entry; `.lua`-файл → сам файл).
-/// Возвращает `(plugin_id, source_bytes, source)`.
+
+
 fn resolve_source(path: &Path) -> Result<(String, usize, String), String> {
     if path.is_dir() {
         let manifest_path = path.join(MANIFEST_FILE);
@@ -130,7 +130,7 @@ fn resolve_source(path: &Path) -> Result<(String, usize, String), String> {
     }
 }
 
-/// Читает файл с жёстким потолком размера (защита от TOCTOU и OOM).
+
 fn read_capped(path: &Path, max: u64) -> Result<Vec<u8>, String> {
     let metadata = std::fs::metadata(path).map_err(|e| format!("{}: {e}", path.display()))?;
     if metadata.len() > max {
